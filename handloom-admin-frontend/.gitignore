@@ -22,3 +22,16 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Environment files with real values
+.env.local
+.env.*.local
+
+# CDK output
+infra/cdk.out
+
+# Go binaries (if any)
+infra/*.exe
+infra/*.dll
+infra/*.so
+infra/*.dylib

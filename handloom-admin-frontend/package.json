@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:dev": "tsc -b && vite build --mode dev",
+    "build:prod": "tsc -b && vite build --mode prod",
     "preview": "vite preview",
     "lint": "eslint . --ext .ts,.tsx",
     "lint:fix": "eslint . --ext .ts,.tsx --fix",
@@ -13,7 +15,18 @@
     "format:check": "prettier --check \"src/**/*.{ts,tsx,css,json}\"",
     "typecheck": "tsc --noEmit",
     "check": "npm run typecheck && npm run lint && npm run format:check",
-    "prepare": "cd .. && husky handloom-admin-frontend/.husky"
+    "prepare": "cd .. && husky handloom-admin-frontend/.husky",
+    "cdk:synth": "cd infra && cdk synth",
+    "cdk:synth:dev": "cd infra && cdk synth -c environment=dev",
+    "cdk:synth:prod": "cd infra && cdk synth -c environment=prod",
+    "cdk:deploy:dev": "npm run build:dev && cd infra && cdk deploy --all --require-approval never -c environment=dev",
+    "cdk:deploy:dev:cdn": "npm run build:dev && cd infra && cdk deploy --all --require-approval never -c environment=dev -c useCDN=true",
+    "cdk:deploy:prod": "npm run build:prod && cd infra && cdk deploy --all --require-approval broadening -c environment=prod",
+    "cdk:destroy:dev": "cd infra && cdk destroy --all -c environment=dev",
+    "cdk:destroy:prod": "cd infra && cdk destroy --all -c environment=prod",
+    "cdk:diff:dev": "cd infra && cdk diff -c environment=dev",
+    "cdk:diff:prod": "cd infra && cdk diff -c environment=prod",
+    "cdk:bootstrap": "cd infra && cdk bootstrap"
   },
   "lint-staged": {
     "*.{ts,tsx}": [
