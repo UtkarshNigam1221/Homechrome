@@ -1,0 +1,295 @@
+import { clsx } from 'clsx';
+import { Bell, Lock, Palette, User as UserIcon } from 'lucide-react';
+import { useState } from 'react';
+import { useForm } from 'react-hook-form';
+import toast from 'react-hot-toast';
+
+import { authApi, getErrorMessage } from '../../api';
+import { Button, Card, CardHeader, Input } from '../../components/common';
+import { useAuthStore } from '../../stores/authStore';
+import type { User } from '../../types';
+
+type SettingsTab = 'profile' | 'security' | 'notifications' | 'appearance';
+
+const tabs: { id: SettingsTab; label: string; icon: React.ElementType }[] = [
+  { id: 'profile', label: 'Profile', icon: UserIcon },
+  { id: 'security', label: 'Security', icon: Lock },
+  { id: 'notifications', label: 'Notifications', icon: Bell },
+  { id: 'appearance', label: 'Appearance', icon: Palette },
+];
+
+export function SettingsPage() {
+  const [activeTab, setActiveTab] = useState<SettingsTab>('profile');
+  const { user } = useAuthStore();
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="page-title">Settings</h1>
+        <p className="page-subtitle">Manage your account settings and preferences</p>
+      </div>
+
+      <div className="flex flex-col lg:flex-row gap-6">
+        {/* Sidebar */}
+        <div className="lg:w-64 flex-shrink-0">
+          <Card padding="sm">
+            <nav className="space-y-1">
+              {tabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={clsx(
+                    'flex items-center gap-3 w-full px-3 py-2 text-sm font-medium rounded-lg transition-colors',
+                    activeTab === tab.id
+                      ? 'bg-primary-50 text-primary-700'
+                      : 'text-gray-600 hover:bg-gray-100'
+                  )}
+                >
+                  <tab.icon className="w-5 h-5" />
+                  {tab.label}
+                </button>
+              ))}
+            </nav>
+          </Card>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1">
+          {activeTab === 'profile' && <ProfileSettings user={user} />}
+          {activeTab === 'security' && <SecuritySettings />}
+          {activeTab === 'notifications' && <NotificationSettings />}
+          {activeTab === 'appearance' && <AppearanceSettings />}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+interface ProfileFormData {
+  first_name: string;
+  last_name: string;
+  email: string;
+  phone: string;
+}
+
+function ProfileSettings({ user }: { user: User | null }) {
+  const {
+    register,
+    handleSubmit,
+    formState: { isDirty },
+  } = useForm<ProfileFormData>({
+    defaultValues: {
+      first_name: user?.first_name || '',
+      last_name: user?.last_name || '',
+      email: user?.email || '',
+      phone: user?.phone || '',
+    },
+  });
+
+  const onSubmit = (_data: ProfileFormData) => {
+    toast.success('Profile updated successfully');
+  };
+
+  return (
+    <Card>
+      <CardHeader title="Profile Information" subtitle="Update your personal information" />
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Input label="First Name" {...register('first_name')} />
+          <Input label="Last Name" {...register('last_name')} />
+        </div>
+        <Input label="Email Address" type="email" {...register('email')} disabled />
+        <Input label="Phone Number" {...register('phone')} />
+        <div className="pt-4">
+          <Button type="submit" disabled={!isDirty}>
+            Save Changes
+          </Button>
+        </div>
+      </form>
+    </Card>
+  );
+}
+
+function SecuritySettings() {
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const {
+    register,
+    handleSubmit,
+    reset,
+    formState: { errors },
+  } = useForm({
+    defaultValues: {
+      current_password: '',
+      new_password: '',
+      confirm_password: '',
+    },
+  });
+
+  const onSubmit = async (data: {
+    current_password: string;
+    new_password: string;
+    confirm_password: string;
+  }) => {
+    if (data.new_password !== data.confirm_password) {
+      toast.error('Passwords do not match');
+      return;
+    }
+    setIsChangingPassword(true);
+    try {
+      await authApi.changePassword(data.current_password, data.new_password);
+      toast.success('Password changed successfully');
+      reset();
+    } catch (error) {
+      toast.error(getErrorMessage(error));
+    } finally {
+      setIsChangingPassword(false);
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader
+        title="Security Settings"
+        subtitle="Update your password and security preferences"
+      />
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+        <Input
+          label="Current Password"
+          type="password"
+          {...register('current_password', { required: 'Current password is required' })}
+          error={errors.current_password?.message}
+        />
+        <Input
+          label="New Password"
+          type="password"
+          {...register('new_password', {
+            required: 'New password is required',
+            minLength: { value: 8, message: 'Password must be at least 8 characters' },
+          })}
+          error={errors.new_password?.message}
+        />
+        <Input
+          label="Confirm New Password"
+          type="password"
+          {...register('confirm_password', { required: 'Please confirm your password' })}
+          error={errors.confirm_password?.message}
+        />
+        <div className="pt-4">
+          <Button type="submit" loading={isChangingPassword}>
+            Change Password
+          </Button>
+        </div>
+      </form>
+    </Card>
+  );
+}
+
+function NotificationSettings() {
+  const [settings, setSettings] = useState({
+    email_orders: true,
+    email_inventory: true,
+    email_marketing: false,
+    push_orders: true,
+    push_inventory: false,
+  });
+
+  const handleToggle = (key: string) => {
+    setSettings((prev) => ({ ...prev, [key]: !prev[key as keyof typeof prev] }));
+    toast.success('Settings updated');
+  };
+
+  return (
+    <Card>
+      <CardHeader title="Notification Preferences" subtitle="Choose how you want to be notified" />
+      <div className="space-y-6">
+        <div>
+          <h4 className="font-medium text-gray-900 mb-3">Email Notifications</h4>
+          <div className="space-y-3">
+            <label className="flex items-center justify-between">
+              <span className="text-sm text-gray-600">New order notifications</span>
+              <input
+                type="checkbox"
+                checked={settings.email_orders}
+                onChange={() => handleToggle('email_orders')}
+                className="w-4 h-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
+              />
+            </label>
+            <label className="flex items-center justify-between">
+              <span className="text-sm text-gray-600">Low inventory alerts</span>
+              <input
+                type="checkbox"
+                checked={settings.email_inventory}
+                onChange={() => handleToggle('email_inventory')}
+                className="w-4 h-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
+              />
+            </label>
+            <label className="flex items-center justify-between">
+              <span className="text-sm text-gray-600">Marketing and promotions</span>
+              <input
+                type="checkbox"
+                checked={settings.email_marketing}
+                onChange={() => handleToggle('email_marketing')}
+                className="w-4 h-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
+              />
+            </label>
+          </div>
+        </div>
+        <div>
+          <h4 className="font-medium text-gray-900 mb-3">Push Notifications</h4>
+          <div className="space-y-3">
+            <label className="flex items-center justify-between">
+              <span className="text-sm text-gray-600">New orders</span>
+              <input
+                type="checkbox"
+                checked={settings.push_orders}
+                onChange={() => handleToggle('push_orders')}
+                className="w-4 h-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
+              />
+            </label>
+            <label className="flex items-center justify-between">
+              <span className="text-sm text-gray-600">Low inventory</span>
+              <input
+                type="checkbox"
+                checked={settings.push_inventory}
+                onChange={() => handleToggle('push_inventory')}
+                className="w-4 h-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
+              />
+            </label>
+          </div>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function AppearanceSettings() {
+  const [theme, setTheme] = useState<'light' | 'dark' | 'system'>('light');
+
+  return (
+    <Card>
+      <CardHeader title="Appearance" subtitle="Customize how the admin panel looks" />
+      <div className="space-y-4">
+        <div>
+          <label className="label">Theme</label>
+          <div className="grid grid-cols-3 gap-3">
+            {(['light', 'dark', 'system'] as const).map((t) => (
+              <button
+                key={t}
+                onClick={() => setTheme(t)}
+                className={clsx(
+                  'p-4 rounded-lg border-2 text-center capitalize transition-colors',
+                  theme === t
+                    ? 'border-primary-500 bg-primary-50'
+                    : 'border-gray-200 hover:border-gray-300'
+                )}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
+        </div>
+        <p className="text-sm text-gray-500">Note: Dark mode is coming soon!</p>
+      </div>
+    </Card>
+  );
+}

@@ -1,0 +1,902 @@
+import type {
+  ApiResponse,
+  Artisan,
+  Asset,
+  AuditLog,
+  BulkOperation,
+  CalculatePriceRequest,
+  CalculatePriceResponse,
+  Category,
+  CategoryAttribute,
+  Coupon,
+  CreateArtisanRequest,
+  CreateCategoryRequest,
+  CreateCouponRequest,
+  CreateCustomerRequest,
+  CreateDesignRequest,
+  CreateOrderRequest,
+  CreateProductRequest,
+  CreateUserRequest,
+  Customer,
+  DashboardStats,
+  Design,
+  Inventory,
+  InventoryTransaction,
+  ListResponse,
+  Notification,
+  Order,
+  PaginationParams,
+  PricingRule,
+  Product,
+  Report,
+  SalesAnalytics,
+  TopCategory,
+  TopProduct,
+  UpdateDesignRequest,
+  User,
+} from '../types';
+import apiClient, { getErrorMessage } from './client';
+
+// Re-export
+export { authApi } from './auth';
+export { getErrorMessage };
+
+// ============================================================================
+// Users API
+// ============================================================================
+
+// Backend users response type (returns 'users' not 'items')
+interface UsersListResponse {
+  users: User[];
+  pagination: {
+    current_page: number;
+    per_page: number;
+    total_count: number;
+    total_pages: number;
+  };
+}
+
+export const usersApi = {
+  list: async (
+    params?: PaginationParams & { role?: string; status?: string; search?: string }
+  ): Promise<ListResponse<User>> => {
+    const response = await apiClient.get<ApiResponse<UsersListResponse>>('/admin/users', {
+      params,
+    });
+    const data = response.data.data || (response.data as unknown as UsersListResponse);
+    // Transform backend response (users) to frontend format (items)
+    return {
+      items: data.users || [],
+      pagination: data.pagination || {
+        current_page: 1,
+        per_page: 10,
+        total_count: 0,
+        total_pages: 0,
+      },
+    };
+  },
+
+  get: async (id: string): Promise<User> => {
+    const response = await apiClient.get<ApiResponse<User>>(`/admin/users/${id}`);
+    return response.data.data || (response.data as unknown as User);
+  },
+
+  create: async (data: CreateUserRequest): Promise<User> => {
+    const response = await apiClient.post<ApiResponse<User>>('/admin/users', data);
+    return response.data.data || (response.data as unknown as User);
+  },
+
+  update: async (id: string, data: Partial<CreateUserRequest>): Promise<User> => {
+    const response = await apiClient.patch<ApiResponse<User>>(`/admin/users/${id}`, data);
+    return response.data.data || (response.data as unknown as User);
+  },
+
+  delete: async (id: string): Promise<void> => {
+    await apiClient.delete(`/admin/users/${id}`);
+  },
+
+  updateStatus: async (id: string, status: string): Promise<void> => {
+    await apiClient.patch(`/admin/users/${id}/status`, { status });
+  },
+};
+
+// ============================================================================
+// Categories API
+// ============================================================================
+export const categoriesApi = {
+  list: async (
+    params?: PaginationParams & { parent_id?: string; status?: string; level?: number }
+  ) => {
+    const response = await apiClient.get<ApiResponse<ListResponse<Category>>>('/admin/categories', {
+      params,
+    });
+    return response.data.data || response.data;
+  },
+
+  getTree: async () => {
+    const response = await apiClient.get<ApiResponse<Category[]>>('/admin/categories/tree');
+    return response.data.data || response.data;
+  },
+
+  get: async (id: string, includeAttributes = true) => {
+    const response = await apiClient.get<ApiResponse<Category>>(`/admin/categories/${id}`, {
+      params: { include_attributes: includeAttributes },
+    });
+    return response.data.data || response.data;
+  },
+
+  create: async (data: CreateCategoryRequest) => {
+    const response = await apiClient.post<ApiResponse<Category>>('/admin/categories', data);
+    return response.data.data || response.data;
+  },
+
+  update: async (id: string, data: Partial<CreateCategoryRequest>) => {
+    const response = await apiClient.patch<ApiResponse<Category>>(`/admin/categories/${id}`, data);
+    return response.data.data || response.data;
+  },
+
+  delete: async (id: string) => {
+    await apiClient.delete(`/admin/categories/${id}`);
+  },
+
+  addAttribute: async (id: string, attribute: CategoryAttribute) => {
+    const response = await apiClient.post<ApiResponse<{ attribute: CategoryAttribute }>>(
+      `/admin/categories/${id}/attributes`,
+      attribute
+    );
+    return response.data.data || response.data;
+  },
+
+  updateAttribute: async (id: string, attrName: string, attribute: Partial<CategoryAttribute>) => {
+    const response = await apiClient.patch(
+      `/admin/categories/${id}/attributes/${attrName}`,
+      attribute
+    );
+    return response.data;
+  },
+
+  deleteAttribute: async (id: string, attrName: string) => {
+    await apiClient.delete(`/admin/categories/${id}/attributes/${attrName}`);
+  },
+
+  getAttributes: async (id: string, includeInherited = true) => {
+    const response = await apiClient.get(`/admin/categories/${id}/attributes`, {
+      params: { include_inherited: includeInherited },
+    });
+    return response.data.data || response.data;
+  },
+};
+
+// ============================================================================
+// Designs API
+// ============================================================================
+export const designsApi = {
+  list: async (
+    params?: PaginationParams & { category_id?: string; status?: string; search?: string }
+  ) => {
+    const response = await apiClient.get<ApiResponse<ListResponse<Design>>>('/admin/designs', {
+      params,
+    });
+    return response.data.data || response.data;
+  },
+
+  get: async (id: string) => {
+    const response = await apiClient.get<ApiResponse<Design>>(`/admin/designs/${id}`);
+    return response.data.data || response.data;
+  },
+
+  create: async (data: CreateDesignRequest) => {
+    const response = await apiClient.post<ApiResponse<Design>>('/admin/designs', data);
+    return response.data.data || response.data;
+  },
+
+  update: async (id: string, data: UpdateDesignRequest) => {
+    const response = await apiClient.patch<ApiResponse<Design>>(`/admin/designs/${id}`, data);
+    return response.data.data || response.data;
+  },
+
+  delete: async (id: string) => {
+    await apiClient.delete(`/admin/designs/${id}`);
+  },
+};
+
+// ============================================================================
+// Products API
+// ============================================================================
+export const productsApi = {
+  list: async (
+    params?: PaginationParams & {
+      category_id?: string;
+      design_id?: string;
+      status?: string;
+      min_price?: number;
+      max_price?: number;
+      in_stock?: boolean;
+      low_stock?: boolean;
+      search?: string;
+    }
+  ) => {
+    const response = await apiClient.get<ApiResponse<ListResponse<Product>>>('/admin/products', {
+      params,
+    });
+    return response.data.data || response.data;
+  },
+
+  get: async (id: string) => {
+    const response = await apiClient.get<ApiResponse<Product>>(`/admin/products/${id}`);
+    return response.data.data || response.data;
+  },
+
+  create: async (data: CreateProductRequest) => {
+    const response = await apiClient.post<ApiResponse<Product>>('/admin/products', data);
+    return response.data.data || response.data;
+  },
+
+  update: async (id: string, data: Partial<CreateProductRequest>) => {
+    const response = await apiClient.patch<ApiResponse<Product>>(`/admin/products/${id}`, data);
+    return response.data.data || response.data;
+  },
+
+  delete: async (id: string) => {
+    await apiClient.delete(`/admin/products/${id}`);
+  },
+
+  getInventory: async (id: string) => {
+    const response = await apiClient.get<ApiResponse<Inventory>>(`/admin/products/${id}/inventory`);
+    return response.data.data || response.data;
+  },
+
+  addStock: async (id: string, quantity: number, reason?: string) => {
+    const response = await apiClient.post(`/admin/products/${id}/inventory/add`, {
+      quantity,
+      reason,
+    });
+    return response.data.data || response.data;
+  },
+
+  removeStock: async (id: string, quantity: number, reason?: string) => {
+    const response = await apiClient.post(`/admin/products/${id}/inventory/remove`, {
+      quantity,
+      reason,
+    });
+    return response.data.data || response.data;
+  },
+
+  adjustStock: async (id: string, newQuantity: number, reason?: string) => {
+    const response = await apiClient.post(`/admin/products/${id}/inventory/adjust`, {
+      new_quantity: newQuantity,
+      reason,
+    });
+    return response.data.data || response.data;
+  },
+
+  getInventoryTransactions: async (id: string, params?: PaginationParams) => {
+    const response = await apiClient.get<ApiResponse<ListResponse<InventoryTransaction>>>(
+      `/admin/products/${id}/inventory/transactions`,
+      { params }
+    );
+    return response.data.data || response.data;
+  },
+};
+
+// ============================================================================
+// Inventory API
+// ============================================================================
+export const inventoryApi = {
+  getLowStock: async (params?: PaginationParams) => {
+    const response = await apiClient.get<ApiResponse<ListResponse<Inventory>>>(
+      '/admin/inventory/low-stock',
+      { params }
+    );
+    return response.data.data || response.data;
+  },
+
+  addStock: async (productId: string, quantity: number, reason?: string) => {
+    await apiClient.post(`/admin/products/${productId}/inventory/add`, { quantity, reason });
+  },
+
+  removeStock: async (productId: string, quantity: number, reason?: string) => {
+    await apiClient.post(`/admin/products/${productId}/inventory/remove`, { quantity, reason });
+  },
+
+  adjustStock: async (productId: string, quantity: number, reason?: string) => {
+    await apiClient.post(`/admin/products/${productId}/inventory/adjust`, {
+      new_quantity: quantity,
+      reason,
+    });
+  },
+};
+
+// ============================================================================
+// Orders API
+// ============================================================================
+export const ordersApi = {
+  list: async (
+    params?: PaginationParams & {
+      status?: string;
+      payment_status?: string;
+      customer_id?: string;
+      start_date?: string;
+      end_date?: string;
+      search?: string;
+    }
+  ) => {
+    const response = await apiClient.get<ApiResponse<ListResponse<Order>>>('/admin/orders', {
+      params,
+    });
+    return response.data.data || response.data;
+  },
+
+  get: async (id: string) => {
+    const response = await apiClient.get<ApiResponse<Order>>(`/admin/orders/${id}`);
+    return response.data.data || response.data;
+  },
+
+  create: async (data: CreateOrderRequest) => {
+    const response = await apiClient.post<ApiResponse<Order>>('/admin/orders', data);
+    return response.data.data || response.data;
+  },
+
+  updateStatus: async (id: string, status: string) => {
+    await apiClient.patch(`/admin/orders/${id}/status`, { status });
+  },
+
+  addNote: async (id: string, note: string, isInternal = true) => {
+    await apiClient.post(`/admin/orders/${id}/notes`, { note, is_internal: isInternal });
+  },
+
+  updateTracking: async (id: string, trackingNumber: string, carrier?: string) => {
+    await apiClient.patch(`/admin/orders/${id}/tracking`, {
+      tracking_number: trackingNumber,
+      carrier,
+    });
+  },
+
+  cancel: async (id: string, reason?: string) => {
+    await apiClient.post(`/admin/orders/${id}/cancel`, { reason });
+  },
+
+  refund: async (id: string, amount: number, reason?: string) => {
+    await apiClient.post(`/admin/orders/${id}/refund`, { amount, reason });
+  },
+};
+
+// ============================================================================
+// Customers API
+// ============================================================================
+export const customersApi = {
+  list: async (params?: PaginationParams & { status?: string; search?: string }) => {
+    const response = await apiClient.get<ApiResponse<ListResponse<Customer>>>('/admin/customers', {
+      params,
+    });
+    return response.data.data || response.data;
+  },
+
+  get: async (id: string) => {
+    const response = await apiClient.get<ApiResponse<Customer>>(`/admin/customers/${id}`);
+    return response.data.data || response.data;
+  },
+
+  create: async (data: CreateCustomerRequest) => {
+    const response = await apiClient.post<ApiResponse<Customer>>('/admin/customers', data);
+    return response.data.data || response.data;
+  },
+
+  update: async (id: string, data: Partial<CreateCustomerRequest>) => {
+    const response = await apiClient.put<ApiResponse<Customer>>(`/admin/customers/${id}`, data);
+    return response.data.data || response.data;
+  },
+
+  delete: async (id: string) => {
+    await apiClient.delete(`/admin/customers/${id}`);
+  },
+
+  getOrders: async (id: string, params?: PaginationParams) => {
+    const response = await apiClient.get<ApiResponse<ListResponse<Order>>>(
+      `/admin/customers/${id}/orders`,
+      { params }
+    );
+    return response.data.data || response.data;
+  },
+
+  search: async (query: string, params?: PaginationParams) => {
+    const response = await apiClient.get<ApiResponse<ListResponse<Customer>>>(
+      '/admin/customers/search',
+      {
+        params: { q: query, ...params },
+      }
+    );
+    return response.data.data || response.data;
+  },
+};
+
+// ============================================================================
+// Artisans API
+// ============================================================================
+export const artisansApi = {
+  list: async (
+    params?: PaginationParams & {
+      craft_type?: string;
+      location?: string;
+      status?: string;
+      search?: string;
+    }
+  ) => {
+    const response = await apiClient.get<ApiResponse<ListResponse<Artisan>>>('/admin/artisans', {
+      params,
+    });
+    return response.data.data || response.data;
+  },
+
+  get: async (id: string) => {
+    const response = await apiClient.get<ApiResponse<Artisan>>(`/admin/artisans/${id}`);
+    return response.data.data || response.data;
+  },
+
+  create: async (data: CreateArtisanRequest) => {
+    const response = await apiClient.post<ApiResponse<Artisan>>('/admin/artisans', data);
+    return response.data.data || response.data;
+  },
+
+  update: async (id: string, data: Partial<CreateArtisanRequest>) => {
+    const response = await apiClient.patch<ApiResponse<Artisan>>(`/admin/artisans/${id}`, data);
+    return response.data.data || response.data;
+  },
+
+  delete: async (id: string) => {
+    await apiClient.delete(`/admin/artisans/${id}`);
+  },
+
+  updateStatus: async (id: string, status: string) => {
+    await apiClient.patch(`/admin/artisans/${id}/status`, { status });
+  },
+
+  getProducts: async (id: string, params?: PaginationParams) => {
+    const response = await apiClient.get<ApiResponse<ListResponse<Product>>>(
+      `/admin/artisans/${id}/products`,
+      { params }
+    );
+    return response.data.data || response.data;
+  },
+};
+
+// ============================================================================
+// Coupons API
+// ============================================================================
+export const couponsApi = {
+  list: async (
+    params?: PaginationParams & {
+      status?: string;
+      type?: string;
+      is_active?: boolean;
+      search?: string;
+    }
+  ) => {
+    const response = await apiClient.get<ApiResponse<ListResponse<Coupon>>>('/admin/coupons', {
+      params,
+    });
+    return response.data.data || response.data;
+  },
+
+  get: async (id: string) => {
+    const response = await apiClient.get<ApiResponse<Coupon>>(`/admin/coupons/${id}`);
+    return response.data.data || response.data;
+  },
+
+  getByCode: async (code: string) => {
+    const response = await apiClient.get<ApiResponse<Coupon>>(`/admin/coupons/code/${code}`);
+    return response.data.data || response.data;
+  },
+
+  create: async (data: CreateCouponRequest) => {
+    const response = await apiClient.post<ApiResponse<Coupon>>('/admin/coupons', data);
+    return response.data.data || response.data;
+  },
+
+  update: async (id: string, data: Partial<CreateCouponRequest>) => {
+    const response = await apiClient.patch<ApiResponse<Coupon>>(`/admin/coupons/${id}`, data);
+    return response.data.data || response.data;
+  },
+
+  delete: async (id: string) => {
+    await apiClient.delete(`/admin/coupons/${id}`);
+  },
+
+  validate: async (
+    code: string,
+    orderTotal: number,
+    customerId?: string,
+    productIds?: string[]
+  ) => {
+    const response = await apiClient.post('/admin/coupons/validate', {
+      code,
+      order_total: orderTotal,
+      customer_id: customerId,
+      product_ids: productIds,
+    });
+    return response.data;
+  },
+};
+
+// ============================================================================
+// Pricing API
+// ============================================================================
+export const pricingApi = {
+  listRules: async (
+    params?: PaginationParams & {
+      scope_type?: string;
+      category_id?: string;
+      pricing_type?: string;
+      is_active?: boolean;
+    }
+  ) => {
+    const response = await apiClient.get<ApiResponse<ListResponse<PricingRule>>>(
+      '/admin/pricing/rules',
+      { params }
+    );
+    return response.data.data || response.data;
+  },
+
+  getRule: async (id: string) => {
+    const response = await apiClient.get<ApiResponse<PricingRule>>(`/admin/pricing/rules/${id}`);
+    return response.data.data || response.data;
+  },
+
+  createRule: async (data: Partial<PricingRule>) => {
+    const response = await apiClient.post<ApiResponse<PricingRule>>('/admin/pricing/rules', data);
+    return response.data.data || response.data;
+  },
+
+  updateRule: async (id: string, data: Partial<PricingRule>) => {
+    const response = await apiClient.patch<ApiResponse<PricingRule>>(
+      `/admin/pricing/rules/${id}`,
+      data
+    );
+    return response.data.data || response.data;
+  },
+
+  deleteRule: async (id: string) => {
+    await apiClient.delete(`/admin/pricing/rules/${id}`);
+  },
+
+  getCategoryRules: async (categoryId: string) => {
+    const response = await apiClient.get<ApiResponse<PricingRule[]>>(
+      `/admin/pricing/rules/category/${categoryId}`
+    );
+    return response.data.data || response.data;
+  },
+
+  calculatePrice: async (data: CalculatePriceRequest): Promise<CalculatePriceResponse> => {
+    const response = await apiClient.post<ApiResponse<CalculatePriceResponse>>(
+      '/api/v1/pricing/calculate',
+      data
+    );
+    return response.data.data || response.data;
+  },
+
+  getDimensionOptions: async (categoryId: string) => {
+    const response = await apiClient.get(`/api/v1/pricing/dimension-options/${categoryId}`);
+    return response.data.data || response.data;
+  },
+};
+
+// ============================================================================
+// Notifications API
+// ============================================================================
+export const notificationsApi = {
+  list: async (
+    params?: PaginationParams & { user_id?: string; type?: string; status?: string }
+  ) => {
+    const response = await apiClient.get<ApiResponse<ListResponse<Notification>>>(
+      '/admin/notifications',
+      { params }
+    );
+    return response.data.data || response.data;
+  },
+
+  getMy: async (params?: PaginationParams) => {
+    const response = await apiClient.get<ApiResponse<ListResponse<Notification>>>(
+      '/admin/notifications/my',
+      { params }
+    );
+    return response.data.data || response.data;
+  },
+
+  send: async (data: {
+    user_id: string;
+    type: string;
+    title: string;
+    message: string;
+    data?: Record<string, unknown>;
+    priority?: string;
+  }) => {
+    const response = await apiClient.post<ApiResponse<Notification>>('/admin/notifications', data);
+    return response.data.data || response.data;
+  },
+
+  markAsRead: async (id: string) => {
+    await apiClient.post(`/admin/notifications/${id}/read`);
+  },
+
+  markAllAsRead: async () => {
+    await apiClient.post('/admin/notifications/read-all');
+  },
+};
+
+// ============================================================================
+// Analytics API
+// ============================================================================
+export const analyticsApi = {
+  getDashboard: async (): Promise<DashboardStats> => {
+    const response = await apiClient.get<ApiResponse<DashboardStats>>('/admin/analytics/dashboard');
+    return response.data.data || response.data;
+  },
+
+  getSales: async (params?: {
+    period?: string;
+    start_date?: string;
+    end_date?: string;
+  }): Promise<SalesAnalytics> => {
+    const response = await apiClient.get<ApiResponse<SalesAnalytics>>('/admin/analytics/sales', {
+      params,
+    });
+    return response.data.data || response.data;
+  },
+
+  getTopProducts: async (params?: {
+    limit?: number;
+    start_date?: string;
+    end_date?: string;
+  }): Promise<TopProduct[]> => {
+    const response = await apiClient.get<ApiResponse<{ products: TopProduct[] }>>(
+      '/admin/analytics/top-products',
+      { params }
+    );
+    const data = response.data.data || response.data;
+    return data.products || data;
+  },
+
+  getTopCategories: async (params?: {
+    limit?: number;
+    start_date?: string;
+    end_date?: string;
+  }): Promise<TopCategory[]> => {
+    const response = await apiClient.get<ApiResponse<{ categories: TopCategory[] }>>(
+      '/admin/analytics/top-categories',
+      { params }
+    );
+    const data = response.data.data || response.data;
+    return data.categories || data;
+  },
+
+  getCustomerAnalytics: async (params?: { start_date?: string; end_date?: string }) => {
+    const response = await apiClient.get('/admin/analytics/customers', { params });
+    return response.data.data || response.data;
+  },
+
+  getInventoryAnalytics: async () => {
+    const response = await apiClient.get('/admin/analytics/inventory');
+    return response.data.data || response.data;
+  },
+};
+
+// ============================================================================
+// Bulk Operations API
+// ============================================================================
+export const bulkApi = {
+  list: async (
+    params?: PaginationParams & { type?: string; entity_type?: string; status?: string }
+  ) => {
+    const response = await apiClient.get<ApiResponse<ListResponse<BulkOperation>>>('/admin/bulk', {
+      params,
+    });
+    return response.data.data || response.data;
+  },
+
+  get: async (id: string) => {
+    const response = await apiClient.get<ApiResponse<BulkOperation>>(`/admin/bulk/${id}`);
+    return response.data.data || response.data;
+  },
+
+  importProducts: async (fileUrl: string, mapping?: Record<string, string>) => {
+    const response = await apiClient.post<ApiResponse<BulkOperation>>(
+      '/admin/bulk/products/import',
+      { file_url: fileUrl, mapping }
+    );
+    return response.data.data || response.data;
+  },
+
+  updateInventory: async (
+    fileUrl?: string,
+    updates?: { product_id: string; quantity: number }[]
+  ) => {
+    const response = await apiClient.post<ApiResponse<BulkOperation>>(
+      '/admin/bulk/inventory/update',
+      { file_url: fileUrl, updates }
+    );
+    return response.data.data || response.data;
+  },
+
+  exportData: async (entityType: string, filters?: Record<string, unknown>, format = 'CSV') => {
+    const response = await apiClient.post<ApiResponse<BulkOperation>>('/admin/bulk/export', {
+      entity_type: entityType,
+      filters,
+      format,
+    });
+    return response.data.data || response.data;
+  },
+
+  cancel: async (id: string) => {
+    await apiClient.post(`/admin/bulk/${id}/cancel`);
+  },
+
+  getUploadUrl: async (entityType: string, filename: string) => {
+    const response = await apiClient.post('/admin/bulk/upload-url', {
+      entity_type: entityType,
+      filename,
+    });
+    return response.data;
+  },
+
+  getDownloadUrl: async (id: string) => {
+    const response = await apiClient.get(`/admin/bulk/${id}/download`);
+    return response.data;
+  },
+};
+
+// ============================================================================
+// Reports API
+// ============================================================================
+export const reportsApi = {
+  list: async (
+    params?: PaginationParams & {
+      type?: string;
+      status?: string;
+      start_date?: string;
+      end_date?: string;
+    }
+  ) => {
+    const response = await apiClient.get<ApiResponse<ListResponse<Report>>>('/admin/reports', {
+      params,
+    });
+    return response.data.data || response.data;
+  },
+
+  get: async (id: string) => {
+    const response = await apiClient.get<ApiResponse<Report>>(`/admin/reports/${id}`);
+    return response.data.data || response.data;
+  },
+
+  generate: async (type: string, filters?: Record<string, unknown>, format = 'CSV') => {
+    const response = await apiClient.post<ApiResponse<Report>>('/admin/reports', {
+      type,
+      filters,
+      format,
+    });
+    return response.data.data || response.data;
+  },
+
+  delete: async (id: string) => {
+    await apiClient.delete(`/admin/reports/${id}`);
+  },
+
+  getDownloadUrl: async (id: string) => {
+    const response = await apiClient.get(`/admin/reports/${id}/download`);
+    return response.data;
+  },
+
+  generateSalesReport: async (startDate: string, endDate: string, format = 'CSV') => {
+    const response = await apiClient.post<ApiResponse<Report>>('/admin/reports/sales', {
+      start_date: startDate,
+      end_date: endDate,
+      format,
+    });
+    return response.data.data || response.data;
+  },
+
+  generateInventoryReport: async (format = 'CSV') => {
+    const response = await apiClient.post<ApiResponse<Report>>('/admin/reports/inventory', {
+      format,
+    });
+    return response.data.data || response.data;
+  },
+
+  generateOrdersReport: async (
+    startDate: string,
+    endDate: string,
+    status?: string,
+    format = 'CSV'
+  ) => {
+    const response = await apiClient.post<ApiResponse<Report>>('/admin/reports/orders', {
+      start_date: startDate,
+      end_date: endDate,
+      status,
+      format,
+    });
+    return response.data.data || response.data;
+  },
+};
+
+// ============================================================================
+// Assets API
+// ============================================================================
+export const assetsApi = {
+  list: async (params?: PaginationParams & { type?: string; search?: string; tags?: string[] }) => {
+    const response = await apiClient.get<ApiResponse<ListResponse<Asset>>>('/admin/assets', {
+      params,
+    });
+    return response.data.data || response.data;
+  },
+
+  get: async (id: string) => {
+    const response = await apiClient.get<ApiResponse<Asset>>(`/admin/assets/${id}`);
+    return response.data.data || response.data;
+  },
+
+  getUploadUrl: async (name: string, type: string, mimeType: string, size: number) => {
+    const response = await apiClient.post('/admin/assets/upload-url', {
+      name,
+      type,
+      mime_type: mimeType,
+      size,
+    });
+    return response.data;
+  },
+
+  confirmUpload: async (id: string, width?: number, height?: number) => {
+    const response = await apiClient.post<ApiResponse<Asset>>(`/admin/assets/${id}/confirm`, {
+      width,
+      height,
+    });
+    return response.data.data || response.data;
+  },
+
+  update: async (id: string, data: { name?: string; description?: string; tags?: string[] }) => {
+    const response = await apiClient.put<ApiResponse<Asset>>(`/admin/assets/${id}`, data);
+    return response.data.data || response.data;
+  },
+
+  delete: async (id: string) => {
+    await apiClient.delete(`/admin/assets/${id}`);
+  },
+};
+
+// ============================================================================
+// Audit API
+// ============================================================================
+export const auditApi = {
+  list: async (
+    params?: PaginationParams & {
+      action?: string;
+      entity_type?: string;
+      entity_id?: string;
+      user_id?: string;
+    }
+  ) => {
+    const response = await apiClient.get<ApiResponse<ListResponse<AuditLog>>>('/admin/audit', {
+      params,
+    });
+    return response.data.data || response.data;
+  },
+
+  get: async (id: string) => {
+    const response = await apiClient.get<ApiResponse<AuditLog>>(`/admin/audit/${id}`);
+    return response.data.data || response.data;
+  },
+
+  getByEntity: async (entityType: string, entityId: string, params?: PaginationParams) => {
+    const response = await apiClient.get<ApiResponse<ListResponse<AuditLog>>>(
+      `/admin/audit/entity/${entityType}/${entityId}`,
+      { params }
+    );
+    return response.data.data || response.data;
+  },
+
+  getByUser: async (userId: string, params?: PaginationParams) => {
+    const response = await apiClient.get<ApiResponse<ListResponse<AuditLog>>>(
+      `/admin/audit/user/${userId}`,
+      { params }
+    );
+    return response.data.data || response.data;
+  },
+};

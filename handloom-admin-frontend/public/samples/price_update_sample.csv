@@ -1,0 +1,6 @@
+product_id,sku,base_price,selling_price,compare_price
+prod_abc123,SKU-001,500000,449900,550000
+prod_def456,SKU-002,280000,249900,300000
+,SKU-003,850000,799900,900000
+prod_ghi789,,150000,129900,180000
+prod_jkl012,SKU-005,130000,109900,150000
