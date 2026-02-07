@@ -131,7 +131,7 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 			StageName:            jsii.String(props.Environment),
 			ThrottlingRateLimit:  jsii.Number(50),  // Lower throttle for cost control
 			ThrottlingBurstLimit: jsii.Number(100), // Lower burst for cost control
-			LoggingLevel:         awsapigateway.MethodLoggingLevel_ERROR, // Only log errors to reduce CloudWatch costs
+			LoggingLevel:         awsapigateway.MethodLoggingLevel_OFF, // Disable logging (CloudWatchRole is false)
 			MetricsEnabled:       jsii.Bool(false), // Disable detailed metrics to save costs
 			TracingEnabled:       jsii.Bool(false), // Disable X-Ray tracing (not free)
 		},
