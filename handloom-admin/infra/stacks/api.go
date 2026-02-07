@@ -1,0 +1,324 @@
+package stacks
+
+import (
+	"fmt"
+
+	"github.com/aws/aws-cdk-go/awscdk/v2"
+	"github.com/aws/aws-cdk-go/awscdk/v2/awsapigateway"
+	"github.com/aws/aws-cdk-go/awscdk/v2/awslambda"
+	"github.com/aws/aws-cdk-go/awscdk/v2/awslogs"
+	"github.com/aws/aws-cdk-go/awscdk/v2/awss3assets"
+	"github.com/aws/aws-cdk-go/awscdk/v2/awsssm"
+	"github.com/aws/constructs-go/constructs/v10"
+	"github.com/aws/jsii-runtime-go"
+)
+
+// APIStackProps holds properties for the API stack
+type APIStackProps struct {
+	awscdk.StackProps
+	Environment   string
+	DatabaseStack *DatabaseStack
+	StorageStack  *StorageStack
+}
+
+// ServiceLambda represents a Lambda function for a service
+type ServiceLambda struct {
+	Function awslambda.Function
+	Name     string
+}
+
+// APIStack contains the API Gateway and Lambda functions
+type APIStack struct {
+	awscdk.Stack
+	API      awsapigateway.RestApi
+	Lambdas  map[string]*ServiceLambda
+}
+
+// NewAPIStack creates a new API stack
+func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *APIStack {
+	var sprops awscdk.StackProps
+	if props != nil {
+		sprops = props.StackProps
+	}
+
+	stack := awscdk.NewStack(scope, &id, &sprops)
+	isProd := props.Environment == "prod"
+
+	// JWT Secret parameter
+	jwtSecret := awsssm.NewStringParameter(stack, jsii.String("JwtSecret"), &awsssm.StringParameterProps{
+		ParameterName: jsii.String(fmt.Sprintf("/handloom/%s/jwt-secret", props.Environment)),
+		StringValue:   jsii.String("CHANGE_ME_IN_PRODUCTION"),
+		Description:   jsii.String("JWT Secret for token signing"),
+		Tier:          awsssm.ParameterTier_STANDARD,
+	})
+
+	// Common environment variables for all Lambdas
+	commonEnv := map[string]*string{
+		"APP_ENV":                    jsii.String(props.Environment),
+		"APP_DEBUG":                  jsii.String(fmt.Sprintf("%t", !isProd)),
+		"DYNAMODB_CORE_TABLE":        props.DatabaseStack.CoreTable.TableName(),
+		"DYNAMODB_ORDERS_TABLE":      props.DatabaseStack.OrdersTable.TableName(),
+		"DYNAMODB_AUDIT_TABLE":       props.DatabaseStack.AuditTable.TableName(),
+		"DYNAMODB_ANALYTICS_TABLE":   props.DatabaseStack.AnalyticsTable.TableName(),
+		"S3_ASSETS_BUCKET":           props.StorageStack.AssetsBucket.BucketName(),
+		"S3_UPLOADS_BUCKET":          props.StorageStack.UploadsBucket.BucketName(),
+		"CDN_DOMAIN":                 props.StorageStack.CDNDistribution.DistributionDomainName(),
+		"JWT_SECRET_PARAM":           jwtSecret.ParameterName(),
+		"JWT_ISSUER":                 jsii.String("handloom-admin"),
+		"JWT_ACCESS_TOKEN_DURATION":  jsii.String("15m"),
+		"JWT_REFRESH_TOKEN_DURATION": jsii.String("168h"),
+		"QUOTE_VALIDITY_HRS":         jsii.String("24"),
+	}
+
+	// Memory sizes - optimized for AWS Free Tier
+	// Free tier: 1M requests/month, 400,000 GB-seconds compute time
+	// 128MB = ~3.2M seconds/month free (plenty for development)
+	memorySize := float64(128)
+	if isProd {
+		memorySize = 256 // Slightly higher for production, still cost-effective
+	}
+
+	// Log retention - minimize to reduce CloudWatch costs
+	// Free tier: 5GB ingestion, 5GB storage, 5GB data scanned
+	logRetention := awslogs.RetentionDays_THREE_DAYS
+	if isProd {
+		logRetention = awslogs.RetentionDays_ONE_WEEK
+	}
+
+	// Create Lambda functions for each service
+	// TODO: Uncomment services as they are implemented
+	services := []string{
+		"auth",
+		"user",
+		// "catalog",
+		// "order",
+		// "pricing",
+		// "inventory",
+		// "analytics",
+		// "notification",
+		// "coupon",
+		// "artisan",
+		// "bulk",
+		// "asset",
+		// "report",
+		// "audit",
+	}
+
+	lambdas := make(map[string]*ServiceLambda)
+	for _, svc := range services {
+		lambdaFn := createServiceLambda(stack, svc, props.Environment, commonEnv, memorySize, logRetention)
+		lambdas[svc] = &ServiceLambda{
+			Function: lambdaFn,
+			Name:     svc,
+		}
+
+		// Grant permissions
+		props.DatabaseStack.CoreTable.GrantReadWriteData(lambdaFn)
+		props.DatabaseStack.OrdersTable.GrantReadWriteData(lambdaFn)
+		props.DatabaseStack.AuditTable.GrantReadWriteData(lambdaFn)
+		props.DatabaseStack.AnalyticsTable.GrantReadWriteData(lambdaFn)
+		props.StorageStack.AssetsBucket.GrantReadWrite(lambdaFn, nil)
+		props.StorageStack.UploadsBucket.GrantReadWrite(lambdaFn, nil)
+		jwtSecret.GrantRead(lambdaFn)
+	}
+
+	// Create API Gateway - optimized for AWS Free Tier
+	// Free tier: 1M API calls/month for first 12 months
+	api := awsapigateway.NewRestApi(stack, jsii.String("API"), &awsapigateway.RestApiProps{
+		RestApiName: jsii.String("handloom-api-" + props.Environment),
+		Description: jsii.String("Handloom Admin API"),
+		DeployOptions: &awsapigateway.StageOptions{
+			StageName:            jsii.String(props.Environment),
+			ThrottlingRateLimit:  jsii.Number(50),  // Lower throttle for cost control
+			ThrottlingBurstLimit: jsii.Number(100), // Lower burst for cost control
+			LoggingLevel:         awsapigateway.MethodLoggingLevel_ERROR, // Only log errors to reduce CloudWatch costs
+			MetricsEnabled:       jsii.Bool(false), // Disable detailed metrics to save costs
+			TracingEnabled:       jsii.Bool(false), // Disable X-Ray tracing (not free)
+		},
+		DefaultCorsPreflightOptions: &awsapigateway.CorsOptions{
+			AllowOrigins: awsapigateway.Cors_ALL_ORIGINS(),
+			AllowMethods: awsapigateway.Cors_ALL_METHODS(),
+			AllowHeaders: jsii.Strings("Content-Type", "Authorization", "X-Request-ID"),
+			AllowCredentials: jsii.Bool(true),
+		},
+		CloudWatchRole: jsii.Bool(false), // Disable CloudWatch role to reduce costs
+	})
+
+	// Create integrations and routes
+	setupAPIRoutes(api, lambdas)
+
+	// Outputs
+	awscdk.NewCfnOutput(stack, jsii.String("APIEndpoint"), &awscdk.CfnOutputProps{
+		Value:       api.Url(),
+		Description: jsii.String("API Gateway endpoint URL"),
+		ExportName:  jsii.String("handloom-api-url-" + props.Environment),
+	})
+
+	awscdk.NewCfnOutput(stack, jsii.String("APIId"), &awscdk.CfnOutputProps{
+		Value:       api.RestApiId(),
+		Description: jsii.String("API Gateway ID"),
+		ExportName:  jsii.String("handloom-api-id-" + props.Environment),
+	})
+
+	return &APIStack{
+		Stack:   stack,
+		API:     api,
+		Lambdas: lambdas,
+	}
+}
+
+func createServiceLambda(
+	stack awscdk.Stack,
+	serviceName string,
+	environment string,
+	commonEnv map[string]*string,
+	memorySize float64,
+	logRetention awslogs.RetentionDays,
+) awslambda.Function {
+	// Add service-specific environment variable
+	env := make(map[string]*string)
+	for k, v := range commonEnv {
+		env[k] = v
+	}
+	env["SERVICE_NAME"] = jsii.String(serviceName)
+
+	// Lambda function optimized for AWS Free Tier
+	// Free tier: 1M requests/month, 400,000 GB-seconds compute
+	// ARM64 is more cost-effective than x86
+	return awslambda.NewFunction(stack, jsii.String(fmt.Sprintf("%sFunction", capitalize(serviceName))), &awslambda.FunctionProps{
+		FunctionName: jsii.String(fmt.Sprintf("handloom-%s-%s", serviceName, environment)),
+		Runtime:      awslambda.Runtime_PROVIDED_AL2023(),
+		Handler:      jsii.String("bootstrap"),
+		Code: awslambda.Code_FromAsset(jsii.String(fmt.Sprintf("../bin/lambda/%s", serviceName)), &awss3assets.AssetOptions{}),
+		Architecture: awslambda.Architecture_ARM_64(), // ARM64 is ~20% cheaper than x86
+		MemorySize:   jsii.Number(memorySize),
+		Timeout:      awscdk.Duration_Seconds(jsii.Number(15)), // Reduced timeout for cost efficiency
+		Environment:  &env,
+		LogRetention: logRetention,
+		Tracing:      awslambda.Tracing_DISABLED, // Disable X-Ray tracing (not free)
+	})
+}
+
+func setupAPIRoutes(api awsapigateway.RestApi, lambdas map[string]*ServiceLambda) {
+	// Health check
+	health := api.Root().AddResource(jsii.String("health"), nil)
+	health.AddMethod(jsii.String("GET"), awsapigateway.NewLambdaIntegration(lambdas["auth"].Function, nil), nil)
+
+	// Admin routes
+	admin := api.Root().AddResource(jsii.String("admin"), nil)
+
+	// Auth routes (no auth required)
+	authIntegration := awsapigateway.NewLambdaIntegration(lambdas["auth"].Function, nil)
+	auth := admin.AddResource(jsii.String("auth"), nil)
+	auth.AddResource(jsii.String("login"), nil).AddMethod(jsii.String("POST"), authIntegration, nil)
+	auth.AddResource(jsii.String("refresh"), nil).AddMethod(jsii.String("POST"), authIntegration, nil)
+	auth.AddResource(jsii.String("logout"), nil).AddMethod(jsii.String("POST"), authIntegration, nil)
+	password := auth.AddResource(jsii.String("password"), nil)
+	password.AddResource(jsii.String("change"), nil).AddMethod(jsii.String("POST"), authIntegration, nil)
+	password.AddResource(jsii.String("reset-request"), nil).AddMethod(jsii.String("POST"), authIntegration, nil)
+	password.AddResource(jsii.String("reset"), nil).AddMethod(jsii.String("POST"), authIntegration, nil)
+
+	// User routes
+	userIntegration := awsapigateway.NewLambdaIntegration(lambdas["user"].Function, nil)
+	users := admin.AddResource(jsii.String("users"), nil)
+	users.AddMethod(jsii.String("GET"), userIntegration, nil)
+	users.AddMethod(jsii.String("POST"), userIntegration, nil)
+	userId := users.AddResource(jsii.String("{id}"), nil)
+	userId.AddMethod(jsii.String("GET"), userIntegration, nil)
+	userId.AddMethod(jsii.String("PATCH"), userIntegration, nil)
+	userId.AddMethod(jsii.String("DELETE"), userIntegration, nil)
+	userId.AddResource(jsii.String("status"), nil).AddMethod(jsii.String("PATCH"), userIntegration, nil)
+
+	// TODO: Uncomment routes as services are implemented
+	/*
+	// API v1 - public routes
+	apiV1 := api.Root().AddResource(jsii.String("api"), nil).AddResource(jsii.String("v1"), nil)
+
+	// Public pricing
+	pricingPublic := apiV1.AddResource(jsii.String("pricing"), nil)
+	pricingIntegration := awsapigateway.NewLambdaIntegration(lambdas["pricing"].Function, nil)
+	pricingPublic.AddResource(jsii.String("calculate"), nil).AddMethod(jsii.String("POST"), pricingIntegration, nil)
+	pricingPublic.AddResource(jsii.String("dimension-options"), nil).AddResource(jsii.String("{categoryId}"), nil).AddMethod(jsii.String("GET"), pricingIntegration, nil)
+	pricingPublic.AddResource(jsii.String("bulk-calculate"), nil).AddMethod(jsii.String("POST"), pricingIntegration, nil)
+
+	// Catalog routes (categories, designs, products)
+	catalogIntegration := awsapigateway.NewLambdaIntegration(lambdas["catalog"].Function, nil)
+	addResourceRoutes(admin.AddResource(jsii.String("categories"), nil), catalogIntegration)
+	addResourceRoutes(admin.AddResource(jsii.String("designs"), nil), catalogIntegration)
+	addResourceRoutes(admin.AddResource(jsii.String("products"), nil), catalogIntegration)
+
+	// Order routes
+	orderIntegration := awsapigateway.NewLambdaIntegration(lambdas["order"].Function, nil)
+	addResourceRoutes(admin.AddResource(jsii.String("orders"), nil), orderIntegration)
+	addResourceRoutes(admin.AddResource(jsii.String("customers"), nil), orderIntegration)
+
+	// Pricing admin routes
+	pricingAdmin := admin.AddResource(jsii.String("pricing"), nil)
+	pricingRules := pricingAdmin.AddResource(jsii.String("rules"), nil)
+	addResourceRoutes(pricingRules, pricingIntegration)
+
+	// Inventory routes
+	inventoryIntegration := awsapigateway.NewLambdaIntegration(lambdas["inventory"].Function, nil)
+	addResourceRoutes(admin.AddResource(jsii.String("inventory"), nil), inventoryIntegration)
+
+	// Analytics routes
+	analyticsIntegration := awsapigateway.NewLambdaIntegration(lambdas["analytics"].Function, nil)
+	analytics := admin.AddResource(jsii.String("analytics"), nil)
+	analytics.AddResource(jsii.String("dashboard"), nil).AddMethod(jsii.String("GET"), analyticsIntegration, nil)
+	analytics.AddResource(jsii.String("sales"), nil).AddMethod(jsii.String("GET"), analyticsIntegration, nil)
+	analytics.AddResource(jsii.String("top-products"), nil).AddMethod(jsii.String("GET"), analyticsIntegration, nil)
+	analytics.AddResource(jsii.String("top-categories"), nil).AddMethod(jsii.String("GET"), analyticsIntegration, nil)
+	analytics.AddResource(jsii.String("customers"), nil).AddMethod(jsii.String("GET"), analyticsIntegration, nil)
+	analytics.AddResource(jsii.String("inventory"), nil).AddMethod(jsii.String("GET"), analyticsIntegration, nil)
+
+	// Notification routes
+	notificationIntegration := awsapigateway.NewLambdaIntegration(lambdas["notification"].Function, nil)
+	addResourceRoutes(admin.AddResource(jsii.String("notifications"), nil), notificationIntegration)
+
+	// Coupon routes
+	couponIntegration := awsapigateway.NewLambdaIntegration(lambdas["coupon"].Function, nil)
+	addResourceRoutes(admin.AddResource(jsii.String("coupons"), nil), couponIntegration)
+
+	// Artisan routes
+	artisanIntegration := awsapigateway.NewLambdaIntegration(lambdas["artisan"].Function, nil)
+	addResourceRoutes(admin.AddResource(jsii.String("artisans"), nil), artisanIntegration)
+
+	// Bulk operation routes
+	bulkIntegration := awsapigateway.NewLambdaIntegration(lambdas["bulk"].Function, nil)
+	addResourceRoutes(admin.AddResource(jsii.String("bulk"), nil), bulkIntegration)
+
+	// Asset routes
+	assetIntegration := awsapigateway.NewLambdaIntegration(lambdas["asset"].Function, nil)
+	addResourceRoutes(admin.AddResource(jsii.String("assets"), nil), assetIntegration)
+
+	// Report routes
+	reportIntegration := awsapigateway.NewLambdaIntegration(lambdas["report"].Function, nil)
+	addResourceRoutes(admin.AddResource(jsii.String("reports"), nil), reportIntegration)
+
+	// Audit routes
+	auditIntegration := awsapigateway.NewLambdaIntegration(lambdas["audit"].Function, nil)
+	audit := admin.AddResource(jsii.String("audit"), nil)
+	audit.AddMethod(jsii.String("GET"), auditIntegration, nil)
+	audit.AddResource(jsii.String("{id}"), nil).AddMethod(jsii.String("GET"), auditIntegration, nil)
+	audit.AddResource(jsii.String("entity"), nil).AddResource(jsii.String("{type}"), nil).AddResource(jsii.String("{entityId}"), nil).AddMethod(jsii.String("GET"), auditIntegration, nil)
+	audit.AddResource(jsii.String("user"), nil).AddResource(jsii.String("{userId}"), nil).AddMethod(jsii.String("GET"), auditIntegration, nil)
+	*/
+}
+
+func addResourceRoutes(resource awsapigateway.Resource, integration awsapigateway.LambdaIntegration) {
+	resource.AddMethod(jsii.String("GET"), integration, nil)
+	resource.AddMethod(jsii.String("POST"), integration, nil)
+
+	idResource := resource.AddResource(jsii.String("{id}"), nil)
+	idResource.AddMethod(jsii.String("GET"), integration, nil)
+	idResource.AddMethod(jsii.String("PUT"), integration, nil)
+	idResource.AddMethod(jsii.String("PATCH"), integration, nil)
+	idResource.AddMethod(jsii.String("DELETE"), integration, nil)
+}
+
+func capitalize(s string) string {
+	if len(s) == 0 {
+		return s
+	}
+	return string(s[0]-32) + s[1:]
+}
