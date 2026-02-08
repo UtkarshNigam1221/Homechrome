@@ -30,7 +30,7 @@ func TestUserService_Create(t *testing.T) {
 			FirstName: "John",
 			LastName:  "Doe",
 			Phone:     "+1234567890",
-			Role:      domain.RoleAdmin,
+			Role:      domain.UserRoleAdmin,
 		}
 
 		// Expect email check (no existing user)
@@ -141,7 +141,7 @@ func TestUserService_Update(t *testing.T) {
 			Email:     "test@example.com",
 			FirstName: "John",
 			LastName:  "Doe",
-			Role:      domain.RoleAdmin,
+			Role:      domain.UserRoleAdmin,
 		}
 
 		newFirstName := "Jane"
@@ -236,9 +236,9 @@ func TestUserService_List(t *testing.T) {
 				{ID: "user_2", Email: "user2@example.com", PasswordHash: "hash2"},
 			},
 			Pagination: domain.PaginationResponse{
-				Page:       1,
+				CurrentPage:1,
 				PerPage:    20,
-				TotalItems: 2,
+				TotalCount: 2,
 				TotalPages: 1,
 			},
 		}
@@ -259,7 +259,7 @@ func TestUserService_List(t *testing.T) {
 	})
 
 	t.Run("list with filters", func(t *testing.T) {
-		role := domain.RoleAdmin
+		role := domain.UserRoleAdmin
 		req := domain.ListUsersRequest{
 			PaginationRequest: domain.PaginationRequest{
 				Page:    1,
@@ -270,12 +270,12 @@ func TestUserService_List(t *testing.T) {
 
 		expectedResponse := &domain.ListUsersResponse{
 			Users: []*domain.User{
-				{ID: "user_1", Email: "admin@example.com", Role: domain.RoleAdmin, PasswordHash: "hash1"},
+				{ID: "user_1", Email: "admin@example.com", Role: domain.UserRoleAdmin, PasswordHash: "hash1"},
 			},
 			Pagination: domain.PaginationResponse{
-				Page:       1,
+				CurrentPage:1,
 				PerPage:    10,
-				TotalItems: 1,
+				TotalCount: 1,
 				TotalPages: 1,
 			},
 		}

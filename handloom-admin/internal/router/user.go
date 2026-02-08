@@ -8,7 +8,16 @@ import (
 )
 
 // NewUserRouter creates routes for the user service
+// Routes are mounted at /admin/users/* to match API Gateway paths
 func NewUserRouter(r *chi.Mux, h *handler.UserHandler, authMiddleware *middleware.Auth) {
+	// Mount at /admin/users to match API Gateway resource path
+	r.Route("/admin/users", func(r chi.Router) {
+		// All user routes require admin role
+		r.Use(authMiddleware.RequireRole(domain.UserRoleAdmin))
+		r.Mount("/", h.Routes())
+	})
+
+	// Also support /users/* for local development (without /admin prefix)
 	r.Route("/users", func(r chi.Router) {
 		// All user routes require admin role
 		r.Use(authMiddleware.RequireRole(domain.UserRoleAdmin))

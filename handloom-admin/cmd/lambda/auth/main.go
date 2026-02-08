@@ -53,7 +53,7 @@ func main() {
 		AllowedOrigins: getAllowedOrigins(),
 		Debug:          cfg.App.Debug,
 	}
-	r := router.NewBaseRouter(routerCfg, log)
+	r := router.NewBaseRouter(routerCfg, log, true) // true = add health check
 
 	// Register routes
 	router.NewAuthRouter(r, authHandler)

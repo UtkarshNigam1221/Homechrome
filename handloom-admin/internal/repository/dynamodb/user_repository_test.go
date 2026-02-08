@@ -11,12 +11,12 @@ import (
 )
 
 func TestUserRepository_Create(t *testing.T) {
-	client := testClient(t)
-	skipIfNoLocal(t, client)
-	setupTestTable(t, client, testCoreTable)
-	defer cleanupTestTable(t, client, testCoreTable)
+	wrappedClient, rawClient := testWrappedClient(t)
+	skipIfNoLocal(t, rawClient)
+	setupTestTable(t, rawClient, testCoreTable)
+	defer cleanupTestTable(t, rawClient, testCoreTable)
 
-	repo := NewUserRepository(client, testCoreTable)
+	repo := NewUserRepository(wrappedClient)
 	ctx := context.Background()
 
 	t.Run("successful user creation", func(t *testing.T) {
@@ -27,7 +27,7 @@ func TestUserRepository_Create(t *testing.T) {
 			FirstName:    "John",
 			LastName:     "Doe",
 			Phone:        "+1234567890",
-			Role:         domain.RoleAdmin,
+			Role:         domain.UserRoleAdmin,
 			Status:       domain.UserStatusActive,
 			Permissions:  []string{"read", "write"},
 			BaseEntity: domain.BaseEntity{
@@ -54,7 +54,7 @@ func TestUserRepository_Create(t *testing.T) {
 			PasswordHash: "hashedpassword123",
 			FirstName:    "User",
 			LastName:     "One",
-			Role:         domain.RoleManager,
+			Role:         domain.UserRoleOperator,
 			Status:       domain.UserStatusActive,
 			BaseEntity: domain.BaseEntity{
 				CreatedAt: time.Now(),
@@ -72,7 +72,7 @@ func TestUserRepository_Create(t *testing.T) {
 			PasswordHash: "hashedpassword456",
 			FirstName:    "User",
 			LastName:     "Two",
-			Role:         domain.RoleStaff,
+			Role:         domain.UserRoleOperator,
 			Status:       domain.UserStatusActive,
 			BaseEntity: domain.BaseEntity{
 				CreatedAt: time.Now(),
@@ -89,12 +89,12 @@ func TestUserRepository_Create(t *testing.T) {
 }
 
 func TestUserRepository_GetByID(t *testing.T) {
-	client := testClient(t)
-	skipIfNoLocal(t, client)
-	setupTestTable(t, client, testCoreTable)
-	defer cleanupTestTable(t, client, testCoreTable)
+	wrappedClient, rawClient := testWrappedClient(t)
+	skipIfNoLocal(t, rawClient)
+	setupTestTable(t, rawClient, testCoreTable)
+	defer cleanupTestTable(t, rawClient, testCoreTable)
 
-	repo := NewUserRepository(client, testCoreTable)
+	repo := NewUserRepository(wrappedClient)
 	ctx := context.Background()
 
 	t.Run("get existing user", func(t *testing.T) {
@@ -104,7 +104,7 @@ func TestUserRepository_GetByID(t *testing.T) {
 			PasswordHash: "hashedpassword",
 			FirstName:    "Get",
 			LastName:     "Test",
-			Role:         domain.RoleAdmin,
+			Role:         domain.UserRoleAdmin,
 			Status:       domain.UserStatusActive,
 			BaseEntity: domain.BaseEntity{
 				CreatedAt: time.Now(),
@@ -129,12 +129,12 @@ func TestUserRepository_GetByID(t *testing.T) {
 }
 
 func TestUserRepository_GetByEmail(t *testing.T) {
-	client := testClient(t)
-	skipIfNoLocal(t, client)
-	setupTestTable(t, client, testCoreTable)
-	defer cleanupTestTable(t, client, testCoreTable)
+	wrappedClient, rawClient := testWrappedClient(t)
+	skipIfNoLocal(t, rawClient)
+	setupTestTable(t, rawClient, testCoreTable)
+	defer cleanupTestTable(t, rawClient, testCoreTable)
 
-	repo := NewUserRepository(client, testCoreTable)
+	repo := NewUserRepository(wrappedClient)
 	ctx := context.Background()
 
 	t.Run("get user by email", func(t *testing.T) {
@@ -144,7 +144,7 @@ func TestUserRepository_GetByEmail(t *testing.T) {
 			PasswordHash: "hashedpassword",
 			FirstName:    "Find",
 			LastName:     "Me",
-			Role:         domain.RoleManager,
+			Role:         domain.UserRoleOperator,
 			Status:       domain.UserStatusActive,
 			BaseEntity: domain.BaseEntity{
 				CreatedAt: time.Now(),
@@ -168,12 +168,12 @@ func TestUserRepository_GetByEmail(t *testing.T) {
 }
 
 func TestUserRepository_Update(t *testing.T) {
-	client := testClient(t)
-	skipIfNoLocal(t, client)
-	setupTestTable(t, client, testCoreTable)
-	defer cleanupTestTable(t, client, testCoreTable)
+	wrappedClient, rawClient := testWrappedClient(t)
+	skipIfNoLocal(t, rawClient)
+	setupTestTable(t, rawClient, testCoreTable)
+	defer cleanupTestTable(t, rawClient, testCoreTable)
 
-	repo := NewUserRepository(client, testCoreTable)
+	repo := NewUserRepository(wrappedClient)
 	ctx := context.Background()
 
 	t.Run("update user fields", func(t *testing.T) {
@@ -184,7 +184,7 @@ func TestUserRepository_Update(t *testing.T) {
 			FirstName:    "Original",
 			LastName:     "Name",
 			Phone:        "+1111111111",
-			Role:         domain.RoleStaff,
+			Role:         domain.UserRoleOperator,
 			Status:       domain.UserStatusPending,
 			BaseEntity: domain.BaseEntity{
 				CreatedAt: time.Now(),
@@ -217,12 +217,12 @@ func TestUserRepository_Update(t *testing.T) {
 }
 
 func TestUserRepository_Delete(t *testing.T) {
-	client := testClient(t)
-	skipIfNoLocal(t, client)
-	setupTestTable(t, client, testCoreTable)
-	defer cleanupTestTable(t, client, testCoreTable)
+	wrappedClient, rawClient := testWrappedClient(t)
+	skipIfNoLocal(t, rawClient)
+	setupTestTable(t, rawClient, testCoreTable)
+	defer cleanupTestTable(t, rawClient, testCoreTable)
 
-	repo := NewUserRepository(client, testCoreTable)
+	repo := NewUserRepository(wrappedClient)
 	ctx := context.Background()
 
 	t.Run("delete existing user", func(t *testing.T) {
@@ -232,7 +232,7 @@ func TestUserRepository_Delete(t *testing.T) {
 			PasswordHash: "hashedpassword",
 			FirstName:    "Delete",
 			LastName:     "Me",
-			Role:         domain.RoleStaff,
+			Role:         domain.UserRoleOperator,
 			Status:       domain.UserStatusActive,
 			BaseEntity: domain.BaseEntity{
 				CreatedAt: time.Now(),
@@ -258,12 +258,12 @@ func TestUserRepository_Delete(t *testing.T) {
 }
 
 func TestUserRepository_List(t *testing.T) {
-	client := testClient(t)
-	skipIfNoLocal(t, client)
-	setupTestTable(t, client, testCoreTable)
-	defer cleanupTestTable(t, client, testCoreTable)
+	wrappedClient, rawClient := testWrappedClient(t)
+	skipIfNoLocal(t, rawClient)
+	setupTestTable(t, rawClient, testCoreTable)
+	defer cleanupTestTable(t, rawClient, testCoreTable)
 
-	repo := NewUserRepository(client, testCoreTable)
+	repo := NewUserRepository(wrappedClient)
 	ctx := context.Background()
 
 	// Create multiple users for listing
@@ -274,7 +274,7 @@ func TestUserRepository_List(t *testing.T) {
 			PasswordHash: "hash1",
 			FirstName:    "List",
 			LastName:     "User1",
-			Role:         domain.RoleAdmin,
+			Role:         domain.UserRoleAdmin,
 			Status:       domain.UserStatusActive,
 			BaseEntity:   domain.BaseEntity{CreatedAt: time.Now(), CreatedBy: "system"},
 		},
@@ -284,7 +284,7 @@ func TestUserRepository_List(t *testing.T) {
 			PasswordHash: "hash2",
 			FirstName:    "List",
 			LastName:     "User2",
-			Role:         domain.RoleManager,
+			Role:         domain.UserRoleOperator,
 			Status:       domain.UserStatusActive,
 			BaseEntity:   domain.BaseEntity{CreatedAt: time.Now(), CreatedBy: "system"},
 		},
@@ -294,7 +294,7 @@ func TestUserRepository_List(t *testing.T) {
 			PasswordHash: "hash3",
 			FirstName:    "List",
 			LastName:     "User3",
-			Role:         domain.RoleStaff,
+			Role:         domain.UserRoleOperator,
 			Status:       domain.UserStatusPending,
 			BaseEntity:   domain.BaseEntity{CreatedAt: time.Now(), CreatedBy: "system"},
 		},
@@ -332,7 +332,7 @@ func TestUserRepository_List(t *testing.T) {
 	})
 
 	t.Run("list with role filter", func(t *testing.T) {
-		role := domain.RoleAdmin
+		role := domain.UserRoleAdmin
 		req := domain.ListUsersRequest{
 			PaginationRequest: domain.PaginationRequest{
 				Page:    1,
@@ -344,18 +344,18 @@ func TestUserRepository_List(t *testing.T) {
 		response, err := repo.List(ctx, req)
 		require.NoError(t, err)
 		for _, u := range response.Users {
-			assert.Equal(t, domain.RoleAdmin, u.Role)
+			assert.Equal(t, domain.UserRoleAdmin, u.Role)
 		}
 	})
 }
 
 func TestUserRepository_UpdateLastLogin(t *testing.T) {
-	client := testClient(t)
-	skipIfNoLocal(t, client)
-	setupTestTable(t, client, testCoreTable)
-	defer cleanupTestTable(t, client, testCoreTable)
+	wrappedClient, rawClient := testWrappedClient(t)
+	skipIfNoLocal(t, rawClient)
+	setupTestTable(t, rawClient, testCoreTable)
+	defer cleanupTestTable(t, rawClient, testCoreTable)
 
-	repo := NewUserRepository(client, testCoreTable)
+	repo := NewUserRepository(wrappedClient)
 	ctx := context.Background()
 
 	t.Run("update last login", func(t *testing.T) {
@@ -365,7 +365,7 @@ func TestUserRepository_UpdateLastLogin(t *testing.T) {
 			PasswordHash: "hashedpassword",
 			FirstName:    "Login",
 			LastName:     "Test",
-			Role:         domain.RoleAdmin,
+			Role:         domain.UserRoleAdmin,
 			Status:       domain.UserStatusActive,
 			BaseEntity: domain.BaseEntity{
 				CreatedAt: time.Now(),

@@ -17,13 +17,13 @@ import (
 
 // AuthService implements domain.AuthService
 type AuthService struct {
-	userRepo            domain.UserRepository
-	tokenStore          domain.TokenStore
-	logger              *logger.Logger
-	jwtSecret           []byte
-	accessTokenDuration time.Duration
+	userRepo             domain.UserRepository
+	tokenStore           domain.TokenStore
+	logger               *logger.Logger
+	jwtSecret            []byte
+	accessTokenDuration  time.Duration
 	refreshTokenDuration time.Duration
-	issuer              string
+	issuer               string
 }
 
 // NewAuthService creates a new AuthService
@@ -72,6 +72,11 @@ func (s *AuthService) Login(ctx context.Context, req domain.LoginRequest) (*doma
 	tokens, err := s.generateTokenPair(user)
 	if err != nil {
 		return nil, err
+	}
+
+	// Revoke any existing refresh tokens (single-session: only one active login allowed)
+	if err := s.tokenStore.RevokeAllUserTokens(ctx, user.ID); err != nil {
+		s.logger.WithContext(ctx).WithError(err).Warn("Failed to revoke existing tokens")
 	}
 
 	// Store refresh token
@@ -373,12 +378,6 @@ func generateSecureToken(length int) (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(bytes), nil
-}
-
-// HashPassword hashes a password using bcrypt
-func HashPassword(password string) (string, error) {
-	bytes, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-	return string(bytes), err
 }
 
 // Ensure interface compliance

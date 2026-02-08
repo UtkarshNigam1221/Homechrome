@@ -12,6 +12,7 @@ import (
 
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/internal/mocks"
+	"github.com/handloom/admin/pkg/errors"
 	"github.com/handloom/admin/pkg/logger"
 )
 
@@ -72,7 +73,7 @@ func TestAuthService_Login(t *testing.T) {
 				Password: "password123",
 			},
 			setup: func() {
-				userRepo.EXPECT().GetByEmail(ctx, "nonexistent@example.com").Return(nil, domain.ErrNotFound)
+				userRepo.EXPECT().GetByEmail(ctx, "nonexistent@example.com").Return(nil, errors.NotFound("User"))
 			},
 			wantErr: true,
 			errCode: "INVALID_CREDENTIALS",

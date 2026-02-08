@@ -6,8 +6,10 @@ import (
 )
 
 // NewAuthRouter creates routes for the auth service
+// Routes are mounted at /admin/auth/* to match API Gateway paths
 func NewAuthRouter(r *chi.Mux, h *handler.AuthHandler) {
-	r.Route("/auth", func(r chi.Router) {
+	// Mount at /admin/auth to match API Gateway resource path
+	r.Route("/admin/auth", func(r chi.Router) {
 		r.Post("/login", h.Login)
 		r.Post("/refresh", h.RefreshToken)
 		r.Post("/logout", h.Logout)

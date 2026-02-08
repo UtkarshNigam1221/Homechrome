@@ -1,9 +1,9 @@
 # Catalog Lambda API Documentation
 
-Product catalog management including Categories, Designs, and Products.
+Product catalog management including Categories (flat with custom attributes), Designs, Products, and Inventory.
 
 ## Authentication
-All endpoints require authentication.
+All endpoints require JWT authentication via the `Authorization: Bearer <token>` header.
 
 ---
 
@@ -11,6 +11,8 @@ All endpoints require authentication.
 
 ## Base Path
 `/admin/categories`
+
+Categories are **flat** (no hierarchy/parent-child relationships). Each category can define its own set of custom attributes that products in that category must provide. Attributes marked as `searchable` are indexed for efficient filtering.
 
 ### List Categories
 
@@ -22,8 +24,7 @@ All endpoints require authentication.
 |-----------|------|---------|-------------|
 | page | int | 1 | Page number |
 | per_page | int | 10 | Items per page |
-| parent_id | string | - | Filter by parent category |
-| status | string | - | Filter by status |
+| status | string | - | Filter by status (`ACTIVE`, `INACTIVE`) |
 
 **Response (200 OK):**
 ```json
@@ -34,14 +35,28 @@ All endpoints require authentication.
       "name": "Sarees",
       "slug": "sarees",
       "description": "Traditional handloom sarees",
-      "parent_id": null,
       "image_url": "https://cdn.example.com/categories/sarees.jpg",
-      "status": "active",
-      "sort_order": 1,
-      "created_at": "2024-01-01T00:00:00Z"
+      "own_attributes": [
+        {
+          "name": "material",
+          "label": "Material",
+          "type": "SELECT",
+          "required": true,
+          "searchable": true,
+          "display_order": 1,
+          "options": [
+            { "value": "silk", "label": "Silk", "surcharge": 500 },
+            { "value": "cotton", "label": "Cotton", "surcharge": 0 }
+          ]
+        }
+      ],
+      "status": "ACTIVE",
+      "product_count": 45,
+      "created_at": "2024-01-01T00:00:00Z",
+      "updated_at": "2024-01-10T15:00:00Z"
     }
   ],
-  "pagination": {
+  "meta": {
     "current_page": 1,
     "per_page": 10,
     "total_count": 15,
@@ -61,11 +76,22 @@ All endpoints require authentication.
 ```json
 {
   "name": "Silk Sarees",
-  "slug": "silk-sarees",
   "description": "Premium silk handloom sarees",
-  "parent_id": "cat_abc123",
   "image_url": "https://cdn.example.com/categories/silk-sarees.jpg",
-  "sort_order": 2
+  "own_attributes": [
+    {
+      "name": "material",
+      "label": "Material",
+      "type": "SELECT",
+      "required": true,
+      "searchable": true,
+      "display_order": 1,
+      "options": [
+        { "value": "silk", "label": "Silk", "surcharge": 500 },
+        { "value": "cotton", "label": "Cotton" }
+      ]
+    }
+  ]
 }
 ```
 
@@ -76,11 +102,12 @@ All endpoints require authentication.
   "name": "Silk Sarees",
   "slug": "silk-sarees",
   "description": "Premium silk handloom sarees",
-  "parent_id": "cat_abc123",
   "image_url": "https://cdn.example.com/categories/silk-sarees.jpg",
-  "status": "active",
-  "sort_order": 2,
-  "created_at": "2024-01-15T10:30:00Z"
+  "own_attributes": [...],
+  "status": "ACTIVE",
+  "product_count": 0,
+  "created_at": "2024-01-15T10:30:00Z",
+  "updated_at": "2024-01-15T10:30:00Z"
 }
 ```
 
@@ -94,17 +121,18 @@ All endpoints require authentication.
 **Response (200 OK):**
 ```json
 {
-  "id": "cat_abc123",
-  "name": "Sarees",
-  "slug": "sarees",
-  "description": "Traditional handloom sarees",
-  "parent_id": null,
-  "image_url": "https://cdn.example.com/categories/sarees.jpg",
-  "status": "active",
-  "sort_order": 1,
-  "product_count": 45,
-  "created_at": "2024-01-01T00:00:00Z",
-  "updated_at": "2024-01-10T15:00:00Z"
+  "data": {
+    "id": "cat_abc123",
+    "name": "Sarees",
+    "slug": "sarees",
+    "description": "Traditional handloom sarees",
+    "image_url": "https://cdn.example.com/categories/sarees.jpg",
+    "own_attributes": [...],
+    "status": "ACTIVE",
+    "product_count": 45,
+    "created_at": "2024-01-01T00:00:00Z",
+    "updated_at": "2024-01-10T15:00:00Z"
+  }
 }
 ```
 
@@ -112,28 +140,20 @@ All endpoints require authentication.
 
 ### Update Category
 
-**Endpoint:** `PUT /admin/categories/{id}`
+**Endpoint:** `PATCH /admin/categories/{id}`
 **Authentication:** Required
 
-**Request Body:**
+**Request Body (partial update):**
 ```json
 {
   "name": "Handloom Sarees",
   "description": "Traditional handwoven sarees",
-  "status": "active"
+  "status": "ACTIVE"
 }
 ```
 
 **Response (200 OK):**
-```json
-{
-  "id": "cat_abc123",
-  "name": "Handloom Sarees",
-  "description": "Traditional handwoven sarees",
-  "status": "active",
-  "updated_at": "2024-01-15T11:00:00Z"
-}
-```
+Returns the full updated category object.
 
 ---
 
@@ -142,34 +162,140 @@ All endpoints require authentication.
 **Endpoint:** `DELETE /admin/categories/{id}`
 **Authentication:** Required
 
-**Response (204 No Content)**
+**Response (200 OK):**
+```json
+{
+  "data": {
+    "message": "Category deleted successfully"
+  }
+}
+```
 
 **Error Responses:**
-- `400 Bad Request` - Category has products or subcategories
+- `400 Bad Request` - Category has products assigned to it
 
 ---
 
-### Get Category Tree
+## Category Attribute Management
 
-**Endpoint:** `GET /admin/categories/tree`
+Categories support custom attributes that define what product-specific fields are available. Attributes with `searchable: true` are indexed via `ProductAttributeIndex` records for efficient filtering.
+
+### Add Attribute
+
+**Endpoint:** `POST /admin/categories/{id}/attributes`
+**Authentication:** Required
+
+**Request Body:**
+```json
+{
+  "name": "color",
+  "label": "Color",
+  "type": "SELECT",
+  "required": true,
+  "searchable": true,
+  "display_order": 2,
+  "options": [
+    { "value": "red", "label": "Red" },
+    { "value": "blue", "label": "Blue" }
+  ]
+}
+```
+
+**Attribute Types:** `SELECT`, `MULTI_SELECT`, `TEXT`, `NUMBER`, `BOOLEAN`, `DIMENSION`, `DIMENSION_RANGE`
+
+**Response (201 Created):**
+```json
+{
+  "data": {
+    "attribute": {
+      "name": "color",
+      "label": "Color",
+      "type": "SELECT",
+      "required": true,
+      "searchable": true,
+      "display_order": 2,
+      "options": [...]
+    },
+    "category": {
+      "id": "cat_abc123",
+      "own_attributes_count": 3
+    }
+  }
+}
+```
+
+---
+
+### Update Attribute
+
+**Endpoint:** `PATCH /admin/categories/{id}/attributes/{attrName}`
+**Authentication:** Required
+
+**Request Body:**
+```json
+{
+  "label": "Color / Shade",
+  "required": false,
+  "searchable": true,
+  "display_order": 3,
+  "options": [
+    { "value": "red", "label": "Red" },
+    { "value": "blue", "label": "Blue" },
+    { "value": "green", "label": "Green" }
+  ]
+}
+```
+
+**Response (200 OK):**
+```json
+{
+  "data": {
+    "attribute": {...},
+    "affected_products_count": 12
+  }
+}
+```
+
+---
+
+### Delete Attribute
+
+**Endpoint:** `DELETE /admin/categories/{id}/attributes/{attrName}`
 **Authentication:** Required
 
 **Response (200 OK):**
 ```json
 {
-  "data": [
-    {
-      "id": "cat_abc123",
-      "name": "Sarees",
-      "children": [
-        {
-          "id": "cat_xyz789",
-          "name": "Silk Sarees",
-          "children": []
-        }
-      ]
-    }
-  ]
+  "data": {
+    "message": "Attribute removed successfully"
+  }
+}
+```
+
+---
+
+### Get Attributes
+
+**Endpoint:** `GET /admin/categories/{id}/attributes`
+**Authentication:** Required
+
+**Response (200 OK):**
+```json
+{
+  "data": {
+    "own_attributes": [
+      {
+        "name": "material",
+        "label": "Material",
+        "type": "SELECT",
+        "required": true,
+        "searchable": true,
+        "display_order": 1,
+        "options": [...]
+      }
+    ],
+    "total_count": 3
+  }
 }
 ```
 
@@ -179,6 +305,8 @@ All endpoints require authentication.
 
 ## Base Path
 `/admin/designs`
+
+Designs represent reusable design/pattern templates linked to a category.
 
 ### List Designs
 
@@ -191,21 +319,33 @@ All endpoints require authentication.
 | page | int | 1 | Page number |
 | per_page | int | 10 | Items per page |
 | category_id | string | - | Filter by category |
-| status | string | - | Filter by status |
+| status | string | - | Filter by status (`ACTIVE`, `INACTIVE`) |
+| search | string | - | Search by name |
 
 **Response (200 OK):**
 ```json
 {
-  "data": [
+  "designs": [
     {
       "id": "des_abc123",
       "name": "Peacock Motif",
-      "code": "PM-001",
+      "slug": "peacock-motif",
       "description": "Traditional peacock design pattern",
       "category_id": "cat_abc123",
-      "image_urls": ["https://cdn.example.com/designs/peacock-1.jpg"],
-      "status": "active",
-      "created_at": "2024-01-01T00:00:00Z"
+      "images": [
+        {
+          "url": "https://cdn.example.com/designs/peacock-1.jpg",
+          "is_primary": true,
+          "sort_order": 0
+        }
+      ],
+      "attributes": [
+        { "name": "weave_type", "values": ["jacquard", "dobby"] }
+      ],
+      "status": "ACTIVE",
+      "product_count": 5,
+      "created_at": "2024-01-01T00:00:00Z",
+      "updated_at": "2024-01-01T00:00:00Z"
     }
   ],
   "pagination": {
@@ -228,26 +368,23 @@ All endpoints require authentication.
 ```json
 {
   "name": "Lotus Border",
-  "code": "LB-002",
-  "description": "Elegant lotus flower border pattern",
   "category_id": "cat_abc123",
-  "image_urls": ["https://cdn.example.com/designs/lotus-1.jpg"]
+  "description": "Elegant lotus flower border pattern",
+  "images": [
+    {
+      "url": "https://cdn.example.com/designs/lotus-1.jpg",
+      "is_primary": true,
+      "sort_order": 0
+    }
+  ],
+  "attributes": [
+    { "name": "weave_type", "values": ["jacquard"] }
+  ]
 }
 ```
 
 **Response (201 Created):**
-```json
-{
-  "id": "des_xyz789",
-  "name": "Lotus Border",
-  "code": "LB-002",
-  "description": "Elegant lotus flower border pattern",
-  "category_id": "cat_abc123",
-  "image_urls": ["https://cdn.example.com/designs/lotus-1.jpg"],
-  "status": "active",
-  "created_at": "2024-01-15T10:30:00Z"
-}
-```
+Returns the created design object.
 
 ---
 
@@ -256,11 +393,28 @@ All endpoints require authentication.
 **Endpoint:** `GET /admin/designs/{id}`
 **Authentication:** Required
 
+**Response (200 OK):**
+Returns the design with its category summary:
+```json
+{
+  "id": "des_abc123",
+  "name": "Peacock Motif",
+  "slug": "peacock-motif",
+  "category_id": "cat_abc123",
+  "category": {
+    "id": "cat_abc123",
+    "name": "Sarees",
+    "slug": "sarees"
+  },
+  ...
+}
+```
+
 ---
 
 ### Update Design
 
-**Endpoint:** `PUT /admin/designs/{id}`
+**Endpoint:** `PATCH /admin/designs/{id}`
 **Authentication:** Required
 
 ---
@@ -268,13 +422,6 @@ All endpoints require authentication.
 ### Delete Design
 
 **Endpoint:** `DELETE /admin/designs/{id}`
-**Authentication:** Required
-
----
-
-### Get Designs by Category
-
-**Endpoint:** `GET /admin/designs/category/{categoryId}`
 **Authentication:** Required
 
 ---
@@ -296,36 +443,67 @@ All endpoints require authentication.
 | per_page | int | 10 | Items per page |
 | category_id | string | - | Filter by category |
 | design_id | string | - | Filter by design |
-| status | string | - | Filter by status |
-| min_price | float | - | Minimum price |
-| max_price | float | - | Maximum price |
+| status | string | - | Filter by status (`ACTIVE`, `INACTIVE`, `DRAFT`) |
+| min_price | int | - | Min base price (in paise) |
+| max_price | int | - | Max base price (in paise) |
+| in_stock | bool | - | Filter in-stock products |
+| low_stock | bool | - | Filter low-stock products |
+| material | string | - | Filter by material |
+| color | string | - | Filter by color |
 | search | string | - | Search in name/SKU |
+| attribute_filters | JSON string | - | Dynamic attribute filters (see below) |
+
+**`attribute_filters` format:**
+A JSON-encoded map of attribute names to arrays of values. When a category has searchable attributes, this enables filtering by those attributes using the `ProductAttributeIndex` GSI.
+```
+attribute_filters={"material":["silk","cotton"],"color":["red"]}
+```
 
 **Response (200 OK):**
 ```json
 {
-  "data": [
+  "products": [
     {
       "id": "prod_abc123",
       "sku": "SAR-SLK-001",
       "name": "Kanchipuram Silk Saree",
+      "slug": "kanchipuram-silk-saree",
       "description": "Premium handwoven silk saree with gold zari",
       "category_id": "cat_xyz789",
       "design_id": "des_abc123",
-      "base_price": 15000.00,
+      "base_price": 1500000,
+      "selling_price": 1800000,
+      "cost_price": 1200000,
+      "currency": "INR",
+      "dimensions": {
+        "length": 6.3,
+        "width": 1.2,
+        "unit": "meter"
+      },
+      "weight": 650,
+      "attributes": {
+        "material": "silk",
+        "color": "red",
+        "weave_type": "jacquard"
+      },
+      "material": "silk",
+      "color": "red",
+      "weave_type": "jacquard",
       "images": [
         {
           "url": "https://cdn.example.com/products/saree-1.jpg",
-          "is_primary": true
+          "is_primary": true,
+          "sort_order": 0
         }
       ],
-      "attributes": {
-        "material": "Pure Silk",
-        "weight": "650g",
-        "length": "6.3m"
-      },
-      "status": "active",
-      "created_at": "2024-01-01T00:00:00Z"
+      "tags": ["premium", "wedding"],
+      "quantity": 25,
+      "reserved_qty": 3,
+      "available_qty": 22,
+      "low_stock_threshold": 5,
+      "status": "ACTIVE",
+      "created_at": "2024-01-01T00:00:00Z",
+      "updated_at": "2024-01-05T12:00:00Z"
     }
   ],
   "pagination": {
@@ -333,6 +511,26 @@ All endpoints require authentication.
     "per_page": 10,
     "total_count": 100,
     "total_pages": 10
+  }
+}
+```
+
+---
+
+### Get Attribute Filter Options
+
+**Endpoint:** `GET /admin/products/filter-options/{categoryId}`
+**Authentication:** Required
+
+Returns the distinct values for each searchable attribute in a category. These are pre-computed and stored in a `CategoryAttributeValues` record, updated atomically whenever a product is created or updated.
+
+**Response (200 OK):**
+```json
+{
+  "data": {
+    "material": ["cotton", "silk"],
+    "color": ["blue", "green", "red"],
+    "weave_type": ["dobby", "jacquard", "plain"]
   }
 }
 ```
@@ -347,36 +545,50 @@ All endpoints require authentication.
 **Request Body:**
 ```json
 {
-  "sku": "SAR-COT-002",
   "name": "Handloom Cotton Saree",
-  "description": "Lightweight cotton saree with traditional motifs",
-  "category_id": "cat_abc123",
+  "sku": "SAR-COT-002",
   "design_id": "des_xyz789",
-  "base_price": 3500.00,
+  "category_id": "cat_abc123",
+  "description": "Lightweight cotton saree with traditional motifs",
+  "base_price": 350000,
+  "selling_price": 450000,
+  "cost_price": 280000,
+  "dimensions": {
+    "length": 6.0,
+    "width": 1.1,
+    "unit": "meter"
+  },
+  "weight": 400,
+  "attributes": {
+    "material": "cotton",
+    "color": "blue",
+    "weave_type": "plain"
+  },
+  "material": "cotton",
+  "color": "blue",
+  "weave_type": "plain",
   "images": [
     {
       "url": "https://cdn.example.com/products/cotton-saree.jpg",
-      "is_primary": true
+      "is_primary": true,
+      "sort_order": 0
     }
   ],
-  "attributes": {
-    "material": "Cotton",
-    "weight": "400g",
-    "length": "6m"
-  }
+  "tags": ["everyday", "casual"],
+  "initial_stock": 50,
+  "low_stock_threshold": 10
 }
 ```
 
+**Side effects on create:**
+1. `ProductAttributeIndex` records are created for each searchable attribute value (enables GSI-based filtering)
+2. `CategoryAttributeValues` record is updated atomically to include the new attribute values (pre-computed filter options)
+3. Inventory record is created with `initial_stock`
+4. Category `product_count` is incremented
+5. Design `product_count` is incremented
+
 **Response (201 Created):**
-```json
-{
-  "id": "prod_xyz789",
-  "sku": "SAR-COT-002",
-  "name": "Handloom Cotton Saree",
-  "status": "active",
-  "created_at": "2024-01-15T10:30:00Z"
-}
-```
+Returns the created product object.
 
 ---
 
@@ -385,12 +597,46 @@ All endpoints require authentication.
 **Endpoint:** `GET /admin/products/{id}`
 **Authentication:** Required
 
+**Response (200 OK):**
+Returns the product with related entities:
+```json
+{
+  "id": "prod_abc123",
+  "name": "Kanchipuram Silk Saree",
+  ...
+  "category": {
+    "id": "cat_xyz789",
+    "name": "Silk Sarees",
+    "slug": "silk-sarees"
+  },
+  "design": {
+    "id": "des_abc123",
+    "name": "Peacock Motif",
+    "slug": "peacock-motif"
+  },
+  "inventory": {
+    "product_id": "prod_abc123",
+    "quantity": 25,
+    "reserved_qty": 3,
+    "available_qty": 22,
+    "low_stock_threshold": 5
+  }
+}
+```
+
 ---
 
 ### Update Product
 
-**Endpoint:** `PUT /admin/products/{id}`
+**Endpoint:** `PATCH /admin/products/{id}`
 **Authentication:** Required
+
+**Side effects on update:**
+1. Old `ProductAttributeIndex` records are removed, new ones are created (if searchable attributes changed)
+2. `CategoryAttributeValues` record is updated with any new attribute values
+
+**Response (200 OK):**
+Returns the updated product object.
 
 ---
 
@@ -399,9 +645,26 @@ All endpoints require authentication.
 **Endpoint:** `DELETE /admin/products/{id}`
 **Authentication:** Required
 
+**Side effects on delete:**
+1. `ProductAttributeIndex` records for the product are deleted
+2. Inventory record and all inventory transactions are deleted (`DeleteByProductID`)
+3. Category `product_count` is decremented
+4. Design `product_count` is decremented
+
+**Response (200 OK):**
+```json
+{
+  "message": "Product deleted successfully"
+}
+```
+
 ---
 
-### Get Product Inventory
+## Product Inventory
+
+Inventory is managed through sub-routes under each product.
+
+### Get Inventory
 
 **Endpoint:** `GET /admin/products/{id}/inventory`
 **Authentication:** Required
@@ -409,52 +672,160 @@ All endpoints require authentication.
 **Response (200 OK):**
 ```json
 {
+  "id": "inv_abc123",
   "product_id": "prod_abc123",
-  "total_quantity": 25,
-  "reserved_quantity": 3,
-  "available_quantity": 22,
+  "product_sku": "SAR-SLK-001",
+  "product_name": "Kanchipuram Silk Saree",
+  "quantity": 25,
+  "reserved_qty": 3,
+  "available_qty": 22,
   "low_stock_threshold": 5,
-  "is_low_stock": false,
-  "locations": [
-    {
-      "location_id": "loc_main",
-      "quantity": 25
-    }
-  ]
+  "reorder_point": 10,
+  "last_restock_at": "2024-01-10T15:00:00Z"
 }
 ```
 
 ---
 
-### Update Product Inventory
+### Add Stock
 
-**Endpoint:** `PUT /admin/products/{id}/inventory`
+**Endpoint:** `POST /admin/products/{id}/inventory/add`
 **Authentication:** Required
 
 **Request Body:**
 ```json
 {
   "quantity": 30,
-  "adjustment_type": "restock",
   "reason": "New stock arrival"
+}
+```
+
+**Response (200 OK):**
+```json
+{
+  "product_id": "prod_abc123",
+  "previous_quantity": 25,
+  "change_quantity": 30,
+  "new_quantity": 55,
+  "available_qty": 52,
+  "transaction_id": "txn_xyz789"
 }
 ```
 
 ---
 
-### Search Products
+### Remove Stock
 
-**Endpoint:** `GET /admin/products/search`
+**Endpoint:** `POST /admin/products/{id}/inventory/remove`
 **Authentication:** Required
 
-**Query Parameters:**
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| q | string | Search query |
-| limit | int | Max results |
+**Request Body:**
+```json
+{
+  "quantity": 5,
+  "reason": "Damaged goods"
+}
+```
 
 ---
 
-## TODO
+### Adjust Stock
 
-No pending TODO items identified.
+**Endpoint:** `POST /admin/products/{id}/inventory/adjust`
+**Authentication:** Required
+
+**Request Body:**
+```json
+{
+  "new_quantity": 20,
+  "reason": "Physical count correction"
+}
+```
+
+---
+
+### Get Inventory Transactions
+
+**Endpoint:** `GET /admin/products/{id}/inventory/transactions`
+**Authentication:** Required
+
+**Query Parameters:**
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| page | int | 1 | Page number |
+| per_page | int | 10 | Items per page |
+
+---
+
+## Low Stock
+
+### Get Low Stock Products
+
+**Endpoint:** `GET /admin/inventory/low-stock`
+**Authentication:** Required
+
+Returns products where available quantity is at or below the low stock threshold.
+
+---
+
+## Data Models
+
+### Category
+| Field | Type | Description |
+|-------|------|-------------|
+| id | string | UUID |
+| name | string | Category name |
+| slug | string | URL-friendly slug (auto-generated) |
+| description | string | Optional description |
+| image_url | string | Category image URL |
+| own_attributes | CategoryAttribute[] | Custom attributes for this category |
+| status | string | `ACTIVE` or `INACTIVE` |
+| product_count | int | Denormalized count of products |
+| created_at | timestamp | Creation time |
+| updated_at | timestamp | Last update time |
+
+### CategoryAttribute
+| Field | Type | Description |
+|-------|------|-------------|
+| name | string | Attribute identifier (e.g. `material`) |
+| label | string | Display label (e.g. `Material`) |
+| type | string | One of: `SELECT`, `MULTI_SELECT`, `TEXT`, `NUMBER`, `BOOLEAN`, `DIMENSION`, `DIMENSION_RANGE` |
+| required | bool | Whether products must provide this attribute |
+| searchable | bool | If true, attribute values are indexed for filtering |
+| display_order | int | Display order in forms |
+| options | AttributeOption[] | For `SELECT`/`MULTI_SELECT` types |
+
+### AttributeOption
+| Field | Type | Description |
+|-------|------|-------------|
+| value | string | Option value |
+| label | string | Display label |
+| surcharge | int | Optional price surcharge in paise |
+
+### Product
+| Field | Type | Description |
+|-------|------|-------------|
+| id | string | UUID |
+| sku | string | Stock keeping unit (unique) |
+| name | string | Product name |
+| slug | string | URL-friendly slug |
+| description | string | Optional description |
+| design_id | string | Linked design ID |
+| category_id | string | Category this product belongs to |
+| base_price | int64 | Base price in paise |
+| selling_price | int64 | Selling price in paise |
+| cost_price | int64 | Cost price in paise |
+| currency | string | Currency code (e.g. `INR`) |
+| dimensions | Dimensions | Length, width, height, unit |
+| weight | int | Weight in grams |
+| attributes | map[string]any | Flexible key-value attributes matching category definition |
+| material | string | Common indexed attribute |
+| color | string | Common indexed attribute |
+| weave_type | string | Common indexed attribute |
+| images | ProductImage[] | Product images |
+| tags | string[] | Tags for organization |
+| quantity | int | Total inventory quantity (denormalized) |
+| reserved_qty | int | Reserved quantity |
+| available_qty | int | Available quantity |
+| low_stock_threshold | int | Low stock alert threshold |
+| status | string | `ACTIVE`, `INACTIVE`, or `DRAFT` |
