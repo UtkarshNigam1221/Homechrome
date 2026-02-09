@@ -23,7 +23,7 @@ import {
   TableHeader,
   TableRow,
 } from '../../components/common';
-import { useDebounce } from '../../hooks';
+import { useCursorPagination, useDebounce } from '../../hooks';
 import type { User as UserType, UserRole, UserStatus } from '../../types';
 import { UserFormModal } from './UserFormModal';
 
@@ -79,8 +79,7 @@ function UsersTableSkeleton({ rows = 5 }: { rows?: number }) {
 
 export function UsersPage() {
   const queryClient = useQueryClient();
-  const [page, setPage] = useState(1);
-  const [perPage, setPerPage] = useState(10);
+  const { limit, cursor, hasPrevious, goToNextPage, goToPreviousPage, resetPagination, changeLimit } = useCursorPagination(10);
   const [searchInput, setSearchInput] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
@@ -98,12 +97,12 @@ export function UsersPage() {
   const { data, isLoading } = useQuery({
     queryKey: [
       'users',
-      { page, limit: perPage, search: debouncedSearch, role: roleFilter, status: statusFilter },
+      { limit, cursor, search: debouncedSearch, role: roleFilter, status: statusFilter },
     ],
     queryFn: () =>
       usersApi.list({
-        page,
-        limit: perPage,
+        limit,
+        cursor,
         search: debouncedSearch || undefined,
         role: roleFilter || undefined,
         status: statusFilter || undefined,
@@ -167,7 +166,7 @@ export function UsersPage() {
 
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSearchInput(e.target.value);
-    setPage(1);
+    resetPagination();
   };
 
   return (
@@ -204,7 +203,7 @@ export function UsersPage() {
               value={roleFilter}
               onChange={(e) => {
                 setRoleFilter(e.target.value);
-                setPage(1);
+                resetPagination();
               }}
               className="sm:w-36"
             />
@@ -218,7 +217,7 @@ export function UsersPage() {
               value={statusFilter}
               onChange={(e) => {
                 setStatusFilter(e.target.value);
-                setPage(1);
+                resetPagination();
               }}
               className="sm:w-36"
             />
@@ -332,18 +331,16 @@ export function UsersPage() {
             )}
           </TableBody>
         </Table>
-        {pagination && pagination.total_pages > 1 && (
+        {(pagination?.has_more || hasPrevious) && (
           <div className="border-t border-gray-200 px-6">
             <Pagination
-              currentPage={pagination.current_page}
-              totalPages={pagination.total_pages}
-              totalCount={pagination.total_count}
-              perPage={pagination.per_page}
-              onPageChange={setPage}
-              onPerPageChange={(v) => {
-                setPerPage(v);
-                setPage(1);
-              }}
+              hasMore={pagination?.has_more ?? false}
+              hasPrevious={hasPrevious}
+              perPage={limit}
+              onNextPage={() => pagination?.next_cursor && goToNextPage(pagination.next_cursor)}
+              onPreviousPage={goToPreviousPage}
+              onPerPageChange={changeLimit}
+              itemCount={users.length}
             />
           </div>
         )}

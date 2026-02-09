@@ -20,21 +20,21 @@ import {
   TableLoading,
   TableRow,
 } from '../../components/common';
+import { useCursorPagination } from '../../hooks';
 import type { PricingRule } from '../../types';
 import { PricingRuleFormModal } from './PricingRuleFormModal';
 
 export function PricingRulesPage() {
   const queryClient = useQueryClient();
-  const [page, setPage] = useState(1);
-  const [perPage, setPerPage] = useState(10);
+  const { limit, cursor, hasPrevious, goToNextPage, goToPreviousPage, resetPagination, changeLimit } = useCursorPagination(10);
   const [searchQuery, setSearchQuery] = useState('');
   const [showFormModal, setShowFormModal] = useState(false);
   const [editingRule, setEditingRule] = useState<PricingRule | null>(null);
   const [deleteRule, setDeleteRule] = useState<PricingRule | null>(null);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['pricing-rules', { page, limit: perPage }],
-    queryFn: () => pricingApi.listRules({ page, limit: perPage }),
+    queryKey: ['pricing-rules', { limit, cursor }],
+    queryFn: () => pricingApi.listRules({ limit, cursor }),
   });
 
   // Delete mutation
@@ -93,7 +93,7 @@ export function PricingRulesPage() {
           value={searchQuery}
           onChange={(e) => {
             setSearchQuery(e.target.value);
-            setPage(1);
+            resetPagination();
           }}
           leftIcon={<Search className="w-4 h-4" />}
         />
@@ -186,18 +186,16 @@ export function PricingRulesPage() {
             )}
           </TableBody>
         </Table>
-        {pagination && pagination.total_pages > 1 && (
+        {(pagination?.has_more || hasPrevious) && (
           <div className="border-t border-gray-200 px-6">
             <Pagination
-              currentPage={pagination.current_page}
-              totalPages={pagination.total_pages}
-              totalCount={pagination.total_count}
-              perPage={pagination.per_page}
-              onPageChange={setPage}
-              onPerPageChange={(v) => {
-                setPerPage(v);
-                setPage(1);
-              }}
+              hasMore={pagination?.has_more ?? false}
+              hasPrevious={hasPrevious}
+              perPage={limit}
+              onNextPage={() => pagination?.next_cursor && goToNextPage(pagination.next_cursor)}
+              onPreviousPage={goToPreviousPage}
+              onPerPageChange={changeLimit}
+              itemCount={filteredRules.length}
             />
           </div>
         )}

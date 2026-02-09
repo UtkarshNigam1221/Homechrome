@@ -6,7 +6,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/handloom/admin/internal/domain"
-	"github.com/handloom/admin/pkg/errors"
+	"github.com/handloom/admin/internal/middleware"
 	"github.com/handloom/admin/pkg/logger"
 	"github.com/handloom/admin/pkg/response"
 )
@@ -15,13 +15,15 @@ import (
 type UserHandler struct {
 	userService domain.UserService
 	logger      *logger.Logger
+	validation  *middleware.Validation
 }
 
 // NewUserHandler creates a new UserHandler
-func NewUserHandler(userService domain.UserService, logger *logger.Logger) *UserHandler {
+func NewUserHandler(userService domain.UserService, logger *logger.Logger, validation *middleware.Validation) *UserHandler {
 	return &UserHandler{
 		userService: userService,
 		logger:      logger,
+		validation:  validation,
 	}
 }
 
@@ -30,11 +32,11 @@ func (h *UserHandler) Routes() chi.Router {
 	r := chi.NewRouter()
 
 	r.Get("/", h.List)
-	r.Post("/", h.Create)
+	r.With(middleware.ValidateJSONTyped[domain.CreateUserRequest](h.validation)).Post("/", h.Create)
 	r.Get("/{id}", h.GetByID)
-	r.Patch("/{id}", h.Update)
+	r.With(middleware.ValidateJSONTyped[domain.UpdateUserRequest](h.validation)).Patch("/{id}", h.Update)
 	r.Delete("/{id}", h.Delete)
-	r.Patch("/{id}/status", h.UpdateStatus)
+	r.With(middleware.ValidateJSONTyped[UpdateUserStatusRequest](h.validation)).Patch("/{id}/status", h.UpdateStatus)
 
 	return r
 }
@@ -70,31 +72,10 @@ func (h *UserHandler) List(w http.ResponseWriter, r *http.Request) {
 // Create handles creating a new user
 func (h *UserHandler) Create(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-
-	var req domain.CreateUserRequest
-	if err := decodeJSON(r, &req); err != nil {
-		response.Error(w, err)
-		return
-	}
-
-	// Validate required fields
-	if req.Email == "" || req.Password == "" || req.FirstName == "" || req.LastName == "" {
-		response.Error(w, errors.Validation("Email, password, first name, and last name are required"))
-		return
-	}
-
-	if len(req.Password) < 8 {
-		response.Error(w, errors.Validation("Password must be at least 8 characters"))
-		return
-	}
-
-	if req.Role == "" {
-		response.Error(w, errors.Validation("Role is required"))
-		return
-	}
+	req := middleware.MustGetValidatedBody[domain.CreateUserRequest](ctx)
 
 	createdBy := getUserIDFromContext(ctx)
-	user, err := h.userService.Create(ctx, req, createdBy)
+	user, err := h.userService.Create(ctx, *req, createdBy)
 	if err != nil {
 		response.Error(w, err)
 		return
@@ -121,15 +102,10 @@ func (h *UserHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 func (h *UserHandler) Update(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	id := chi.URLParam(r, "id")
-
-	var req domain.UpdateUserRequest
-	if err := decodeJSON(r, &req); err != nil {
-		response.Error(w, err)
-		return
-	}
+	req := middleware.MustGetValidatedBody[domain.UpdateUserRequest](ctx)
 
 	updatedBy := getUserIDFromContext(ctx)
-	user, err := h.userService.Update(ctx, id, req, updatedBy)
+	user, err := h.userService.Update(ctx, id, *req, updatedBy)
 	if err != nil {
 		response.Error(w, err)
 		return
@@ -155,19 +131,7 @@ func (h *UserHandler) Delete(w http.ResponseWriter, r *http.Request) {
 func (h *UserHandler) UpdateStatus(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	id := chi.URLParam(r, "id")
-
-	var req struct {
-		Status domain.UserStatus `json:"status"`
-	}
-	if err := decodeJSON(r, &req); err != nil {
-		response.Error(w, err)
-		return
-	}
-
-	if req.Status == "" {
-		response.Error(w, errors.Validation("Status is required"))
-		return
-	}
+	req := middleware.MustGetValidatedBody[UpdateUserStatusRequest](ctx)
 
 	updatedBy := getUserIDFromContext(ctx)
 	if err := h.userService.UpdateStatus(ctx, id, req.Status, updatedBy); err != nil {

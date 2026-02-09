@@ -172,7 +172,7 @@ All entities reside in a single DynamoDB table (`handloom-core`) using a composi
 │  │ SK: METADATA                                                      │      │
 │  │                                                                   │      │
 │  │ GSI1PK: CATEGORY#<cat_id>   GSI1SK: PRODUCT#<id>                │      │
-│  │ GSI2PK: DESIGN#<des_id>     GSI2SK: PRODUCT#<id>                │      │
+│  │ GSI2PK: PRODUCT#ALL         GSI2SK: PRODUCT#<id>                │      │
 │  │                                                                   │      │
 │  │ Attributes:                                                       │      │
 │  │   - name, slug, sku, description                                 │      │
@@ -185,6 +185,18 @@ All entities reside in a single DynamoDB table (`handloom-core`) using a composi
 │  │   - images[], tags[]                                              │      │
 │  │   - quantity, reserved_qty, available_qty, low_stock_threshold   │      │
 │  │   - status (ACTIVE/INACTIVE/DRAFT)                               │      │
+│  └───────────────────────────────────────────────────────────────────┘      │
+│                                                                              │
+│  PRODUCT SKU INDEX (uniqueness enforcement)                                 │
+│  ┌───────────────────────────────────────────────────────────────────┐      │
+│  │ PK: SKU#<sku>                                                     │      │
+│  │ SK: METADATA                                                      │      │
+│  │                                                                   │      │
+│  │ Attributes: product_id, entity_type (PRODUCT_SKU)                 │      │
+│  │                                                                   │      │
+│  │ Created atomically with product via TransactWriteItems            │      │
+│  │ with attribute_not_exists(PK) to guarantee SKU uniqueness.        │      │
+│  │ Enables O(1) SKU lookup: GetItem → product_id → GetByID.         │      │
 │  └───────────────────────────────────────────────────────────────────┘      │
 │                                                                              │
 │  PRODUCT ATTRIBUTE INDEX (for searchable attribute filtering)                │
@@ -234,7 +246,7 @@ All entities reside in a single DynamoDB table (`handloom-core`) using a composi
 │  │   - Users by email: PK=USER_EMAIL, SK=<email>                    │      │
 │  │                                                                   │      │
 │  │ GSI2 (GSI2PK + GSI2SK):                                          │      │
-│  │   - Products by design: PK=DESIGN#<id>, SK begins PRODUCT#       │      │
+│  │   - All products: PK=PRODUCT#ALL, SK begins PRODUCT#              │      │
 │  └───────────────────────────────────────────────────────────────────┘      │
 │                                                                              │
 └─────────────────────────────────────────────────────────────────────────────┘
@@ -340,11 +352,12 @@ Categories are **flat** (no hierarchy). Each category defines its own set of att
 │  ┌─────────────────────────────────────────────────────────────────────┐   │
 │  │                                                                      │   │
 │  │  Standard Filters (on product fields):                              │   │
-│  │    - category_id: GSI1 query (PK=CATEGORY#<id>)                    │   │
-│  │    - design_id: GSI2 query (PK=DESIGN#<id>)                       │   │
+│  │    - category_id: GSI1 query (PK=CATEGORY#<id>, SK begins PRODUCT#)│   │
+│  │    - all products: GSI2 query (PK=PRODUCT#ALL)                     │   │
 │  │    - status, min_price, max_price, in_stock, low_stock: post-filter│   │
-│  │    - search: name/SKU contains (scan with filter)                  │   │
+│  │    - search: name/SKU contains (DynamoDB filter on GSI query)      │   │
 │  │    - material, color: direct field filters                         │   │
+│  │    - sku lookup: GetItem PK=SKU#<sku> (O(1), no scan)             │   │
 │  │                                                                      │   │
 │  │  Dynamic Attribute Filters (attribute_filters param):               │   │
 │  │    - Uses ProductAttributeIndex + GSI1                              │   │
@@ -477,7 +490,7 @@ Categories are **flat** (no hierarchy). Each category defines its own set of att
 │  DynamoDB Configuration:                                                     │
 │  ┌─────────────────────────────────────────────────────────────────────┐   │
 │  │ • Capacity: On-demand                                               │   │
-│  │ • GSI count: 2 (GSI1 multi-purpose, GSI2 design-product)           │   │
+│  │ • GSI count: 2 (GSI1 multi-purpose, GSI2 all-products)             │   │
 │  │ • Batch operations: Max 25 items per BatchWriteItem                 │   │
 │  │ • Atomic ADD for String Sets (CategoryAttributeValues)              │   │
 │  │ • TransactWriteItems for product + attribute index creation         │   │
@@ -491,6 +504,9 @@ Categories are **flat** (no hierarchy). Each category defines its own set of att
 │  │ • Denormalized inventory fields on products                        │   │
 │  │ • Projection expressions to reduce data transfer                    │   │
 │  │ • Connection pooling (reuse DynamoDB client across invocations)    │   │
+│  │ • Cursor-based pagination (DynamoDB-native ExclusiveStartKey)     │   │
+│  │ • O(1) SKU lookup via SKU# uniqueness item (replaces table Scan)  │   │
+│  │ • GSI2 PRODUCT#ALL for all-products listing (single partition)    │   │
 │  └─────────────────────────────────────────────────────────────────────┘   │
 │                                                                              │
 └─────────────────────────────────────────────────────────────────────────────┘

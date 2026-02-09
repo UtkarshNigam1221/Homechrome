@@ -225,8 +225,7 @@ func TestUserService_List(t *testing.T) {
 	t.Run("successful list", func(t *testing.T) {
 		req := domain.ListUsersRequest{
 			PaginationRequest: domain.PaginationRequest{
-				Page:    1,
-				PerPage: 20,
+				Limit: 20,
 			},
 		}
 
@@ -236,10 +235,8 @@ func TestUserService_List(t *testing.T) {
 				{ID: "user_2", Email: "user2@example.com", PasswordHash: "hash2"},
 			},
 			Pagination: domain.PaginationResponse{
-				CurrentPage:1,
-				PerPage:    20,
-				TotalCount: 2,
-				TotalPages: 1,
+				Limit:   20,
+				HasMore: false,
 			},
 		}
 
@@ -262,8 +259,7 @@ func TestUserService_List(t *testing.T) {
 		role := domain.UserRoleAdmin
 		req := domain.ListUsersRequest{
 			PaginationRequest: domain.PaginationRequest{
-				Page:    1,
-				PerPage: 10,
+				Limit: 10,
 			},
 			Role: &role,
 		}
@@ -273,10 +269,8 @@ func TestUserService_List(t *testing.T) {
 				{ID: "user_1", Email: "admin@example.com", Role: domain.UserRoleAdmin, PasswordHash: "hash1"},
 			},
 			Pagination: domain.PaginationResponse{
-				CurrentPage:1,
-				PerPage:    10,
-				TotalCount: 1,
-				TotalPages: 1,
+				Limit:   10,
+				HasMore: false,
 			},
 		}
 

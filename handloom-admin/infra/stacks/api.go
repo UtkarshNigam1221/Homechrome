@@ -5,6 +5,7 @@ import (
 
 	"github.com/aws/aws-cdk-go/awscdk/v2"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awsapigateway"
+	"github.com/aws/aws-cdk-go/awscdk/v2/awsiam"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awslambda"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awslogs"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awss3assets"
@@ -30,8 +31,8 @@ type ServiceLambda struct {
 // APIStack contains the API Gateway and Lambda functions
 type APIStack struct {
 	awscdk.Stack
-	API      awsapigateway.RestApi
-	Lambdas  map[string]*ServiceLambda
+	API     awsapigateway.RestApi
+	Lambdas map[string]*ServiceLambda
 }
 
 // NewAPIStack creates a new API stack
@@ -90,7 +91,7 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 	services := []string{
 		"auth",
 		"user",
-		// "catalog",
+		"catalog",
 		// "order",
 		// "pricing",
 		// "inventory",
@@ -129,16 +130,16 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 		Description: jsii.String("Handloom Admin API"),
 		DeployOptions: &awsapigateway.StageOptions{
 			StageName:            jsii.String(props.Environment),
-			ThrottlingRateLimit:  jsii.Number(50),  // Lower throttle for cost control
-			ThrottlingBurstLimit: jsii.Number(100), // Lower burst for cost control
+			ThrottlingRateLimit:  jsii.Number(50),                      // Lower throttle for cost control
+			ThrottlingBurstLimit: jsii.Number(100),                     // Lower burst for cost control
 			LoggingLevel:         awsapigateway.MethodLoggingLevel_OFF, // Disable logging (CloudWatchRole is false)
-			MetricsEnabled:       jsii.Bool(false), // Disable detailed metrics to save costs
-			TracingEnabled:       jsii.Bool(false), // Disable X-Ray tracing (not free)
+			MetricsEnabled:       jsii.Bool(false),                     // Disable detailed metrics to save costs
+			TracingEnabled:       jsii.Bool(false),                     // Disable X-Ray tracing (not free)
 		},
 		DefaultCorsPreflightOptions: &awsapigateway.CorsOptions{
-			AllowOrigins: awsapigateway.Cors_ALL_ORIGINS(),
-			AllowMethods: awsapigateway.Cors_ALL_METHODS(),
-			AllowHeaders: jsii.Strings("Content-Type", "Authorization", "X-Request-ID"),
+			AllowOrigins:     awsapigateway.Cors_ALL_ORIGINS(),
+			AllowMethods:     awsapigateway.Cors_ALL_METHODS(),
+			AllowHeaders:     jsii.Strings("Content-Type", "Authorization", "X-Request-ID"),
 			AllowCredentials: jsii.Bool(true),
 		},
 		CloudWatchRole: jsii.Bool(false), // Disable CloudWatch role to reduce costs
@@ -189,7 +190,7 @@ func createServiceLambda(
 		FunctionName: jsii.String(fmt.Sprintf("handloom-%s-%s", serviceName, environment)),
 		Runtime:      awslambda.Runtime_PROVIDED_AL2023(),
 		Handler:      jsii.String("bootstrap"),
-		Code: awslambda.Code_FromAsset(jsii.String(fmt.Sprintf("../bin/lambda/%s", serviceName)), &awss3assets.AssetOptions{}),
+		Code:         awslambda.Code_FromAsset(jsii.String(fmt.Sprintf("../bin/lambda/%s", serviceName)), &awss3assets.AssetOptions{}),
 		Architecture: awslambda.Architecture_ARM_64(), // ARM64 is ~20% cheaper than x86
 		MemorySize:   jsii.Number(memorySize),
 		Timeout:      awscdk.Duration_Seconds(jsii.Number(15)), // Reduced timeout for cost efficiency
@@ -200,15 +201,19 @@ func createServiceLambda(
 }
 
 func setupAPIRoutes(api awsapigateway.RestApi, lambdas map[string]*ServiceLambda) {
-	// Health check
+	// Health check - use proxy integration to pass full path
 	health := api.Root().AddResource(jsii.String("health"), nil)
-	health.AddMethod(jsii.String("GET"), awsapigateway.NewLambdaIntegration(lambdas["auth"].Function, nil), nil)
+	health.AddMethod(jsii.String("GET"), awsapigateway.NewLambdaIntegration(lambdas["auth"].Function, &awsapigateway.LambdaIntegrationOptions{
+		Proxy: jsii.Bool(true),
+	}), nil)
 
 	// Admin routes
 	admin := api.Root().AddResource(jsii.String("admin"), nil)
 
-	// Auth routes (no auth required)
-	authIntegration := awsapigateway.NewLambdaIntegration(lambdas["auth"].Function, nil)
+	// Auth routes (no auth required) - use proxy integration
+	authIntegration := awsapigateway.NewLambdaIntegration(lambdas["auth"].Function, &awsapigateway.LambdaIntegrationOptions{
+		Proxy: jsii.Bool(true),
+	})
 	auth := admin.AddResource(jsii.String("auth"), nil)
 	auth.AddResource(jsii.String("login"), nil).AddMethod(jsii.String("POST"), authIntegration, nil)
 	auth.AddResource(jsii.String("refresh"), nil).AddMethod(jsii.String("POST"), authIntegration, nil)
@@ -218,8 +223,10 @@ func setupAPIRoutes(api awsapigateway.RestApi, lambdas map[string]*ServiceLambda
 	password.AddResource(jsii.String("reset-request"), nil).AddMethod(jsii.String("POST"), authIntegration, nil)
 	password.AddResource(jsii.String("reset"), nil).AddMethod(jsii.String("POST"), authIntegration, nil)
 
-	// User routes
-	userIntegration := awsapigateway.NewLambdaIntegration(lambdas["user"].Function, nil)
+	// User routes - use proxy integration
+	userIntegration := awsapigateway.NewLambdaIntegration(lambdas["user"].Function, &awsapigateway.LambdaIntegrationOptions{
+		Proxy: jsii.Bool(true),
+	})
 	users := admin.AddResource(jsii.String("users"), nil)
 	users.AddMethod(jsii.String("GET"), userIntegration, nil)
 	users.AddMethod(jsii.String("POST"), userIntegration, nil)
@@ -229,79 +236,123 @@ func setupAPIRoutes(api awsapigateway.RestApi, lambdas map[string]*ServiceLambda
 	userId.AddMethod(jsii.String("DELETE"), userIntegration, nil)
 	userId.AddResource(jsii.String("status"), nil).AddMethod(jsii.String("PATCH"), userIntegration, nil)
 
+	// Catalog routes (categories, designs, products) - use proxy integration with single wildcard permission
+	// This avoids the Lambda resource policy size limit (20KB) by using a single permission
+	catalogLambda := lambdas["catalog"].Function
+
+	// Add a single permission for all catalog routes (wildcard)
+	catalogLambda.AddPermission(jsii.String("CatalogApiInvoke"), &awslambda.Permission{
+		Principal: awsiam.NewServicePrincipal(jsii.String("apigateway.amazonaws.com"), nil),
+		Action:    jsii.String("lambda:InvokeFunction"),
+		SourceArn: jsii.String(fmt.Sprintf("arn:aws:execute-api:%s:%s:%s/*",
+			*awscdk.Aws_REGION(),
+			*awscdk.Aws_ACCOUNT_ID(),
+			*api.RestApiId(),
+		)),
+	})
+
+	// Create integration without auto-creating permissions (we added one above)
+	catalogIntegration := awsapigateway.NewLambdaIntegration(catalogLambda, &awsapigateway.LambdaIntegrationOptions{
+		Proxy: jsii.Bool(true),
+	})
+
+	// Categories routes - using ANY method with proxy to reduce permissions
+	categories := admin.AddResource(jsii.String("categories"), nil)
+	categories.AddMethod(jsii.String("ANY"), catalogIntegration, &awsapigateway.MethodOptions{})
+	categories.AddProxy(&awsapigateway.ProxyResourceOptions{
+		AnyMethod:          jsii.Bool(true),
+		DefaultIntegration: catalogIntegration,
+	})
+
+	// Designs routes
+	designs := admin.AddResource(jsii.String("designs"), nil)
+	designs.AddMethod(jsii.String("ANY"), catalogIntegration, &awsapigateway.MethodOptions{})
+	designs.AddProxy(&awsapigateway.ProxyResourceOptions{
+		AnyMethod:          jsii.Bool(true),
+		DefaultIntegration: catalogIntegration,
+	})
+
+	// Products routes
+	products := admin.AddResource(jsii.String("products"), nil)
+	products.AddMethod(jsii.String("ANY"), catalogIntegration, &awsapigateway.MethodOptions{})
+	products.AddProxy(&awsapigateway.ProxyResourceOptions{
+		AnyMethod:          jsii.Bool(true),
+		DefaultIntegration: catalogIntegration,
+	})
+
 	// TODO: Uncomment routes as services are implemented
 	/*
-	// API v1 - public routes
-	apiV1 := api.Root().AddResource(jsii.String("api"), nil).AddResource(jsii.String("v1"), nil)
+		// API v1 - public routes
+		apiV1 := api.Root().AddResource(jsii.String("api"), nil).AddResource(jsii.String("v1"), nil)
 
-	// Public pricing
-	pricingPublic := apiV1.AddResource(jsii.String("pricing"), nil)
-	pricingIntegration := awsapigateway.NewLambdaIntegration(lambdas["pricing"].Function, nil)
-	pricingPublic.AddResource(jsii.String("calculate"), nil).AddMethod(jsii.String("POST"), pricingIntegration, nil)
-	pricingPublic.AddResource(jsii.String("dimension-options"), nil).AddResource(jsii.String("{categoryId}"), nil).AddMethod(jsii.String("GET"), pricingIntegration, nil)
-	pricingPublic.AddResource(jsii.String("bulk-calculate"), nil).AddMethod(jsii.String("POST"), pricingIntegration, nil)
+		// Public pricing
+		pricingPublic := apiV1.AddResource(jsii.String("pricing"), nil)
+		pricingIntegration := awsapigateway.NewLambdaIntegration(lambdas["pricing"].Function, nil)
+		pricingPublic.AddResource(jsii.String("calculate"), nil).AddMethod(jsii.String("POST"), pricingIntegration, nil)
+		pricingPublic.AddResource(jsii.String("dimension-options"), nil).AddResource(jsii.String("{categoryId}"), nil).AddMethod(jsii.String("GET"), pricingIntegration, nil)
+		pricingPublic.AddResource(jsii.String("bulk-calculate"), nil).AddMethod(jsii.String("POST"), pricingIntegration, nil)
 
-	// Catalog routes (categories, designs, products)
-	catalogIntegration := awsapigateway.NewLambdaIntegration(lambdas["catalog"].Function, nil)
-	addResourceRoutes(admin.AddResource(jsii.String("categories"), nil), catalogIntegration)
-	addResourceRoutes(admin.AddResource(jsii.String("designs"), nil), catalogIntegration)
-	addResourceRoutes(admin.AddResource(jsii.String("products"), nil), catalogIntegration)
+		// Catalog routes (categories, designs, products)
+		catalogIntegration := awsapigateway.NewLambdaIntegration(lambdas["catalog"].Function, nil)
+		addResourceRoutes(admin.AddResource(jsii.String("categories"), nil), catalogIntegration)
+		addResourceRoutes(admin.AddResource(jsii.String("designs"), nil), catalogIntegration)
+		addResourceRoutes(admin.AddResource(jsii.String("products"), nil), catalogIntegration)
 
-	// Order routes
-	orderIntegration := awsapigateway.NewLambdaIntegration(lambdas["order"].Function, nil)
-	addResourceRoutes(admin.AddResource(jsii.String("orders"), nil), orderIntegration)
-	addResourceRoutes(admin.AddResource(jsii.String("customers"), nil), orderIntegration)
+		// Order routes
+		orderIntegration := awsapigateway.NewLambdaIntegration(lambdas["order"].Function, nil)
+		addResourceRoutes(admin.AddResource(jsii.String("orders"), nil), orderIntegration)
+		addResourceRoutes(admin.AddResource(jsii.String("customers"), nil), orderIntegration)
 
-	// Pricing admin routes
-	pricingAdmin := admin.AddResource(jsii.String("pricing"), nil)
-	pricingRules := pricingAdmin.AddResource(jsii.String("rules"), nil)
-	addResourceRoutes(pricingRules, pricingIntegration)
+		// Pricing admin routes
+		pricingAdmin := admin.AddResource(jsii.String("pricing"), nil)
+		pricingRules := pricingAdmin.AddResource(jsii.String("rules"), nil)
+		addResourceRoutes(pricingRules, pricingIntegration)
 
-	// Inventory routes
-	inventoryIntegration := awsapigateway.NewLambdaIntegration(lambdas["inventory"].Function, nil)
-	addResourceRoutes(admin.AddResource(jsii.String("inventory"), nil), inventoryIntegration)
+		// Inventory routes
+		inventoryIntegration := awsapigateway.NewLambdaIntegration(lambdas["inventory"].Function, nil)
+		addResourceRoutes(admin.AddResource(jsii.String("inventory"), nil), inventoryIntegration)
 
-	// Analytics routes
-	analyticsIntegration := awsapigateway.NewLambdaIntegration(lambdas["analytics"].Function, nil)
-	analytics := admin.AddResource(jsii.String("analytics"), nil)
-	analytics.AddResource(jsii.String("dashboard"), nil).AddMethod(jsii.String("GET"), analyticsIntegration, nil)
-	analytics.AddResource(jsii.String("sales"), nil).AddMethod(jsii.String("GET"), analyticsIntegration, nil)
-	analytics.AddResource(jsii.String("top-products"), nil).AddMethod(jsii.String("GET"), analyticsIntegration, nil)
-	analytics.AddResource(jsii.String("top-categories"), nil).AddMethod(jsii.String("GET"), analyticsIntegration, nil)
-	analytics.AddResource(jsii.String("customers"), nil).AddMethod(jsii.String("GET"), analyticsIntegration, nil)
-	analytics.AddResource(jsii.String("inventory"), nil).AddMethod(jsii.String("GET"), analyticsIntegration, nil)
+		// Analytics routes
+		analyticsIntegration := awsapigateway.NewLambdaIntegration(lambdas["analytics"].Function, nil)
+		analytics := admin.AddResource(jsii.String("analytics"), nil)
+		analytics.AddResource(jsii.String("dashboard"), nil).AddMethod(jsii.String("GET"), analyticsIntegration, nil)
+		analytics.AddResource(jsii.String("sales"), nil).AddMethod(jsii.String("GET"), analyticsIntegration, nil)
+		analytics.AddResource(jsii.String("top-products"), nil).AddMethod(jsii.String("GET"), analyticsIntegration, nil)
+		analytics.AddResource(jsii.String("top-categories"), nil).AddMethod(jsii.String("GET"), analyticsIntegration, nil)
+		analytics.AddResource(jsii.String("customers"), nil).AddMethod(jsii.String("GET"), analyticsIntegration, nil)
+		analytics.AddResource(jsii.String("inventory"), nil).AddMethod(jsii.String("GET"), analyticsIntegration, nil)
 
-	// Notification routes
-	notificationIntegration := awsapigateway.NewLambdaIntegration(lambdas["notification"].Function, nil)
-	addResourceRoutes(admin.AddResource(jsii.String("notifications"), nil), notificationIntegration)
+		// Notification routes
+		notificationIntegration := awsapigateway.NewLambdaIntegration(lambdas["notification"].Function, nil)
+		addResourceRoutes(admin.AddResource(jsii.String("notifications"), nil), notificationIntegration)
 
-	// Coupon routes
-	couponIntegration := awsapigateway.NewLambdaIntegration(lambdas["coupon"].Function, nil)
-	addResourceRoutes(admin.AddResource(jsii.String("coupons"), nil), couponIntegration)
+		// Coupon routes
+		couponIntegration := awsapigateway.NewLambdaIntegration(lambdas["coupon"].Function, nil)
+		addResourceRoutes(admin.AddResource(jsii.String("coupons"), nil), couponIntegration)
 
-	// Artisan routes
-	artisanIntegration := awsapigateway.NewLambdaIntegration(lambdas["artisan"].Function, nil)
-	addResourceRoutes(admin.AddResource(jsii.String("artisans"), nil), artisanIntegration)
+		// Artisan routes
+		artisanIntegration := awsapigateway.NewLambdaIntegration(lambdas["artisan"].Function, nil)
+		addResourceRoutes(admin.AddResource(jsii.String("artisans"), nil), artisanIntegration)
 
-	// Bulk operation routes
-	bulkIntegration := awsapigateway.NewLambdaIntegration(lambdas["bulk"].Function, nil)
-	addResourceRoutes(admin.AddResource(jsii.String("bulk"), nil), bulkIntegration)
+		// Bulk operation routes
+		bulkIntegration := awsapigateway.NewLambdaIntegration(lambdas["bulk"].Function, nil)
+		addResourceRoutes(admin.AddResource(jsii.String("bulk"), nil), bulkIntegration)
 
-	// Asset routes
-	assetIntegration := awsapigateway.NewLambdaIntegration(lambdas["asset"].Function, nil)
-	addResourceRoutes(admin.AddResource(jsii.String("assets"), nil), assetIntegration)
+		// Asset routes
+		assetIntegration := awsapigateway.NewLambdaIntegration(lambdas["asset"].Function, nil)
+		addResourceRoutes(admin.AddResource(jsii.String("assets"), nil), assetIntegration)
 
-	// Report routes
-	reportIntegration := awsapigateway.NewLambdaIntegration(lambdas["report"].Function, nil)
-	addResourceRoutes(admin.AddResource(jsii.String("reports"), nil), reportIntegration)
+		// Report routes
+		reportIntegration := awsapigateway.NewLambdaIntegration(lambdas["report"].Function, nil)
+		addResourceRoutes(admin.AddResource(jsii.String("reports"), nil), reportIntegration)
 
-	// Audit routes
-	auditIntegration := awsapigateway.NewLambdaIntegration(lambdas["audit"].Function, nil)
-	audit := admin.AddResource(jsii.String("audit"), nil)
-	audit.AddMethod(jsii.String("GET"), auditIntegration, nil)
-	audit.AddResource(jsii.String("{id}"), nil).AddMethod(jsii.String("GET"), auditIntegration, nil)
-	audit.AddResource(jsii.String("entity"), nil).AddResource(jsii.String("{type}"), nil).AddResource(jsii.String("{entityId}"), nil).AddMethod(jsii.String("GET"), auditIntegration, nil)
-	audit.AddResource(jsii.String("user"), nil).AddResource(jsii.String("{userId}"), nil).AddMethod(jsii.String("GET"), auditIntegration, nil)
+		// Audit routes
+		auditIntegration := awsapigateway.NewLambdaIntegration(lambdas["audit"].Function, nil)
+		audit := admin.AddResource(jsii.String("audit"), nil)
+		audit.AddMethod(jsii.String("GET"), auditIntegration, nil)
+		audit.AddResource(jsii.String("{id}"), nil).AddMethod(jsii.String("GET"), auditIntegration, nil)
+		audit.AddResource(jsii.String("entity"), nil).AddResource(jsii.String("{type}"), nil).AddResource(jsii.String("{entityId}"), nil).AddMethod(jsii.String("GET"), auditIntegration, nil)
+		audit.AddResource(jsii.String("user"), nil).AddResource(jsii.String("{userId}"), nil).AddMethod(jsii.String("GET"), auditIntegration, nil)
 	*/
 }
 

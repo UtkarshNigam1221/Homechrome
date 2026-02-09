@@ -1,0 +1,191 @@
+// Package config provides application configuration
+package config
+
+import (
+	"context"
+	"os"
+	"strconv"
+	"time"
+
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/ssm"
+)
+
+// Config holds all application configuration
+type Config struct {
+	Server   ServerConfig
+	AWS      AWSConfig
+	DynamoDB DynamoDBConfig
+	JWT      JWTConfig
+	App      AppConfig
+}
+
+// ServerConfig holds server configuration
+type ServerConfig struct {
+	Port         string
+	ReadTimeout  time.Duration
+	WriteTimeout time.Duration
+	IdleTimeout  time.Duration
+}
+
+// AWSConfig holds AWS configuration
+type AWSConfig struct {
+	Region          string
+	AccessKeyID     string
+	SecretAccessKey string
+	Endpoint        string // For local development
+	S3Bucket        string
+	CDNUrl          string
+}
+
+// DynamoDBConfig holds DynamoDB table names
+type DynamoDBConfig struct {
+	CoreTable      string
+	OrdersTable    string
+	AuditTable     string
+	AnalyticsTable string
+}
+
+// JWTConfig holds JWT configuration
+type JWTConfig struct {
+	SecretKey            string
+	AccessTokenDuration  time.Duration
+	RefreshTokenDuration time.Duration
+	Issuer               string
+}
+
+// AppConfig holds application-specific configuration
+type AppConfig struct {
+	Environment      string
+	Debug            bool
+	QuoteValidityHrs int
+}
+
+// Load loads configuration from environment variables
+func Load() *Config {
+	return &Config{
+		Server: ServerConfig{
+			Port:         getEnv("SERVER_PORT", "8080"),
+			ReadTimeout:  getDurationEnv("SERVER_READ_TIMEOUT", 15*time.Second),
+			WriteTimeout: getDurationEnv("SERVER_WRITE_TIMEOUT", 15*time.Second),
+			IdleTimeout:  getDurationEnv("SERVER_IDLE_TIMEOUT", 60*time.Second),
+		},
+		AWS: AWSConfig{
+			Region:          getEnv("AWS_REGION", "ap-south-1"),
+			AccessKeyID:     getEnv("AWS_ACCESS_KEY_ID", ""),
+			SecretAccessKey: getEnv("AWS_SECRET_ACCESS_KEY", ""),
+			Endpoint:        getEnv("AWS_ENDPOINT", ""), // Empty for production
+			S3Bucket:        getEnv("AWS_S3_BUCKET", "handloom-assets"),
+			CDNUrl:          getEnv("AWS_CDN_URL", ""),
+		},
+		DynamoDB: DynamoDBConfig{
+			CoreTable:      getEnv("DYNAMODB_CORE_TABLE", "handloom-core"),
+			OrdersTable:    getEnv("DYNAMODB_ORDERS_TABLE", "handloom-orders"),
+			AuditTable:     getEnv("DYNAMODB_AUDIT_TABLE", "handloom-audit"),
+			AnalyticsTable: getEnv("DYNAMODB_ANALYTICS_TABLE", "handloom-analytics"),
+		},
+		JWT: JWTConfig{
+			SecretKey:            getJWTSecret(),
+			AccessTokenDuration:  getDurationEnv("JWT_ACCESS_TOKEN_DURATION", 15*time.Minute),
+			RefreshTokenDuration: getDurationEnv("JWT_REFRESH_TOKEN_DURATION", 7*24*time.Hour),
+			Issuer:               getEnv("JWT_ISSUER", "handloom-admin"),
+		},
+		App: AppConfig{
+			Environment:      getEnv("APP_ENV", "development"),
+			Debug:            getBoolEnv("APP_DEBUG", true),
+			QuoteValidityHrs: getIntEnv("QUOTE_VALIDITY_HRS", 24),
+		},
+	}
+}
+
+// IsProduction returns true if running in production
+func (c *Config) IsProduction() bool {
+	return c.App.Environment == "production"
+}
+
+// IsDevelopment returns true if running in development
+func (c *Config) IsDevelopment() bool {
+	return c.App.Environment == "development"
+}
+
+// IsLocal returns true if running locally (with local DynamoDB)
+func (c *Config) IsLocal() bool {
+	return c.AWS.Endpoint != ""
+}
+
+func getEnv(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return defaultValue
+}
+
+func getIntEnv(key string, defaultValue int) int {
+	if value := os.Getenv(key); value != "" {
+		if intValue, err := strconv.Atoi(value); err == nil {
+			return intValue
+		}
+	}
+	return defaultValue
+}
+
+func getBoolEnv(key string, defaultValue bool) bool {
+	if value := os.Getenv(key); value != "" {
+		if boolValue, err := strconv.ParseBool(value); err == nil {
+			return boolValue
+		}
+	}
+	return defaultValue
+}
+
+func getDurationEnv(key string, defaultValue time.Duration) time.Duration {
+	if value := os.Getenv(key); value != "" {
+		if duration, err := time.ParseDuration(value); err == nil {
+			return duration
+		}
+	}
+	return defaultValue
+}
+
+// getJWTSecret gets the JWT secret from SSM Parameter Store or environment variable
+func getJWTSecret() string {
+	// First check if we have a direct secret key
+	if secret := os.Getenv("JWT_SECRET_KEY"); secret != "" {
+		return secret
+	}
+
+	// Check if we have an SSM parameter name
+	paramName := os.Getenv("JWT_SECRET_PARAM")
+	if paramName == "" {
+		// Default for local development
+		return "your-super-secret-key-change-in-production"
+	}
+
+	// Fetch from SSM Parameter Store
+	ctx := context.Background()
+	cfg, err := config.LoadDefaultConfig(ctx)
+	if err != nil {
+		// Fall back to default if we can't load AWS config
+		return "your-super-secret-key-change-in-production"
+	}
+
+	ssmClient := ssm.NewFromConfig(cfg)
+	result, err := ssmClient.GetParameter(ctx, &ssm.GetParameterInput{
+		Name:           &paramName,
+		WithDecryption: boolPtr(true),
+	})
+	if err != nil {
+		// Fall back to default if parameter fetch fails
+		return "your-super-secret-key-change-in-production"
+	}
+
+	if result.Parameter != nil && result.Parameter.Value != nil {
+		return *result.Parameter.Value
+	}
+
+	return "your-super-secret-key-change-in-production"
+}
+
+func boolPtr(b bool) *bool {
+	return &b
+}

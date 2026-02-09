@@ -8,20 +8,19 @@ import (
 
 // ==================== PAGINATION ====================
 
-// PaginationRequest contains pagination parameters
+// PaginationRequest contains cursor-based pagination parameters
 type PaginationRequest struct {
-	Page    int    `json:"page"`
-	PerPage int    `json:"per_page"`
+	Limit   int    `json:"limit"`
+	Cursor  string `json:"cursor,omitempty"`   // base64-encoded ExclusiveStartKey
 	SortBy  string `json:"sort_by,omitempty"`
 	SortDir string `json:"sort_dir,omitempty"` // asc or desc
 }
 
-// PaginationResponse contains pagination metadata
+// PaginationResponse contains cursor-based pagination metadata
 type PaginationResponse struct {
-	CurrentPage int   `json:"current_page"`
-	PerPage     int   `json:"per_page"`
-	TotalCount  int64 `json:"total_count"`
-	TotalPages  int   `json:"total_pages"`
+	Limit      int    `json:"limit"`
+	NextCursor string `json:"next_cursor,omitempty"`
+	HasMore    bool   `json:"has_more"`
 }
 
 // ==================== USER REPOSITORY ====================
@@ -156,8 +155,8 @@ type ProductRepository interface {
 	// Delete deletes a product by ID
 	Delete(ctx context.Context, id string) error
 
-	// DeleteWithAttributeIndexes deletes a product and its attribute indexes
-	DeleteWithAttributeIndexes(ctx context.Context, id string, categoryID string, searchableAttrs map[string][]string) error
+	// DeleteWithAttributeIndexes deletes a product, its SKU uniqueness item, and its attribute indexes
+	DeleteWithAttributeIndexes(ctx context.Context, id string, sku string, searchableAttrs map[string][]string) error
 
 	// List retrieves products with filters
 	List(ctx context.Context, req ListProductsRequest) (*ListProductsResponse, error)

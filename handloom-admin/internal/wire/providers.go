@@ -11,6 +11,7 @@ import (
 	"github.com/handloom/admin/internal/middleware"
 	"github.com/handloom/admin/internal/repository/dynamodb"
 	"github.com/handloom/admin/internal/service"
+	"github.com/handloom/admin/internal/validator"
 	"github.com/handloom/admin/pkg/logger"
 )
 
@@ -364,32 +365,36 @@ var ServiceSet = wire.NewSet(
 func ProvideAuthHandler(
 	authService *service.AuthService,
 	log *logger.Logger,
+	validation *middleware.Validation,
 ) *handler.AuthHandler {
-	return handler.NewAuthHandler(authService, log)
+	return handler.NewAuthHandler(authService, log, validation)
 }
 
 // ProvideUserHandler creates a new UserHandler
 func ProvideUserHandler(
 	userService *service.UserService,
 	log *logger.Logger,
+	validation *middleware.Validation,
 ) *handler.UserHandler {
-	return handler.NewUserHandler(userService, log)
+	return handler.NewUserHandler(userService, log, validation)
 }
 
 // ProvideCategoryHandler creates a new CategoryHandler
 func ProvideCategoryHandler(
 	categoryService *service.CategoryService,
 	log *logger.Logger,
+	validation *middleware.Validation,
 ) *handler.CategoryHandler {
-	return handler.NewCategoryHandler(categoryService, log)
+	return handler.NewCategoryHandler(categoryService, log, validation)
 }
 
 // ProvideDesignHandler creates a new DesignHandler
 func ProvideDesignHandler(
 	designService *service.DesignService,
 	log *logger.Logger,
+	validation *middleware.Validation,
 ) *handler.DesignHandler {
-	return handler.NewDesignHandler(designService, log)
+	return handler.NewDesignHandler(designService, log, validation)
 }
 
 // ProvideProductHandler creates a new ProductHandler
@@ -397,8 +402,9 @@ func ProvideProductHandler(
 	productService *service.ProductService,
 	inventoryService *service.InventoryService,
 	log *logger.Logger,
+	validation *middleware.Validation,
 ) *handler.ProductHandler {
-	return handler.NewProductHandler(productService, inventoryService, log)
+	return handler.NewProductHandler(productService, inventoryService, log, validation)
 }
 
 // ProvideInventoryHandler creates a new InventoryHandler
@@ -413,24 +419,27 @@ func ProvideInventoryHandler(
 func ProvideOrderHandler(
 	orderService *service.OrderService,
 	log *logger.Logger,
+	validation *middleware.Validation,
 ) *handler.OrderHandler {
-	return handler.NewOrderHandler(orderService, log)
+	return handler.NewOrderHandler(orderService, log, validation)
 }
 
 // ProvideCustomerHandler creates a new CustomerHandler
 func ProvideCustomerHandler(
 	customerService *service.CustomerService,
 	log *logger.Logger,
+	validation *middleware.Validation,
 ) *handler.CustomerHandler {
-	return handler.NewCustomerHandler(customerService, log)
+	return handler.NewCustomerHandler(customerService, log, validation)
 }
 
 // ProvidePricingHandler creates a new PricingHandler
 func ProvidePricingHandler(
 	pricingService *service.PricingService,
 	log *logger.Logger,
+	validation *middleware.Validation,
 ) *handler.PricingHandler {
-	return handler.NewPricingHandler(pricingService, log)
+	return handler.NewPricingHandler(pricingService, log, validation)
 }
 
 // ProvideAnalyticsHandler creates a new AnalyticsHandler
@@ -443,43 +452,49 @@ func ProvideAnalyticsHandler(
 // ProvideNotificationHandler creates a new NotificationHandler
 func ProvideNotificationHandler(
 	notificationService *service.NotificationService,
+	validation *middleware.Validation,
 ) *handler.NotificationHandler {
-	return handler.NewNotificationHandler(notificationService)
+	return handler.NewNotificationHandler(notificationService, validation)
 }
 
 // ProvideCouponHandler creates a new CouponHandler
 func ProvideCouponHandler(
 	couponService *service.CouponService,
+	validation *middleware.Validation,
 ) *handler.CouponHandler {
-	return handler.NewCouponHandler(couponService)
+	return handler.NewCouponHandler(couponService, validation)
 }
 
 // ProvideArtisanHandler creates a new ArtisanHandler
 func ProvideArtisanHandler(
 	artisanService *service.ArtisanService,
+	validation *middleware.Validation,
 ) *handler.ArtisanHandler {
-	return handler.NewArtisanHandler(artisanService)
+	return handler.NewArtisanHandler(artisanService, validation)
 }
 
 // ProvideBulkHandler creates a new BulkHandler
 func ProvideBulkHandler(
 	bulkService *service.BulkService,
+	validation *middleware.Validation,
 ) *handler.BulkHandler {
-	return handler.NewBulkHandler(bulkService)
+	return handler.NewBulkHandler(bulkService, validation)
 }
 
 // ProvideAssetHandler creates a new AssetHandler
 func ProvideAssetHandler(
 	assetService *service.AssetService,
+	validation *middleware.Validation,
 ) *handler.AssetHandler {
-	return handler.NewAssetHandler(assetService)
+	return handler.NewAssetHandler(assetService, validation)
 }
 
 // ProvideReportHandler creates a new ReportHandler
 func ProvideReportHandler(
 	reportService *service.ReportService,
+	validation *middleware.Validation,
 ) *handler.ReportHandler {
-	return handler.NewReportHandler(reportService)
+	return handler.NewReportHandler(reportService, validation)
 }
 
 // ProvideAuditHandler creates a new AuditHandler
@@ -522,7 +537,19 @@ func ProvideAuthMiddleware(
 	return middleware.NewAuth(authService, log)
 }
 
+// ProvideValidation creates the Validation middleware
+func ProvideValidation(v *validator.Service) *middleware.Validation {
+	return middleware.NewValidation(v, middleware.ValidationConfig{})
+}
+
+// ProvideValidator creates the validator service
+func ProvideValidator() *validator.Service {
+	return validator.New()
+}
+
 // MiddlewareSet contains all middleware providers
 var MiddlewareSet = wire.NewSet(
 	ProvideAuthMiddleware,
+	ProvideValidator,
+	ProvideValidation,
 )

@@ -19,25 +19,25 @@ import {
   TableLoading,
   TableRow,
 } from '../../components/common';
+import { useCursorPagination } from '../../hooks';
 import type { Product } from '../../types';
 import { StockAdjustmentModal } from './StockAdjustmentModal';
 
 export function InventoryPage() {
-  const [page, setPage] = useState(1);
-  const [perPage, setPerPage] = useState(10);
+  const { limit, cursor, hasPrevious, goToNextPage, goToPreviousPage, resetPagination, changeLimit } = useCursorPagination(10);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [adjustmentType, setAdjustmentType] = useState<'ADD' | 'REMOVE' | 'ADJUST'>('ADD');
   const [showAdjustmentModal, setShowAdjustmentModal] = useState(false);
 
   const { data: lowStockData } = useQuery({
-    queryKey: ['low-stock', { page, limit: perPage }],
-    queryFn: () => inventoryApi.getLowStock({ page, limit: perPage }),
+    queryKey: ['low-stock', { limit, cursor }],
+    queryFn: () => inventoryApi.getLowStock({ limit, cursor }),
   });
 
   const { data: productsData, isLoading: productsLoading } = useQuery({
-    queryKey: ['products-inventory', { page, limit: perPage, search: searchQuery }],
-    queryFn: () => productsApi.list({ page, limit: perPage, search: searchQuery || undefined }),
+    queryKey: ['products-inventory', { limit, cursor, search: searchQuery }],
+    queryFn: () => productsApi.list({ limit, cursor, search: searchQuery || undefined }),
   });
 
   // Handle various response formats from the API
@@ -98,7 +98,7 @@ export function InventoryPage() {
         />
         <StatCard
           title="Total Products"
-          value={pagination?.total_count || 0}
+          value={products.length}
           icon={<Package className="w-6 h-6" />}
         />
       </div>
@@ -110,7 +110,7 @@ export function InventoryPage() {
           value={searchQuery}
           onChange={(e) => {
             setSearchQuery(e.target.value);
-            setPage(1);
+            resetPagination();
           }}
           leftIcon={<Search className="w-4 h-4" />}
         />
@@ -218,18 +218,16 @@ export function InventoryPage() {
             )}
           </TableBody>
         </Table>
-        {pagination && pagination.total_pages > 1 && (
+        {(pagination?.has_more || hasPrevious) && (
           <div className="border-t border-gray-200 px-6">
             <Pagination
-              currentPage={pagination.current_page}
-              totalPages={pagination.total_pages}
-              totalCount={pagination.total_count}
-              perPage={pagination.per_page}
-              onPageChange={setPage}
-              onPerPageChange={(v) => {
-                setPerPage(v);
-                setPage(1);
-              }}
+              hasMore={pagination?.has_more ?? false}
+              hasPrevious={hasPrevious}
+              perPage={limit}
+              onNextPage={() => pagination?.next_cursor && goToNextPage(pagination.next_cursor)}
+              onPreviousPage={goToPreviousPage}
+              onPerPageChange={changeLimit}
+              itemCount={products.length}
             />
           </div>
         )}

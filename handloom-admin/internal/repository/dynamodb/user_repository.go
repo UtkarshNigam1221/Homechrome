@@ -149,84 +149,119 @@ func (r *UserRepository) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
-// List retrieves users with pagination and filters
+// List retrieves users with cursor-based pagination using GSI1.
 func (r *UserRepository) List(ctx context.Context, req domain.ListUsersRequest) (*domain.ListUsersResponse, error) {
-	// Build filter expression
-	filterBuilder := expression.Name("entity_type").Equal(expression.Value("USER"))
+	limit := DefaultLimit(req.Limit)
 
+	exclusiveStartKey, err := DecodeCursor(req.Cursor)
+	if err != nil {
+		return nil, err
+	}
+
+	// Query GSI1 using USER_EMAIL partition key (all users share this GSI1PK)
+	keyExpr := expression.Key("GSI1PK").Equal(expression.Value("USER_EMAIL"))
+	builder := expression.NewBuilder().WithKeyCondition(keyExpr)
+
+	// Build filter expression for role, status, search
+	hasFilter := false
+	var filterExpr expression.ConditionBuilder
 	if req.Role != nil {
-		filterBuilder = filterBuilder.And(expression.Name("role").Equal(expression.Value(*req.Role)))
+		filterExpr = expression.Name("role").Equal(expression.Value(string(*req.Role)))
+		hasFilter = true
 	}
-
 	if req.Status != nil {
-		filterBuilder = filterBuilder.And(expression.Name("status").Equal(expression.Value(*req.Status)))
+		f := expression.Name("status").Equal(expression.Value(string(*req.Status)))
+		if hasFilter {
+			filterExpr = filterExpr.And(f)
+		} else {
+			filterExpr = f
+			hasFilter = true
+		}
 	}
-
 	if req.Search != "" {
-		// Search in email, first_name, last_name
-		searchFilter := expression.Name("email").Contains(req.Search).
+		f := expression.Name("email").Contains(req.Search).
 			Or(expression.Name("first_name").Contains(req.Search)).
 			Or(expression.Name("last_name").Contains(req.Search))
-		filterBuilder = filterBuilder.And(searchFilter)
+		if hasFilter {
+			filterExpr = filterExpr.And(f)
+		} else {
+			filterExpr = f
+			hasFilter = true
+		}
 	}
 
-	expr, err := expression.NewBuilder().WithFilter(filterBuilder).Build()
+	if hasFilter {
+		builder = builder.WithFilter(filterExpr)
+	}
+
+	expr, err := builder.Build()
 	if err != nil {
 		return nil, errors.Internal("Failed to build query expression")
 	}
 
-	// Scan for users (in production, consider using a GSI for better performance)
-	input := &dynamodb.ScanInput{
-		TableName:                 aws.String(r.client.coreTable),
-		FilterExpression:          expr.Filter(),
-		ExpressionAttributeNames:  expr.Names(),
-		ExpressionAttributeValues: expr.Values(),
+	// Over-fetch when filters are active to reduce round-trips
+	fetchLimit := int32(limit)
+	if hasFilter {
+		fetchLimit = int32(limit * 3)
+		if fetchLimit > 300 {
+			fetchLimit = 300
+		}
 	}
 
-	result, err := r.client.db.Scan(ctx, input)
-	if err != nil {
-		return nil, errors.Wrap(err, "Failed to list users")
+	var collected []*domain.User
+	var lastEvaluatedKey map[string]types.AttributeValue
+	currentStartKey := exclusiveStartKey
+
+	for {
+		queryInput := &dynamodb.QueryInput{
+			TableName:                 aws.String(r.client.coreTable),
+			IndexName:                 aws.String("GSI1"),
+			KeyConditionExpression:    expr.KeyCondition(),
+			ExpressionAttributeNames:  expr.Names(),
+			ExpressionAttributeValues: expr.Values(),
+			Limit:                     aws.Int32(fetchLimit),
+			ExclusiveStartKey:         currentStartKey,
+		}
+		if expr.Filter() != nil {
+			queryInput.FilterExpression = expr.Filter()
+		}
+
+		result, err := r.client.db.Query(ctx, queryInput)
+		if err != nil {
+			return nil, errors.Wrap(err, "Failed to list users")
+		}
+
+		var batch []*domain.User
+		if err := attributevalue.UnmarshalListOfMaps(result.Items, &batch); err != nil {
+			return nil, errors.Internal("Failed to unmarshal users")
+		}
+
+		collected = append(collected, batch...)
+		lastEvaluatedKey = result.LastEvaluatedKey
+
+		if len(collected) >= limit || lastEvaluatedKey == nil {
+			break
+		}
+
+		currentStartKey = lastEvaluatedKey
 	}
 
-	var users []*domain.User
-	if err := attributevalue.UnmarshalListOfMaps(result.Items, &users); err != nil {
-		return nil, errors.Internal("Failed to unmarshal users")
-	}
-
-	// Manual pagination
-	totalCount := int64(len(users))
-	perPage := req.PerPage
-	if perPage <= 0 {
-		perPage = 20
-	}
-	page := req.Page
-	if page <= 0 {
-		page = 1
-	}
-
-	start := (page - 1) * perPage
-	end := start + perPage
-	if start >= int(totalCount) {
-		users = []*domain.User{}
-	} else if end > int(totalCount) {
-		users = users[start:]
-	} else {
-		users = users[start:end]
-	}
-
-	totalPages := int(totalCount) / perPage
-	if int(totalCount)%perPage > 0 {
-		totalPages++
+	// Trim to exactly limit items if we over-collected
+	if len(collected) > limit {
+		collected = collected[:limit]
+		// Build cursor from the last returned item's keys
+		last := collected[limit-1]
+		lastEvaluatedKey = map[string]types.AttributeValue{
+			"PK":     &types.AttributeValueMemberS{Value: last.PK},
+			"SK":     &types.AttributeValueMemberS{Value: last.SK},
+			"GSI1PK": &types.AttributeValueMemberS{Value: last.GSI1PK},
+			"GSI1SK": &types.AttributeValueMemberS{Value: last.GSI1SK},
+		}
 	}
 
 	return &domain.ListUsersResponse{
-		Users: users,
-		Pagination: domain.PaginationResponse{
-			CurrentPage: page,
-			PerPage:     perPage,
-			TotalCount:  totalCount,
-			TotalPages:  totalPages,
-		},
+		Users:      collected,
+		Pagination: BuildPaginationResponse(limit, lastEvaluatedKey),
 	}, nil
 }
 

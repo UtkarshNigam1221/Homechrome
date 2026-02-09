@@ -16,11 +16,4 @@ func NewUserRouter(r *chi.Mux, h *handler.UserHandler, authMiddleware *middlewar
 		r.Use(authMiddleware.RequireRole(domain.UserRoleAdmin))
 		r.Mount("/", h.Routes())
 	})
-
-	// Also support /users/* for local development (without /admin prefix)
-	r.Route("/users", func(r chi.Router) {
-		// All user routes require admin role
-		r.Use(authMiddleware.RequireRole(domain.UserRoleAdmin))
-		r.Mount("/", h.Routes())
-	})
 }

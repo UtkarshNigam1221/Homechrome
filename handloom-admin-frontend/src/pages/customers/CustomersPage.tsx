@@ -23,13 +23,13 @@ import {
   TableLoading,
   TableRow,
 } from '../../components/common';
+import { useCursorPagination } from '../../hooks';
 import type { Customer } from '../../types';
 import { CustomerFormModal } from './CustomerFormModal';
 
 export function CustomersPage() {
   const queryClient = useQueryClient();
-  const [page, setPage] = useState(1);
-  const [perPage, setPerPage] = useState(10);
+  const { limit, cursor, hasPrevious, goToNextPage, goToPreviousPage, resetPagination, changeLimit } = useCursorPagination(10);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [deleteCustomer, setDeleteCustomer] = useState<Customer | null>(null);
@@ -38,11 +38,11 @@ export function CustomersPage() {
 
   // Fetch customers
   const { data: customersData, isLoading } = useQuery({
-    queryKey: ['customers', { page, limit: perPage, search: searchQuery }],
+    queryKey: ['customers', { limit, cursor, search: searchQuery }],
     queryFn: () =>
       customersApi.list({
-        page,
-        limit: perPage,
+        limit,
+        cursor,
         search: searchQuery || undefined,
       }),
   });
@@ -101,7 +101,7 @@ export function CustomersPage() {
           value={searchQuery}
           onChange={(e) => {
             setSearchQuery(e.target.value);
-            setPage(1);
+            resetPagination();
           }}
           leftIcon={<Search className="w-4 h-4" />}
         />
@@ -223,18 +223,16 @@ export function CustomersPage() {
           </TableBody>
         </Table>
 
-        {pagination && pagination.total_pages > 1 && (
+        {(pagination?.has_more || hasPrevious) && (
           <div className="border-t border-gray-200 px-6">
             <Pagination
-              currentPage={pagination.current_page}
-              totalPages={pagination.total_pages}
-              totalCount={pagination.total_count}
-              perPage={pagination.per_page}
-              onPageChange={setPage}
-              onPerPageChange={(newPerPage) => {
-                setPerPage(newPerPage);
-                setPage(1);
-              }}
+              hasMore={pagination?.has_more ?? false}
+              hasPrevious={hasPrevious}
+              perPage={limit}
+              onNextPage={() => pagination?.next_cursor && goToNextPage(pagination.next_cursor)}
+              onPreviousPage={goToPreviousPage}
+              onPerPageChange={changeLimit}
+              itemCount={customers.length}
             />
           </div>
         )}

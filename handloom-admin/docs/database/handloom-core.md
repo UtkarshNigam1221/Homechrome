@@ -60,7 +60,7 @@ Admin portal users with role-based access control.
 |---------|---------------|
 | Get user by ID | PK = `USER#<id>`, SK = `METADATA` |
 | Get user by email | GSI1: GSI1PK = `USER_EMAIL`, GSI1SK = `<email>` |
-| List all users | Scan with PK begins_with `USER#` |
+| List all users | GSI1: GSI1PK = `USER_EMAIL` (cursor pagination) |
 
 ---
 
@@ -134,8 +134,7 @@ Hierarchical product categories with custom attributes.
 | Pattern | Key Condition |
 |---------|---------------|
 | Get category by ID | PK = `CATEGORY#<id>`, SK = `METADATA` |
-| Get root categories | GSI1: GSI1PK = `CATEGORY#ROOT` |
-| Get child categories | GSI1: GSI1PK = `CATEGORY#<parent_id>` |
+| List all categories | GSI1: GSI1PK = `CATEGORY#ALL` (cursor pagination) |
 
 ---
 
@@ -202,7 +201,7 @@ Individual products with inventory and pricing.
 | SK | `METADATA` | `METADATA` |
 | GSI1PK | `CATEGORY#<category_id>` | `CATEGORY#cat-001` |
 | GSI1SK | `PRODUCT#<id>` | `PRODUCT#prod-001` |
-| GSI2PK | `DESIGN#<design_id>` | `DESIGN#des-001` |
+| GSI2PK | `PRODUCT#ALL` | `PRODUCT#ALL` |
 | GSI2SK | `PRODUCT#<id>` | `PRODUCT#prod-001` |
 
 #### Attributes
@@ -251,12 +250,39 @@ Individual products with inventory and pricing.
 | Pattern | Key Condition |
 |---------|---------------|
 | Get product by ID | PK = `PRODUCT#<id>`, SK = `METADATA` |
-| Get products by category | GSI1: GSI1PK = `CATEGORY#<category_id>` |
-| Get products by design | GSI2: GSI2PK = `DESIGN#<design_id>` |
+| Get products by category | GSI1: GSI1PK = `CATEGORY#<category_id>`, GSI1SK begins_with `PRODUCT#` (cursor pagination) |
+| List all products | GSI2: GSI2PK = `PRODUCT#ALL` (cursor pagination) |
+| Get product by SKU | PK = `SKU#<sku>`, SK = `METADATA` → GetItem returns `product_id` → GetByID |
 
 ---
 
-### 5. Inventory
+### 5. Product SKU Index
+
+Uniqueness enforcement item for product SKUs. Created atomically with the product via TransactWriteItems with `attribute_not_exists(PK)` to guarantee SKU uniqueness without a Scan.
+
+#### Key Structure
+
+| Key | Pattern | Example |
+|-----|---------|---------|
+| PK | `SKU#<sku>` | `SKU#prod_a1b2c3d4` |
+| SK | `METADATA` | `METADATA` |
+
+#### Attributes
+
+| Attribute | Type | Required | Description |
+|-----------|------|----------|-------------|
+| product_id | String | Yes | The product ID this SKU belongs to |
+| entity_type | String | Yes | Always `PRODUCT_SKU` |
+
+#### Access Patterns
+
+| Pattern | Key Condition |
+|---------|---------------|
+| Get product by SKU | PK = `SKU#<sku>`, SK = `METADATA` → returns `product_id` |
+
+---
+
+### 6. Inventory
 
 Detailed inventory tracking with transaction history.
 
@@ -288,7 +314,7 @@ Detailed inventory tracking with transaction history.
 
 ---
 
-### 6. Inventory Transaction
+### 7. Inventory Transaction
 
 Time-ordered transaction history for inventory changes.
 
@@ -324,7 +350,7 @@ Time-ordered transaction history for inventory changes.
 
 ---
 
-### 7. Pricing Rule
+### 8. Pricing Rule
 
 Dynamic pricing rules for products and categories.
 
@@ -401,7 +427,7 @@ Dynamic pricing rules for products and categories.
 
 ---
 
-### 8. Coupon
+### 9. Coupon
 
 Discount coupons with usage tracking.
 
@@ -443,7 +469,7 @@ Discount coupons with usage tracking.
 
 ---
 
-### 9. Coupon Usage
+### 10. Coupon Usage
 
 Track individual coupon redemptions.
 
@@ -468,7 +494,7 @@ Track individual coupon redemptions.
 
 ---
 
-### 10. Artisan
+### 11. Artisan
 
 Craftspeople who create products.
 
@@ -522,7 +548,7 @@ Craftspeople who create products.
 
 ---
 
-### 11. Artisan Payout
+### 12. Artisan Payout
 
 Payment records for artisans.
 
@@ -554,7 +580,7 @@ Payment records for artisans.
 
 ---
 
-### 12. Asset
+### 13. Asset
 
 Media and document storage metadata.
 
@@ -604,7 +630,7 @@ Media and document storage metadata.
 
 ---
 
-### 13. Bulk Job
+### 14. Bulk Job
 
 Batch operation tracking.
 
@@ -653,7 +679,7 @@ Batch operation tracking.
 
 ---
 
-### 14. Notification
+### 15. Notification
 
 System notifications and alerts.
 
@@ -692,7 +718,7 @@ System notifications and alerts.
 
 ---
 
-### 15. Notification Template
+### 16. Notification Template
 
 Reusable notification templates.
 
@@ -721,7 +747,7 @@ Reusable notification templates.
 
 ---
 
-### 16. Report
+### 17. Report
 
 Generated report tracking.
 

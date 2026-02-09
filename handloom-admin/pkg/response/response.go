@@ -25,10 +25,9 @@ type ErrorBody struct {
 
 // Meta contains pagination and other metadata
 type Meta struct {
-	CurrentPage int   `json:"current_page,omitempty"`
-	PerPage     int   `json:"per_page,omitempty"`
-	TotalCount  int64 `json:"total_count,omitempty"`
-	TotalPages  int   `json:"total_pages,omitempty"`
+	Limit      int    `json:"limit,omitempty"`
+	NextCursor string `json:"next_cursor,omitempty"`
+	HasMore    bool   `json:"has_more"`
 }
 
 // JSON sends a JSON response

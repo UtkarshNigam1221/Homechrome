@@ -90,15 +90,6 @@ func RequireValidatedBody(next http.Handler) http.Handler {
 	})
 }
 
-// GetValidatedBody retrieves the validated request body from context.
-// Generic function for type-safe retrieval.
-//
-// Usage:
-//
-//	req, ok := middleware.GetValidatedBody[dto.LoginRequest](r.Context())
-//	if !ok {
-//	    // Handle error
-//	}
 func GetValidatedBody[T any](ctx context.Context) (*T, bool) {
 	v := ctx.Value(RequestBodyKey)
 	if v == nil {

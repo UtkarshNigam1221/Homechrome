@@ -11,6 +11,7 @@ import (
 	"github.com/handloom/admin/internal/repository/dynamodb"
 	"github.com/handloom/admin/internal/router"
 	"github.com/handloom/admin/internal/service"
+	"github.com/handloom/admin/internal/validator"
 	"github.com/handloom/admin/pkg/logger"
 )
 
@@ -47,8 +48,12 @@ func main() {
 	)
 	userService := service.NewUserService(userRepo, log)
 
+	// Initialize validation middleware
+	v := validator.New()
+	validation := middleware.NewValidation(v, middleware.ValidationConfig{})
+
 	// Initialize handler
-	userHandler := handler.NewUserHandler(userService, log)
+	userHandler := handler.NewUserHandler(userService, log, validation)
 
 	// Initialize auth middleware
 	authMiddleware := middleware.NewAuth(authService, log)

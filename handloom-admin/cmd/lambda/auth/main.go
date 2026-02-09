@@ -7,9 +7,11 @@ import (
 
 	"github.com/handloom/admin/internal/config"
 	"github.com/handloom/admin/internal/handler"
+	"github.com/handloom/admin/internal/middleware"
 	"github.com/handloom/admin/internal/repository/dynamodb"
 	"github.com/handloom/admin/internal/router"
 	"github.com/handloom/admin/internal/service"
+	"github.com/handloom/admin/internal/validator"
 	"github.com/handloom/admin/pkg/logger"
 )
 
@@ -45,8 +47,12 @@ func main() {
 		cfg.JWT.Issuer,
 	)
 
+	// Initialize validation middleware
+	v := validator.New()
+	validation := middleware.NewValidation(v, middleware.ValidationConfig{})
+
 	// Initialize handler
-	authHandler := handler.NewAuthHandler(authService, log)
+	authHandler := handler.NewAuthHandler(authService, log, validation)
 
 	// Create router
 	routerCfg := router.Config{

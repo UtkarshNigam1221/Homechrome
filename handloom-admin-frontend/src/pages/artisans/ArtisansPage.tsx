@@ -21,21 +21,21 @@ import {
   TableLoading,
   TableRow,
 } from '../../components/common';
+import { useCursorPagination } from '../../hooks';
 import type { Artisan } from '../../types';
 import { ArtisanFormModal } from './ArtisanFormModal';
 
 export function ArtisansPage() {
   const queryClient = useQueryClient();
-  const [page, setPage] = useState(1);
-  const [perPage, setPerPage] = useState(10);
+  const { limit, cursor, hasPrevious, goToNextPage, goToPreviousPage, resetPagination, changeLimit } = useCursorPagination(10);
   const [searchQuery, setSearchQuery] = useState('');
   const [showFormModal, setShowFormModal] = useState(false);
   const [editingArtisan, setEditingArtisan] = useState<Artisan | null>(null);
   const [deleteArtisan, setDeleteArtisan] = useState<Artisan | null>(null);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['artisans', { page, limit: perPage, search: searchQuery }],
-    queryFn: () => artisansApi.list({ page, limit: perPage, search: searchQuery || undefined }),
+    queryKey: ['artisans', { limit, cursor, search: searchQuery }],
+    queryFn: () => artisansApi.list({ limit, cursor, search: searchQuery || undefined }),
   });
 
   // Delete mutation
@@ -90,7 +90,7 @@ export function ArtisansPage() {
           value={searchQuery}
           onChange={(e) => {
             setSearchQuery(e.target.value);
-            setPage(1);
+            resetPagination();
           }}
           leftIcon={<Search className="w-4 h-4" />}
         />
@@ -200,18 +200,16 @@ export function ArtisansPage() {
             )}
           </TableBody>
         </Table>
-        {pagination && pagination.total_pages > 1 && (
+        {(pagination?.has_more || hasPrevious) && (
           <div className="border-t border-gray-200 px-6">
             <Pagination
-              currentPage={pagination.current_page}
-              totalPages={pagination.total_pages}
-              totalCount={pagination.total_count}
-              perPage={pagination.per_page}
-              onPageChange={setPage}
-              onPerPageChange={(v) => {
-                setPerPage(v);
-                setPage(1);
-              }}
+              hasMore={pagination?.has_more ?? false}
+              hasPrevious={hasPrevious}
+              perPage={limit}
+              onNextPage={() => pagination?.next_cursor && goToNextPage(pagination.next_cursor)}
+              onPreviousPage={goToPreviousPage}
+              onPerPageChange={changeLimit}
+              itemCount={artisans.length}
             />
           </div>
         )}

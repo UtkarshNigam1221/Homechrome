@@ -1,24 +1,39 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useEffect } from 'react';
-import { useForm } from 'react-hook-form';
+import { Plus, Trash2 } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { useFieldArray, useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
 import { z } from 'zod';
 
 import { categoriesApi, getErrorMessage } from '../../api';
 import { Button, Input, Modal, Select } from '../../components/common';
-import type { Category, CreateCategoryRequest } from '../../types';
+import type { AttributeType, Category, CategoryAttribute, CreateCategoryRequest } from '../../types';
+
+const attributeOptionSchema = z.object({
+  value: z.string().min(1, 'Value is required'),
+  label: z.string().min(1, 'Label is required'),
+  surcharge: z.number().optional(),
+});
+
+const attributeSchema = z.object({
+  name: z
+    .string()
+    .min(1, 'Name is required')
+    .regex(/^[a-z0-9_]+$/, 'Name must be lowercase letters, numbers, and underscores only'),
+  label: z.string().min(1, 'Label is required'),
+  type: z.enum(['SELECT', 'MULTI_SELECT', 'TEXT', 'NUMBER', 'BOOLEAN', 'DIMENSION', 'DIMENSION_RANGE'] as const),
+  required: z.boolean(),
+  searchable: z.boolean(),
+  display_order: z.number(),
+  options: z.array(attributeOptionSchema).optional(),
+});
 
 const categorySchema = z.object({
   name: z.string().min(1, 'Name is required').max(100, 'Name must be less than 100 characters'),
-  slug: z
-    .string()
-    .min(1, 'Slug is required')
-    .regex(/^[a-z0-9-]+$/, 'Slug must be lowercase letters, numbers, and hyphens only'),
   description: z.string().optional(),
-  parent_id: z.string().optional(),
   status: z.enum(['ACTIVE', 'INACTIVE']),
-  allow_custom_dimensions: z.boolean(),
+  own_attributes: z.array(attributeSchema).optional(),
 });
 
 type CategoryFormData = z.infer<typeof categorySchema>;
@@ -27,21 +42,25 @@ interface CategoryFormModalProps {
   isOpen: boolean;
   onClose: () => void;
   category?: Category | null;
-  categories: Category[];
 }
 
-export function CategoryFormModal({
-  isOpen,
-  onClose,
-  category,
-  categories,
-}: CategoryFormModalProps) {
+const ATTRIBUTE_TYPES: { value: AttributeType; label: string }[] = [
+  { value: 'SELECT', label: 'Single Select' },
+  { value: 'MULTI_SELECT', label: 'Multi Select' },
+  { value: 'TEXT', label: 'Text' },
+  { value: 'NUMBER', label: 'Number' },
+  { value: 'BOOLEAN', label: 'Yes/No' },
+];
+
+export function CategoryFormModal({ isOpen, onClose, category }: CategoryFormModalProps) {
   const queryClient = useQueryClient();
   const isEditing = !!category?.id;
+  const [activeTab, setActiveTab] = useState<'basic' | 'attributes'>('basic');
 
   const {
     register,
     handleSubmit,
+    control,
     reset,
     watch,
     setValue,
@@ -50,49 +69,40 @@ export function CategoryFormModal({
     resolver: zodResolver(categorySchema),
     defaultValues: {
       name: '',
-      slug: '',
       description: '',
-      parent_id: '',
       status: 'ACTIVE',
-      allow_custom_dimensions: false,
+      own_attributes: [],
     },
   });
 
-  const name = watch('name');
+  const {
+    fields: attributeFields,
+    append: appendAttribute,
+    remove: removeAttribute,
+  } = useFieldArray({
+    control,
+    name: 'own_attributes',
+  });
 
-  // Auto-generate slug from name
-  useEffect(() => {
-    if (!isEditing && name) {
-      const slug = name
-        .toLowerCase()
-        .replace(/[^a-z0-9\s-]/g, '')
-        .replace(/\s+/g, '-')
-        .replace(/-+/g, '-')
-        .trim();
-      setValue('slug', slug);
-    }
-  }, [name, isEditing, setValue]);
+  const attributes = watch('own_attributes') || [];
 
   // Reset form when modal opens/closes or category changes
   useEffect(() => {
     if (isOpen) {
+      setActiveTab('basic');
       if (category?.id) {
         reset({
           name: category.name,
-          slug: category.slug,
           description: category.description || '',
-          parent_id: category.parent_id || '',
           status: category.status,
-          allow_custom_dimensions: category.allow_custom_dimensions,
+          own_attributes: category.own_attributes || [],
         });
       } else {
         reset({
           name: '',
-          slug: '',
           description: '',
-          parent_id: category?.parent_id || '',
           status: 'ACTIVE',
-          allow_custom_dimensions: false,
+          own_attributes: [],
         });
       }
     }
@@ -102,7 +112,7 @@ export function CategoryFormModal({
   const createMutation = useMutation({
     mutationFn: (data: CreateCategoryRequest) => categoriesApi.create(data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['categories-tree'] });
+      queryClient.invalidateQueries({ queryKey: ['categories'] });
       toast.success('Category created successfully');
       onClose();
     },
@@ -116,7 +126,7 @@ export function CategoryFormModal({
     mutationFn: ({ id, data }: { id: string; data: Partial<CreateCategoryRequest> }) =>
       categoriesApi.update(id, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['categories-tree'] });
+      queryClient.invalidateQueries({ queryKey: ['categories'] });
       toast.success('Category updated successfully');
       onClose();
     },
@@ -126,13 +136,11 @@ export function CategoryFormModal({
   });
 
   const onSubmit = (data: CategoryFormData) => {
-    const requestData: CreateCategoryRequest = {
+    const requestData: CreateCategoryRequest & { own_attributes?: CategoryAttribute[] } = {
       name: data.name,
-      slug: data.slug,
       description: data.description,
-      parent_id: data.parent_id || undefined,
       status: data.status,
-      allow_custom_dimensions: data.allow_custom_dimensions,
+      own_attributes: data.own_attributes as CategoryAttribute[],
     };
 
     if (isEditing && category?.id) {
@@ -142,29 +150,33 @@ export function CategoryFormModal({
     }
   };
 
-  // Flatten categories for parent select
-  const flattenCategories = (cats: Category[], depth = 0): { value: string; label: string }[] => {
-    const result: { value: string; label: string }[] = [];
-    cats.forEach((cat) => {
-      // Don't allow selecting itself or its children as parent
-      if (category?.id && (cat.id === category.id || cat.path?.includes(category.id))) {
-        return;
-      }
-      result.push({
-        value: cat.id,
-        label: `${'—'.repeat(depth)} ${cat.name}`,
-      });
-      if (cat.children && cat.children.length > 0) {
-        result.push(...flattenCategories(cat.children, depth + 1));
-      }
+  const addNewAttribute = () => {
+    appendAttribute({
+      name: '',
+      label: '',
+      type: 'SELECT' as AttributeType,
+      required: false,
+      searchable: false,
+      display_order: attributeFields.length,
+      options: [],
     });
-    return result;
   };
 
-  const parentOptions = [
-    { value: '', label: 'No parent (Root category)' },
-    ...flattenCategories(categories),
-  ];
+  const addOptionToAttribute = (attributeIndex: number) => {
+    const currentOptions = attributes[attributeIndex]?.options || [];
+    setValue(`own_attributes.${attributeIndex}.options`, [
+      ...currentOptions,
+      { value: '', label: '' },
+    ]);
+  };
+
+  const removeOptionFromAttribute = (attributeIndex: number, optionIndex: number) => {
+    const currentOptions = attributes[attributeIndex]?.options || [];
+    setValue(
+      `own_attributes.${attributeIndex}.options`,
+      currentOptions.filter((_, idx) => idx !== optionIndex)
+    );
+  };
 
   const isLoading = createMutation.isPending || updateMutation.isPending;
 
@@ -173,58 +185,224 @@ export function CategoryFormModal({
       isOpen={isOpen}
       onClose={onClose}
       title={isEditing ? 'Edit Category' : 'Create Category'}
-      size="md"
+      size="lg"
     >
+      {/* Tabs */}
+      <div className="flex border-b border-gray-200 mb-4">
+        <button
+          type="button"
+          onClick={() => setActiveTab('basic')}
+          className={`px-4 py-2 text-sm font-medium border-b-2 ${
+            activeTab === 'basic'
+              ? 'border-primary-500 text-primary-600'
+              : 'border-transparent text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          Basic Info
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('attributes')}
+          className={`px-4 py-2 text-sm font-medium border-b-2 ${
+            activeTab === 'attributes'
+              ? 'border-primary-500 text-primary-600'
+              : 'border-transparent text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          Attributes
+          {attributeFields.length > 0 && (
+            <span className="ml-2 px-2 py-0.5 text-xs bg-gray-100 rounded-full">
+              {attributeFields.length}
+            </span>
+          )}
+        </button>
+      </div>
+
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-        <Input
-          label="Name"
-          placeholder="e.g., Bedsheets"
-          error={errors.name?.message}
-          required
-          {...register('name')}
-        />
+        {activeTab === 'basic' && (
+          <>
+            <Input
+              label="Name"
+              placeholder="e.g., Bedsheets"
+              error={errors.name?.message}
+              required
+              {...register('name')}
+            />
 
-        <Input
-          label="Slug"
-          placeholder="e.g., bedsheets"
-          hint="Used in URLs. Lowercase letters, numbers, and hyphens only."
-          error={errors.slug?.message}
-          required
-          {...register('slug')}
-        />
+            <div>
+              <label className="label">Description</label>
+              <textarea
+                className="input min-h-[80px]"
+                placeholder="Optional description for this category"
+                {...register('description')}
+              />
+            </div>
 
-        <div>
-          <label className="label">Description</label>
-          <textarea
-            className="input min-h-[80px]"
-            placeholder="Optional description for this category"
-            {...register('description')}
-          />
-        </div>
+            <Select
+              label="Status"
+              options={[
+                { value: 'ACTIVE', label: 'Active' },
+                { value: 'INACTIVE', label: 'Inactive' },
+              ]}
+              required
+              {...register('status')}
+            />
+          </>
+        )}
 
-        <Select label="Parent Category" options={parentOptions} {...register('parent_id')} />
+        {activeTab === 'attributes' && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-gray-600">
+                Define attributes for products in this category. Searchable attributes will be
+                available as filters in the product list.
+              </p>
+              <Button type="button" variant="secondary" size="sm" onClick={addNewAttribute}>
+                <Plus className="w-4 h-4 mr-1" />
+                Add Attribute
+              </Button>
+            </div>
 
-        <Select
-          label="Status"
-          options={[
-            { value: 'ACTIVE', label: 'Active' },
-            { value: 'INACTIVE', label: 'Inactive' },
-          ]}
-          required
-          {...register('status')}
-        />
+            {attributeFields.length === 0 ? (
+              <div className="text-center py-8 text-gray-500 border border-dashed border-gray-300 rounded-lg">
+                <p>No attributes defined</p>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={addNewAttribute}
+                  className="mt-2"
+                >
+                  Add your first attribute
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-4 max-h-[400px] overflow-y-auto">
+                {attributeFields.map((field, index) => {
+                  const attrType = attributes[index]?.type;
+                  const showOptions = attrType === 'SELECT' || attrType === 'MULTI_SELECT';
 
-        <div className="flex items-center gap-3">
-          <input
-            type="checkbox"
-            id="allow_custom_dimensions"
-            className="w-4 h-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
-            {...register('allow_custom_dimensions')}
-          />
-          <label htmlFor="allow_custom_dimensions" className="text-sm text-gray-700">
-            Allow custom dimensions for products in this category
-          </label>
-        </div>
+                  return (
+                    <div key={field.id} className="border border-gray-200 rounded-lg p-4 space-y-3">
+                      <div className="flex items-start justify-between">
+                        <span className="text-sm font-medium text-gray-700">
+                          Attribute #{index + 1}
+                        </span>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => removeAttribute(index)}
+                          className="text-red-600 hover:text-red-700"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <Input
+                          label="Name (Key)"
+                          placeholder="e.g., material"
+                          hint="Lowercase, no spaces"
+                          error={errors.own_attributes?.[index]?.name?.message}
+                          {...register(`own_attributes.${index}.name`)}
+                        />
+                        <Input
+                          label="Label"
+                          placeholder="e.g., Material"
+                          error={errors.own_attributes?.[index]?.label?.message}
+                          {...register(`own_attributes.${index}.label`)}
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <Select
+                          label="Type"
+                          options={ATTRIBUTE_TYPES}
+                          {...register(`own_attributes.${index}.type`)}
+                        />
+                        <Input
+                          label="Display Order"
+                          type="number"
+                          {...register(`own_attributes.${index}.display_order`, {
+                            valueAsNumber: true,
+                          })}
+                        />
+                      </div>
+
+                      <div className="flex flex-wrap gap-4">
+                        <label className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            className="w-4 h-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
+                            {...register(`own_attributes.${index}.required`)}
+                          />
+                          <span className="text-sm text-gray-700">Required</span>
+                        </label>
+                        <label className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            className="w-4 h-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
+                            {...register(`own_attributes.${index}.searchable`)}
+                          />
+                          <span className="text-sm text-gray-700">Searchable (show in filters)</span>
+                        </label>
+                      </div>
+
+                      {/* Options for SELECT/MULTI_SELECT */}
+                      {showOptions && (
+                        <div className="mt-3 pt-3 border-t border-gray-100">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-sm font-medium text-gray-600">Options</span>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => addOptionToAttribute(index)}
+                            >
+                              <Plus className="w-3 h-3 mr-1" />
+                              Add Option
+                            </Button>
+                          </div>
+                          <div className="space-y-2">
+                            {(attributes[index]?.options || []).map((_, optIdx) => (
+                              <div key={optIdx} className="flex items-center gap-2">
+                                <Input
+                                  placeholder="Value"
+                                  className="flex-1"
+                                  {...register(`own_attributes.${index}.options.${optIdx}.value`)}
+                                />
+                                <Input
+                                  placeholder="Label"
+                                  className="flex-1"
+                                  {...register(`own_attributes.${index}.options.${optIdx}.label`)}
+                                />
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => removeOptionFromAttribute(index, optIdx)}
+                                  className="text-red-500"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </Button>
+                              </div>
+                            ))}
+                            {(attributes[index]?.options?.length || 0) === 0 && (
+                              <p className="text-xs text-gray-400 text-center py-2">
+                                No options. Add options for users to select from.
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
           <Button variant="secondary" onClick={onClose} disabled={isLoading}>

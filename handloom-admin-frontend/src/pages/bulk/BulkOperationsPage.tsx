@@ -19,6 +19,7 @@ import {
   TableLoading,
   TableRow,
 } from '../../components/common';
+import { useCursorPagination } from '../../hooks';
 import type { BulkOperation } from '../../types';
 import { BulkExportModal } from './BulkExportModal';
 import { BulkImportModal } from './BulkImportModal';
@@ -57,13 +58,12 @@ const OPERATION_TYPES = [
 type OperationType = 'import-products' | 'update-inventory' | 'export-products' | 'export-orders';
 
 export function BulkOperationsPage() {
-  const [page, setPage] = useState(1);
-  const [perPage, setPerPage] = useState(10);
+  const { limit, cursor, hasPrevious, goToNextPage, goToPreviousPage, changeLimit } = useCursorPagination(10);
   const [activeModal, setActiveModal] = useState<OperationType | null>(null);
 
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ['bulk-operations', { page, limit: perPage }],
-    queryFn: () => bulkApi.list({ page, limit: perPage }),
+    queryKey: ['bulk-operations', { limit, cursor }],
+    queryFn: () => bulkApi.list({ limit, cursor }),
   });
 
   // Handle various response formats from the API
@@ -236,18 +236,16 @@ export function BulkOperationsPage() {
             )}
           </TableBody>
         </Table>
-        {pagination && pagination.total_pages > 1 && (
+        {(pagination?.has_more || hasPrevious) && (
           <div className="border-t border-gray-200 px-6">
             <Pagination
-              currentPage={pagination.current_page}
-              totalPages={pagination.total_pages}
-              totalCount={pagination.total_count}
-              perPage={pagination.per_page}
-              onPageChange={setPage}
-              onPerPageChange={(v) => {
-                setPerPage(v);
-                setPage(1);
-              }}
+              hasMore={pagination?.has_more ?? false}
+              hasPrevious={hasPrevious}
+              perPage={limit}
+              onNextPage={() => pagination?.next_cursor && goToNextPage(pagination.next_cursor)}
+              onPreviousPage={goToPreviousPage}
+              onPerPageChange={changeLimit}
+              itemCount={operations.length}
             />
           </div>
         )}

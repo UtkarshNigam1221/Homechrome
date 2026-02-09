@@ -3,17 +3,16 @@
 // ============================================================================
 
 export interface PaginationParams {
-  page?: number;
   limit?: number;
+  cursor?: string;
   sort_by?: string;
   sort_order?: 'ASC' | 'DESC';
 }
 
 export interface PaginationResponse {
-  current_page: number;
-  per_page: number;
-  total_count: number;
-  total_pages: number;
+  limit: number;
+  next_cursor?: string;
+  has_more: boolean;
 }
 
 export interface ApiResponse<T> {
@@ -102,27 +101,9 @@ export interface CategoryAttribute {
   label: string;
   type: AttributeType;
   required: boolean;
+  searchable: boolean; // When true, indexed for filtering and shown in filter UI
+  display_order: number;
   options?: AttributeOption[];
-  affects_pricing: boolean;
-}
-
-export interface DimensionConfig {
-  length_enabled: boolean;
-  length_min?: number;
-  length_max?: number;
-  length_step?: number;
-  length_unit?: string;
-  width_enabled: boolean;
-  width_min?: number;
-  width_max?: number;
-  width_step?: number;
-  width_unit?: string;
-  height_enabled: boolean;
-  height_min?: number;
-  height_max?: number;
-  height_step?: number;
-  height_unit?: string;
-  pricing_model?: string;
 }
 
 export interface Category {
@@ -131,34 +112,19 @@ export interface Category {
   slug: string;
   description?: string;
   image_url?: string;
-  parent_id?: string;
-  level: number;
-  path: string;
-  ancestor_ids?: string[];
   own_attributes?: CategoryAttribute[];
-  inherited_attributes?: CategoryAttribute[];
-  allow_custom_dimensions: boolean;
-  dimension_config?: DimensionConfig;
-  default_pricing_rule_id?: string;
-  sort_order: number;
   status: CategoryStatus;
   product_count: number;
-  design_count: number;
   created_at: string;
   updated_at: string;
-  children?: Category[];
 }
 
 export interface CreateCategoryRequest {
   name: string;
-  slug: string;
   description?: string;
-  parent_id?: string;
   image_url?: string;
-  allow_custom_dimensions?: boolean;
-  dimension_config?: DimensionConfig;
+  own_attributes?: CategoryAttribute[];
   status?: CategoryStatus;
-  sort_order?: number;
 }
 
 // ============================================================================
@@ -252,6 +218,7 @@ export interface Product {
 export interface CreateProductRequest {
   name: string;
   sku: string;
+  description?: string;
   design_id: string;
   category_id: string;
   artisan_id?: string;

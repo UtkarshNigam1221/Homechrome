@@ -24,6 +24,7 @@ import {
   TableLoading,
   TableRow,
 } from '../../components/common';
+import { useCursorPagination } from '../../hooks';
 import type { Order, OrderStatus } from '../../types';
 
 const ORDER_STATUSES: OrderStatus[] = [
@@ -39,8 +40,7 @@ const ORDER_STATUSES: OrderStatus[] = [
 export function OrdersPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [page, setPage] = useState(1);
-  const [perPage, setPerPage] = useState(10);
+  const { limit, cursor, hasPrevious, goToNextPage, goToPreviousPage, resetPagination, changeLimit } = useCursorPagination(10);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [paymentFilter, setPaymentFilter] = useState('');
@@ -53,8 +53,8 @@ export function OrdersPage() {
     queryKey: [
       'orders',
       {
-        page,
-        limit: perPage,
+        limit,
+        cursor,
         search: searchQuery,
         status: statusFilter,
         payment_status: paymentFilter,
@@ -62,8 +62,8 @@ export function OrdersPage() {
     ],
     queryFn: () =>
       ordersApi.list({
-        page,
-        limit: perPage,
+        limit,
+        cursor,
         search: searchQuery || undefined,
         status: statusFilter || undefined,
         payment_status: paymentFilter || undefined,
@@ -124,7 +124,7 @@ export function OrdersPage() {
               value={searchQuery}
               onChange={(e) => {
                 setSearchQuery(e.target.value);
-                setPage(1);
+                resetPagination();
               }}
               leftIcon={<Search className="w-4 h-4" />}
             />
@@ -149,7 +149,7 @@ export function OrdersPage() {
               value={statusFilter}
               onChange={(e) => {
                 setStatusFilter(e.target.value);
-                setPage(1);
+                resetPagination();
               }}
             />
             <Select
@@ -164,7 +164,7 @@ export function OrdersPage() {
               value={paymentFilter}
               onChange={(e) => {
                 setPaymentFilter(e.target.value);
-                setPage(1);
+                resetPagination();
               }}
             />
             <div className="flex items-end">
@@ -174,7 +174,7 @@ export function OrdersPage() {
                   setStatusFilter('');
                   setPaymentFilter('');
                   setSearchQuery('');
-                  setPage(1);
+                  resetPagination();
                 }}
               >
                 Clear Filters
@@ -289,18 +289,16 @@ export function OrdersPage() {
           </TableBody>
         </Table>
 
-        {pagination && pagination.total_pages > 1 && (
+        {(pagination?.has_more || hasPrevious) && (
           <div className="border-t border-gray-200 px-6">
             <Pagination
-              currentPage={pagination.current_page}
-              totalPages={pagination.total_pages}
-              totalCount={pagination.total_count}
-              perPage={pagination.per_page}
-              onPageChange={setPage}
-              onPerPageChange={(newPerPage) => {
-                setPerPage(newPerPage);
-                setPage(1);
-              }}
+              hasMore={pagination?.has_more ?? false}
+              hasPrevious={hasPrevious}
+              perPage={limit}
+              onNextPage={() => pagination?.next_cursor && goToNextPage(pagination.next_cursor)}
+              onPreviousPage={goToPreviousPage}
+              onPerPageChange={changeLimit}
+              itemCount={orders.length}
             />
           </div>
         )}

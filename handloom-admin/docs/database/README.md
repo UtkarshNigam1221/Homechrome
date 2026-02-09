@@ -61,7 +61,7 @@ Strategic GSI usage for common access patterns:
 | GSI | Purpose | Example |
 |-----|---------|---------|
 | GSI1 | Entity relationships | Products by Category |
-| GSI2 | Cross-entity queries | Products by Design |
+| GSI2 | Cross-entity queries | All Products listing (PRODUCT#ALL) |
 
 ### 3. Key Prefix Conventions
 
@@ -70,6 +70,7 @@ USER#<uuid>              → User entities
 CATEGORY#<uuid>          → Category entities
 DESIGN#<uuid>            → Design entities
 PRODUCT#<uuid>           → Product entities
+SKU#<sku>                → Product SKU uniqueness items
 INVENTORY#<product_id>   → Inventory records
 PRICING_RULE#<uuid>      → Pricing rules
 COUPON#<uuid>            → Coupon entities
@@ -140,18 +141,21 @@ UUIDs in **standard format**:
 | User | By ID | By Email (GSI1) |
 | Category | By ID | By Parent, By Slug |
 | Design | By ID | By Category (GSI1), By Slug |
-| Product | By ID | By Category (GSI1), By Design (GSI2), By SKU |
+| Product | By ID | By Category (GSI1), All Products (GSI2), By SKU (SKU# item) |
 | Order | By ID | By Customer (GSI1), By Date |
 | Customer | By ID | By Email (GSI1) |
 | Audit | By Date | By User (GSI1) |
 
 ### Common Query Patterns
 
-1. **List products in category**: Query GSI1 with `CATEGORY#<id>`
-2. **Get user by email**: Query GSI1 with `USER_EMAIL` + email
-3. **Order history for customer**: Query GSI1 with `CUSTOMER#<id>`
-4. **Daily audit logs**: Query PK `AUDIT#<date>`
-5. **Inventory transactions**: Query PK `INVENTORY#<product_id>` with SK prefix `TXN#`
+1. **List products in category**: Query GSI1 with `CATEGORY#<id>`, SK begins_with `PRODUCT#` (cursor pagination)
+2. **List all products**: Query GSI2 with `PRODUCT#ALL` (cursor pagination)
+3. **Get product by SKU**: GetItem PK = `SKU#<sku>`, SK = `METADATA` → returns `product_id`
+4. **List all categories**: Query GSI1 with `CATEGORY#ALL` (cursor pagination)
+5. **Get user by email**: Query GSI1 with `USER_EMAIL` + email
+6. **Order history for customer**: Query GSI1 with `CUSTOMER#<id>`
+7. **Daily audit logs**: Query PK `AUDIT#<date>`
+8. **Inventory transactions**: Query PK `INVENTORY#<product_id>` with SK prefix `TXN#`
 
 ## Local Development
 

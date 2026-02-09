@@ -13,21 +13,21 @@ import {
   Input,
   Pagination,
 } from '../../components/common';
+import { useCursorPagination } from '../../hooks';
 import type { Design } from '../../types';
 import { DesignFormModal } from './DesignFormModal';
 
 export function DesignsPage() {
   const queryClient = useQueryClient();
-  const [page, setPage] = useState(1);
-  const [perPage, setPerPage] = useState(12);
+  const { limit, cursor, hasPrevious, goToNextPage, goToPreviousPage, resetPagination, changeLimit } = useCursorPagination(12);
   const [searchQuery, setSearchQuery] = useState('');
   const [showFormModal, setShowFormModal] = useState(false);
   const [editingDesign, setEditingDesign] = useState<Design | null>(null);
   const [deleteDesign, setDeleteDesign] = useState<Design | null>(null);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['designs', { page, limit: perPage, search: searchQuery }],
-    queryFn: () => designsApi.list({ page, limit: perPage, search: searchQuery || undefined }),
+    queryKey: ['designs', { limit, cursor, search: searchQuery }],
+    queryFn: () => designsApi.list({ limit, cursor, search: searchQuery || undefined }),
   });
 
   // Delete mutation
@@ -88,7 +88,7 @@ export function DesignsPage() {
           value={searchQuery}
           onChange={(e) => {
             setSearchQuery(e.target.value);
-            setPage(1);
+            resetPagination();
           }}
           leftIcon={<Search className="w-4 h-4" />}
         />
@@ -183,17 +183,15 @@ export function DesignsPage() {
         </div>
       )}
 
-      {pagination && pagination.total_pages > 1 && (
+      {(pagination?.has_more || hasPrevious) && (
         <Pagination
-          currentPage={pagination.current_page}
-          totalPages={pagination.total_pages}
-          totalCount={pagination.total_count}
-          perPage={pagination.per_page}
-          onPageChange={setPage}
-          onPerPageChange={(v) => {
-            setPerPage(v);
-            setPage(1);
-          }}
+          hasMore={pagination?.has_more ?? false}
+          hasPrevious={hasPrevious}
+          perPage={limit}
+          onNextPage={() => pagination?.next_cursor && goToNextPage(pagination.next_cursor)}
+          onPreviousPage={goToPreviousPage}
+          onPerPageChange={changeLimit}
+          itemCount={designs.length}
         />
       )}
 

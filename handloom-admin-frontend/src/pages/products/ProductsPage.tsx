@@ -1,10 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Edit, Eye, Filter, Package, Plus, Search, Trash2 } from 'lucide-react';
+import { Edit, Eye, Filter, Package, Plus, Search, Trash2, X } from 'lucide-react';
 import { useState } from 'react';
 import toast from 'react-hot-toast';
 
 import { categoriesApi, getErrorMessage, productsApi } from '../../api';
 import {
+  AttributeFilterSidebar,
   Badge,
   Button,
   Card,
@@ -22,18 +23,20 @@ import {
   TableLoading,
   TableRow,
 } from '../../components/common';
-import type { Category, Product } from '../../types';
+import { useCursorPagination } from '../../hooks';
+import type { Category, CategoryAttribute, Product } from '../../types';
 import { ProductFormModal } from './ProductFormModal';
 
 export function ProductsPage() {
   const queryClient = useQueryClient();
-  const [page, setPage] = useState(1);
-  const [perPage, setPerPage] = useState(10);
+  const { limit, cursor, hasPrevious, goToNextPage, goToPreviousPage, resetPagination, changeLimit } = useCursorPagination(10);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
+  const [attributeFilters, setAttributeFilters] = useState<Record<string, string[]>>({});
   const [deleteProduct, setDeleteProduct] = useState<Product | null>(null);
   const [showFilters, setShowFilters] = useState(false);
+  const [showAttributeFilters, setShowAttributeFilters] = useState(false);
   const [showFormModal, setShowFormModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
 
@@ -42,20 +45,22 @@ export function ProductsPage() {
     queryKey: [
       'products',
       {
-        page,
-        limit: perPage,
+        limit,
+        cursor,
         search: searchQuery,
         status: statusFilter,
         category_id: categoryFilter,
+        attribute_filters: attributeFilters,
       },
     ],
     queryFn: () =>
       productsApi.list({
-        page,
-        limit: perPage,
+        limit,
+        cursor,
         search: searchQuery || undefined,
         status: statusFilter || undefined,
         category_id: categoryFilter || undefined,
+        attribute_filters: Object.keys(attributeFilters).length > 0 ? attributeFilters : undefined,
       }),
   });
 
@@ -63,6 +68,20 @@ export function ProductsPage() {
   const { data: categoriesData } = useQuery({
     queryKey: ['categories-list'],
     queryFn: () => categoriesApi.list({ limit: 100 }),
+  });
+
+  // Fetch category attributes when a category is selected
+  const { data: categoryAttributesData } = useQuery({
+    queryKey: ['category-attributes', categoryFilter],
+    queryFn: () => categoriesApi.getAttributes(categoryFilter),
+    enabled: !!categoryFilter, // Only fetch when category is selected
+  });
+
+  // Fetch distinct attribute filter options from GSI (optimized — no product data loaded)
+  const { data: filterOptionsData } = useQuery({
+    queryKey: ['product-filter-options', categoryFilter],
+    queryFn: () => productsApi.getFilterOptions(categoryFilter),
+    enabled: !!categoryFilter,
   });
 
   // Delete mutation
@@ -93,8 +112,8 @@ export function ProductsPage() {
     if (Array.isArray(data)) return data as T[];
     if (typeof data === 'object' && data !== null) {
       const record = data as Record<string, unknown>;
-      if (key && key in record) return record[key] as T[];
-      if ('items' in record) return record.items as T[];
+      if (key && key in record) return (record[key] as T[]) || [];
+      if ('items' in record) return (record.items as T[]) || [];
       if ('data' in record) return Array.isArray(record.data) ? (record.data as T[]) : [];
     }
     return [];
@@ -102,6 +121,28 @@ export function ProductsPage() {
 
   const products = extractItems<Product>(productsData, 'products');
   const pagination = productsData?.pagination;
+
+  // Build category attributes enriched with distinct values from GSI
+  const categoryAttributes: CategoryAttribute[] = (() => {
+    if (!categoryFilter) return [];
+    const rawAttrs = categoryAttributesData?.own_attributes || [];
+    const filterOptions: Record<string, string[]> = filterOptionsData || {};
+
+    return rawAttrs.map((attr: CategoryAttribute) => {
+      // If attribute already has options (SELECT/MULTI_SELECT), use them as-is
+      if (attr.options && attr.options.length > 0) return attr;
+
+      // For TEXT/NUMBER attributes without predefined options, use GSI-discovered values
+      if (!attr.searchable) return attr;
+
+      const distinctValues = filterOptions[attr.name];
+      if (!distinctValues || distinctValues.length === 0) return attr;
+
+      // Build options from GSI distinct values
+      const discoveredOptions = distinctValues.map((v) => ({ value: v, label: v }));
+      return { ...attr, options: discoveredOptions };
+    });
+  })();
 
   const categories = extractItems<Category>(categoriesData, 'categories');
   const categoryOptions = [
@@ -137,7 +178,7 @@ export function ProductsPage() {
               value={searchQuery}
               onChange={(e) => {
                 setSearchQuery(e.target.value);
-                setPage(1);
+                resetPagination();
               }}
               leftIcon={<Search className="w-4 h-4" />}
             />
@@ -154,7 +195,7 @@ export function ProductsPage() {
         </div>
 
         {showFilters && (
-          <div className="mt-4 pt-4 border-t border-gray-200 grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="mt-4 pt-4 border-t border-gray-200 grid grid-cols-1 md:grid-cols-4 gap-4">
             <Select
               label="Status"
               options={[
@@ -166,7 +207,7 @@ export function ProductsPage() {
               value={statusFilter}
               onChange={(e) => {
                 setStatusFilter(e.target.value);
-                setPage(1);
+                resetPagination();
               }}
             />
             <Select
@@ -175,9 +216,26 @@ export function ProductsPage() {
               value={categoryFilter}
               onChange={(e) => {
                 setCategoryFilter(e.target.value);
-                setPage(1);
+                setAttributeFilters({}); // Clear attribute filters when category changes
+                resetPagination();
               }}
             />
+            {categoryFilter && categoryAttributes.some((a) => a.searchable && a.options?.length) && (
+              <div className="flex items-end">
+                <Button
+                  variant={showAttributeFilters ? 'primary' : 'secondary'}
+                  onClick={() => setShowAttributeFilters(!showAttributeFilters)}
+                >
+                  <Filter className="w-4 h-4 mr-2" />
+                  Attribute Filters
+                  {Object.keys(attributeFilters).length > 0 && (
+                    <span className="ml-2 inline-flex items-center justify-center px-2 py-0.5 text-xs font-medium bg-white text-indigo-600 rounded-full">
+                      {Object.values(attributeFilters).reduce((sum, arr) => sum + arr.length, 0)}
+                    </span>
+                  )}
+                </Button>
+              </div>
+            )}
             <div className="flex items-end">
               <Button
                 variant="ghost"
@@ -185,19 +243,94 @@ export function ProductsPage() {
                   setStatusFilter('');
                   setCategoryFilter('');
                   setSearchQuery('');
-                  setPage(1);
+                  setAttributeFilters({});
+                  setShowAttributeFilters(false);
+                  resetPagination();
                 }}
               >
-                Clear Filters
+                Clear All
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Active Attribute Filters Display */}
+        {Object.keys(attributeFilters).length > 0 && (
+          <div className="mt-4 pt-4 border-t border-gray-200">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-sm text-gray-500">Active filters:</span>
+              {Object.entries(attributeFilters).map(([attrName, values]) => {
+                const attr = categoryAttributes.find((a) => a.name === attrName);
+                return values.map((value) => {
+                  const option = attr?.options?.find((o) => o.value === value);
+                  return (
+                    <span
+                      key={`${attrName}-${value}`}
+                      className="inline-flex items-center gap-1 px-2 py-1 text-sm bg-indigo-100 text-indigo-800 rounded-full"
+                    >
+                      <span className="font-medium">{attr?.label || attrName}:</span>
+                      {option?.label || value}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const newValues = attributeFilters[attrName].filter((v) => v !== value);
+                          const newFilters = { ...attributeFilters };
+                          if (newValues.length > 0) {
+                            newFilters[attrName] = newValues;
+                          } else {
+                            delete newFilters[attrName];
+                          }
+                          setAttributeFilters(newFilters);
+                          resetPagination();
+                        }}
+                        className="ml-1 hover:text-indigo-600"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  );
+                });
+              })}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setAttributeFilters({});
+                  resetPagination();
+                }}
+                className="text-gray-500"
+              >
+                Clear all filters
               </Button>
             </div>
           </div>
         )}
       </Card>
 
-      {/* Products Table */}
-      <Card padding="none">
-        <Table>
+      {/* Products Table with Optional Filter Sidebar */}
+      <div className={`flex gap-6 ${showAttributeFilters ? '' : ''}`}>
+        {/* Attribute Filter Sidebar */}
+        {showAttributeFilters && categoryFilter && (
+          <div className="w-64 flex-shrink-0">
+            <AttributeFilterSidebar
+              attributes={categoryAttributes}
+              selectedFilters={attributeFilters}
+              onFilterChange={(filters) => {
+                setAttributeFilters(filters);
+                resetPagination();
+              }}
+              onClearFilters={() => {
+                setAttributeFilters({});
+                resetPagination();
+              }}
+              isLoading={isLoading}
+            />
+          </div>
+        )}
+
+        {/* Products Table */}
+        <Card padding="none" className="flex-1">
+          <Table>
           <TableHeader>
             <TableRow>
               <TableHead>Product</TableHead>
@@ -351,22 +484,21 @@ export function ProductsPage() {
           </TableBody>
         </Table>
 
-        {pagination && pagination.total_pages > 1 && (
+        {(pagination?.has_more || hasPrevious) && (
           <div className="border-t border-gray-200 px-6">
             <Pagination
-              currentPage={pagination.current_page}
-              totalPages={pagination.total_pages}
-              totalCount={pagination.total_count}
-              perPage={pagination.per_page}
-              onPageChange={setPage}
-              onPerPageChange={(newPerPage) => {
-                setPerPage(newPerPage);
-                setPage(1);
-              }}
+              hasMore={pagination?.has_more ?? false}
+              hasPrevious={hasPrevious}
+              perPage={limit}
+              onNextPage={() => pagination?.next_cursor && goToNextPage(pagination.next_cursor)}
+              onPreviousPage={goToPreviousPage}
+              onPerPageChange={changeLimit}
+              itemCount={products.length}
             />
           </div>
         )}
-      </Card>
+        </Card>
+      </div>
 
       {/* Delete Confirmation Modal */}
       <ConfirmModal

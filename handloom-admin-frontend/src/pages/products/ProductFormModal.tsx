@@ -1,13 +1,20 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
 import { z } from 'zod';
 
 import { artisansApi, categoriesApi, designsApi, getErrorMessage, productsApi } from '../../api';
 import { Button, ImageUpload, Input, Modal, Select } from '../../components/common';
-import type { Artisan, Category, CreateProductRequest, Design, Product } from '../../types';
+import type {
+  Artisan,
+  Category,
+  CategoryAttribute,
+  CreateProductRequest,
+  Design,
+  Product,
+} from '../../types';
 
 const productSchema = z.object({
   name: z.string().min(1, 'Name is required').max(200, 'Name must be less than 200 characters'),
@@ -47,7 +54,10 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
   const queryClient = useQueryClient();
   const isEditing = !!product?.id;
 
-  // Fetch categories
+  // Dynamic category attribute values (managed outside of Zod since schema is dynamic)
+  const [attributeValues, setAttributeValues] = useState<Record<string, unknown>>({});
+
+  // Fetch categories (flat list - no hierarchy)
   const { data: categoriesData } = useQuery({
     queryKey: ['categories-list'],
     queryFn: () => categoriesApi.list({ limit: 100 }),
@@ -106,6 +116,26 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
   });
 
   const name = watch('name');
+  const selectedCategoryId = watch('category_id');
+
+  // Fetch category attributes when a category is selected
+  const { data: categoryAttributesData } = useQuery({
+    queryKey: ['category-attributes', selectedCategoryId],
+    queryFn: () => categoriesApi.getAttributes(selectedCategoryId),
+    enabled: !!selectedCategoryId && isOpen,
+  });
+
+  // Extract category attributes from the response
+  const categoryAttributes: CategoryAttribute[] = selectedCategoryId
+    ? [...(categoryAttributesData?.own_attributes || [])]
+    : [];
+
+  // Reset attribute values when category changes (but not on initial load for editing)
+  useEffect(() => {
+    if (!isEditing && selectedCategoryId) {
+      setAttributeValues({});
+    }
+  }, [selectedCategoryId, isEditing]);
 
   // Auto-generate SKU from name
   useEffect(() => {
@@ -151,6 +181,8 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
           tags: product.tags?.join(', ') || '',
           images: product.images?.map((img) => img.url) || [],
         });
+        // Restore existing attribute values when editing
+        setAttributeValues(product.attributes || {});
       } else {
         reset({
           name: '',
@@ -177,6 +209,7 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
           tags: '',
           images: [],
         });
+        setAttributeValues({});
       }
     }
   }, [isOpen, product, reset]);
@@ -208,10 +241,52 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
     },
   });
 
+  // Handle attribute value changes
+  const handleAttributeChange = (attrName: string, value: unknown) => {
+    setAttributeValues((prev) => ({ ...prev, [attrName]: value }));
+  };
+
+  // Handle multi-select toggle
+  const handleMultiSelectToggle = (attrName: string, optionValue: string) => {
+    setAttributeValues((prev) => {
+      const current = (prev[attrName] as string[]) || [];
+      const newValues = current.includes(optionValue)
+        ? current.filter((v) => v !== optionValue)
+        : [...current, optionValue];
+      return { ...prev, [attrName]: newValues };
+    });
+  };
+
   const onSubmit = (data: ProductFormData) => {
+    // Validate required attributes
+    const missingRequired = categoryAttributes
+      .filter((attr) => attr.required)
+      .filter((attr) => {
+        const val = attributeValues[attr.name];
+        if (val === undefined || val === null || val === '') return true;
+        if (Array.isArray(val) && val.length === 0) return true;
+        return false;
+      });
+
+    if (missingRequired.length > 0) {
+      toast.error(`Please fill in required attributes: ${missingRequired.map((a) => a.label).join(', ')}`);
+      return;
+    }
+
+    // Build clean attributes object (only include non-empty values)
+    const cleanAttributes: Record<string, unknown> = {};
+    for (const attr of categoryAttributes) {
+      const val = attributeValues[attr.name];
+      if (val !== undefined && val !== null && val !== '') {
+        if (Array.isArray(val) && val.length === 0) continue;
+        cleanAttributes[attr.name] = val;
+      }
+    }
+
     const requestData: CreateProductRequest = {
       name: data.name,
       sku: data.sku,
+      description: data.description || undefined,
       design_id: data.design_id,
       category_id: data.category_id,
       artisan_id: data.artisan_id || undefined,
@@ -250,6 +325,7 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
               sort_order: index,
             }))
           : undefined,
+      attributes: Object.keys(cleanAttributes).length > 0 ? cleanAttributes : undefined,
     };
 
     if (isEditing && product?.id) {
@@ -259,20 +335,12 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
     }
   };
 
-  // Flatten categories for select
-  const flattenCategories = (cats: Category[], depth = 0): { value: string; label: string }[] => {
-    const result: { value: string; label: string }[] = [];
-    cats.forEach((cat) => {
-      const prefix = depth > 0 ? '—'.repeat(depth) + ' ' : '';
-      result.push({
-        value: cat.id,
-        label: `${prefix}${cat.name}`,
-      });
-      if (cat.children && cat.children.length > 0) {
-        result.push(...flattenCategories(cat.children, depth + 1));
-      }
-    });
-    return result;
+  // Convert categories to select options (flat list - no hierarchy)
+  const getCategoryOptions = (cats: Category[]): { value: string; label: string }[] => {
+    return cats.map((cat) => ({
+      value: cat.id,
+      label: cat.name,
+    }));
   };
 
   // Handle various response formats from the API
@@ -288,11 +356,128 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
     return [];
   };
 
+  // Render a dynamic form field based on attribute type
+  const renderAttributeField = (attr: CategoryAttribute) => {
+    const value = attributeValues[attr.name];
+
+    switch (attr.type) {
+      case 'TEXT':
+        return (
+          <Input
+            key={attr.name}
+            label={attr.label}
+            placeholder={`Enter ${attr.label.toLowerCase()}`}
+            value={(value as string) || ''}
+            onChange={(e) => handleAttributeChange(attr.name, e.target.value)}
+            required={attr.required}
+          />
+        );
+
+      case 'NUMBER':
+        return (
+          <Input
+            key={attr.name}
+            label={attr.label}
+            type="number"
+            step="any"
+            placeholder={`Enter ${attr.label.toLowerCase()}`}
+            value={value !== undefined && value !== null ? String(value) : ''}
+            onChange={(e) =>
+              handleAttributeChange(attr.name, e.target.value ? Number(e.target.value) : '')
+            }
+            required={attr.required}
+          />
+        );
+
+      case 'SELECT':
+        return (
+          <Select
+            key={attr.name}
+            label={attr.label}
+            options={
+              attr.options?.map((opt) => ({
+                value: opt.value,
+                label: opt.label,
+              })) || []
+            }
+            placeholder={`Select ${attr.label.toLowerCase()}`}
+            value={(value as string) || ''}
+            onChange={(e) => handleAttributeChange(attr.name, e.target.value)}
+            required={attr.required}
+          />
+        );
+
+      case 'MULTI_SELECT':
+        return (
+          <div key={attr.name}>
+            <label className="label">
+              {attr.label}
+              {attr.required && <span className="text-red-500 ml-1">*</span>}
+            </label>
+            <div className="mt-1 space-y-2 p-3 border border-gray-200 rounded-lg max-h-40 overflow-y-auto">
+              {attr.options && attr.options.length > 0 ? (
+                attr.options.map((opt) => {
+                  const selectedValues = (value as string[]) || [];
+                  const isSelected = selectedValues.includes(opt.value);
+                  return (
+                    <label
+                      key={opt.value}
+                      className="flex items-center gap-2 cursor-pointer"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => handleMultiSelectToggle(attr.name, opt.value)}
+                        className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+                      />
+                      <span className="text-sm text-gray-700">{opt.label}</span>
+                    </label>
+                  );
+                })
+              ) : (
+                <p className="text-sm text-gray-500">No options available</p>
+              )}
+            </div>
+          </div>
+        );
+
+      case 'BOOLEAN':
+        return (
+          <div key={attr.name} className="flex items-center gap-3 pt-6">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={!!value}
+                onChange={(e) => handleAttributeChange(attr.name, e.target.checked)}
+                className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+              />
+              <span className="text-sm font-medium text-gray-700">
+                {attr.label}
+                {attr.required && <span className="text-red-500 ml-1">*</span>}
+              </span>
+            </label>
+          </div>
+        );
+
+      default:
+        return (
+          <Input
+            key={attr.name}
+            label={attr.label}
+            placeholder={`Enter ${attr.label.toLowerCase()}`}
+            value={(value as string) || ''}
+            onChange={(e) => handleAttributeChange(attr.name, e.target.value)}
+            required={attr.required}
+          />
+        );
+    }
+  };
+
   const categories = extractItems<Category>(categoriesData, 'categories');
   const designs = extractItems<Design>(designsData, 'designs');
   const artisans = extractItems<Artisan>(artisansData, 'artisans');
 
-  const categoryOptions = flattenCategories(categories);
+  const categoryOptions = getCategoryOptions(categories);
 
   const designOptions = designs.map((d) => ({ value: d.id, label: d.name }));
 
@@ -377,6 +562,21 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
             </div>
           </div>
         </div>
+
+        {/* Category Attributes - shown dynamically when a category is selected */}
+        {selectedCategoryId && categoryAttributes.length > 0 && (
+          <div>
+            <h3 className="text-sm font-medium text-gray-700 mb-1">Category Attributes</h3>
+            <p className="text-xs text-gray-500 mb-3">
+              These attributes are specific to the selected category
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+              {categoryAttributes
+                .sort((a, b) => a.display_order - b.display_order)
+                .map((attr) => renderAttributeField(attr))}
+            </div>
+          </div>
+        )}
 
         {/* Pricing */}
         <div>

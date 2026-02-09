@@ -3,10 +3,10 @@ package handler
 
 import (
 	"net/http"
-	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/handloom/admin/internal/domain"
+	"github.com/handloom/admin/internal/middleware"
 	"github.com/handloom/admin/pkg/errors"
 	"github.com/handloom/admin/pkg/logger"
 	"github.com/handloom/admin/pkg/response"
@@ -16,13 +16,15 @@ import (
 type AuthHandler struct {
 	authService domain.AuthService
 	logger      *logger.Logger
+	validation  *middleware.Validation
 }
 
 // NewAuthHandler creates a new AuthHandler
-func NewAuthHandler(authService domain.AuthService, logger *logger.Logger) *AuthHandler {
+func NewAuthHandler(authService domain.AuthService, logger *logger.Logger, validation *middleware.Validation) *AuthHandler {
 	return &AuthHandler{
 		authService: authService,
 		logger:      logger,
+		validation:  validation,
 	}
 }
 
@@ -30,12 +32,12 @@ func NewAuthHandler(authService domain.AuthService, logger *logger.Logger) *Auth
 func (h *AuthHandler) Routes() chi.Router {
 	r := chi.NewRouter()
 
-	r.Post("/login", h.Login)
-	r.Post("/refresh", h.RefreshToken)
+	r.With(middleware.ValidateJSONTyped[domain.LoginRequest](h.validation)).Post("/login", h.Login)
+	r.With(middleware.ValidateJSONTyped[RefreshTokenRequest](h.validation)).Post("/refresh", h.RefreshToken)
 	r.Post("/logout", h.Logout)
-	r.Post("/password/change", h.ChangePassword)
-	r.Post("/password/reset-request", h.RequestPasswordReset)
-	r.Post("/password/reset", h.ResetPassword)
+	r.With(middleware.ValidateJSONTyped[domain.ChangePasswordRequest](h.validation)).Post("/password/change", h.ChangePassword)
+	r.With(middleware.ValidateJSONTyped[PasswordResetEmailRequest](h.validation)).Post("/password/reset-request", h.RequestPasswordReset)
+	r.With(middleware.ValidateJSONTyped[domain.ResetPasswordRequest](h.validation)).Post("/password/reset", h.ResetPassword)
 
 	return r
 }
@@ -43,20 +45,9 @@ func (h *AuthHandler) Routes() chi.Router {
 // Login handles user login
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+	req := middleware.MustGetValidatedBody[domain.LoginRequest](ctx)
 
-	var req domain.LoginRequest
-	if err := decodeJSON(r, &req); err != nil {
-		response.Error(w, err)
-		return
-	}
-
-	// Validate request
-	if req.Email == "" || req.Password == "" {
-		response.Error(w, errors.Validation("Email and password are required"))
-		return
-	}
-
-	result, err := h.authService.Login(ctx, req)
+	result, err := h.authService.Login(ctx, *req)
 	if err != nil {
 		response.Error(w, err)
 		return
@@ -68,19 +59,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 // RefreshToken handles token refresh
 func (h *AuthHandler) RefreshToken(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-
-	var req struct {
-		RefreshToken string `json:"refresh_token"`
-	}
-	if err := decodeJSON(r, &req); err != nil {
-		response.Error(w, err)
-		return
-	}
-
-	if req.RefreshToken == "" {
-		response.Error(w, errors.Validation("Refresh token is required"))
-		return
-	}
+	req := middleware.MustGetValidatedBody[RefreshTokenRequest](ctx)
 
 	tokens, err := h.authService.RefreshToken(ctx, req.RefreshToken)
 	if err != nil {
@@ -120,23 +99,9 @@ func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req domain.ChangePasswordRequest
-	if err := decodeJSON(r, &req); err != nil {
-		response.Error(w, err)
-		return
-	}
+	req := middleware.MustGetValidatedBody[domain.ChangePasswordRequest](ctx)
 
-	if req.CurrentPassword == "" || req.NewPassword == "" {
-		response.Error(w, errors.Validation("Current password and new password are required"))
-		return
-	}
-
-	if len(req.NewPassword) < 8 {
-		response.Error(w, errors.Validation("New password must be at least 8 characters"))
-		return
-	}
-
-	if err := h.authService.ChangePassword(ctx, userID, req); err != nil {
+	if err := h.authService.ChangePassword(ctx, userID, *req); err != nil {
 		response.Error(w, err)
 		return
 	}
@@ -147,19 +112,7 @@ func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 // RequestPasswordReset handles password reset request
 func (h *AuthHandler) RequestPasswordReset(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-
-	var req struct {
-		Email string `json:"email"`
-	}
-	if err := decodeJSON(r, &req); err != nil {
-		response.Error(w, err)
-		return
-	}
-
-	if req.Email == "" {
-		response.Error(w, errors.Validation("Email is required"))
-		return
-	}
+	req := middleware.MustGetValidatedBody[PasswordResetEmailRequest](ctx)
 
 	// Don't reveal if email exists or not
 	_ = h.authService.RequestPasswordReset(ctx, req.Email)
@@ -172,42 +125,12 @@ func (h *AuthHandler) RequestPasswordReset(w http.ResponseWriter, r *http.Reques
 // ResetPassword handles password reset
 func (h *AuthHandler) ResetPassword(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+	req := middleware.MustGetValidatedBody[domain.ResetPasswordRequest](ctx)
 
-	var req domain.ResetPasswordRequest
-	if err := decodeJSON(r, &req); err != nil {
-		response.Error(w, err)
-		return
-	}
-
-	if req.Token == "" || req.NewPassword == "" {
-		response.Error(w, errors.Validation("Token and new password are required"))
-		return
-	}
-
-	if len(req.NewPassword) < 8 {
-		response.Error(w, errors.Validation("New password must be at least 8 characters"))
-		return
-	}
-
-	if err := h.authService.ResetPassword(ctx, req); err != nil {
+	if err := h.authService.ResetPassword(ctx, *req); err != nil {
 		response.Error(w, err)
 		return
 	}
 
 	response.JSON(w, http.StatusOK, map[string]string{"message": "Password reset successfully"})
-}
-
-// ExtractToken extracts the Bearer token from the Authorization header
-func ExtractToken(r *http.Request) string {
-	authHeader := r.Header.Get("Authorization")
-	if authHeader == "" {
-		return ""
-	}
-
-	parts := strings.Split(authHeader, " ")
-	if len(parts) != 2 || parts[0] != "Bearer" {
-		return ""
-	}
-
-	return parts[1]
 }

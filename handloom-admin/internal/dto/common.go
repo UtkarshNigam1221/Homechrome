@@ -1,16 +1,15 @@
 package dto
 
-// PaginationRequest represents pagination parameters.
+// PaginationRequest represents cursor-based pagination parameters.
 type PaginationRequest struct {
-	Page    int `json:"page" validate:"gte=1"`
-	PerPage int `json:"per_page" validate:"gte=1,lte=100"`
+	Limit  int    `json:"limit" validate:"gte=1,lte=100"`
+	Cursor string `json:"cursor,omitempty"`
 }
 
 // DefaultPagination returns default pagination.
 func DefaultPagination() PaginationRequest {
 	return PaginationRequest{
-		Page:    1,
-		PerPage: 10,
+		Limit: 20,
 	}
 }
 

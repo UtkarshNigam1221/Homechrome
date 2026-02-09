@@ -1,4 +1,5 @@
 export { getStatusBadgeVariant } from '../../utils/badge';
+export { AttributeFilterSidebar } from './AttributeFilterSidebar';
 export type { BadgeProps } from './Badge';
 export { Badge } from './Badge';
 export type { ButtonProps } from './Button';

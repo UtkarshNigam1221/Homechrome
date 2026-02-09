@@ -308,8 +308,7 @@ func TestUserRepository_List(t *testing.T) {
 	t.Run("list all users", func(t *testing.T) {
 		req := domain.ListUsersRequest{
 			PaginationRequest: domain.PaginationRequest{
-				Page:    1,
-				PerPage: 10,
+				Limit: 10,
 			},
 		}
 
@@ -321,8 +320,7 @@ func TestUserRepository_List(t *testing.T) {
 	t.Run("list with pagination", func(t *testing.T) {
 		req := domain.ListUsersRequest{
 			PaginationRequest: domain.PaginationRequest{
-				Page:    1,
-				PerPage: 2,
+				Limit: 2,
 			},
 		}
 
@@ -335,8 +333,7 @@ func TestUserRepository_List(t *testing.T) {
 		role := domain.UserRoleAdmin
 		req := domain.ListUsersRequest{
 			PaginationRequest: domain.PaginationRequest{
-				Page:    1,
-				PerPage: 10,
+				Limit: 10,
 			},
 			Role: &role,
 		}

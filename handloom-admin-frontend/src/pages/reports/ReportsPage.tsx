@@ -23,6 +23,7 @@ import {
   TableLoading,
   TableRow,
 } from '../../components/common';
+import { useCursorPagination } from '../../hooks';
 import type { ReportFormat, ReportType } from '../../types';
 
 const REPORT_TYPES: { value: ReportType; label: string; description: string }[] = [
@@ -36,8 +37,7 @@ const REPORT_TYPES: { value: ReportType; label: string; description: string }[] 
 
 export function ReportsPage() {
   const queryClient = useQueryClient();
-  const [page, setPage] = useState(1);
-  const [perPage, setPerPage] = useState(10);
+  const { limit, cursor, hasPrevious, goToNextPage, goToPreviousPage, changeLimit } = useCursorPagination(10);
   const [showGenerateModal, setShowGenerateModal] = useState(false);
   const [selectedType, setSelectedType] = useState<ReportType>('SALES');
   const [selectedFormat, setSelectedFormat] = useState<ReportFormat>('CSV');
@@ -45,8 +45,8 @@ export function ReportsPage() {
   const [endDate, setEndDate] = useState('');
 
   const { data, isLoading } = useQuery({
-    queryKey: ['reports', { page, limit: perPage }],
-    queryFn: () => reportsApi.list({ page, limit: perPage }),
+    queryKey: ['reports', { limit, cursor }],
+    queryFn: () => reportsApi.list({ limit, cursor }),
   });
 
   const generateMutation = useMutation({
@@ -180,18 +180,16 @@ export function ReportsPage() {
             )}
           </TableBody>
         </Table>
-        {pagination && pagination.total_pages > 1 && (
+        {(pagination?.has_more || hasPrevious) && (
           <div className="border-t border-gray-200 px-6">
             <Pagination
-              currentPage={pagination.current_page}
-              totalPages={pagination.total_pages}
-              totalCount={pagination.total_count}
-              perPage={pagination.per_page}
-              onPageChange={setPage}
-              onPerPageChange={(v) => {
-                setPerPage(v);
-                setPage(1);
-              }}
+              hasMore={pagination?.has_more ?? false}
+              hasPrevious={hasPrevious}
+              perPage={limit}
+              onNextPage={() => pagination?.next_cursor && goToNextPage(pagination.next_cursor)}
+              onPreviousPage={goToPreviousPage}
+              onPerPageChange={changeLimit}
+              itemCount={reports.length}
             />
           </div>
         )}

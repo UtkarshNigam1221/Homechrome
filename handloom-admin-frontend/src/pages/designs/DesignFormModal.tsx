@@ -158,20 +158,12 @@ export function DesignFormModal({ isOpen, onClose, design }: DesignFormModalProp
     }
   };
 
-  // Flatten categories for select
-  const flattenCategories = (cats: Category[], depth = 0): { value: string; label: string }[] => {
-    const result: { value: string; label: string }[] = [];
-    cats.forEach((cat) => {
-      const prefix = depth > 0 ? '—'.repeat(depth) + ' ' : '';
-      result.push({
-        value: cat.id,
-        label: `${prefix}${cat.name}`,
-      });
-      if (cat.children && cat.children.length > 0) {
-        result.push(...flattenCategories(cat.children, depth + 1));
-      }
-    });
-    return result;
+  // Map categories to select options (flat list, no hierarchy)
+  const flattenCategories = (cats: Category[]): { value: string; label: string }[] => {
+    return cats.map((cat) => ({
+      value: cat.id,
+      label: cat.name,
+    }));
   };
 
   // Handle various response formats from the API

@@ -49,10 +49,9 @@ export { getErrorMessage };
 interface UsersListResponse {
   users: User[];
   pagination: {
-    current_page: number;
-    per_page: number;
-    total_count: number;
-    total_pages: number;
+    limit: number;
+    next_cursor?: string;
+    has_more: boolean;
   };
 }
 
@@ -68,10 +67,8 @@ export const usersApi = {
     return {
       items: data.users || [],
       pagination: data.pagination || {
-        current_page: 1,
-        per_page: 10,
-        total_count: 0,
-        total_pages: 0,
+        limit: 10,
+        has_more: false,
       },
     };
   },
@@ -104,24 +101,15 @@ export const usersApi = {
 // Categories API
 // ============================================================================
 export const categoriesApi = {
-  list: async (
-    params?: PaginationParams & { parent_id?: string; status?: string; level?: number }
-  ) => {
+  list: async (params?: PaginationParams & { status?: string }) => {
     const response = await apiClient.get<ApiResponse<ListResponse<Category>>>('/admin/categories', {
       params,
     });
     return response.data.data || response.data;
   },
 
-  getTree: async () => {
-    const response = await apiClient.get<ApiResponse<Category[]>>('/admin/categories/tree');
-    return response.data.data || response.data;
-  },
-
-  get: async (id: string, includeAttributes = true) => {
-    const response = await apiClient.get<ApiResponse<Category>>(`/admin/categories/${id}`, {
-      params: { include_attributes: includeAttributes },
-    });
+  get: async (id: string) => {
+    const response = await apiClient.get<ApiResponse<Category>>(`/admin/categories/${id}`);
     return response.data.data || response.data;
   },
 
@@ -159,10 +147,8 @@ export const categoriesApi = {
     await apiClient.delete(`/admin/categories/${id}/attributes/${attrName}`);
   },
 
-  getAttributes: async (id: string, includeInherited = true) => {
-    const response = await apiClient.get(`/admin/categories/${id}/attributes`, {
-      params: { include_inherited: includeInherited },
-    });
+  getAttributes: async (id: string) => {
+    const response = await apiClient.get(`/admin/categories/${id}/attributes`);
     return response.data.data || response.data;
   },
 };
@@ -214,10 +200,17 @@ export const productsApi = {
       in_stock?: boolean;
       low_stock?: boolean;
       search?: string;
+      attribute_filters?: Record<string, string[]>; // { "material": ["silk", "cotton"], "color": ["red"] }
     }
   ) => {
+    // Handle attribute_filters specially - needs to be serialized as JSON
+    const { attribute_filters, ...restParams } = params || {};
+    const queryParams: Record<string, unknown> = { ...restParams };
+    if (attribute_filters && Object.keys(attribute_filters).length > 0) {
+      queryParams.attribute_filters = JSON.stringify(attribute_filters);
+    }
     const response = await apiClient.get<ApiResponse<ListResponse<Product>>>('/admin/products', {
-      params,
+      params: queryParams,
     });
     return response.data.data || response.data;
   },
@@ -274,6 +267,13 @@ export const productsApi = {
     const response = await apiClient.get<ApiResponse<ListResponse<InventoryTransaction>>>(
       `/admin/products/${id}/inventory/transactions`,
       { params }
+    );
+    return response.data.data || response.data;
+  },
+
+  getFilterOptions: async (categoryId: string): Promise<Record<string, string[]>> => {
+    const response = await apiClient.get<ApiResponse<Record<string, string[]>>>(
+      `/admin/products/filter-options/${categoryId}`
     );
     return response.data.data || response.data;
   },
