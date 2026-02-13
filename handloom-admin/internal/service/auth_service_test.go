@@ -61,6 +61,7 @@ func TestAuthService_Login(t *testing.T) {
 					Role:         domain.UserRoleAdmin,
 					Permissions:  []string{"*"},
 				}, nil)
+				tokenStore.EXPECT().RevokeAllUserTokens(ctx, "user_123").Return(nil)
 				tokenStore.EXPECT().StoreRefreshToken(ctx, "user_123", gomock.Any(), gomock.Any()).Return(nil)
 				userRepo.EXPECT().UpdateLastLogin(ctx, "user_123").Return(nil)
 			},

@@ -2,11 +2,12 @@ package dynamodb
 
 import (
 	"context"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
-	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/expression"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"github.com/handloom/admin/internal/domain"
@@ -23,7 +24,8 @@ func NewUserRepository(client *Client) *UserRepository {
 	return &UserRepository{client: client}
 }
 
-// Create creates a new user
+// Create creates a new user with atomic email uniqueness guarantee.
+// Uses TransactWriteItems to atomically put the user item and an email guard item.
 func (r *UserRepository) Create(ctx context.Context, user *domain.User) error {
 	now := time.Now()
 	user.CreatedAt = now
@@ -35,15 +37,35 @@ func (r *UserRepository) Create(ctx context.Context, user *domain.User) error {
 		return errors.Internal("Failed to marshal user")
 	}
 
-	// Check if email already exists
-	_, err = r.client.db.PutItem(ctx, &dynamodb.PutItemInput{
-		TableName:           aws.String(r.client.coreTable),
-		Item:                av,
-		ConditionExpression: aws.String("attribute_not_exists(PK)"),
+	// Email guard item ensures uniqueness across concurrent creates
+	emailGuard := map[string]types.AttributeValue{
+		"PK":          &types.AttributeValueMemberS{Value: "USER_EMAIL#" + user.Email},
+		"SK":          &types.AttributeValueMemberS{Value: "UNIQUENESS"},
+		"user_id":     &types.AttributeValueMemberS{Value: user.ID},
+		"entity_type": &types.AttributeValueMemberS{Value: "EMAIL_GUARD"},
+	}
+
+	_, err = r.client.db.TransactWriteItems(ctx, &dynamodb.TransactWriteItemsInput{
+		TransactItems: []types.TransactWriteItem{
+			{
+				Put: &types.Put{
+					TableName:           aws.String(r.client.coreTable),
+					Item:                av,
+					ConditionExpression: aws.String("attribute_not_exists(PK)"),
+				},
+			},
+			{
+				Put: &types.Put{
+					TableName:           aws.String(r.client.coreTable),
+					Item:                emailGuard,
+					ConditionExpression: aws.String("attribute_not_exists(PK)"),
+				},
+			},
+		},
 	})
 	if err != nil {
-		if isConditionalCheckFailed(err) {
-			return errors.New(errors.ErrCodeAlreadyExists, "User already exists")
+		if isTransactionCanceled(err) {
+			return errors.New(errors.ErrCodeAlreadyExists, "User with this email already exists")
 		}
 		return errors.Wrap(err, "Failed to create user")
 	}
@@ -129,104 +151,60 @@ func (r *UserRepository) Update(ctx context.Context, user *domain.User) error {
 	return nil
 }
 
-// Delete deletes a user by ID
+// Delete deletes a user and their email guard item atomically.
 func (r *UserRepository) Delete(ctx context.Context, id string) error {
-	_, err := r.client.db.DeleteItem(ctx, &dynamodb.DeleteItemInput{
-		TableName: aws.String(r.client.coreTable),
-		Key: map[string]types.AttributeValue{
-			"PK": &types.AttributeValueMemberS{Value: "USER#" + id},
-			"SK": &types.AttributeValueMemberS{Value: "METADATA"},
+	// Fetch user to get email for guard cleanup
+	user, err := r.GetByID(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	_, err = r.client.db.TransactWriteItems(ctx, &dynamodb.TransactWriteItemsInput{
+		TransactItems: []types.TransactWriteItem{
+			{
+				Delete: &types.Delete{
+					TableName: aws.String(r.client.coreTable),
+					Key: map[string]types.AttributeValue{
+						"PK": &types.AttributeValueMemberS{Value: "USER#" + id},
+						"SK": &types.AttributeValueMemberS{Value: "METADATA"},
+					},
+				},
+			},
+			{
+				Delete: &types.Delete{
+					TableName: aws.String(r.client.coreTable),
+					Key: map[string]types.AttributeValue{
+						"PK": &types.AttributeValueMemberS{Value: "USER_EMAIL#" + user.Email},
+						"SK": &types.AttributeValueMemberS{Value: "UNIQUENESS"},
+					},
+				},
+			},
 		},
-		ConditionExpression: aws.String("attribute_exists(PK)"),
 	})
 	if err != nil {
-		if isConditionalCheckFailed(err) {
-			return errors.NotFound("User not found")
-		}
 		return errors.Wrap(err, "Failed to delete user")
 	}
 
 	return nil
 }
 
-// List retrieves users with cursor-based pagination using GSI1.
+// List retrieves users with in-memory filtering, sorting, and cursor-based pagination.
+// Fetches all users from GSI1, applies Go-level filters, sorts, and paginates.
 func (r *UserRepository) List(ctx context.Context, req domain.ListUsersRequest) (*domain.ListUsersResponse, error) {
-	limit := DefaultLimit(req.Limit)
-
-	exclusiveStartKey, err := DecodeCursor(req.Cursor)
-	if err != nil {
-		return nil, err
-	}
-
-	// Query GSI1 using USER_EMAIL partition key (all users share this GSI1PK)
-	keyExpr := expression.Key("GSI1PK").Equal(expression.Value("USER_EMAIL"))
-	builder := expression.NewBuilder().WithKeyCondition(keyExpr)
-
-	// Build filter expression for role, status, search
-	hasFilter := false
-	var filterExpr expression.ConditionBuilder
-	if req.Role != nil {
-		filterExpr = expression.Name("role").Equal(expression.Value(string(*req.Role)))
-		hasFilter = true
-	}
-	if req.Status != nil {
-		f := expression.Name("status").Equal(expression.Value(string(*req.Status)))
-		if hasFilter {
-			filterExpr = filterExpr.And(f)
-		} else {
-			filterExpr = f
-			hasFilter = true
-		}
-	}
-	if req.Search != "" {
-		f := expression.Name("email").Contains(req.Search).
-			Or(expression.Name("first_name").Contains(req.Search)).
-			Or(expression.Name("last_name").Contains(req.Search))
-		if hasFilter {
-			filterExpr = filterExpr.And(f)
-		} else {
-			filterExpr = f
-			hasFilter = true
-		}
-	}
-
-	if hasFilter {
-		builder = builder.WithFilter(filterExpr)
-	}
-
-	expr, err := builder.Build()
-	if err != nil {
-		return nil, errors.Internal("Failed to build query expression")
-	}
-
-	// Over-fetch when filters are active to reduce round-trips
-	fetchLimit := int32(limit)
-	if hasFilter {
-		fetchLimit = int32(limit * 3)
-		if fetchLimit > 300 {
-			fetchLimit = 300
-		}
-	}
-
-	var collected []*domain.User
-	var lastEvaluatedKey map[string]types.AttributeValue
-	currentStartKey := exclusiveStartKey
+	// Fetch all users from GSI1
+	var allUsers []*domain.User
+	var exclusiveStartKey map[string]types.AttributeValue
 
 	for {
-		queryInput := &dynamodb.QueryInput{
-			TableName:                 aws.String(r.client.coreTable),
-			IndexName:                 aws.String("GSI1"),
-			KeyConditionExpression:    expr.KeyCondition(),
-			ExpressionAttributeNames:  expr.Names(),
-			ExpressionAttributeValues: expr.Values(),
-			Limit:                     aws.Int32(fetchLimit),
-			ExclusiveStartKey:         currentStartKey,
-		}
-		if expr.Filter() != nil {
-			queryInput.FilterExpression = expr.Filter()
-		}
-
-		result, err := r.client.db.Query(ctx, queryInput)
+		result, err := r.client.db.Query(ctx, &dynamodb.QueryInput{
+			TableName:              aws.String(r.client.coreTable),
+			IndexName:              aws.String("GSI1"),
+			KeyConditionExpression: aws.String("GSI1PK = :pk"),
+			ExpressionAttributeValues: map[string]types.AttributeValue{
+				":pk": &types.AttributeValueMemberS{Value: "USER_EMAIL"},
+			},
+			ExclusiveStartKey: exclusiveStartKey,
+		})
 		if err != nil {
 			return nil, errors.Wrap(err, "Failed to list users")
 		}
@@ -235,33 +213,69 @@ func (r *UserRepository) List(ctx context.Context, req domain.ListUsersRequest) 
 		if err := attributevalue.UnmarshalListOfMaps(result.Items, &batch); err != nil {
 			return nil, errors.Internal("Failed to unmarshal users")
 		}
+		allUsers = append(allUsers, batch...)
 
-		collected = append(collected, batch...)
-		lastEvaluatedKey = result.LastEvaluatedKey
-
-		if len(collected) >= limit || lastEvaluatedKey == nil {
+		if result.LastEvaluatedKey == nil {
 			break
 		}
-
-		currentStartKey = lastEvaluatedKey
+		exclusiveStartKey = result.LastEvaluatedKey
 	}
 
-	// Trim to exactly limit items if we over-collected
-	if len(collected) > limit {
-		collected = collected[:limit]
-		// Build cursor from the last returned item's keys
-		last := collected[limit-1]
-		lastEvaluatedKey = map[string]types.AttributeValue{
-			"PK":     &types.AttributeValueMemberS{Value: last.PK},
-			"SK":     &types.AttributeValueMemberS{Value: last.SK},
-			"GSI1PK": &types.AttributeValueMemberS{Value: last.GSI1PK},
-			"GSI1SK": &types.AttributeValueMemberS{Value: last.GSI1SK},
+	// Filter in memory
+	filtered := allUsers[:0]
+	for _, u := range allUsers {
+		if req.Role != nil && u.Role != *req.Role {
+			continue
 		}
+		if req.Status != nil && u.Status != *req.Status {
+			continue
+		}
+		if req.Search != "" {
+			s := req.Search
+			if !containsIgnoreCase(u.Email, s) &&
+				!containsIgnoreCase(u.FirstName, s) &&
+				!containsIgnoreCase(u.LastName, s) {
+				continue
+			}
+		}
+		filtered = append(filtered, u)
 	}
+
+	// Sort
+	sortBy := req.SortBy
+	if sortBy == "" {
+		sortBy = "created_at"
+	}
+	descending := req.SortDir != "asc"
+
+	sort.Slice(filtered, func(i, j int) bool {
+		var less bool
+		switch sortBy {
+		case "email":
+			less = strings.ToLower(filtered[i].Email) < strings.ToLower(filtered[j].Email)
+		case "first_name":
+			less = strings.ToLower(filtered[i].FirstName) < strings.ToLower(filtered[j].FirstName)
+		case "last_name":
+			less = strings.ToLower(filtered[i].LastName) < strings.ToLower(filtered[j].LastName)
+		case "role":
+			less = string(filtered[i].Role) < string(filtered[j].Role)
+		case "status":
+			less = string(filtered[i].Status) < string(filtered[j].Status)
+		default: // created_at
+			less = filtered[i].CreatedAt.Before(filtered[j].CreatedAt)
+		}
+		if descending {
+			return !less
+		}
+		return less
+	})
+
+	// Paginate using offset-based in-memory cursor
+	page, pagination := InMemoryPaginate(filtered, req.PaginationRequest)
 
 	return &domain.ListUsersResponse{
-		Users:      collected,
-		Pagination: BuildPaginationResponse(limit, lastEvaluatedKey),
+		Users:      page,
+		Pagination: pagination,
 	}, nil
 }
 

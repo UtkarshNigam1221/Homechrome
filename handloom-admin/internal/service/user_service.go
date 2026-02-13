@@ -14,15 +14,17 @@ import (
 
 // UserService implements domain.UserService
 type UserService struct {
-	userRepo domain.UserRepository
-	logger   *logger.Logger
+	userRepo   domain.UserRepository
+	tokenStore domain.TokenStore
+	logger     *logger.Logger
 }
 
 // NewUserService creates a new UserService
-func NewUserService(userRepo domain.UserRepository, logger *logger.Logger) *UserService {
+func NewUserService(userRepo domain.UserRepository, tokenStore domain.TokenStore, logger *logger.Logger) *UserService {
 	return &UserService{
-		userRepo: userRepo,
-		logger:   logger,
+		userRepo:   userRepo,
+		tokenStore: tokenStore,
+		logger:     logger,
 	}
 }
 
@@ -41,7 +43,7 @@ func (s *UserService) Create(ctx context.Context, req domain.CreateUserRequest, 
 	}
 
 	user := &domain.User{
-		ID:           "user_" + uuid.New().String()[:8],
+		ID:           "user_" + uuid.New().String(),
 		Email:        req.Email,
 		PasswordHash: string(hashedPassword),
 		FirstName:    req.FirstName,
@@ -96,6 +98,16 @@ func (s *UserService) Update(ctx context.Context, id string, req domain.UpdateUs
 	if req.Role != nil {
 		user.Role = *req.Role
 	}
+	if req.Status != nil {
+		user.Status = *req.Status
+	}
+	if req.Password != nil && *req.Password != "" {
+		hashedPassword, err := bcrypt.GenerateFromPassword([]byte(*req.Password), bcrypt.DefaultCost)
+		if err != nil {
+			return nil, errors.Internal("Failed to hash password")
+		}
+		user.PasswordHash = string(hashedPassword)
+	}
 	if req.Permissions != nil {
 		user.Permissions = req.Permissions
 	}
@@ -114,10 +126,15 @@ func (s *UserService) Update(ctx context.Context, id string, req domain.UpdateUs
 	return user, nil
 }
 
-// Delete deletes a user by ID
+// Delete deletes a user by ID and revokes all their tokens
 func (s *UserService) Delete(ctx context.Context, id string) error {
 	if err := s.userRepo.Delete(ctx, id); err != nil {
 		return err
+	}
+
+	// Best-effort revoke all tokens — user is already deleted
+	if err := s.tokenStore.RevokeAllUserTokens(ctx, id); err != nil {
+		s.logger.WithContext(ctx).WithError(err).Warn("Failed to revoke tokens for deleted user")
 	}
 
 	s.logger.WithContext(ctx).Infof("Deleted user: %s", id)

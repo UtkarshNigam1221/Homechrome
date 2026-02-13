@@ -60,7 +60,7 @@ func (s *TokenStore) StoreRefreshToken(ctx context.Context, userID string, token
 
 	item := RefreshToken{
 		PK:         "USER#" + userID,
-		SK:         "REFRESH_TOKEN#" + tokenHash[:16],
+		SK:         "REFRESH_TOKEN#" + tokenHash,
 		UserID:     userID,
 		TokenHash:  tokenHash,
 		EntityType: "REFRESH_TOKEN",
@@ -92,7 +92,7 @@ func (s *TokenStore) ValidateRefreshToken(ctx context.Context, userID string, to
 		TableName: aws.String(s.client.coreTable),
 		Key: map[string]types.AttributeValue{
 			"PK": &types.AttributeValueMemberS{Value: "USER#" + userID},
-			"SK": &types.AttributeValueMemberS{Value: "REFRESH_TOKEN#" + tokenHash[:16]},
+			"SK": &types.AttributeValueMemberS{Value: "REFRESH_TOKEN#" + tokenHash},
 		},
 	})
 	if err != nil {
@@ -106,11 +106,6 @@ func (s *TokenStore) ValidateRefreshToken(ctx context.Context, userID string, to
 	var storedToken RefreshToken
 	if err := attributevalue.UnmarshalMap(result.Item, &storedToken); err != nil {
 		return false, errors.Internal("Failed to unmarshal token")
-	}
-
-	// Verify full hash matches
-	if storedToken.TokenHash != tokenHash {
-		return false, nil
 	}
 
 	// Check TTL
@@ -129,7 +124,7 @@ func (s *TokenStore) RevokeRefreshToken(ctx context.Context, userID string, toke
 		TableName: aws.String(s.client.coreTable),
 		Key: map[string]types.AttributeValue{
 			"PK": &types.AttributeValueMemberS{Value: "USER#" + userID},
-			"SK": &types.AttributeValueMemberS{Value: "REFRESH_TOKEN#" + tokenHash[:16]},
+			"SK": &types.AttributeValueMemberS{Value: "REFRESH_TOKEN#" + tokenHash},
 		},
 	})
 	if err != nil {
@@ -141,34 +136,64 @@ func (s *TokenStore) RevokeRefreshToken(ctx context.Context, userID string, toke
 
 // RevokeAllUserTokens revokes all tokens for a user
 func (s *TokenStore) RevokeAllUserTokens(ctx context.Context, userID string) error {
-	// Query all refresh tokens for user
-	result, err := s.client.db.Query(ctx, &dynamodb.QueryInput{
-		TableName:              aws.String(s.client.coreTable),
-		KeyConditionExpression: aws.String("PK = :pk AND begins_with(SK, :sk)"),
-		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":pk": &types.AttributeValueMemberS{Value: "USER#" + userID},
-			":sk": &types.AttributeValueMemberS{Value: "REFRESH_TOKEN#"},
-		},
-	})
-	if err != nil {
-		return errors.Wrap(err, "Failed to query user tokens")
+	var exclusiveStartKey map[string]types.AttributeValue
+	var allKeys []map[string]types.AttributeValue
+
+	// Paginate through all tokens for user
+	for {
+		result, err := s.client.db.Query(ctx, &dynamodb.QueryInput{
+			TableName:              aws.String(s.client.coreTable),
+			KeyConditionExpression: aws.String("PK = :pk AND begins_with(SK, :sk)"),
+			ExpressionAttributeValues: map[string]types.AttributeValue{
+				":pk": &types.AttributeValueMemberS{Value: "USER#" + userID},
+				":sk": &types.AttributeValueMemberS{Value: "REFRESH_TOKEN#"},
+			},
+			ProjectionExpression: aws.String("PK, SK"),
+			ExclusiveStartKey:    exclusiveStartKey,
+		})
+		if err != nil {
+			return errors.Wrap(err, "Failed to query user tokens")
+		}
+
+		for _, item := range result.Items {
+			allKeys = append(allKeys, map[string]types.AttributeValue{
+				"PK": item["PK"],
+				"SK": item["SK"],
+			})
+		}
+
+		if result.LastEvaluatedKey == nil {
+			break
+		}
+		exclusiveStartKey = result.LastEvaluatedKey
 	}
 
-	// Delete all tokens
-	for _, item := range result.Items {
-		pk := item["PK"].(*types.AttributeValueMemberS).Value
-		sk := item["SK"].(*types.AttributeValueMemberS).Value
+	if len(allKeys) == 0 {
+		return nil
+	}
 
-		_, err := s.client.db.DeleteItem(ctx, &dynamodb.DeleteItemInput{
-			TableName: aws.String(s.client.coreTable),
-			Key: map[string]types.AttributeValue{
-				"PK": &types.AttributeValueMemberS{Value: pk},
-				"SK": &types.AttributeValueMemberS{Value: sk},
+	// BatchWriteItem in chunks of 25 (DynamoDB limit)
+	const batchSize = 25
+	for i := 0; i < len(allKeys); i += batchSize {
+		end := i + batchSize
+		if end > len(allKeys) {
+			end = len(allKeys)
+		}
+
+		writeRequests := make([]types.WriteRequest, 0, end-i)
+		for _, key := range allKeys[i:end] {
+			writeRequests = append(writeRequests, types.WriteRequest{
+				DeleteRequest: &types.DeleteRequest{Key: key},
+			})
+		}
+
+		_, err := s.client.db.BatchWriteItem(ctx, &dynamodb.BatchWriteItemInput{
+			RequestItems: map[string][]types.WriteRequest{
+				s.client.coreTable: writeRequests,
 			},
 		})
 		if err != nil {
-			// Log but continue
-			continue
+			return errors.Wrap(err, "Failed to batch-delete user tokens")
 		}
 	}
 
@@ -182,7 +207,7 @@ func (s *TokenStore) StorePasswordResetToken(ctx context.Context, userID string,
 	ttl := now.Add(expiry).Unix()
 
 	item := PasswordResetToken{
-		PK:         "PASSWORD_RESET#" + tokenHash[:16],
+		PK:         "PASSWORD_RESET#" + tokenHash,
 		SK:         "METADATA",
 		UserID:     userID,
 		TokenHash:  tokenHash,
@@ -214,7 +239,7 @@ func (s *TokenStore) ValidatePasswordResetToken(ctx context.Context, token strin
 	result, err := s.client.db.GetItem(ctx, &dynamodb.GetItemInput{
 		TableName: aws.String(s.client.coreTable),
 		Key: map[string]types.AttributeValue{
-			"PK": &types.AttributeValueMemberS{Value: "PASSWORD_RESET#" + tokenHash[:16]},
+			"PK": &types.AttributeValueMemberS{Value: "PASSWORD_RESET#" + tokenHash},
 			"SK": &types.AttributeValueMemberS{Value: "METADATA"},
 		},
 	})
@@ -229,11 +254,6 @@ func (s *TokenStore) ValidatePasswordResetToken(ctx context.Context, token strin
 	var storedToken PasswordResetToken
 	if err := attributevalue.UnmarshalMap(result.Item, &storedToken); err != nil {
 		return "", errors.Internal("Failed to unmarshal token")
-	}
-
-	// Verify full hash matches
-	if storedToken.TokenHash != tokenHash {
-		return "", errors.New(errors.ErrCodeInvalidToken, "Invalid reset token")
 	}
 
 	// Check TTL
@@ -251,7 +271,7 @@ func (s *TokenStore) RevokePasswordResetToken(ctx context.Context, token string)
 	_, err := s.client.db.DeleteItem(ctx, &dynamodb.DeleteItemInput{
 		TableName: aws.String(s.client.coreTable),
 		Key: map[string]types.AttributeValue{
-			"PK": &types.AttributeValueMemberS{Value: "PASSWORD_RESET#" + tokenHash[:16]},
+			"PK": &types.AttributeValueMemberS{Value: "PASSWORD_RESET#" + tokenHash},
 			"SK": &types.AttributeValueMemberS{Value: "METADATA"},
 		},
 	})

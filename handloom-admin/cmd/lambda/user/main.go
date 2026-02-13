@@ -6,67 +6,32 @@ import (
 	"os"
 
 	"github.com/handloom/admin/internal/config"
-	"github.com/handloom/admin/internal/handler"
-	"github.com/handloom/admin/internal/middleware"
-	"github.com/handloom/admin/internal/repository/dynamodb"
 	"github.com/handloom/admin/internal/router"
-	"github.com/handloom/admin/internal/service"
-	"github.com/handloom/admin/internal/validator"
+	"github.com/handloom/admin/internal/wire"
 	"github.com/handloom/admin/pkg/logger"
 )
 
 func main() {
-	// Load configuration
 	cfg := config.Load()
-
-	// Initialize logger
 	log := logger.New(cfg.App.Debug)
 	log.Info("Starting User Lambda")
 
-	// Initialize context
 	ctx := context.Background()
 
-	// Initialize DynamoDB client
-	dbClient, err := dynamodb.NewClient(ctx, cfg)
+	deps, err := wire.InitializeUserDeps(ctx, cfg)
 	if err != nil {
-		log.Fatalf("Failed to initialize DynamoDB client: %v", err)
+		log.Fatalf("Failed to initialize dependencies: %v", err)
 	}
-
-	// Initialize repositories
-	userRepo := dynamodb.NewUserRepository(dbClient)
-	tokenStore := dynamodb.NewTokenStore(dbClient)
-
-	// Initialize services
-	authService := service.NewAuthService(
-		userRepo,
-		tokenStore,
-		log,
-		cfg.JWT.SecretKey,
-		cfg.JWT.AccessTokenDuration,
-		cfg.JWT.RefreshTokenDuration,
-		cfg.JWT.Issuer,
-	)
-	userService := service.NewUserService(userRepo, log)
-
-	// Initialize validation middleware
-	v := validator.New()
-	validation := middleware.NewValidation(v, middleware.ValidationConfig{})
-
-	// Initialize handler
-	userHandler := handler.NewUserHandler(userService, log, validation)
-
-	// Initialize auth middleware
-	authMiddleware := middleware.NewAuth(authService, log)
 
 	// Create authenticated router
 	routerCfg := router.Config{
 		AllowedOrigins: getAllowedOrigins(),
 		Debug:          cfg.App.Debug,
 	}
-	r := router.NewAuthenticatedRouter(routerCfg, log, authMiddleware)
+	r := router.NewAuthenticatedRouter(routerCfg, deps.Logger, deps.AuthMiddleware)
 
 	// Register routes
-	router.NewUserRouter(r, userHandler, authMiddleware)
+	router.NewUserRouter(r, deps.Handler, deps.AuthMiddleware)
 
 	// Start Lambda
 	adapter := router.NewLambdaAdapter(r)

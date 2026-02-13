@@ -108,11 +108,13 @@ type CreateUserRequest struct {
 
 // UpdateUserRequest contains data for updating a user
 type UpdateUserRequest struct {
-	FirstName   *string   `json:"first_name,omitempty"`
-	LastName    *string   `json:"last_name,omitempty"`
-	Phone       *string   `json:"phone,omitempty"`
-	Role        *UserRole `json:"role,omitempty"`
-	Permissions []string  `json:"permissions,omitempty"`
+	FirstName   *string     `json:"first_name,omitempty"`
+	LastName    *string     `json:"last_name,omitempty"`
+	Phone       *string     `json:"phone,omitempty"`
+	Role        *UserRole   `json:"role,omitempty" validate:"omitempty,oneof=ADMIN OPERATOR"`
+	Status      *UserStatus `json:"status,omitempty" validate:"omitempty,oneof=ACTIVE INACTIVE PENDING"`
+	Password    *string     `json:"password,omitempty" validate:"omitempty,min=8"`
+	Permissions []string    `json:"permissions,omitempty"`
 }
 
 // ==================== CATEGORY SERVICE ====================

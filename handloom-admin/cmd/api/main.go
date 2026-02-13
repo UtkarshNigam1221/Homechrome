@@ -74,7 +74,7 @@ func main() {
 		cfg.JWT.Issuer,
 	)
 
-	userService := service.NewUserService(userRepo, log)
+	userService := service.NewUserService(userRepo, tokenStore, log)
 	categoryService := service.NewCategoryService(categoryRepo, productRepo, log)
 	designService := service.NewDesignService(designRepo, categoryRepo, log)
 	inventoryService := service.NewInventoryService(inventoryRepo, productRepo, log)
@@ -117,7 +117,7 @@ func main() {
 	validation := middleware.NewValidation(v, middleware.ValidationConfig{})
 
 	// Initialize handlers
-	authHandler := handler.NewAuthHandler(authService, log, validation)
+	authHandler := handler.NewAuthHandler(authService, userService, log, validation)
 	userHandler := handler.NewUserHandler(userService, log, validation)
 	categoryHandler := handler.NewCategoryHandler(categoryService, log, validation)
 	designHandler := handler.NewDesignHandler(designService, log, validation)
@@ -240,8 +240,11 @@ func createRouter(
 
 	// Admin routes
 	r.Route("/admin", func(r chi.Router) {
-		// Public admin routes (no auth required)
-		r.Mount("/auth", authHandler.Routes())
+		// Auth routes (public + protected, split inside the handler)
+		r.Group(func(r chi.Router) {
+			r.Use(httprate.LimitByIP(20, time.Minute))
+			r.Mount("/auth", authHandler.Routes(authMiddleware.Authenticate))
+		})
 
 		// Protected admin routes
 		r.Group(func(r chi.Router) {

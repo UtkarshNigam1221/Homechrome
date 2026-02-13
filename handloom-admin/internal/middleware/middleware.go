@@ -13,13 +13,8 @@ import (
 	"github.com/handloom/admin/pkg/response"
 )
 
-type contextKey string
-
-const (
-	requestIDKey contextKey = "request_id"
-	userIDKey    contextKey = "user_id"
-	userKey      contextKey = "user"
-)
+// Use exported ContextKey constants from interfaces.go for all context keys.
+// This ensures SetUserInContext and GetUserIDFromContext use the same key type.
 
 // RequestID adds a unique request ID to the context
 func RequestID(next http.Handler) http.Handler {
@@ -29,7 +24,7 @@ func RequestID(next http.Handler) http.Handler {
 			requestID = uuid.New().String()
 		}
 
-		ctx := context.WithValue(r.Context(), requestIDKey, requestID)
+		ctx := context.WithValue(r.Context(), RequestIDKey, requestID)
 		ctx = logger.SetRequestID(ctx, requestID)
 		w.Header().Set("X-Request-ID", requestID)
 
@@ -131,8 +126,8 @@ func (a *Auth) Authenticate(next http.Handler) http.Handler {
 			return
 		}
 
-		// Set user in context
-		ctx := context.WithValue(r.Context(), userIDKey, claims.UserID)
+		// Set user in context using exported keys
+		ctx := context.WithValue(r.Context(), UserIDKey, claims.UserID)
 		ctx = logger.SetUserID(ctx, claims.UserID)
 
 		// Create a minimal user object from claims
@@ -142,7 +137,7 @@ func (a *Auth) Authenticate(next http.Handler) http.Handler {
 			Role:        claims.Role,
 			Permissions: claims.Permissions,
 		}
-		ctx = context.WithValue(ctx, userKey, user)
+		ctx = context.WithValue(ctx, UserKey, user)
 
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
@@ -152,7 +147,7 @@ func (a *Auth) Authenticate(next http.Handler) http.Handler {
 func (a *Auth) RequirePermission(permission string) func(next http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			user, ok := r.Context().Value(userKey).(*domain.User)
+			user, ok := r.Context().Value(UserKey).(*domain.User)
 			if !ok {
 				response.Unauthorized(w, "Authentication required")
 				return
@@ -187,7 +182,7 @@ func (a *Auth) RequirePermission(permission string) func(next http.Handler) http
 func (a *Auth) RequireRole(roles ...domain.UserRole) func(next http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			user, ok := r.Context().Value(userKey).(*domain.User)
+			user, ok := r.Context().Value(UserKey).(*domain.User)
 			if !ok {
 				response.Unauthorized(w, "Authentication required")
 				return
@@ -226,7 +221,7 @@ func getRemoteIP(r *http.Request) string {
 
 // GetUserFromContext retrieves the user from context
 func GetUserFromContext(ctx context.Context) *domain.User {
-	if user, ok := ctx.Value(userKey).(*domain.User); ok {
+	if user, ok := ctx.Value(UserKey).(*domain.User); ok {
 		return user
 	}
 	return nil
@@ -234,7 +229,7 @@ func GetUserFromContext(ctx context.Context) *domain.User {
 
 // GetUserIDFromContext retrieves the user ID from context
 func GetUserIDFromContext(ctx context.Context) string {
-	if userID, ok := ctx.Value(userIDKey).(string); ok {
+	if userID, ok := ctx.Value(UserIDKey).(string); ok {
 		return userID
 	}
 	return ""

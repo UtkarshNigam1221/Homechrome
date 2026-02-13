@@ -92,7 +92,7 @@ export function UsersPage() {
   } | null>(null);
 
   // Debounce search query with 2 second delay
-  const debouncedSearch = useDebounce(searchInput, 2000);
+  const debouncedSearch = useDebounce(searchInput, 400);
 
   const { data, isLoading } = useQuery({
     queryKey: [

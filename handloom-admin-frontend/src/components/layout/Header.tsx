@@ -4,6 +4,7 @@ import { Bell, LogOut, Menu as MenuIcon, Settings, User } from 'lucide-react';
 import { Fragment } from 'react';
 import { useNavigate } from 'react-router-dom';
 
+import { authApi } from '../../api';
 import { useAuthStore } from '../../stores/authStore';
 import { useUIStore } from '../../stores/uiStore';
 
@@ -12,7 +13,12 @@ export function Header() {
   const { user, logout } = useAuthStore();
   const { sidebarCollapsed, toggleSidebar } = useUIStore();
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      await authApi.logout();
+    } catch {
+      // Server logout failed, still clear local state
+    }
     logout();
     navigate('/login');
   };

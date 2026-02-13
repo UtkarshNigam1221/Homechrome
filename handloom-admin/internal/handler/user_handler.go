@@ -7,6 +7,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/internal/middleware"
+	"github.com/handloom/admin/pkg/errors"
 	"github.com/handloom/admin/pkg/logger"
 	"github.com/handloom/admin/pkg/response"
 )
@@ -49,14 +50,26 @@ func (h *UserHandler) List(w http.ResponseWriter, r *http.Request) {
 		PaginationRequest: parsePagination(r),
 	}
 
-	// Parse filters
+	// Parse and validate filters
 	if role := r.URL.Query().Get("role"); role != "" {
-		roleEnum := domain.UserRole(role)
-		req.Role = &roleEnum
+		switch domain.UserRole(role) {
+		case domain.UserRoleAdmin, domain.UserRoleOperator:
+			roleEnum := domain.UserRole(role)
+			req.Role = &roleEnum
+		default:
+			response.Error(w, errors.Validation("Invalid role filter: must be ADMIN or OPERATOR"))
+			return
+		}
 	}
 	if status := r.URL.Query().Get("status"); status != "" {
-		statusEnum := domain.UserStatus(status)
-		req.Status = &statusEnum
+		switch domain.UserStatus(status) {
+		case domain.UserStatusActive, domain.UserStatusInactive, domain.UserStatusPending:
+			statusEnum := domain.UserStatus(status)
+			req.Status = &statusEnum
+		default:
+			response.Error(w, errors.Validation("Invalid status filter: must be ACTIVE, INACTIVE, or PENDING"))
+			return
+		}
 	}
 	req.Search = r.URL.Query().Get("search")
 
@@ -74,7 +87,7 @@ func (h *UserHandler) Create(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	req := middleware.MustGetValidatedBody[domain.CreateUserRequest](ctx)
 
-	createdBy := getUserIDFromContext(ctx)
+	createdBy := middleware.GetUserIDFromContext(ctx)
 	user, err := h.userService.Create(ctx, *req, createdBy)
 	if err != nil {
 		response.Error(w, err)
@@ -104,7 +117,7 @@ func (h *UserHandler) Update(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	req := middleware.MustGetValidatedBody[domain.UpdateUserRequest](ctx)
 
-	updatedBy := getUserIDFromContext(ctx)
+	updatedBy := middleware.GetUserIDFromContext(ctx)
 	user, err := h.userService.Update(ctx, id, *req, updatedBy)
 	if err != nil {
 		response.Error(w, err)
@@ -133,7 +146,7 @@ func (h *UserHandler) UpdateStatus(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	req := middleware.MustGetValidatedBody[UpdateUserStatusRequest](ctx)
 
-	updatedBy := getUserIDFromContext(ctx)
+	updatedBy := middleware.GetUserIDFromContext(ctx)
 	if err := h.userService.UpdateStatus(ctx, id, req.Status, updatedBy); err != nil {
 		response.Error(w, err)
 		return

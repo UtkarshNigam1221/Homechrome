@@ -15,29 +15,39 @@ import (
 // AuthHandler handles authentication-related requests
 type AuthHandler struct {
 	authService domain.AuthService
+	userService domain.UserService
 	logger      *logger.Logger
 	validation  *middleware.Validation
 }
 
 // NewAuthHandler creates a new AuthHandler
-func NewAuthHandler(authService domain.AuthService, logger *logger.Logger, validation *middleware.Validation) *AuthHandler {
+func NewAuthHandler(authService domain.AuthService, userService domain.UserService, logger *logger.Logger, validation *middleware.Validation) *AuthHandler {
 	return &AuthHandler{
 		authService: authService,
+		userService: userService,
 		logger:      logger,
 		validation:  validation,
 	}
 }
 
-// Routes returns the auth routes
-func (h *AuthHandler) Routes() chi.Router {
+// Routes returns all auth routes. The authenticate parameter is the auth middleware
+// to apply to protected routes (logout, me, change-password).
+func (h *AuthHandler) Routes(authenticate func(http.Handler) http.Handler) chi.Router {
 	r := chi.NewRouter()
 
+	// Public routes (no auth required)
 	r.With(middleware.ValidateJSONTyped[domain.LoginRequest](h.validation)).Post("/login", h.Login)
 	r.With(middleware.ValidateJSONTyped[RefreshTokenRequest](h.validation)).Post("/refresh", h.RefreshToken)
-	r.Post("/logout", h.Logout)
-	r.With(middleware.ValidateJSONTyped[domain.ChangePasswordRequest](h.validation)).Post("/password/change", h.ChangePassword)
 	r.With(middleware.ValidateJSONTyped[PasswordResetEmailRequest](h.validation)).Post("/password/reset-request", h.RequestPasswordReset)
 	r.With(middleware.ValidateJSONTyped[domain.ResetPasswordRequest](h.validation)).Post("/password/reset", h.ResetPassword)
+
+	// Protected routes (require authentication)
+	r.Group(func(r chi.Router) {
+		r.Use(authenticate)
+		r.Post("/logout", h.Logout)
+		r.Get("/me", h.GetCurrentUser)
+		r.With(middleware.ValidateJSONTyped[domain.ChangePasswordRequest](h.validation)).Post("/password/change", h.ChangePassword)
+	})
 
 	return r
 }
@@ -74,8 +84,7 @@ func (h *AuthHandler) RefreshToken(w http.ResponseWriter, r *http.Request) {
 func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	// Get user ID from context (set by auth middleware)
-	userID := getUserIDFromContext(ctx)
+	userID := middleware.GetUserIDFromContext(ctx)
 	if userID == "" {
 		response.Error(w, errors.Unauthorized("User not authenticated"))
 		return
@@ -89,11 +98,30 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, http.StatusOK, map[string]string{"message": "Logged out successfully"})
 }
 
+// GetCurrentUser returns the authenticated user's profile
+func (h *AuthHandler) GetCurrentUser(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	userID := middleware.GetUserIDFromContext(ctx)
+	if userID == "" {
+		response.Error(w, errors.Unauthorized("User not authenticated"))
+		return
+	}
+
+	user, err := h.userService.GetByID(ctx, userID)
+	if err != nil {
+		response.Error(w, err)
+		return
+	}
+
+	response.JSON(w, http.StatusOK, user)
+}
+
 // ChangePassword handles password change
 func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	userID := getUserIDFromContext(ctx)
+	userID := middleware.GetUserIDFromContext(ctx)
 	if userID == "" {
 		response.Error(w, errors.Unauthorized("User not authenticated"))
 		return

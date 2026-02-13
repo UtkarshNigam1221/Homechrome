@@ -2,23 +2,13 @@ package handler
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"strconv"
 
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/internal/middleware"
-	"github.com/handloom/admin/pkg/errors"
 	"github.com/handloom/admin/pkg/logger"
 )
-
-// decodeJSON decodes JSON from request body
-func decodeJSON(r *http.Request, v interface{}) error {
-	if err := json.NewDecoder(r.Body).Decode(v); err != nil {
-		return errors.Validation("Invalid JSON: " + err.Error())
-	}
-	return nil
-}
 
 // getUserIDFromContext retrieves the user ID from context
 // Delegates to middleware to use the same context key type

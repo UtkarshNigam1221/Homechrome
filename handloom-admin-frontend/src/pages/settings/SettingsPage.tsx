@@ -1,10 +1,11 @@
+import { useMutation } from '@tanstack/react-query';
 import { clsx } from 'clsx';
 import { Bell, Lock, Palette, User as UserIcon } from 'lucide-react';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
 
-import { authApi, getErrorMessage } from '../../api';
+import { authApi, getErrorMessage, usersApi } from '../../api';
 import { Button, Card, CardHeader, Input } from '../../components/common';
 import { useAuthStore } from '../../stores/authStore';
 import type { User } from '../../types';
@@ -73,6 +74,7 @@ interface ProfileFormData {
 }
 
 function ProfileSettings({ user }: { user: User | null }) {
+  const { setUser } = useAuthStore();
   const {
     register,
     handleSubmit,
@@ -86,8 +88,26 @@ function ProfileSettings({ user }: { user: User | null }) {
     },
   });
 
-  const onSubmit = (_data: ProfileFormData) => {
-    toast.success('Profile updated successfully');
+  const updateMutation = useMutation({
+    mutationFn: (data: ProfileFormData) => {
+      if (!user?.id) throw new Error('User not found');
+      return usersApi.update(user.id, {
+        first_name: data.first_name,
+        last_name: data.last_name,
+        phone: data.phone || undefined,
+      });
+    },
+    onSuccess: (updatedUser) => {
+      setUser(updatedUser);
+      toast.success('Profile updated successfully');
+    },
+    onError: (error) => {
+      toast.error(getErrorMessage(error));
+    },
+  });
+
+  const onSubmit = (data: ProfileFormData) => {
+    updateMutation.mutate(data);
   };
 
   return (
@@ -101,7 +121,7 @@ function ProfileSettings({ user }: { user: User | null }) {
         <Input label="Email Address" type="email" {...register('email')} disabled />
         <Input label="Phone Number" {...register('phone')} />
         <div className="pt-4">
-          <Button type="submit" disabled={!isDirty}>
+          <Button type="submit" disabled={!isDirty} loading={updateMutation.isPending}>
             Save Changes
           </Button>
         </div>
@@ -195,7 +215,6 @@ function NotificationSettings() {
 
   const handleToggle = (key: string) => {
     setSettings((prev) => ({ ...prev, [key]: !prev[key as keyof typeof prev] }));
-    toast.success('Settings updated');
   };
 
   return (

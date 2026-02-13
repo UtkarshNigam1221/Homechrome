@@ -20,11 +20,7 @@ const userSchema = z.object({
     .max(50, 'Last name must be less than 50 characters'),
   email: z.string().email('Invalid email address'),
   phone: z.string().optional(),
-  password: z
-    .string()
-    .min(8, 'Password must be at least 8 characters')
-    .optional()
-    .or(z.literal('')),
+  password: z.union([z.literal(''), z.string().min(8, 'Password must be at least 8 characters')]),
   role: z.enum(['ADMIN', 'OPERATOR']),
   status: z.enum(['ACTIVE', 'INACTIVE', 'PENDING']),
 });
@@ -114,18 +110,7 @@ export function UserFormModal({ isOpen, onClose, user }: UserFormModalProps) {
   });
 
   const onSubmit = (data: UserFormData) => {
-    const requestData: CreateUserRequest = {
-      first_name: data.first_name,
-      last_name: data.last_name,
-      email: data.email,
-      phone: data.phone || undefined,
-      role: data.role,
-      password: data.password || 'TempPass123!',
-      status: data.status,
-    };
-
     if (isEditing && user?.id) {
-      // Don't include password if not changed
       const updateData: Partial<CreateUserRequest> = {
         first_name: data.first_name,
         last_name: data.last_name,
@@ -142,7 +127,15 @@ export function UserFormModal({ isOpen, onClose, user }: UserFormModalProps) {
         toast.error('Password is required for new users');
         return;
       }
-      createMutation.mutate(requestData);
+      createMutation.mutate({
+        first_name: data.first_name,
+        last_name: data.last_name,
+        email: data.email,
+        phone: data.phone || undefined,
+        role: data.role,
+        password: data.password,
+        status: data.status,
+      });
     }
   };
 

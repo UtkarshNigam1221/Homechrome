@@ -100,6 +100,12 @@ func isConditionalCheckFailed(err error) bool {
 	return errors.As(err, &ccfe)
 }
 
+// isTransactionCanceled checks if an error is a DynamoDB transaction canceled exception
+func isTransactionCanceled(err error) bool {
+	var tce *types.TransactionCanceledException
+	return errors.As(err, &tce)
+}
+
 // containsIgnoreCase checks if s contains substr (case-insensitive)
 func containsIgnoreCase(s, substr string) bool {
 	if len(substr) == 0 {

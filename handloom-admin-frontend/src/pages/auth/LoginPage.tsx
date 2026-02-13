@@ -96,19 +96,6 @@ export function LoginPage() {
               />
             </div>
 
-            <div className="flex items-center justify-between">
-              <label className="flex items-center">
-                <input
-                  type="checkbox"
-                  className="w-4 h-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
-                />
-                <span className="ml-2 text-sm text-gray-600">Remember me</span>
-              </label>
-              <button type="button" className="text-sm text-primary-600 hover:text-primary-700">
-                Forgot password?
-              </button>
-            </div>
-
             <Button
               type="submit"
               className="w-full"
@@ -120,18 +107,20 @@ export function LoginPage() {
           </form>
         </div>
 
-        {/* Demo Credentials */}
-        <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
-          <p className="text-sm font-medium text-blue-800 mb-2">Demo Credentials:</p>
-          <div className="text-sm text-blue-700 space-y-1">
-            <p>
-              <span className="font-medium">Admin:</span> admin@handloom.com / Admin@123!
-            </p>
-            <p>
-              <span className="font-medium">Manager:</span> manager@handloom.com / Admin@123!
-            </p>
+        {/* Demo Credentials - dev only */}
+        {import.meta.env.DEV && (
+          <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
+            <p className="text-sm font-medium text-blue-800 mb-2">Demo Credentials:</p>
+            <div className="text-sm text-blue-700 space-y-1">
+              <p>
+                <span className="font-medium">Admin:</span> admin@handloom.com / Admin@123!
+              </p>
+              <p>
+                <span className="font-medium">Manager:</span> manager@handloom.com / Admin@123!
+              </p>
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );

@@ -3,6 +3,7 @@ import { lazy, Suspense, useEffect } from 'react';
 import { Toaster } from 'react-hot-toast';
 import { BrowserRouter, Navigate, Outlet, Route, Routes } from 'react-router-dom';
 
+import { authApi } from './api';
 import { LoadingOverlay, PageLoading } from './components/common';
 import { MainLayout } from './components/layout';
 // Eagerly loaded pages (critical path)
@@ -112,13 +113,23 @@ function LazyPageFallback() {
 }
 
 function App() {
-  const { setLoading } = useAuthStore();
-
-  // Initialize auth state
+  // Validate persisted auth on startup
   useEffect(() => {
-    // Auth state is persisted, just mark as not loading
-    setLoading(false);
-  }, [setLoading]);
+    const { accessToken, setUser, logout, setLoading } = useAuthStore.getState();
+    if (!accessToken) {
+      setLoading(false);
+      return;
+    }
+    authApi
+      .getCurrentUser()
+      .then((user) => {
+        setUser(user);
+        setLoading(false);
+      })
+      .catch(() => {
+        logout();
+      });
+  }, []);
 
   return (
     <QueryClientProvider client={queryClient}>

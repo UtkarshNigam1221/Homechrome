@@ -68,28 +68,29 @@ func (s *AuthService) Login(ctx context.Context, req domain.LoginRequest) (*doma
 		return nil, errors.New(errors.ErrCodeInvalidCredentials, "Invalid email or password")
 	}
 
+	// Revoke any existing refresh tokens before generating new ones (single-session enforcement)
+	if err := s.tokenStore.RevokeAllUserTokens(ctx, user.ID); err != nil {
+		s.logger.WithContext(ctx).WithError(err).Warn("Failed to revoke existing tokens")
+	}
+
 	// Generate tokens
 	tokens, err := s.generateTokenPair(user)
 	if err != nil {
 		return nil, err
 	}
 
-	// Revoke any existing refresh tokens (single-session: only one active login allowed)
-	if err := s.tokenStore.RevokeAllUserTokens(ctx, user.ID); err != nil {
-		s.logger.WithContext(ctx).WithError(err).Warn("Failed to revoke existing tokens")
-	}
-
-	// Store refresh token
+	// Store refresh token — fail the login if we can't persist the session
 	if err := s.tokenStore.StoreRefreshToken(ctx, user.ID, tokens.RefreshToken, s.refreshTokenDuration); err != nil {
 		s.logger.WithContext(ctx).WithError(err).Error("Failed to store refresh token")
+		return nil, errors.Internal("Failed to create session")
 	}
 
-	// Update last login
+	// Update last login (best-effort, non-critical)
 	if err := s.userRepo.UpdateLastLogin(ctx, user.ID); err != nil {
-		s.logger.WithContext(ctx).WithError(err).Error("Failed to update last login")
+		s.logger.WithContext(ctx).WithError(err).Warn("Failed to update last login")
 	}
 
-	s.logger.WithContext(ctx).Infof("User logged in: %s", user.Email)
+	s.logger.WithContext(ctx).Infof("User logged in: %s", user.ID)
 
 	// Remove sensitive data
 	user.PasswordHash = ""
@@ -131,10 +132,15 @@ func (s *AuthService) RefreshToken(ctx context.Context, refreshToken string) (*d
 		return nil, err
 	}
 
-	// Revoke old refresh token and store new one
-	_ = s.tokenStore.RevokeRefreshToken(ctx, claims.UserID, refreshToken)
+	// Revoke old refresh token — if this fails, the old token remains valid (token reuse risk)
+	if err := s.tokenStore.RevokeRefreshToken(ctx, claims.UserID, refreshToken); err != nil {
+		s.logger.WithContext(ctx).WithError(err).Warn("Failed to revoke old refresh token")
+	}
+
+	// Store new refresh token — fail if we can't persist the session
 	if err := s.tokenStore.StoreRefreshToken(ctx, user.ID, tokens.RefreshToken, s.refreshTokenDuration); err != nil {
 		s.logger.WithContext(ctx).WithError(err).Error("Failed to store refresh token")
+		return nil, errors.Internal("Failed to create session")
 	}
 
 	return tokens, nil
@@ -217,8 +223,10 @@ func (s *AuthService) ChangePassword(ctx context.Context, userID string, req dom
 		return err
 	}
 
-	// Revoke all existing tokens
-	_ = s.tokenStore.RevokeAllUserTokens(ctx, userID)
+	// Revoke all existing tokens to force re-login
+	if err := s.tokenStore.RevokeAllUserTokens(ctx, userID); err != nil {
+		s.logger.WithContext(ctx).WithError(err).Warn("Failed to revoke tokens after password change")
+	}
 
 	s.logger.WithContext(ctx).Infof("Password changed for user: %s", userID)
 	return nil
@@ -282,8 +290,12 @@ func (s *AuthService) ResetPassword(ctx context.Context, req domain.ResetPasswor
 	}
 
 	// Revoke reset token and all existing session tokens
-	_ = s.tokenStore.RevokePasswordResetToken(ctx, req.Token)
-	_ = s.tokenStore.RevokeAllUserTokens(ctx, userID)
+	if err := s.tokenStore.RevokePasswordResetToken(ctx, req.Token); err != nil {
+		s.logger.WithContext(ctx).WithError(err).Warn("Failed to revoke password reset token")
+	}
+	if err := s.tokenStore.RevokeAllUserTokens(ctx, userID); err != nil {
+		s.logger.WithContext(ctx).WithError(err).Warn("Failed to revoke tokens after password reset")
+	}
 
 	s.logger.WithContext(ctx).Infof("Password reset completed for user: %s", userID)
 	return nil

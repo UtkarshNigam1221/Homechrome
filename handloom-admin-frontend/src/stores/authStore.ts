@@ -54,6 +54,7 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: 'handloom-auth',
+      version: 1,
       partialize: (state) => ({
         user: state.user,
         accessToken: state.accessToken,

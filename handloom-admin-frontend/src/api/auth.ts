@@ -15,7 +15,7 @@ export const authApi = {
     refreshToken: string
   ): Promise<{ access_token: string; refresh_token: string }> => {
     const response = await apiClient.post('/admin/auth/refresh', { refresh_token: refreshToken });
-    return response.data.tokens || response.data;
+    return response.data;
   },
 
   changePassword: async (currentPassword: string, newPassword: string): Promise<void> => {
@@ -34,7 +34,7 @@ export const authApi = {
   },
 
   getCurrentUser: async (): Promise<User> => {
-    const response = await apiClient.get<{ data: User }>('/admin/users/me');
-    return response.data.data;
+    const response = await apiClient.get<User>('/admin/auth/me');
+    return response.data;
   },
 };

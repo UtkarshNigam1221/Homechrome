@@ -38,12 +38,10 @@ const navigation = [
   { name: 'Reports', href: '/reports', icon: FileText },
   { name: 'Bulk Operations', href: '/bulk', icon: Upload },
   { name: 'Notifications', href: '/notifications', icon: Bell },
-];
-
-const adminNavigation = [
-  { name: 'Users', href: '/users', icon: Users },
   { name: 'Settings', href: '/settings', icon: Settings },
 ];
+
+const adminNavigation = [{ name: 'Users', href: '/users', icon: Users }];
 
 export function Sidebar() {
   const location = useLocation();

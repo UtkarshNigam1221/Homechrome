@@ -176,9 +176,10 @@ func ProvideAuthService(
 // ProvideUserService creates a new UserService
 func ProvideUserService(
 	userRepo domain.UserRepository,
+	tokenStore domain.TokenStore,
 	log *logger.Logger,
 ) *service.UserService {
-	return service.NewUserService(userRepo, log)
+	return service.NewUserService(userRepo, tokenStore, log)
 }
 
 // ProvideCategoryService creates a new CategoryService
@@ -364,10 +365,11 @@ var ServiceSet = wire.NewSet(
 // ProvideAuthHandler creates a new AuthHandler
 func ProvideAuthHandler(
 	authService *service.AuthService,
+	userService *service.UserService,
 	log *logger.Logger,
 	validation *middleware.Validation,
 ) *handler.AuthHandler {
-	return handler.NewAuthHandler(authService, log, validation)
+	return handler.NewAuthHandler(authService, userService, log, validation)
 }
 
 // ProvideUserHandler creates a new UserHandler

@@ -20,7 +20,8 @@ func TestUserService_Create(t *testing.T) {
 
 	mockUserRepo := mocks.NewMockUserRepository(ctrl)
 	log := logger.NewNoop()
-	service := NewUserService(mockUserRepo, log)
+	mockTokenStore := mocks.NewMockTokenStore(ctrl)
+	service := NewUserService(mockUserRepo, mockTokenStore, log)
 	ctx := context.Background()
 
 	t.Run("successful user creation", func(t *testing.T) {
@@ -90,7 +91,8 @@ func TestUserService_GetByID(t *testing.T) {
 
 	mockUserRepo := mocks.NewMockUserRepository(ctrl)
 	log := logger.NewNoop()
-	service := NewUserService(mockUserRepo, log)
+	mockTokenStore := mocks.NewMockTokenStore(ctrl)
+	service := NewUserService(mockUserRepo, mockTokenStore, log)
 	ctx := context.Background()
 
 	t.Run("successful get by ID", func(t *testing.T) {
@@ -132,7 +134,8 @@ func TestUserService_Update(t *testing.T) {
 
 	mockUserRepo := mocks.NewMockUserRepository(ctrl)
 	log := logger.NewNoop()
-	service := NewUserService(mockUserRepo, log)
+	mockTokenStore := mocks.NewMockTokenStore(ctrl)
+	service := NewUserService(mockUserRepo, mockTokenStore, log)
 	ctx := context.Background()
 
 	t.Run("successful update", func(t *testing.T) {
@@ -189,12 +192,16 @@ func TestUserService_Delete(t *testing.T) {
 
 	mockUserRepo := mocks.NewMockUserRepository(ctrl)
 	log := logger.NewNoop()
-	service := NewUserService(mockUserRepo, log)
+	mockTokenStore := mocks.NewMockTokenStore(ctrl)
+	service := NewUserService(mockUserRepo, mockTokenStore, log)
 	ctx := context.Background()
 
 	t.Run("successful delete", func(t *testing.T) {
 		mockUserRepo.EXPECT().
 			Delete(ctx, "user_123").
+			Return(nil)
+		mockTokenStore.EXPECT().
+			RevokeAllUserTokens(ctx, "user_123").
 			Return(nil)
 
 		err := service.Delete(ctx, "user_123")
@@ -219,7 +226,8 @@ func TestUserService_List(t *testing.T) {
 
 	mockUserRepo := mocks.NewMockUserRepository(ctrl)
 	log := logger.NewNoop()
-	service := NewUserService(mockUserRepo, log)
+	mockTokenStore := mocks.NewMockTokenStore(ctrl)
+	service := NewUserService(mockUserRepo, mockTokenStore, log)
 	ctx := context.Background()
 
 	t.Run("successful list", func(t *testing.T) {
@@ -292,7 +300,8 @@ func TestUserService_UpdateStatus(t *testing.T) {
 
 	mockUserRepo := mocks.NewMockUserRepository(ctrl)
 	log := logger.NewNoop()
-	service := NewUserService(mockUserRepo, log)
+	mockTokenStore := mocks.NewMockTokenStore(ctrl)
+	service := NewUserService(mockUserRepo, mockTokenStore, log)
 	ctx := context.Background()
 
 	t.Run("successful status update", func(t *testing.T) {

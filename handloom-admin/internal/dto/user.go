@@ -28,11 +28,13 @@ func (r *CreateUserRequest) ToDomain() domain.CreateUserRequest {
 
 // UpdateUserRequest represents the user update request.
 type UpdateUserRequest struct {
-	FirstName   *string          `json:"first_name,omitempty"`
-	LastName    *string          `json:"last_name,omitempty"`
-	Phone       *string          `json:"phone,omitempty"`
-	Role        *domain.UserRole `json:"role,omitempty" validate:"omitempty,oneof=ADMIN OPERATOR"`
-	Permissions []string         `json:"permissions,omitempty"`
+	FirstName   *string            `json:"first_name,omitempty"`
+	LastName    *string            `json:"last_name,omitempty"`
+	Phone       *string            `json:"phone,omitempty"`
+	Role        *domain.UserRole   `json:"role,omitempty" validate:"omitempty,oneof=ADMIN OPERATOR"`
+	Status      *domain.UserStatus `json:"status,omitempty" validate:"omitempty,oneof=ACTIVE INACTIVE PENDING"`
+	Password    *string            `json:"password,omitempty" validate:"omitempty,min=8"`
+	Permissions []string           `json:"permissions,omitempty"`
 }
 
 // ToDomain converts DTO to domain request.
@@ -42,11 +44,8 @@ func (r *UpdateUserRequest) ToDomain() domain.UpdateUserRequest {
 		LastName:    r.LastName,
 		Phone:       r.Phone,
 		Role:        r.Role,
+		Status:      r.Status,
+		Password:    r.Password,
 		Permissions: r.Permissions,
 	}
-}
-
-// UpdateUserStatusRequest represents the user status update request.
-type UpdateUserStatusRequest struct {
-	Status domain.UserStatus `json:"status" validate:"required,oneof=ACTIVE INACTIVE PENDING"`
 }
