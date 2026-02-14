@@ -1,16 +1,24 @@
-# Asset Lambda - High Level Design
+# Asset Service - High Level Design
 
 ## 1. Overview
 
-The Asset Lambda provides media and file management capabilities for the Handloom Admin platform. It handles file uploads, storage, thumbnail generation, and CDN delivery for product images, documents, and other media assets.
+The Asset Service provides file upload and storage for the Handloom Admin platform. It uses a **tmp/ → assets/ S3-only flow** — no DynamoDB records are stored for assets. Files are uploaded to a temporary S3 prefix via presigned PUT URL, then moved to the permanent `assets/` prefix on finalize.
 
 ### Key Features
-- Pre-signed URL uploads for direct S3 access
-- Automatic thumbnail generation
-- CDN delivery via CloudFront
-- Folder-based organization
-- Metadata and tagging support
-- Usage tracking and references
+- Presigned PUT URL uploads (browser → S3 direct, no Lambda proxy)
+- Two-phase flow: upload to `tmp/` on the frontend, finalize to `assets/` on the backend when the entity is saved
+- S3 lifecycle auto-deletes `tmp/` objects after 24 hours (prevents orphaned files)
+- Client-side image compression (browser-image-compression)
+- Public-read bucket policy on `assets/*` for permanent URLs
+- Support for IMAGE, VIDEO, and DOCUMENT asset types
+
+### What This Service Does NOT Do
+- No DynamoDB records for assets
+- No CloudFront CDN (direct S3 serving)
+- No thumbnail generation
+- No usage tracking or asset references
+- No media library / browse UI
+- No frontend-initiated finalization (backend only)
 
 ---
 
@@ -18,54 +26,44 @@ The Asset Lambda provides media and file management capabilities for the Handloo
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                          ASSET LAMBDA ARCHITECTURE                           │
+│                      ASSET SERVICE ARCHITECTURE                              │
 └─────────────────────────────────────────────────────────────────────────────┘
 
-                              ┌──────────────┐
-                              │   Client     │
-                              │  (Browser)   │
-                              └──────┬───────┘
-                                     │
-            ┌────────────────────────┼────────────────────────┐
-            │                        │                        │
-            ▼                        ▼                        ▼
-     ┌──────────────┐        ┌──────────────┐        ┌──────────────┐
-     │  CloudFront  │        │   API GW     │        │    S3        │
-     │  (CDN)       │        │              │        │ (Direct)     │
-     └──────────────┘        └──────┬───────┘        └──────────────┘
-            │                       │                        ▲
-            │                       ▼                        │
-            │        ┌─────────────────────────────────┐     │
-            │        │        Asset Lambda             │     │
-            │        │  ┌───────────────────────────┐  │     │
-            │        │  │       Handler Layer       │  │     │
-            │        │  │  Upload │ List │ Delete   │  │     │
-            │        │  └───────────────────────────┘  │     │
-            │        │              │                  │     │
-            │        │              ▼                  │     │
-            │        │  ┌───────────────────────────┐  │     │
-            │        │  │       Service Layer       │  │     │
-            │        │  │  - GetUploadURL()         │  │     │
-            │        │  │  - ConfirmUpload()        │  │     │
-            │        │  │  - GetAsset()             │  │     │
-            │        │  │  - ListAssets()           │  │     │
-            │        │  │  - DeleteAsset()          │  │     │
-            │        │  │  - GenerateThumbnails()   │  │     │
-            │        │  └───────────────────────────┘  │     │
-            │        │              │                  │     │
-            │        │              ▼                  │     │
-            │        │  ┌───────────────────────────┐  │     │
-            │        │  │     Repository Layer      │  │     │
-            │        │  └───────────────────────────┘  │     │
-            │        └─────────────────────────────────┘     │
-            │                       │                        │
-            │        ┌──────────────┼──────────────┐         │
-            │        │              │              │         │
-            │        ▼              ▼              ▼         │
-            │ ┌──────────┐  ┌──────────┐  ┌──────────┐       │
-            └─│    S3    │  │ DynamoDB │  │  Lambda  │───────┘
-              │ (Storage)│  │(Metadata)│  │(Thumbnail│
-              └──────────┘  └──────────┘  └──────────┘
+                           ┌──────────────┐
+                           │   Browser    │
+                           │  (Frontend)  │
+                           └──────┬───────┘
+                                  │
+               ┌──────────────────┤
+               │                  │
+               ▼                  ▼
+      1. POST /upload-url   2. PUT file directly
+               │                  │
+               ▼                  ▼
+        ┌──────────────┐   ┌──────────────┐
+        │  API Gateway │   │     S3       │
+        │  → Lambda    │   │  (tmp/)      │
+        └──────┬───────┘   └──────────────┘
+               │
+               ▼                     3. Frontend stores tmp_key in form
+        ┌──────────────┐                ↓
+        │ Asset        │     4. User saves entity (product/category)
+        │ Service      │                ↓
+        │              │     5. Backend receives tmp_key in entity payload
+        │ Validates    │                ↓
+        │ file type,   │     ┌──────────────────────┐
+        │ generates    │     │ Product/Category Svc  │
+        │ presigned URL│     │ calls FinalizeIfTemp  │
+        └──────────────┘     │ → AssetService copies │
+                             │   tmp/ → assets/      │
+                             └──────────┬───────────┘
+                                        │
+                                        ▼
+                                 ┌──────────────┐
+                                 │     S3       │
+                                 │  (assets/)   │
+                                 │ Public-read  │
+                                 └──────────────┘
 ```
 
 ---
@@ -76,396 +74,238 @@ The Asset Lambda provides media and file management capabilities for the Handloo
 
 ```go
 type AssetHandler struct {
-    assetService domain.AssetService
-    logger       *logger.Logger
+    assetService *service.AssetService
+    validation   *middleware.Validation
 }
 
-// Handler Methods
-- GetUploadURL(c *gin.Context)
-- ConfirmUpload(c *gin.Context)
-- GetAsset(c *gin.Context)
-- ListAssets(c *gin.Context)
-- UpdateAsset(c *gin.Context)
-- DeleteAsset(c *gin.Context)
-- GetAssetURL(c *gin.Context)
+// Routes:
+// POST /upload-url  → GetUploadURL
+// DELETE /          → DeleteAsset
 ```
 
-### 3.2 Asset Service
+### 3.2 Asset Service (implements domain.AssetFinalizer)
 
 ```go
-type AssetService interface {
-    // Upload
-    GetUploadURL(ctx context.Context, req *UploadRequest) (*UploadResponse, error)
-    ConfirmUpload(ctx context.Context, key string, metadata *AssetMetadata) (*Asset, error)
+type AssetService struct {
+    s3Client *s3client.S3Client
+    logger   *logger.Logger
+    bucket   string
+}
 
-    // CRUD
-    GetAsset(ctx context.Context, id string) (*Asset, error)
-    ListAssets(ctx context.Context, filter *AssetFilter) (*AssetList, error)
-    UpdateAsset(ctx context.Context, id string, update *AssetUpdate) (*Asset, error)
-    DeleteAsset(ctx context.Context, id string) error
+func NewAssetService(logger, s3Client, bucket) *AssetService
 
-    // URLs
-    GetAssetURL(ctx context.Context, id string, size string) (string, error)
-    GetCDNURL(ctx context.Context, key string) (string, error)
+// Methods:
+func (s *AssetService) GetUploadURL(ctx, req UploadAssetRequest) (*UploadURLResponse, error)
+func (s *AssetService) FinalizeUpload(ctx, tmpKey string) (string, error)
+func (s *AssetService) FinalizeIfTemp(ctx, value string) (string, error)  // AssetFinalizer interface
+func (s *AssetService) DeleteAsset(ctx, assetURL string) error
+```
 
-    // Thumbnails
-    GenerateThumbnails(ctx context.Context, assetID string) error
+### 3.3 AssetFinalizer Interface
+
+```go
+// Used by ProductService and CategoryService to finalize images on entity save
+type AssetFinalizer interface {
+    FinalizeIfTemp(ctx context.Context, value string) (string, error)
 }
 ```
 
-### 3.3 Asset Repository
+- If `value` starts with `"tmp/"` → calls `FinalizeUpload()` → returns permanent S3 URL
+- Otherwise → returns `value` as-is (already a permanent URL)
+
+### 3.4 S3 Client
 
 ```go
-type AssetRepository interface {
-    Create(ctx context.Context, asset *Asset) error
-    GetByID(ctx context.Context, id string) (*Asset, error)
-    GetByKey(ctx context.Context, key string) (*Asset, error)
-    Update(ctx context.Context, asset *Asset) error
-    Delete(ctx context.Context, id string) error
-    List(ctx context.Context, filter *AssetFilter) ([]*Asset, error)
-    GetUsageRefs(ctx context.Context, assetID string) ([]*AssetRef, error)
+type S3Client struct {
+    client        *s3.Client
+    presignClient *s3.PresignClient
 }
+
+func New(ctx, region) (*S3Client, error)
+
+func (c *S3Client) GeneratePresignedPutURL(ctx, bucket, key, contentType, expiry) (string, error)
+func (c *S3Client) CopyObject(ctx, bucket, srcKey, dstKey) error
+func (c *S3Client) DeleteObject(ctx, bucket, key) error
 ```
 
 ---
 
 ## 4. Data Model
 
-### 4.1 Asset Entity
+### No DynamoDB Records
+
+Assets are stored purely in S3. There is no Asset table or entity in DynamoDB. Entities that use assets (Product, Category, Artisan) store the S3 URL directly as a string field.
+
+### 4.1 Domain Types
 
 ```go
-type Asset struct {
-    ID           string            `json:"id" dynamodbav:"id"`
-    Key          string            `json:"key" dynamodbav:"key"`
-    Filename     string            `json:"filename" dynamodbav:"filename"`
-    Title        string            `json:"title,omitempty" dynamodbav:"title,omitempty"`
-    AltText      string            `json:"alt_text,omitempty" dynamodbav:"alt_text,omitempty"`
-    ContentType  string            `json:"content_type" dynamodbav:"content_type"`
-    Size         int64             `json:"size" dynamodbav:"size"`
-    Width        int               `json:"width,omitempty" dynamodbav:"width,omitempty"`
-    Height       int               `json:"height,omitempty" dynamodbav:"height,omitempty"`
-    Folder       string            `json:"folder" dynamodbav:"folder"`
-    Tags         []string          `json:"tags,omitempty" dynamodbav:"tags,omitempty"`
-    Thumbnails   map[string]string `json:"thumbnails,omitempty" dynamodbav:"thumbnails,omitempty"`
-    URL          string            `json:"url" dynamodbav:"url"`
-    CDNURL       string            `json:"cdn_url" dynamodbav:"cdn_url"`
-    Status       AssetStatus       `json:"status" dynamodbav:"status"`
-    UsageCount   int               `json:"usage_count" dynamodbav:"usage_count"`
-    CreatedAt    time.Time         `json:"created_at" dynamodbav:"created_at"`
-    UpdatedAt    time.Time         `json:"updated_at" dynamodbav:"updated_at"`
-    CreatedBy    string            `json:"created_by" dynamodbav:"created_by"`
-}
-```
-
-### 4.2 Asset Status
-
-```go
-type AssetStatus string
-
+type AssetType string
 const (
-    AssetStatusUploading  AssetStatus = "UPLOADING"
-    AssetStatusProcessing AssetStatus = "PROCESSING"
-    AssetStatusActive     AssetStatus = "ACTIVE"
-    AssetStatusArchived   AssetStatus = "ARCHIVED"
-    AssetStatusDeleted    AssetStatus = "DELETED"
+    AssetTypeImage    AssetType = "IMAGE"
+    AssetTypeDocument AssetType = "DOCUMENT"
+    AssetTypeVideo    AssetType = "VIDEO"
 )
+
+type UploadAssetRequest struct {
+    FileName    string    `json:"file_name" validate:"required"`
+    ContentType string    `json:"content_type" validate:"required"`
+    Size        int64     `json:"size" validate:"required"`
+    Type        AssetType `json:"type" validate:"required"`
+}
+
+type UploadURLResponse struct {
+    UploadURL string    `json:"upload_url"`
+    TmpKey    string    `json:"tmp_key"`
+    TmpURL    string    `json:"tmp_url"`
+    ExpiresAt time.Time `json:"expires_at"`
+}
+
+type DeleteAssetRequest struct {
+    URL string `json:"url" validate:"required"`
+}
 ```
 
-### 4.3 Upload Request/Response
+---
+
+## 5. S3 Storage Structure
+
+```
+handloom-assets-{env}/
+├── tmp/                          ← Temporary uploads (auto-deleted after 24h)
+│   ├── IMAGE/
+│   │   └── {uuid}.jpg
+│   ├── VIDEO/
+│   │   └── {uuid}.mp4
+│   └── DOCUMENT/
+│       └── {uuid}.pdf
+│
+└── assets/                       ← Permanent storage (public-read via bucket policy)
+    ├── IMAGE/
+    │   └── 2026/02/14/
+    │       └── {uuid}.jpg
+    ├── VIDEO/
+    │   └── 2026/02/14/
+    │       └── {uuid}.mp4
+    └── DOCUMENT/
+        └── 2026/02/14/
+            └── {uuid}.pdf
+```
+
+### Key Naming Conventions
+- **tmp key:** `tmp/{TYPE}/{uuid}.{ext}` (e.g. `tmp/IMAGE/a1b2c3d4.jpg`)
+- **Final key:** `assets/{TYPE}/{YYYY/MM/DD}/{uuid}.{ext}` (e.g. `assets/IMAGE/2026/02/14/a1b2c3d4.jpg`)
+- **Public URL:** `https://{bucket}.s3.amazonaws.com/assets/{TYPE}/{date}/{uuid}.{ext}`
+
+---
+
+## 6. S3 Configuration
+
+### 6.1 Bucket Policy (Public Read for assets/)
+
+The bucket has a policy that grants `s3:GetObject` on the `assets/*` prefix to everyone. This makes finalized assets publicly accessible via direct S3 URLs. The `tmp/` prefix is NOT publicly readable.
+
+### 6.2 Lifecycle Rule
+
+```
+Prefix: tmp/
+Action: Expire after 1 day
+```
+
+Any file uploaded to `tmp/` that is not finalized within 24 hours is automatically deleted by S3. This replaces the need for a cleanup Lambda or DynamoDB scans.
+
+### 6.3 CORS Configuration
+
+The bucket has CORS rules allowing `PUT` from the frontend origin so browsers can upload directly via presigned URLs.
+
+---
+
+## 7. File Validation
+
+### 7.1 Content Type Validation
+
+| Asset Type | Allowed Content Types |
+|------------|----------------------|
+| IMAGE | `image/*` (any image MIME type) |
+| VIDEO | `video/*` (any video MIME type) |
+| DOCUMENT | `application/pdf`, `application/msword`, `application/vnd.openxmlformats-officedocument.wordprocessingml.document`, `application/vnd.ms-excel`, `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`, `text/csv` |
+
+### 7.2 Size Limits
+
+| Asset Type | Max Size |
+|------------|----------|
+| IMAGE | 50 MB |
+| VIDEO | 100 MB |
+| DOCUMENT | 10 MB |
+
+### 7.3 Client-Side Compression (Frontend)
+
+Images are compressed in the browser before upload using `browser-image-compression`:
+- Max output size: 2 MB
+- Max dimensions: 2000 x 2000 px
+- Quality: 0.8
+- Reduces image sizes by 50-80%
+- Videos pass through uncompressed
+
+---
+
+## 8. How Entities Use Assets
+
+Entity services (ProductService, CategoryService) depend on the `AssetFinalizer` interface. When an entity is saved, the service finalizes any `tmp/` keys to permanent `assets/` URLs before persisting. Entities store plain S3 URL strings.
+
+### Entity Image Fields
+
+| Entity | Field | Type | Example |
+|--------|-------|------|---------|
+| Product | `images` | `[]ProductImage` | `[{url: "https://...s3.../assets/IMAGE/...", alt_text: "...", is_primary: true, sort_order: 0}]` |
+| Category | `image_url` | `string` | `"https://...s3.../assets/IMAGE/..."` |
+| Artisan | `profile_image` | `string` | `"https://...s3.../assets/IMAGE/..."` |
+| Order Item | `product_image` | `string` | Copied from product at order time |
+
+### ProductImage Struct
 
 ```go
-type UploadRequest struct {
-    Filename    string `json:"filename" binding:"required"`
-    ContentType string `json:"content_type" binding:"required"`
-    Size        int64  `json:"size" binding:"required"`
-    Folder      string `json:"folder,omitempty"`
-}
-
-type UploadResponse struct {
-    UploadURL string `json:"upload_url"`
-    AssetKey  string `json:"asset_key"`
-    ExpiresAt int64  `json:"expires_at"`
+type ProductImage struct {
+    URL       string `json:"url"`
+    AltText   string `json:"alt_text,omitempty"`
+    IsPrimary bool   `json:"is_primary,omitempty"`
+    SortOrder int    `json:"sort_order,omitempty"`
 }
 ```
 
-### 4.4 Asset Reference
+### Flow: How an Image Gets Saved on a Product
 
-```go
-type AssetRef struct {
-    ID         string `json:"id" dynamodbav:"id"`
-    AssetID    string `json:"asset_id" dynamodbav:"asset_id"`
-    EntityType string `json:"entity_type" dynamodbav:"entity_type"` // product, category, artisan
-    EntityID   string `json:"entity_id" dynamodbav:"entity_id"`
-    Field      string `json:"field" dynamodbav:"field"` // main_image, gallery, banner
-    CreatedAt  time.Time `json:"created_at" dynamodbav:"created_at"`
-}
-```
+1. User opens Product form, clicks "Upload Image"
+2. Frontend `ImageUpload` component calls `POST /admin/assets/upload-url` with `{file_name, content_type, size, type: "IMAGE"}`
+3. Backend returns `{upload_url, tmp_key}` — presigned S3 PUT URL pointing to `tmp/IMAGE/{uuid}.jpg`
+4. Frontend PUTs the (compressed) file directly to S3 using the presigned URL
+5. Frontend creates a blob URL for local preview and stores the `tmp_key` in form state (e.g. `images[0].url = "tmp/IMAGE/{uuid}.jpg"`)
+6. When user clicks "Save Product", the product POST/PATCH includes the `images` array with `tmp_key` values (for new uploads) or permanent URLs (for existing images)
+7. ProductService calls `AssetFinalizer.FinalizeIfTemp()` on each image URL — tmp keys are moved to `assets/`, permanent URLs pass through unchanged
+8. Product is saved to DynamoDB with permanent S3 URLs
 
----
+### Flow: How an Image Gets Deleted
 
-## 5. DynamoDB Schema
-
-### 5.1 Assets Table
-
-```
-Table: handloom-assets
-
-Primary Key:
-- PK: ASSET#<asset_id>
-- SK: ASSET#<asset_id>
-
-Attributes:
-- id: string
-- key: string (S3 key)
-- filename: string
-- title: string
-- alt_text: string
-- content_type: string
-- size: number
-- width: number
-- height: number
-- folder: string
-- tags: list
-- thumbnails: map
-- url: string
-- cdn_url: string
-- status: string
-- usage_count: number
-- created_at: string
-- updated_at: string
-- created_by: string
-
-GSI1: folder-type-index
-- PK: folder
-- SK: content_type#created_at
-
-GSI2: key-index
-- PK: key
-- SK: ASSET
-
-GSI3: status-index
-- PK: status
-- SK: created_at
-```
-
-### 5.2 Asset References Table
-
-```
-Table: handloom-asset-refs
-
-Primary Key:
-- PK: ASSET#<asset_id>
-- SK: REF#<entity_type>#<entity_id>
-
-GSI1: entity-assets-index
-- PK: ENTITY#<entity_type>#<entity_id>
-- SK: ASSET#<asset_id>
-```
-
-### 5.3 Access Patterns
-
-| Access Pattern | Key Condition | Index |
-|----------------|---------------|-------|
-| Get asset by ID | PK = ASSET#{id} | Main |
-| Get asset by key | PK = {key} | GSI2 |
-| List by folder | PK = {folder} | GSI1 |
-| List by status | PK = {status} | GSI3 |
-| Get asset refs | PK = ASSET#{id} | Refs Table |
-| Get entity assets | PK = ENTITY#{type}#{id} | Refs GSI1 |
-
----
-
-## 6. API Endpoints
-
-### 6.1 Get Upload URL
-
-```
-POST /assets/upload-url
-
-Request:
-{
-    "filename": "product_image.jpg",
-    "content_type": "image/jpeg",
-    "size": 2500000,
-    "folder": "products"
-}
-
-Response:
-{
-    "success": true,
-    "data": {
-        "upload_url": "https://s3.amazonaws.com/bucket/...",
-        "asset_key": "products/abc123_product_image.jpg",
-        "expires_at": 1705766400
-    }
-}
-```
-
-### 6.2 Confirm Upload
-
-```
-POST /assets/confirm
-
-Request:
-{
-    "asset_key": "products/abc123_product_image.jpg",
-    "title": "Blue Silk Saree",
-    "alt_text": "Beautiful blue silk saree with traditional design",
-    "tags": ["silk", "blue", "saree"]
-}
-
-Response:
-{
-    "success": true,
-    "data": {
-        "id": "asset_456",
-        "key": "products/abc123_product_image.jpg",
-        "url": "https://bucket.s3.amazonaws.com/...",
-        "cdn_url": "https://cdn.example.com/...",
-        "status": "PROCESSING"
-    }
-}
-```
-
-### 6.3 List Assets
-
-```
-GET /assets?folder=products&type=image&limit=20
-
-Response:
-{
-    "success": true,
-    "data": {
-        "assets": [
-            {
-                "id": "asset_456",
-                "filename": "product_image.jpg",
-                "title": "Blue Silk Saree",
-                "content_type": "image/jpeg",
-                "size": 2500000,
-                "thumbnails": {
-                    "small": "https://cdn.../thumb_small.jpg",
-                    "medium": "https://cdn.../thumb_medium.jpg"
-                },
-                "cdn_url": "https://cdn.example.com/...",
-                "created_at": "2024-01-20T10:00:00Z"
-            }
-        ],
-        "total": 456,
-        "folders": [
-            {"name": "products", "count": 456},
-            {"name": "artisans", "count": 89}
-        ]
-    }
-}
-```
-
-### 6.4 Get Asset URL
-
-```
-GET /assets/{id}/url?size=thumbnail
-
-Response:
-{
-    "success": true,
-    "data": {
-        "url": "https://cdn.example.com/thumb_small.jpg",
-        "expires_at": 1705766400
-    }
-}
-```
-
----
-
-## 7. S3 Storage Structure
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                          S3 BUCKET STRUCTURE                                 │
-└─────────────────────────────────────────────────────────────────────────────┘
-
-handloom-assets/
-├── products/
-│   ├── abc123_silk_saree.jpg
-│   ├── def456_cotton_kurta.jpg
-│   └── ...
-├── artisans/
-│   ├── art001_photo.jpg
-│   └── ...
-├── categories/
-│   ├── cat_sarees_banner.jpg
-│   └── ...
-├── thumbnails/
-│   ├── small/
-│   │   ├── abc123_silk_saree.jpg
-│   │   └── ...
-│   ├── medium/
-│   │   └── ...
-│   └── large/
-│       └── ...
-└── temp/
-    └── uploads/
-```
-
----
-
-## 8. Thumbnail Generation
-
-### 8.1 Thumbnail Sizes
-
-| Size | Dimensions | Use Case |
-|------|------------|----------|
-| Small | 150x150 | List views, thumbnails |
-| Medium | 400x400 | Product cards |
-| Large | 800x800 | Product detail |
-| Original | Preserved | Full size download |
-
-### 8.2 Processing Flow
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                      THUMBNAIL PROCESSING FLOW                               │
-└─────────────────────────────────────────────────────────────────────────────┘
-
-  Upload Complete       S3 Event           Lambda Trigger      Generate
-  ┌──────────┐         ┌──────────┐        ┌──────────┐       ┌──────────┐
-  │ Original │────────>│ S3 Event │───────>│ Thumbnail│──────>│ Upload   │
-  │ Uploaded │         │ Trigger  │        │ Lambda   │       │ Thumbs   │
-  └──────────┘         └──────────┘        └──────────┘       └──────────┘
-                                                                    │
-                                                                    ▼
-                                                              ┌──────────┐
-                                                              │ Update   │
-                                                              │ Asset DB │
-                                                              └──────────┘
-```
+1. User clicks the X button on an image in the Product form
+2. Frontend removes the URL from the form state
+3. Frontend sends `DELETE /admin/assets` with `{url: "https://..."}` (best-effort, fire-and-forget)
+4. If the delete fails, the file stays in S3 (minimal cost impact)
+5. When user saves the product, the removed URL is no longer in the `images` array
 
 ---
 
 ## 9. Error Handling
 
-### 9.1 Error Types
-
-| Error Code | Description | HTTP Status |
-|------------|-------------|-------------|
-| INVALID_FILE_TYPE | Unsupported file type | 400 |
-| FILE_TOO_LARGE | File exceeds size limit | 400 |
-| ASSET_NOT_FOUND | Asset does not exist | 404 |
-| UPLOAD_FAILED | S3 upload failed | 500 |
-| PROCESSING_FAILED | Thumbnail generation failed | 500 |
-| ASSET_IN_USE | Cannot delete, asset is referenced | 400 |
-
-### 9.2 Error Response Format
-
-```json
-{
-    "success": false,
-    "error": {
-        "code": "INVALID_FILE_TYPE",
-        "message": "File type 'application/exe' is not supported. Allowed types: image/jpeg, image/png, image/webp"
-    }
-}
-```
+| Error | HTTP Status | Description |
+|-------|-------------|-------------|
+| `Invalid content type for asset type` | 400 | MIME type doesn't match asset type |
+| `File size exceeds maximum allowed` | 400 | File too large for asset type |
+| `Invalid tmp key` | 400 | Key doesn't start with `tmp/` |
+| `Invalid tmp key format` | 400 | Key doesn't match `tmp/{TYPE}/{file}` pattern |
+| `Invalid asset URL` | 400 | URL doesn't match bucket |
+| `Can only delete files in assets/ prefix` | 400 | Attempted to delete outside `assets/` |
+| `Failed to generate presigned URL` | 500 | S3 presign call failed |
+| `Failed to copy asset to final location` | 500 | S3 copy failed |
+| `Failed to delete asset` | 500 | S3 delete failed |
 
 ---
 
@@ -473,93 +313,48 @@ handloom-assets/
 
 ### 10.1 Access Control
 
-| Role | Upload | View | Update | Delete |
-|------|--------|------|--------|--------|
-| Admin | Yes | All | Yes | Yes |
-| Manager | Yes | All | Yes | Own |
-| Staff | Yes | All | Own | No |
+All asset endpoints require JWT authentication. Any authenticated admin/operator can upload, finalize, and delete assets.
 
-### 10.2 File Validation
+### 10.2 S3 Security
 
-- Max file size: 5 MB (images), 10 MB (documents)
-- Allowed image types: JPEG, PNG, WebP, GIF
-- Allowed document types: PDF, DOCX
-- Virus scanning on upload
-- Content-type verification
-
-### 10.3 URL Security
-
-- Pre-signed URLs expire after 15 minutes
-- CDN URLs use signed cookies/tokens
-- Private bucket with CloudFront OAI
+- **Writes:** Only the Lambda execution role can write to the bucket (IAM policy)
+- **Reads:** `assets/*` is public-read via bucket policy; `tmp/*` is NOT publicly readable
+- **Presigned URLs:** Expire after 15 minutes; scoped to a specific key and content type
+- **Delete protection:** Only URLs matching the bucket and `assets/` prefix can be deleted
 
 ---
 
-## 11. Performance Optimization
+## 11. Cost Estimate (S3 Only, No CloudFront)
 
-### 11.1 CDN Configuration
+| Component | Pricing | 10GB stored, 50GB transfer/month |
+|-----------|---------|----------------------------------|
+| S3 Storage | $0.023/GB/month | ~$0.23 |
+| S3 PUT requests | $0.005/1,000 | ~$0.01 |
+| S3 GET requests | $0.0004/1,000 | ~$0.01 |
+| S3 Data transfer out | $0.09/GB | ~$4.50 |
+| **Total** | | **~$4.75/month** |
 
-- CloudFront distribution for all assets
-- Edge caching with 1-year TTL
-- Automatic WebP conversion
-- Gzip/Brotli compression
+AWS Free Tier (first 12 months): 5GB storage, 20K GET, 2K PUT, 100GB transfer — likely **$0/month** for small usage.
 
-### 11.2 Upload Optimization
-
-- Direct-to-S3 uploads (bypass Lambda)
-- Multipart upload for large files
-- Client-side image resizing (optional)
-
----
-
-## 12. Monitoring
-
-### 12.1 Key Metrics
-
-| Metric | Description | Threshold |
-|--------|-------------|-----------|
-| Upload Success Rate | % of successful uploads | > 99% |
-| Processing Time | Thumbnail generation time | < 5s |
-| CDN Hit Ratio | % of cached requests | > 95% |
-| Storage Usage | Total storage used | Monitor |
-
-### 12.2 Alerts
-
-- Upload failure spike
-- Processing queue backlog
-- Storage approaching limit
-- CDN cache invalidation failures
+With client-side compression: ~50% storage and transfer savings.
 
 ---
 
-## 13. Dependencies
+## 12. Dependencies
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                              DEPENDENCIES                                    │
-└─────────────────────────────────────────────────────────────────────────────┘
-
-                           Asset Lambda
-                               │
-           ┌───────────────────┼───────────────────┐
-           │                   │                   │
-           ▼                   ▼                   ▼
-    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
-    │  DynamoDB   │    │     S3      │    │ CloudFront  │
-    │ (Metadata)  │    │  (Storage)  │    │   (CDN)     │
-    └─────────────┘    └─────────────┘    └─────────────┘
-                              │
-                              ▼
-                       ┌─────────────┐
-                       │   Lambda    │
-                       │ (Thumbnail) │
-                       └─────────────┘
+Asset Lambda
+    │
+    ├── S3 (storage + presigned URLs)
+    │   ├── tmp/ prefix (temporary uploads)
+    │   └── assets/ prefix (permanent, public-read)
+    │
+    └── S3 Lifecycle (auto-cleanup of tmp/)
 ```
 
-### External Dependencies
-- AWS S3: File storage
-- AWS CloudFront: CDN delivery
-- AWS Lambda: Thumbnail generation
-- AWS DynamoDB: Metadata storage
-- Sharp/ImageMagick: Image processing
+### Go Dependencies
+- `github.com/aws/aws-sdk-go-v2/service/s3` — S3 client and presign
+- `github.com/google/uuid` — unique file names
 
+### Frontend Dependencies
+- `browser-image-compression` — client-side image compression before upload

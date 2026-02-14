@@ -30,7 +30,6 @@ const CustomersPage = lazy(() =>
 const ArtisansPage = lazy(() =>
   import('./pages/artisans').then((m) => ({ default: m.ArtisansPage }))
 );
-const DesignsPage = lazy(() => import('./pages/designs').then((m) => ({ default: m.DesignsPage })));
 const PricingRulesPage = lazy(() =>
   import('./pages/pricing').then((m) => ({ default: m.PricingRulesPage }))
 );
@@ -113,18 +112,13 @@ function LazyPageFallback() {
 }
 
 function App() {
-  // Validate persisted auth on startup
+  // On mount, check if we have a valid session via HTTP-only cookie
   useEffect(() => {
-    const { accessToken, setUser, logout, setLoading } = useAuthStore.getState();
-    if (!accessToken) {
-      setLoading(false);
-      return;
-    }
+    const { login, logout } = useAuthStore.getState();
     authApi
       .getCurrentUser()
       .then((user) => {
-        setUser(user);
-        setLoading(false);
+        login(user);
       })
       .catch(() => {
         logout();
@@ -159,14 +153,6 @@ function App() {
                 element={
                   <Suspense fallback={<LazyPageFallback />}>
                     <CategoriesPage />
-                  </Suspense>
-                }
-              />
-              <Route
-                path="/designs"
-                element={
-                  <Suspense fallback={<LazyPageFallback />}>
-                    <DesignsPage />
                   </Suspense>
                 }
               />

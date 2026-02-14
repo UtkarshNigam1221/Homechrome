@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"regexp"
 	"strings"
 
 	"github.com/google/uuid"
@@ -12,28 +13,40 @@ import (
 
 // CategoryService implements domain.CategoryService
 type CategoryService struct {
-	categoryRepo domain.CategoryRepository
-	productRepo  domain.ProductRepository
-	logger       *logger.Logger
+	categoryRepo   domain.CategoryRepository
+	productRepo    domain.ProductRepository
+	assetFinalizer domain.AssetFinalizer
+	logger         *logger.Logger
 }
 
 // NewCategoryService creates a new CategoryService
 func NewCategoryService(
 	categoryRepo domain.CategoryRepository,
 	productRepo domain.ProductRepository,
+	assetFinalizer domain.AssetFinalizer,
 	logger *logger.Logger,
 ) *CategoryService {
 	return &CategoryService{
-		categoryRepo: categoryRepo,
-		productRepo:  productRepo,
-		logger:       logger,
+		categoryRepo:   categoryRepo,
+		productRepo:    productRepo,
+		assetFinalizer: assetFinalizer,
+		logger:         logger,
 	}
 }
 
 // Create creates a new category
 func (s *CategoryService) Create(ctx context.Context, req domain.CreateCategoryRequest, createdBy string) (*domain.Category, error) {
+	// Finalize image if it's a tmp key
+	if req.ImageURL != "" {
+		finalURL, err := s.assetFinalizer.FinalizeIfTemp(ctx, req.ImageURL)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to finalize image")
+		}
+		req.ImageURL = finalURL
+	}
+
 	category := &domain.Category{
-		ID:            "cat_" + uuid.New().String()[:8],
+		ID:            "cat_" + uuid.New().String(),
 		Name:          req.Name,
 		Slug:          generateSlug(req.Name),
 		Description:   req.Description,
@@ -71,7 +84,11 @@ func (s *CategoryService) Update(ctx context.Context, id string, req domain.Upda
 		category.Description = *req.Description
 	}
 	if req.ImageURL != nil {
-		category.ImageURL = *req.ImageURL
+		finalURL, err := s.assetFinalizer.FinalizeIfTemp(ctx, *req.ImageURL)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to finalize image")
+		}
+		category.ImageURL = finalURL
 	}
 	if req.Status != nil {
 		category.Status = *req.Status
@@ -212,7 +229,10 @@ func generateSlug(name string) string {
 			result.WriteRune(r)
 		}
 	}
-	return result.String()
+	// Collapse consecutive dashes and trim leading/trailing dashes
+	slug = regexp.MustCompile("-+").ReplaceAllString(result.String(), "-")
+	slug = strings.Trim(slug, "-")
+	return slug
 }
 
 // Ensure interface compliance

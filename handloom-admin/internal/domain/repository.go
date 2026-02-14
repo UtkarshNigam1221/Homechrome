@@ -99,49 +99,13 @@ type ListCategoriesResponse struct {
 	Pagination PaginationResponse `json:"pagination"`
 }
 
-// ==================== DESIGN REPOSITORY ====================
-
-// DesignRepository defines the interface for design data access
-type DesignRepository interface {
-	// Create creates a new design
-	Create(ctx context.Context, design *Design) error
-
-	// GetByID retrieves a design by ID
-	GetByID(ctx context.Context, id string) (*Design, error)
-
-	// Update updates an existing design
-	Update(ctx context.Context, design *Design) error
-
-	// Delete deletes a design by ID
-	Delete(ctx context.Context, id string) error
-
-	// List retrieves designs with filters
-	List(ctx context.Context, req ListDesignsRequest) (*ListDesignsResponse, error)
-
-	// IncrementProductCount increments the product count
-	IncrementProductCount(ctx context.Context, id string, delta int) error
-}
-
-// ListDesignsRequest contains parameters for listing designs
-type ListDesignsRequest struct {
-	PaginationRequest
-	CategoryID *string       `json:"category_id,omitempty"`
-	Status     *DesignStatus `json:"status,omitempty"`
-	Search     string        `json:"search,omitempty"`
-}
-
-// ListDesignsResponse contains the list of designs
-type ListDesignsResponse struct {
-	Designs    []*Design          `json:"designs"`
-	Pagination PaginationResponse `json:"pagination"`
-}
-
 // ==================== PRODUCT REPOSITORY ====================
 
 // ProductRepository defines the interface for product data access
 type ProductRepository interface {
-	// CreateWithAttributeIndexes creates a product with its searchable attribute indexes in a transaction
-	CreateWithAttributeIndexes(ctx context.Context, product *Product, searchableAttrs map[string][]string) error
+	// CreateWithAttributeIndexes creates a product with its searchable attribute indexes in a transaction.
+	// If inventory is non-nil it is included in the same transaction.
+	CreateWithAttributeIndexes(ctx context.Context, product *Product, searchableAttrs map[string][]string, inventory *Inventory) error
 
 	// GetByID retrieves a product by ID
 	GetByID(ctx context.Context, id string) (*Product, error)
@@ -184,7 +148,6 @@ type ProductRepository interface {
 type ListProductsRequest struct {
 	PaginationRequest
 	CategoryID       *string             `json:"category_id,omitempty"`
-	DesignID         *string             `json:"design_id,omitempty"`
 	Status           *ProductStatus      `json:"status,omitempty"`
 	Search           string              `json:"search,omitempty"`
 	MinPrice         *int64              `json:"min_price,omitempty"`

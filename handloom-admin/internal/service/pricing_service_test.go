@@ -140,8 +140,8 @@ type MockProductRepository struct {
 	mock.Mock
 }
 
-func (m *MockProductRepository) CreateWithAttributeIndexes(ctx context.Context, product *domain.Product, searchableAttrs map[string][]string) error {
-	args := m.Called(ctx, product, searchableAttrs)
+func (m *MockProductRepository) CreateWithAttributeIndexes(ctx context.Context, product *domain.Product, searchableAttrs map[string][]string, inventory *domain.Inventory) error {
+	args := m.Called(ctx, product, searchableAttrs, inventory)
 	return args.Error(0)
 }
 

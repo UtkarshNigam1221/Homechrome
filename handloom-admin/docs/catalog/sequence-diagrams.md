@@ -47,12 +47,6 @@ When a product is created, the service creates the product record, indexes searc
     │               │                │                   │ own_attributes  │
     │               │                │                   │◀────────────────│
     │               │                │                   │                 │
-    │               │                │                   │ Verify design   │
-    │               │                │                   │────────────────▶│
-    │               │                │                   │                 │
-    │               │                │                   │ Design exists   │
-    │               │                │                   │◀────────────────│
-    │               │                │                   │                 │
     │               │                │                   │ Build searchable│
     │               │                │                   │ attr map from   │
     │               │                │                   │ product attrs + │
@@ -80,8 +74,7 @@ When a product is created, the service creates the product record, indexes searc
     │               │                │                   │                 │
     │               │                │                   │ Create inventory│
     │               │                │                   │ + increment     │
-    │               │                │                   │ category &      │
-    │               │                │                   │ design counts   │
+    │               │                │                   │ category count  │
     │               │                │                   │────────────────▶│
     │               │                │                   │                 │
     │               │ {product}      │                   │                 │
@@ -289,7 +282,7 @@ Categories are flat (no parent/hierarchy). The service generates a slug from the
 
 ## 5. Delete Product with Cleanup Sequence
 
-When a product is deleted, the service removes all related records: attribute indexes, inventory (metadata + all transactions), and decrements category/design counters.
+When a product is deleted, the service removes all related records: attribute indexes, inventory (metadata + all transactions), and decrements the category counter.
 
 ```
 ┌────────┐     ┌─────────┐     ┌─────────────┐     ┌──────────┐
@@ -308,7 +301,6 @@ When a product is deleted, the service removes all related records: attribute in
     │               │                 │                 │
     │               │                 │ Product record  │
     │               │                 │ (category_id,   │
-    │               │                 │  design_id,     │
     │               │                 │  attributes)    │
     │               │                 │◀────────────────│
     │               │                 │                 │
@@ -354,8 +346,7 @@ When a product is deleted, the service removes all related records: attribute in
     │               │                 │◀────────────────│
     │               │                 │                 │
     │               │                 │ Decrement       │
-    │               │                 │ category &      │
-    │               │                 │ design counts   │
+    │               │                 │ category count  │
     │               │                 │────────────────▶│
     │               │                 │                 │
     │               │                 │ Success         │

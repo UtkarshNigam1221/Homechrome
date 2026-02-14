@@ -42,7 +42,7 @@ func NewStorageStack(scope constructs.Construct, id string, props *StorageStackP
 		autoDeleteObjects = jsii.Bool(false)
 	}
 
-	// Assets bucket - for product images, design images, etc.
+	// Assets bucket - for product images, etc.
 	// Optimized for Free Tier: 5GB storage limit
 	assetsBucket := awss3.NewBucket(stack, jsii.String("AssetsBucket"), &awss3.BucketProps{
 		BucketName:        jsii.String("handloom-assets-" + props.Environment),

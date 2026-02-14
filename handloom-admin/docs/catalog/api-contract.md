@@ -1,6 +1,6 @@
 # Catalog Lambda API Documentation
 
-Product catalog management including Categories (flat with custom attributes), Designs, Products, and Inventory.
+Product catalog management including Categories (flat with custom attributes), Products, and Inventory.
 
 ## Authentication
 All endpoints require JWT authentication via the `Authorization: Bearer <token>` header.
@@ -35,7 +35,7 @@ Categories are **flat** (no hierarchy/parent-child relationships). Each category
       "name": "Sarees",
       "slug": "sarees",
       "description": "Traditional handloom sarees",
-      "image_url": "https://cdn.example.com/categories/sarees.jpg",
+      "image_url": "https://handloom-assets-dev.s3.amazonaws.com/assets/IMAGE/categories/sarees.jpg",
       "own_attributes": [
         {
           "name": "material",
@@ -77,7 +77,7 @@ Categories are **flat** (no hierarchy/parent-child relationships). Each category
 {
   "name": "Silk Sarees",
   "description": "Premium silk handloom sarees",
-  "image_url": "https://cdn.example.com/categories/silk-sarees.jpg",
+  "image_url": "https://handloom-assets-dev.s3.amazonaws.com/assets/IMAGE/categories/silk-sarees.jpg",
   "own_attributes": [
     {
       "name": "material",
@@ -102,7 +102,7 @@ Categories are **flat** (no hierarchy/parent-child relationships). Each category
   "name": "Silk Sarees",
   "slug": "silk-sarees",
   "description": "Premium silk handloom sarees",
-  "image_url": "https://cdn.example.com/categories/silk-sarees.jpg",
+  "image_url": "https://handloom-assets-dev.s3.amazonaws.com/assets/IMAGE/categories/silk-sarees.jpg",
   "own_attributes": [...],
   "status": "ACTIVE",
   "product_count": 0,
@@ -126,7 +126,7 @@ Categories are **flat** (no hierarchy/parent-child relationships). Each category
     "name": "Sarees",
     "slug": "sarees",
     "description": "Traditional handloom sarees",
-    "image_url": "https://cdn.example.com/categories/sarees.jpg",
+    "image_url": "https://handloom-assets-dev.s3.amazonaws.com/assets/IMAGE/categories/sarees.jpg",
     "own_attributes": [...],
     "status": "ACTIVE",
     "product_count": 45,
@@ -301,131 +301,6 @@ Categories support custom attributes that define what product-specific fields ar
 
 ---
 
-# Designs
-
-## Base Path
-`/admin/designs`
-
-Designs represent reusable design/pattern templates linked to a category.
-
-### List Designs
-
-**Endpoint:** `GET /admin/designs`
-**Authentication:** Required
-
-**Query Parameters:**
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| page | int | 1 | Page number |
-| per_page | int | 10 | Items per page |
-| category_id | string | - | Filter by category |
-| status | string | - | Filter by status (`ACTIVE`, `INACTIVE`) |
-| search | string | - | Search by name |
-
-**Response (200 OK):**
-```json
-{
-  "designs": [
-    {
-      "id": "des_abc123",
-      "name": "Peacock Motif",
-      "slug": "peacock-motif",
-      "description": "Traditional peacock design pattern",
-      "category_id": "cat_abc123",
-      "images": [
-        {
-          "url": "https://cdn.example.com/designs/peacock-1.jpg",
-          "is_primary": true,
-          "sort_order": 0
-        }
-      ],
-      "attributes": [
-        { "name": "weave_type", "values": ["jacquard", "dobby"] }
-      ],
-      "status": "ACTIVE",
-      "product_count": 5,
-      "created_at": "2024-01-01T00:00:00Z",
-      "updated_at": "2024-01-01T00:00:00Z"
-    }
-  ],
-  "pagination": {
-    "current_page": 1,
-    "per_page": 10,
-    "total_count": 50,
-    "total_pages": 5
-  }
-}
-```
-
----
-
-### Create Design
-
-**Endpoint:** `POST /admin/designs`
-**Authentication:** Required
-
-**Request Body:**
-```json
-{
-  "name": "Lotus Border",
-  "category_id": "cat_abc123",
-  "description": "Elegant lotus flower border pattern",
-  "images": [
-    {
-      "url": "https://cdn.example.com/designs/lotus-1.jpg",
-      "is_primary": true,
-      "sort_order": 0
-    }
-  ],
-  "attributes": [
-    { "name": "weave_type", "values": ["jacquard"] }
-  ]
-}
-```
-
-**Response (201 Created):**
-Returns the created design object.
-
----
-
-### Get Design by ID
-
-**Endpoint:** `GET /admin/designs/{id}`
-**Authentication:** Required
-
-**Response (200 OK):**
-Returns the design with its category summary:
-```json
-{
-  "id": "des_abc123",
-  "name": "Peacock Motif",
-  "slug": "peacock-motif",
-  "category_id": "cat_abc123",
-  "category": {
-    "id": "cat_abc123",
-    "name": "Sarees",
-    "slug": "sarees"
-  },
-  ...
-}
-```
-
----
-
-### Update Design
-
-**Endpoint:** `PATCH /admin/designs/{id}`
-**Authentication:** Required
-
----
-
-### Delete Design
-
-**Endpoint:** `DELETE /admin/designs/{id}`
-**Authentication:** Required
-
----
-
 # Products
 
 ## Base Path
@@ -442,7 +317,6 @@ Returns the design with its category summary:
 | page | int | 1 | Page number |
 | per_page | int | 10 | Items per page |
 | category_id | string | - | Filter by category |
-| design_id | string | - | Filter by design |
 | status | string | - | Filter by status (`ACTIVE`, `INACTIVE`, `DRAFT`) |
 | min_price | int | - | Min base price (in paise) |
 | max_price | int | - | Max base price (in paise) |
@@ -470,7 +344,6 @@ attribute_filters={"material":["silk","cotton"],"color":["red"]}
       "slug": "kanchipuram-silk-saree",
       "description": "Premium handwoven silk saree with gold zari",
       "category_id": "cat_xyz789",
-      "design_id": "des_abc123",
       "base_price": 1500000,
       "selling_price": 1800000,
       "cost_price": 1200000,
@@ -491,7 +364,7 @@ attribute_filters={"material":["silk","cotton"],"color":["red"]}
       "weave_type": "jacquard",
       "images": [
         {
-          "url": "https://cdn.example.com/products/saree-1.jpg",
+          "url": "https://handloom-assets-dev.s3.amazonaws.com/assets/IMAGE/products/saree-1.jpg",
           "is_primary": true,
           "sort_order": 0
         }
@@ -547,7 +420,6 @@ Returns the distinct values for each searchable attribute in a category. These a
 {
   "name": "Handloom Cotton Saree",
   "sku": "SAR-COT-002",
-  "design_id": "des_xyz789",
   "category_id": "cat_abc123",
   "description": "Lightweight cotton saree with traditional motifs",
   "base_price": 350000,
@@ -569,7 +441,7 @@ Returns the distinct values for each searchable attribute in a category. These a
   "weave_type": "plain",
   "images": [
     {
-      "url": "https://cdn.example.com/products/cotton-saree.jpg",
+      "url": "https://handloom-assets-dev.s3.amazonaws.com/assets/IMAGE/products/cotton-saree.jpg",
       "is_primary": true,
       "sort_order": 0
     }
@@ -585,7 +457,6 @@ Returns the distinct values for each searchable attribute in a category. These a
 2. `CategoryAttributeValues` record is updated atomically to include the new attribute values (pre-computed filter options)
 3. Inventory record is created with `initial_stock`
 4. Category `product_count` is incremented
-5. Design `product_count` is incremented
 
 **Response (201 Created):**
 Returns the created product object.
@@ -608,11 +479,6 @@ Returns the product with related entities:
     "id": "cat_xyz789",
     "name": "Silk Sarees",
     "slug": "silk-sarees"
-  },
-  "design": {
-    "id": "des_abc123",
-    "name": "Peacock Motif",
-    "slug": "peacock-motif"
   },
   "inventory": {
     "product_id": "prod_abc123",
@@ -649,7 +515,6 @@ Returns the updated product object.
 1. `ProductAttributeIndex` records for the product are deleted
 2. Inventory record and all inventory transactions are deleted (`DeleteByProductID`)
 3. Category `product_count` is decremented
-4. Design `product_count` is decremented
 
 **Response (200 OK):**
 ```json
@@ -810,7 +675,6 @@ Returns products where available quantity is at or below the low stock threshold
 | name | string | Product name |
 | slug | string | URL-friendly slug |
 | description | string | Optional description |
-| design_id | string | Linked design ID |
 | category_id | string | Category this product belongs to |
 | base_price | int64 | Base price in paise |
 | selling_price | int64 | Selling price in paise |

@@ -1,6 +1,5 @@
 import type {
   Artisan,
-  Asset,
   AuditLog,
   BulkOperation,
   CalculatePriceRequest,
@@ -12,13 +11,11 @@ import type {
   CreateCategoryRequest,
   CreateCouponRequest,
   CreateCustomerRequest,
-  CreateDesignRequest,
   CreateOrderRequest,
   CreateProductRequest,
   CreateUserRequest,
   Customer,
   DashboardStats,
-  Design,
   Inventory,
   InventoryTransaction,
   ListResponse,
@@ -31,7 +28,7 @@ import type {
   SalesAnalytics,
   TopCategory,
   TopProduct,
-  UpdateDesignRequest,
+  UploadURLResponse,
   User,
 } from '../types';
 import apiClient, { getErrorMessage } from './client';
@@ -148,44 +145,12 @@ export const categoriesApi = {
 };
 
 // ============================================================================
-// Designs API
-// ============================================================================
-export const designsApi = {
-  list: async (
-    params?: PaginationParams & { category_id?: string; status?: string; search?: string }
-  ) => {
-    const response = await apiClient.get<ListResponse<Design>>('/admin/designs', { params });
-    return response.data;
-  },
-
-  get: async (id: string) => {
-    const response = await apiClient.get<Design>(`/admin/designs/${id}`);
-    return response.data;
-  },
-
-  create: async (data: CreateDesignRequest) => {
-    const response = await apiClient.post<Design>('/admin/designs', data);
-    return response.data;
-  },
-
-  update: async (id: string, data: UpdateDesignRequest) => {
-    const response = await apiClient.patch<Design>(`/admin/designs/${id}`, data);
-    return response.data;
-  },
-
-  delete: async (id: string) => {
-    await apiClient.delete(`/admin/designs/${id}`);
-  },
-};
-
-// ============================================================================
 // Products API
 // ============================================================================
 export const productsApi = {
   list: async (
     params?: PaginationParams & {
       category_id?: string;
-      design_id?: string;
       status?: string;
       min_price?: number;
       max_price?: number;
@@ -782,44 +747,28 @@ export const reportsApi = {
 };
 
 // ============================================================================
-// Assets API
+// Assets API (tmp/ → assets/ S3 flow)
 // ============================================================================
 export const assetsApi = {
-  list: async (params?: PaginationParams & { type?: string; search?: string; tags?: string[] }) => {
-    const response = await apiClient.get<ListResponse<Asset>>('/admin/assets', { params });
-    return response.data;
-  },
-
-  get: async (id: string) => {
-    const response = await apiClient.get<Asset>(`/admin/assets/${id}`);
-    return response.data;
-  },
-
-  getUploadUrl: async (name: string, type: string, mimeType: string, size: number) => {
-    const response = await apiClient.post('/admin/assets/upload-url', {
-      name,
-      type,
-      mime_type: mimeType,
+  getUploadUrl: async (
+    fileName: string,
+    type: 'IMAGE' | 'VIDEO' | 'DOCUMENT',
+    contentType: string,
+    size: number
+  ): Promise<UploadURLResponse> => {
+    const response = await apiClient.post<UploadURLResponse>('/admin/assets/upload-url', {
+      file_name: fileName,
+      content_type: contentType,
       size,
+      type,
     });
     return response.data;
   },
 
-  confirmUpload: async (id: string, width?: number, height?: number) => {
-    const response = await apiClient.post<Asset>(`/admin/assets/${id}/confirm`, {
-      width,
-      height,
+  delete: async (url: string) => {
+    await apiClient.delete('/admin/assets', {
+      data: { url },
     });
-    return response.data;
-  },
-
-  update: async (id: string, data: { name?: string; description?: string; tags?: string[] }) => {
-    const response = await apiClient.put<Asset>(`/admin/assets/${id}`, data);
-    return response.data;
-  },
-
-  delete: async (id: string) => {
-    await apiClient.delete(`/admin/assets/${id}`);
   },
 };
 

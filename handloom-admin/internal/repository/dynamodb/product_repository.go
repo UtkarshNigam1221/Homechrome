@@ -243,9 +243,6 @@ func (r *ProductRepository) buildProductFilterExpr(req domain.ListProductsReques
 		}
 	}
 
-	if req.DesignID != nil {
-		addFilter(expression.Name("design_id").Equal(expression.Value(*req.DesignID)))
-	}
 	if req.Status != nil {
 		addFilter(expression.Name("status").Equal(expression.Value(string(*req.Status))))
 	}
@@ -342,8 +339,9 @@ func (r *ProductRepository) BatchGetByIDs(ctx context.Context, ids []string) ([]
 	return products, nil
 }
 
-// CreateWithAttributeIndexes creates a product with its searchable attribute indexes in a transaction
-func (r *ProductRepository) CreateWithAttributeIndexes(ctx context.Context, product *domain.Product, searchableAttrs map[string][]string) error {
+// CreateWithAttributeIndexes creates a product with its searchable attribute indexes in a transaction.
+// If inventory is non-nil it is included in the same transaction.
+func (r *ProductRepository) CreateWithAttributeIndexes(ctx context.Context, product *domain.Product, searchableAttrs map[string][]string, inventory *domain.Inventory) error {
 	product.SetKeys()
 	product.CreatedAt = time.Now()
 	product.UpdatedAt = time.Now()
@@ -384,7 +382,26 @@ func (r *ProductRepository) CreateWithAttributeIndexes(ctx context.Context, prod
 		},
 	})
 
-	// 3. Attribute index items (only for searchable attributes)
+	// 3. Inventory item (if provided)
+	if inventory != nil {
+		inventory.SetKeys()
+		inventory.CreatedAt = time.Now()
+		inventory.UpdatedAt = time.Now()
+
+		invAV, err := attributevalue.MarshalMap(inventory)
+		if err != nil {
+			return errors.Internal(err)
+		}
+
+		transactItems = append(transactItems, types.TransactWriteItem{
+			Put: &types.Put{
+				TableName: aws.String(r.client.coreTable),
+				Item:      invAV,
+			},
+		})
+	}
+
+	// 4. Attribute index items (only for searchable attributes)
 	for attrName, values := range searchableAttrs {
 		for _, value := range values {
 			if value == "" {

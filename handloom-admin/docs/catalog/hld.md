@@ -2,7 +2,7 @@
 
 ## 1. Overview
 
-The Catalog Lambda service manages the product catalog including flat Categories (with custom searchable attributes), Designs, and Products. It provides CRUD operations, dynamic attribute management, searchable attribute indexing, pre-computed filter options, and integrated inventory management.
+The Catalog Lambda service manages the product catalog including flat Categories (with custom searchable attributes) and Products. It provides CRUD operations, dynamic attribute management, searchable attribute indexing, pre-computed filter options, and integrated inventory management.
 
 ---
 
@@ -27,38 +27,38 @@ The Catalog Lambda service manages the product catalog including flat Categories
                                               │
               ┌───────────────────────────────┼───────────────────────────────┐
               │                               │                               │
-              ▼                               ▼                               ▼
-   ┌─────────────────────┐       ┌─────────────────────┐       ┌─────────────────────┐
-   │  Category Handler   │       │   Product Handler   │       │   Design Handler    │
-   │  - List             │       │   - CRUD            │       │   - CRUD            │
-   │  - CRUD             │       │   - Filter Options  │       │   - By Category     │
-   │  - Attribute CRUD   │       │   - Inventory Mgmt  │       │                     │
-   └──────────┬──────────┘       └──────────┬──────────┘       └──────────┬──────────┘
-              │                              │                              │
-              └───────────────┬──────────────┼──────────────────────────────┘
-                              │              │
-                              ▼              ▼
-                    ┌─────────────────┐ ┌──────────────────┐
-                    │ Category Svc    │ │ Product Svc      │
-                    │ - Flat CRUD     │ │ - CRUD + Index   │
-                    │ - Attr Mgmt    │ │ - Filter Options │
-                    └────────┬────────┘ └────────┬─────────┘
-                             │                   │
-              ┌──────────────┼───────────────────┼──────────────────────┐
-              │              │                   │                      │
-              ▼              ▼                   ▼                      ▼
-   ┌──────────────────┐ ┌──────────────────┐ ┌──────────────────┐ ┌──────────────────┐
-   │   Category Repo  │ │   Product Repo   │ │   Design Repo    │ │  Inventory Repo  │
-   │                  │ │   + Attr Index   │ │                  │ │  + Transactions  │
-   └────────┬─────────┘ └────────┬─────────┘ └────────┬─────────┘ └────────┬─────────┘
-            │                    │                     │                    │
-            └────────────────────┼─────────────────────┼────────────────────┘
-                                 │                     │
-                                 ▼                     ▼
-                       ┌─────────────────────┐  ┌─────────────────────┐
-                       │     DynamoDB        │  │    CloudWatch       │
-                       │  (Single Table)     │  │   (Logs, Metrics)   │
-                       └─────────────────────┘  └─────────────────────┘
+              ▼                               ▼                               │
+   ┌─────────────────────┐       ┌─────────────────────┐                     │
+   │  Category Handler   │       │   Product Handler   │                     │
+   │  - List             │       │   - CRUD            │                     │
+   │  - CRUD             │       │   - Filter Options  │                     │
+   │  - Attribute CRUD   │       │   - Inventory Mgmt  │                     │
+   └──────────┬──────────┘       └──────────┬──────────┘                     │
+              │                              │                               │
+              └───────────────┬──────────────┘                               │
+                              │                                              │
+                              ▼                                              │
+                    ┌─────────────────┐ ┌──────────────────┐                 │
+                    │ Category Svc    │ │ Product Svc      │                 │
+                    │ - Flat CRUD     │ │ - CRUD + Index   │                 │
+                    │ - Attr Mgmt    │ │ - Filter Options │                 │
+                    └────────┬────────┘ └────────┬─────────┘                 │
+                             │                   │                           │
+              ┌──────────────┼───────────────────┼──────────────┐            │
+              │              │                   │              │            │
+              ▼              ▼                   ▼              ▼            │
+   ┌──────────────────┐ ┌──────────────────┐ ┌──────────────────┐           │
+   │   Category Repo  │ │   Product Repo   │ │  Inventory Repo  │           │
+   │                  │ │   + Attr Index   │ │  + Transactions  │           │
+   └────────┬─────────┘ └────────┬─────────┘ └────────┬─────────┘           │
+            │                    │                     │                     │
+            └────────────────────┼─────────────────────┘                     │
+                                 │                                           │
+                                 ▼                                           │
+                       ┌─────────────────────┐  ┌─────────────────────┐     │
+                       │     DynamoDB        │  │    CloudWatch       │     │
+                       │  (Single Table)     │  │   (Logs, Metrics)   │     │
+                       └─────────────────────┘  └─────────────────────┘     │
 ```
 
 ---
@@ -74,38 +74,38 @@ The Catalog Lambda service manages the product catalog including flat Categories
 │                                                                              │
 │  ┌─────────────────────────────────────────────────────────────────────┐   │
 │  │                         Handler Layer                                │   │
-│  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐                 │   │
-│  │  │  Category   │  │  Product    │  │  Design     │                 │   │
-│  │  │  Handler    │  │  Handler    │  │  Handler    │                 │   │
-│  │  │  + Attr API │  │  + Filter   │  │             │                 │   │
-│  │  │             │  │  + Inventory│  │             │                 │   │
-│  │  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘                 │   │
-│  └─────────┼────────────────┼────────────────┼──────────────────────────┘   │
-│            │                │                │                              │
-│  ┌─────────┼────────────────┼────────────────┼──────────────────────────┐   │
-│  │         ▼                ▼                ▼     Service Layer        │   │
-│  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐                 │   │
-│  │  │  Category   │  │  Product    │  │  Design     │                 │   │
-│  │  │  Service    │  │  Service    │  │  Service    │                 │   │
-│  │  │             │  │             │  │             │                 │   │
-│  │  │ - Create    │  │ - Create    │  │ - Create    │                 │   │
-│  │  │ - GetByID   │  │   + Index   │  │ - GetByID   │                 │   │
-│  │  │ - Update    │  │   + AttrVals│  │ - Update    │                 │   │
-│  │  │ - Delete    │  │ - Update    │  │ - Delete    │                 │   │
-│  │  │ - List      │  │   + Reindex │  │ - List      │                 │   │
-│  │  │ - AddAttr   │  │ - Delete    │  │             │                 │   │
-│  │  │ - UpdAttr   │  │   + Cleanup │  │             │                 │   │
-│  │  │ - DelAttr   │  │ - List      │  │             │                 │   │
-│  │  │ - GetAttrs  │  │ - FilterOpt │  │             │                 │   │
-│  │  └─────────────┘  └─────────────┘  └─────────────┘                 │   │
+│  │  ┌─────────────┐  ┌─────────────┐                                  │   │
+│  │  │  Category   │  │  Product    │                                  │   │
+│  │  │  Handler    │  │  Handler    │                                  │   │
+│  │  │  + Attr API │  │  + Filter   │                                  │   │
+│  │  │             │  │  + Inventory│                                  │   │
+│  │  └──────┬──────┘  └──────┬──────┘                                  │   │
+│  └─────────┼────────────────┼──────────────────────────────────────────┘   │
+│            │                │                                              │
+│  ┌─────────┼────────────────┼──────────────────────────────────────────┐   │
+│  │         ▼                ▼            Service Layer                  │   │
+│  │  ┌─────────────┐  ┌─────────────┐                                  │   │
+│  │  │  Category   │  │  Product    │                                  │   │
+│  │  │  Service    │  │  Service    │                                  │   │
+│  │  │             │  │             │                                  │   │
+│  │  │ - Create    │  │ - Create    │                                  │   │
+│  │  │ - GetByID   │  │   + Index   │                                  │   │
+│  │  │ - Update    │  │   + AttrVals│                                  │   │
+│  │  │ - Delete    │  │ - Update    │                                  │   │
+│  │  │ - List      │  │   + Reindex │                                  │   │
+│  │  │ - AddAttr   │  │ - Delete    │                                  │   │
+│  │  │ - UpdAttr   │  │   + Cleanup │                                  │   │
+│  │  │ - DelAttr   │  │ - List      │                                  │   │
+│  │  │ - GetAttrs  │  │ - FilterOpt │                                  │   │
+│  │  └─────────────┘  └─────────────┘                                  │   │
 │  └─────────────────────────────────────────────────────────────────────┘   │
 │                                                                              │
 │  ┌─────────────────────────────────────────────────────────────────────┐   │
 │  │                      Repository Layer                                │   │
-│  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌───────────┐ │   │
-│  │  │  Category   │  │  Product    │  │  Design     │  │ Inventory │ │   │
-│  │  │  Repository │  │  Repository │  │  Repository │  │ Repository│ │   │
-│  │  └─────────────┘  └─────────────┘  └─────────────┘  └───────────┘ │   │
+│  │  ┌─────────────┐  ┌─────────────┐  ┌───────────┐                  │   │
+│  │  │  Category   │  │  Product    │  │ Inventory │                  │   │
+│  │  │  Repository │  │  Repository │  │ Repository│                  │   │
+│  │  └─────────────┘  └─────────────┘  └───────────┘                  │   │
 │  └─────────────────────────────────────────────────────────────────────┘   │
 │                                                                              │
 └─────────────────────────────────────────────────────────────────────────────┘
@@ -153,19 +153,6 @@ All entities reside in a single DynamoDB table (`handloom-core`) using a composi
 │  │ Updated atomically via DynamoDB ADD on each product create/update │      │
 │  └───────────────────────────────────────────────────────────────────┘      │
 │                                                                              │
-│  DESIGN RECORDS                                                              │
-│  ┌───────────────────────────────────────────────────────────────────┐      │
-│  │ PK: DESIGN#<design_id>                                            │      │
-│  │ SK: METADATA                                                      │      │
-│  │                                                                   │      │
-│  │ GSI1PK: CATEGORY#<cat_id>   GSI1SK: DESIGN#<id>                 │      │
-│  │                                                                   │      │
-│  │ Attributes:                                                       │      │
-│  │   - name, slug, category_id, description                        │      │
-│  │   - images[], attributes[] (name, values[])                      │      │
-│  │   - status, product_count                                        │      │
-│  └───────────────────────────────────────────────────────────────────┘      │
-│                                                                              │
 │  PRODUCT RECORDS                                                             │
 │  ┌───────────────────────────────────────────────────────────────────┐      │
 │  │ PK: PRODUCT#<product_id>                                          │      │
@@ -176,7 +163,7 @@ All entities reside in a single DynamoDB table (`handloom-core`) using a composi
 │  │                                                                   │      │
 │  │ Attributes:                                                       │      │
 │  │   - name, slug, sku, description                                 │      │
-│  │   - design_id, category_id, artisan_id                           │      │
+│  │   - category_id, artisan_id                                      │      │
 │  │   - base_price, selling_price, cost_price, currency (prices in   │      │
 │  │     paise)                                                        │      │
 │  │   - dimensions{}, weight                                         │      │
@@ -240,7 +227,6 @@ All entities reside in a single DynamoDB table (`handloom-core`) using a composi
 │  ┌───────────────────────────────────────────────────────────────────┐      │
 │  │ GSI1 (GSI1PK + GSI1SK):                                          │      │
 │  │   - List all categories: PK=CATEGORY#ALL                         │      │
-│  │   - Designs by category: PK=CATEGORY#<id>, SK begins DESIGN#     │      │
 │  │   - Products by category: PK=CATEGORY#<id>, SK begins PRODUCT#   │      │
 │  │   - Products by attribute: PK=ATTR#<cat>#<attr>, SK begins <val> │      │
 │  │   - Users by email: PK=USER_EMAIL, SK=<email>                    │      │
@@ -306,33 +292,47 @@ Categories are **flat** (no hierarchy). Each category defines its own set of att
 
 ## 5. Product Images Architecture
 
+Images are managed by the **Asset Service** (separate Lambda), not the Catalog Service. The Catalog Service simply stores S3 URLs.
+
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                        IMAGE MANAGEMENT                                      │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                              │
-│  Upload Flow:                                                                │
+│  Upload Flow (handled by Asset Service, not Catalog):                        │
 │  ┌─────────────────────────────────────────────────────────────────────┐   │
 │  │                                                                      │   │
-│  │   Client ──▶ Get Presigned URL ──▶ Upload to S3 ──▶ Confirm        │   │
+│  │   Client → POST /admin/assets/upload-url → presigned PUT URL        │   │
+│  │   Client → PUT file directly to S3 tmp/                             │   │
+│  │   Client → POST /admin/assets/finalize → permanent S3 URL           │   │
+│  │   Client → POST /admin/products (with S3 URLs in images array)      │   │
 │  │                                                                      │   │
-│  │   1. Request presigned URL from API                                 │   │
-│  │   2. Upload directly to S3 (bypass Lambda)                          │   │
-│  │   3. Confirm upload, trigger image processing                       │   │
+│  │   See docs/asset/hld.md for full details.                           │   │
 │  │                                                                      │   │
 │  └─────────────────────────────────────────────────────────────────────┘   │
 │                                                                              │
-│  S3 Bucket Structure:                                                        │
+│  How Products Store Images:                                                  │
 │  ┌─────────────────────────────────────────────────────────────────────┐   │
 │  │                                                                      │   │
-│  │  handloom-assets/                                                   │   │
-│  │    ├── products/                                                    │   │
-│  │    │     ├── original/    (full resolution)                         │   │
-│  │    │     ├── large/       (1200x1200)                               │   │
-│  │    │     ├── medium/      (600x600)                                 │   │
-│  │    │     └── thumb/       (150x150)                                 │   │
-│  │    ├── categories/                                                  │   │
-│  │    └── designs/                                                     │   │
+│  │  Product.Images: []ProductImage                                     │   │
+│  │    - URL:       "https://bucket.s3.../assets/IMAGE/2026/02/14/..."  │   │
+│  │    - AltText:   "Silk saree front view"                             │   │
+│  │    - IsPrimary: true                                                │   │
+│  │    - SortOrder: 0                                                   │   │
+│  │                                                                      │   │
+│  │  Category.ImageURL: "https://bucket.s3.../assets/IMAGE/..."         │   │
+│  │                                                                      │   │
+│  │  The Catalog Service stores URLs as plain strings.                   │   │
+│  │  It has no dependency on the Asset Service.                          │   │
+│  │                                                                      │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                                                                              │
+│  S3 Bucket Structure (managed by Asset Service):                             │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │                                                                      │   │
+│  │  handloom-assets-{env}/                                             │   │
+│  │    ├── tmp/{TYPE}/{uuid}.{ext}        (temporary, 24h lifecycle)    │   │
+│  │    └── assets/{TYPE}/{date}/{uuid}.{ext}  (permanent, public-read) │   │
 │  │                                                                      │   │
 │  └─────────────────────────────────────────────────────────────────────┘   │
 │                                                                              │
@@ -395,7 +395,6 @@ Categories are **flat** (no hierarchy). Each category defines its own set of att
 │  ├───────────────┼───────────────────────────────────────────────────┤      │
 │  │ Name          │ Required                                          │      │
 │  │ SKU           │ Required, unique                                  │      │
-│  │ Design ID     │ Required, must exist                              │      │
 │  │ Category ID   │ Required, must exist                              │      │
 │  │ Base Price    │ Required, > 0 (in paise)                          │      │
 │  │ Selling Price │ Required, > 0 (in paise)                          │      │
@@ -410,15 +409,6 @@ Categories are **flat** (no hierarchy). Each category defines its own set of att
 │  │ Slug          │ Auto-generated from name, unique globally         │      │
 │  │ Status        │ ACTIVE | INACTIVE                                 │      │
 │  │ Delete guard  │ Cannot delete if products exist                   │      │
-│  └───────────────────────────────────────────────────────────────────┘      │
-│                                                                              │
-│  Design Validation:                                                          │
-│  ┌───────────────────────────────────────────────────────────────────┐      │
-│  │ Field         │ Rules                                             │      │
-│  ├───────────────┼───────────────────────────────────────────────────┤      │
-│  │ Name          │ Required                                          │      │
-│  │ Category ID   │ Required, must exist                              │      │
-│  │ Slug          │ Auto-generated from name                          │      │
 │  └───────────────────────────────────────────────────────────────────┘      │
 │                                                                              │
 │  Inventory Validation:                                                       │
@@ -460,13 +450,6 @@ Categories are **flat** (no hierarchy). Each category defines its own set of att
 │  │ CAT017 │ Attribute name already exists                              │   │
 │  └─────────────────────────────────────────────────────────────────────┘   │
 │                                                                              │
-│  Design Errors:                                                              │
-│  ┌─────────────────────────────────────────────────────────────────────┐   │
-│  │ CAT020 │ Design not found                                           │   │
-│  │ CAT021 │ Design slug already exists                                 │   │
-│  │ CAT022 │ Design linked to products (cannot delete)                  │   │
-│  └─────────────────────────────────────────────────────────────────────┘   │
-│                                                                              │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -500,7 +483,7 @@ Categories are **flat** (no hierarchy). Each category defines its own set of att
 │  ┌─────────────────────────────────────────────────────────────────────┐   │
 │  │ • Pre-computed filter options (2 reads vs N GSI queries)            │   │
 │  │ • Atomic ADD on top-level SS fields (single write per product op)  │   │
-│  │ • Denormalized product counts on categories and designs            │   │
+│  │ • Denormalized product counts on categories                        │   │
 │  │ • Denormalized inventory fields on products                        │   │
 │  │ • Projection expressions to reduce data transfer                    │   │
 │  │ • Connection pooling (reuse DynamoDB client across invocations)    │   │

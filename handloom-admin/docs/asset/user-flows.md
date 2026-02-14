@@ -1,89 +1,83 @@
-# Asset Lambda - User Flows
+# Asset Service - User Flows
 
 ## Overview
-This document describes the user flows for the Asset Lambda service, covering media file uploads, management, and organization.
+This document describes the user flows for the Asset Service. The service uses a **tmp/ → assets/ S3-only flow** — there is no media library or standalone asset management UI. Assets are uploaded inline within entity forms (Product, Category, Artisan).
 
 ---
 
-## 1. Upload Image Flow
+## 1. Upload Image in Product Form
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                           UPLOAD IMAGE FLOW                                  │
-└─────────────────────────────────────────────────────────────────────────────┘
-
     ┌──────────┐
     │  START   │
     └────┬─────┘
          │
          ▼
 ┌─────────────────┐
-│ Navigate to     │
-│ Media Library   │
-│ or Product Edit │
+│ Open Product    │
+│ Create/Edit form│
 └────────┬────────┘
          │
          ▼
 ┌─────────────────────────────────────────────────────────────────────┐
-│ Upload Interface:                                                    │
+│ Image Upload Area:                                                   │
 │ ┌─────────────────────────────────────────────────────────────────┐ │
 │ │                                                                 │ │
 │ │    ┌─────────────────────────────────────────────────────┐      │ │
 │ │    │                                                     │      │ │
-│ │    │       📷 Drag & Drop images here                   │      │ │
-│ │    │           or click to browse                        │      │ │
+│ │    │       Click to upload or drag and drop              │      │ │
 │ │    │                                                     │      │ │
-│ │    │       Supported: JPG, PNG, WebP                     │      │ │
-│ │    │       Max size: 5 MB per file                       │      │ │
+│ │    │       PNG, JPG, GIF up to 5MB                       │      │ │
+│ │    │       (max 5 files)                                 │      │ │
 │ │    │                                                     │      │ │
 │ │    └─────────────────────────────────────────────────────┘      │ │
-│ │                                                                 │ │
-│ │ Or paste image URL: [_________________________________]          │ │
 │ └─────────────────────────────────────────────────────────────────┘ │
 └────────────────────────────────────────────────────────────────────┬┘
          │
          ▼
 ┌─────────────────┐
-│ Select files    │
-│ (multiple)      │
+│ Select file(s)  │
+│ or drop files   │
 └────────┬────────┘
          │
          ▼
 ┌─────────────────────────────────────────────────────────────────────┐
-│ Upload Progress:                                                     │
-│ ┌─────────────────────────────────────────────────────────────────┐ │
-│ │ Uploading 3 files...                                            │ │
-│ │                                                                 │ │
-│ │ ┌────┐ product_1.jpg     ████████████████████  100%  ✓          │ │
-│ │ │ 📷 │ 2.3 MB                                                   │ │
-│ │ └────┘                                                          │ │
-│ │                                                                 │ │
-│ │ ┌────┐ product_2.jpg     ████████████░░░░░░░░   60%             │ │
-│ │ │ 📷 │ 1.8 MB                                                   │ │
-│ │ └────┘                                                          │ │
-│ │                                                                 │ │
-│ │ ┌────┐ product_3.jpg     ███████░░░░░░░░░░░░░   35%             │ │
-│ │ │ 📷 │ 3.1 MB                                                   │ │
-│ │ └────┘                                                          │ │
-│ └─────────────────────────────────────────────────────────────────┘ │
+│ Behind the scenes (automatic):                                       │
+│                                                                      │
+│ 1. Compress image in browser (max 2MB, 2000px)                       │
+│ 2. Request presigned URL from backend                                │
+│ 3. PUT file directly to S3 tmp/ prefix                               │
+│ 4. Create blob URL for preview, store tmp_key in form                │
+│    (No finalize — backend does that when entity is saved)            │
+│                                                                      │
+│ UI shows: spinning loader → "Uploading..."                           │
 └────────────────────────────────────────────────────────────────────┬┘
          │
          ▼
 ┌─────────────────────────────────────────────────────────────────────┐
 │ Upload Complete:                                                     │
 │ ┌─────────────────────────────────────────────────────────────────┐ │
-│ │ ✓ 3 files uploaded successfully                                 │ │
 │ │                                                                 │ │
-│ │ ┌────────┐  ┌────────┐  ┌────────┐                              │ │
-│ │ │        │  │        │  │        │                              │ │
-│ │ │  📷    │  │  📷    │  │  📷    │                              │ │
-│ │ │        │  │        │  │        │                              │ │
-│ │ └────────┘  └────────┘  └────────┘                              │ │
-│ │ product_1   product_2   product_3                               │ │
+│ │ ┌────────┐  ┌────────┐                                          │ │
+│ │ │        │  │        │                                          │ │
+│ │ │ [img]  │  │ [img]  │  + Upload more                           │ │
+│ │ │    [X] │  │    [X] │                                          │ │
+│ │ └────────┘  └────────┘                                          │ │
 │ │                                                                 │ │
-│ │ [Add to Product]  [Add Tags]  [Upload More]                     │ │
+│ │ Toast: "File uploaded successfully"                              │ │
 │ └─────────────────────────────────────────────────────────────────┘ │
 └────────────────────────────────────────────────────────────────────┬┘
+         │
+         ▼
+┌─────────────────┐
+│ Fill other       │
+│ product fields   │
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│ Click "Save"    │──────► Backend finalizes tmp/ → assets/, product saved
+└────────┬────────┘        with permanent S3 URLs in `images` array
          │
          ▼
     ┌────────┐
@@ -91,66 +85,52 @@ This document describes the user flows for the Asset Lambda service, covering me
     └────────┘
 ```
 
+**If user closes form without saving:** tmp/ files auto-expire in 24h. No orphaned files in assets/.
+
 ---
 
-## 2. Browse Media Library Flow
+## 2. Remove Image from Product Form
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                       BROWSE MEDIA LIBRARY FLOW                              │
-└─────────────────────────────────────────────────────────────────────────────┘
-
     ┌──────────┐
     │  START   │
     └────┬─────┘
          │
          ▼
 ┌─────────────────┐
-│ Navigate to     │
-│ Media Library   │
+│ View product    │
+│ form with       │
+│ existing images │
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│ Click [X] on    │
+│ image thumbnail │
 └────────┬────────┘
          │
          ▼
 ┌─────────────────────────────────────────────────────────────────────┐
-│ Media Library:                                                       │
-│ ┌─────────────────────────────────────────────────────────────────┐ │
-│ │ Search: [____________]  Type: [All ▼]  Folder: [All ▼]          │ │
-│ │                                                                 │ │
-│ │ View: ● Grid  ○ List    Sort: [Date ▼]                          │ │
-│ └─────────────────────────────────────────────────────────────────┘ │
+│ Behind the scenes:                                                   │
 │                                                                      │
-│ ┌─────────────────────────────────────────────────────────────────┐ │
-│ │ FOLDERS                                                         │ │
-│ │ 📁 Products (456)   📁 Artisans (89)   📁 Banners (23)          │ │
-│ │ 📁 Categories (34)  📁 Designs (156)   📁 Uploads (78)          │ │
-│ └─────────────────────────────────────────────────────────────────┘ │
-│                                                                      │
-│ ┌─────────────────────────────────────────────────────────────────┐ │
-│ │ RECENT FILES                                                    │ │
-│ │                                                                 │ │
-│ │ ┌────────┐  ┌────────┐  ┌────────┐  ┌────────┐  ┌────────┐     │ │
-│ │ │        │  │        │  │        │  │        │  │        │     │ │
-│ │ │  📷    │  │  📷    │  │  📷    │  │  📷    │  │  📷    │     │ │
-│ │ │        │  │        │  │        │  │        │  │        │     │ │
-│ │ └────────┘  └────────┘  └────────┘  └────────┘  └────────┘     │ │
-│ │ silk_saree  cotton_...  dupatta_1  artisan_...  banner_01      │ │
-│ │ Jan 20      Jan 19      Jan 18      Jan 17      Jan 15         │ │
-│ │                                                                 │ │
-│ │ [< Previous]                                    [Next >]        │ │
-│ └─────────────────────────────────────────────────────────────────┘ │
-│                                                                      │
-│ Storage Used: 2.5 GB / 10 GB                                         │
+│ 1. Remove value from form state immediately                          │
+│ 2. If it's a permanent URL: send DELETE /admin/assets (best-effort)  │
+│    - If it fails, file stays in S3 (negligible cost)                 │
+│    - UI doesn't wait for or show delete result                       │
+│ 3. If it's a tmp key: do nothing (S3 lifecycle auto-cleans in 24h)   │
 └────────────────────────────────────────────────────────────────────┬┘
          │
-         ├── Click folder ──────────────────────┐
-         │                                       │
-         ├── Click image ───────────────────────┤
-         │                                       │
-         ▼                                       ▼
-┌─────────────────┐                   ┌─────────────────┐
-│ View folder     │                   │ View image      │
-│ contents        │                   │ details         │
-└────────┬────────┘                   └─────────────────┘
+         ▼
+┌─────────────────┐
+│ Image removed   │
+│ from preview    │
+│ grid            │
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│ Click "Save"    │──────► Product saved without the removed URL
+└────────┬────────┘
          │
          ▼
     ┌────────┐
@@ -160,136 +140,93 @@ This document describes the user flows for the Asset Lambda service, covering me
 
 ---
 
-## 3. View and Edit Asset Details Flow
+## 3. Upload Category Image
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                      VIEW AND EDIT ASSET DETAILS FLOW                        │
-└─────────────────────────────────────────────────────────────────────────────┘
-
     ┌──────────┐
     │  START   │
     └────┬─────┘
          │
          ▼
 ┌─────────────────┐
-│ Click image in  │
-│ media library   │
+│ Open Category   │
+│ Create/Edit form│
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│ Click upload    │
+│ area for        │
+│ category image  │
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│ Same upload flow│
+│ as product      │
+│ (compress →     │
+│  presign →      │
+│  PUT → tmp_key) │
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│ Single image    │
+│ preview shown   │
+│ (categories use │
+│ single image)   │
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│ Save category   │──────► Backend finalizes tmp/ → assets/, category saved with `image_url` = S3 URL
+└────────┬────────┘
+         │
+         ▼
+    ┌────────┐
+    │  END   │
+    └────────┘
+```
+
+---
+
+## 4. Upload Video for Product
+
+```
+    ┌──────────┐
+    │  START   │
+    └────┬─────┘
+         │
+         ▼
+┌─────────────────┐
+│ Open product    │
+│ form with video │
+│ upload enabled  │
+│ (accept includes│
+│ video/*)        │
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│ Select video    │
+│ file            │
 └────────┬────────┘
          │
          ▼
 ┌─────────────────────────────────────────────────────────────────────┐
-│ Asset Details:                                                       │
-│ ┌──────────────────────────────┬──────────────────────────────────┐ │
-│ │                              │ FILE INFORMATION                 │ │
-│ │                              │                                  │ │
-│ │      ┌────────────────┐      │ Name:     silk_saree_blue.jpg    │ │
-│ │      │                │      │ Size:     2.3 MB                 │ │
-│ │      │                │      │ Type:     image/jpeg             │ │
-│ │      │    [Image      │      │ Dimensions: 1920 x 1280          │ │
-│ │      │    Preview]    │      │ Uploaded:  Jan 20, 2024          │ │
-│ │      │                │      │ By:       admin                  │ │
-│ │      │                │      │                                  │ │
-│ │      └────────────────┘      │ URL:                             │ │
-│ │                              │ [https://cdn.../silk...] [Copy]  │ │
-│ │   [🔍 Zoom] [⬇ Download]     │                                  │ │
-│ └──────────────────────────────┴──────────────────────────────────┘ │
+│ Behind the scenes:                                                   │
 │                                                                      │
-│ ┌─────────────────────────────────────────────────────────────────┐ │
-│ │ METADATA                                                        │ │
-│ │                                                                 │ │
-│ │ Title:       [____Silk Saree Blue Pattern____]                  │ │
-│ │ Alt Text:    [____Blue silk saree with traditional...____]      │ │
-│ │ Folder:      [Products ▼]                                       │ │
-│ │ Tags:        [saree] [silk] [blue] [+ Add Tag]                  │ │
-│ │                                                                 │ │
-│ │ [Save Changes]                                                  │ │
-│ └─────────────────────────────────────────────────────────────────┘ │
-│                                                                      │
-│ ┌─────────────────────────────────────────────────────────────────┐ │
-│ │ USED IN                                                         │ │
-│ │                                                                 │ │
-│ │ • Product: Silk Saree Blue (SKU-001)                            │ │
-│ │ • Category: Sarees (banner image)                               │ │
-│ └─────────────────────────────────────────────────────────────────┘ │
-│                                                                      │
-│ [Delete Asset]                                                       │
+│ 1. NO compression (videos pass through as-is)                        │
+│ 2. Asset type detected as "VIDEO" from MIME type                     │
+│ 3. Same presign → PUT → finalize flow                                │
+│ 4. Video preview shown with film icon overlay                        │
 └────────────────────────────────────────────────────────────────────┬┘
          │
          ▼
-    ┌────────┐
-    │  END   │
-    └────────┘
-```
-
----
-
-## 4. Delete Asset Flow
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                           DELETE ASSET FLOW                                  │
-└─────────────────────────────────────────────────────────────────────────────┘
-
-    ┌──────────┐
-    │  START   │
-    └────┬─────┘
-         │
-         ▼
 ┌─────────────────┐
-│ Select asset(s) │
-│ to delete       │
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│ Click "Delete"  │
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│ Delete Confirmation:                                                 │
-│ ┌─────────────────────────────────────────────────────────────────┐ │
-│ │                                                                 │ │
-│ │  ⚠️ Delete Asset                                                │ │
-│ │                                                                 │ │
-│ │  Are you sure you want to delete "silk_saree_blue.jpg"?         │ │
-│ │                                                                 │ │
-│ │  This asset is used in:                                         │ │
-│ │  • Product: Silk Saree Blue (SKU-001)                           │ │
-│ │  • Category: Sarees                                             │ │
-│ │                                                                 │ │
-│ │  Deleting will remove the image from these items.               │ │
-│ │                                                                 │ │
-│ │  [Cancel]  [Delete Anyway]                                      │ │
-│ │                                                                 │ │
-│ └─────────────────────────────────────────────────────────────────┘ │
-└────────────────────────────────────────────────────────────────────┬┘
-         │
-         ├── Cancel ────────────────────────────┐
-         │                                       │
-         ▼                                       ▼
-┌─────────────────┐                   ┌─────────────────┐
-│ Confirm delete  │                   │ Return to       │
-│                 │                   │ media library   │
-└────────┬────────┘                   └─────────────────┘
-         │
-         ▼
-┌─────────────────┐
-│ Remove from S3  │
-│ & database      │
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│ Update linked   │
-│ entities        │
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│ Show success    │
-│ message         │
+│ Video preview   │
+│ with film icon  │
+│ and [X] button  │
 └────────┬────────┘
          │
          ▼
@@ -300,112 +237,60 @@ This document describes the user flows for the Asset Lambda service, covering me
 
 ---
 
-## 5. Generate Pre-signed Upload URL Flow
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                   GENERATE PRE-SIGNED UPLOAD URL FLOW                        │
-└─────────────────────────────────────────────────────────────────────────────┘
-
-    ┌──────────┐
-    │  START   │
-    │ (Client) │
-    └────┬─────┘
-         │
-         ▼
-┌─────────────────┐
-│ Request upload  │
-│ URL from API    │
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│ API validates   │
-│ file type/size  │
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│ Generate        │
-│ pre-signed URL  │
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│ Return URL to   │
-│ client          │
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│ Client uploads  │
-│ directly to S3  │
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│ Client confirms │
-│ upload complete │
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│ Create asset    │
-│ record in DB    │
-└────────┬────────┘
-         │
-         ▼
-    ┌────────┐
-    │  END   │
-    └────────┘
-```
-
----
-
-## State Diagram - Asset Lifecycle
+## State Diagram — Asset Lifecycle
 
 ```
                     ┌─────────────────┐
-                    │    UPLOADING    │
-                    │ (In progress)   │
+                    │  File selected  │
+                    │  in browser     │
                     └────────┬────────┘
                              │
-                             │ Upload complete
+                             │ Compress (images only)
                              ▼
                     ┌─────────────────┐
-                    │   PROCESSING    │
-                    │ (Generating     │
-                    │  thumbnails)    │
+                    │  IN TMP/        │
+                    │  (presigned PUT │
+                    │   to S3 tmp/)   │
+                    │  Frontend shows │
+                    │  blob preview   │
                     └────────┬────────┘
                              │
-                             │ Processing complete
-                             ▼
-                    ┌─────────────────┐
-                    │     ACTIVE      │◄─────────────────────┐
-                    │ (Available)     │                      │
-                    └────────┬────────┘                      │
-                             │                               │
-         ┌───────────────────┼───────────────────┐           │
-         │                   │                   │           │
-         ▼                   ▼                   ▼           │
-┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐  │
-│    ARCHIVED     │ │    DELETED      │ │   REPLACED      │  │
-│ (Hidden)        │ │ (Soft deleted)  │ │ (New version)   │  │
-└────────┬────────┘ └─────────────────┘ └────────┬────────┘  │
-         │                                        │           │
-         │ Restore                                │ Revert    │
-         └────────────────────────────────────────┴───────────┘
+                    ┌────────┴────────┐
+                    │                 │
+                    ▼                 ▼
+           ┌─────────────┐   ┌─────────────────┐
+           │ ENTITY SAVED│   │ EXPIRED         │
+           │ (backend    │   │ (user closed    │
+           │  finalizes  │   │  form without   │
+           │  tmp/ →     │   │  saving — S3    │
+           │  assets/)   │   │  lifecycle      │
+           └──────┬──────┘   │  deletes after  │
+                  │          │  24h)           │
+         ┌────────┴────────┐ └─────────────────┘
+         │                 │
+         ▼                 ▼
+  ┌─────────────┐   ┌─────────────┐
+  │ IN USE      │   │ DELETED     │
+  │ (referenced │   │ (DELETE API │
+  │  by entity) │   │  call)      │
+  └─────────────┘   └─────────────┘
+```
 
+---
 
-              ASSET TYPES
+## Asset Types
 
+```
   ┌─────────────────────────────────────────────────────────┐
+  │                  SUPPORTED ASSET TYPES                   │
   │                                                         │
   │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────┐  │
   │  │    IMAGE    │  │   DOCUMENT  │  │     VIDEO       │  │
-  │  │ JPG,PNG,WebP│  │  PDF, DOCX  │  │   MP4, WebM     │  │
+  │  │ JPG,PNG,    │  │  PDF, DOCX  │  │   MP4, WebM,    │  │
+  │  │ GIF, WebP   │  │  XLS, CSV   │  │   MOV           │  │
+  │  │ Max 50MB    │  │  Max 10MB   │  │   Max 100MB     │  │
+  │  │ Compressed  │  │             │  │   No compress   │  │
   │  └─────────────┘  └─────────────┘  └─────────────────┘  │
   │                                                         │
   └─────────────────────────────────────────────────────────┘
 ```
-

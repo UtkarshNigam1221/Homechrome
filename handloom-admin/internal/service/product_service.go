@@ -15,27 +15,27 @@ import (
 
 // ProductService implements domain.ProductService
 type ProductService struct {
-	productRepo   domain.ProductRepository
-	categoryRepo  domain.CategoryRepository
-	designRepo    domain.DesignRepository
-	inventoryRepo domain.InventoryRepository
-	logger        *logger.Logger
+	productRepo    domain.ProductRepository
+	categoryRepo   domain.CategoryRepository
+	inventoryRepo  domain.InventoryRepository
+	assetFinalizer domain.AssetFinalizer
+	logger         *logger.Logger
 }
 
 // NewProductService creates a new ProductService
 func NewProductService(
 	productRepo domain.ProductRepository,
 	categoryRepo domain.CategoryRepository,
-	designRepo domain.DesignRepository,
 	inventoryRepo domain.InventoryRepository,
+	assetFinalizer domain.AssetFinalizer,
 	logger *logger.Logger,
 ) *ProductService {
 	return &ProductService{
-		productRepo:   productRepo,
-		categoryRepo:  categoryRepo,
-		designRepo:    designRepo,
-		inventoryRepo: inventoryRepo,
-		logger:        logger,
+		productRepo:    productRepo,
+		categoryRepo:   categoryRepo,
+		inventoryRepo:  inventoryRepo,
+		assetFinalizer: assetFinalizer,
+		logger:         logger,
 	}
 }
 
@@ -52,30 +52,21 @@ func (s *ProductService) Create(ctx context.Context, req domain.CreateProductReq
 		return nil, err
 	}
 
-	// Validate design exists
-	design, err := s.designRepo.GetByID(ctx, req.DesignID)
-	if err != nil {
-		return nil, errors.New(errors.ErrCodeNotFound, "Design not found")
+	// Finalize any tmp/ image keys to permanent assets/ URLs
+	for i, img := range req.Images {
+		finalURL, err := s.assetFinalizer.FinalizeIfTemp(ctx, img.URL)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to finalize image")
+		}
+		req.Images[i].URL = finalURL
 	}
 
-	product := domain.NewProduct(req, "prod_"+uuid.New().String()[:8], generateSlug(req.Name), createdBy)
+	product := domain.NewProduct(req, "prod_"+uuid.New().String(), generateSlug(req.Name), createdBy)
 
 	// Extract searchable attributes for indexing
 	searchableAttrs := extractSearchableAttributes(product, category.OwnAttributes)
 
-	// Create product with attribute indexes
-	if err := s.productRepo.CreateWithAttributeIndexes(ctx, product, searchableAttrs); err != nil {
-		return nil, err
-	}
-
-	// Add attribute values to the stored distinct value sets for this category
-	if len(searchableAttrs) > 0 {
-		if err := s.productRepo.AddAttributeValues(ctx, product.CategoryID, searchableAttrs); err != nil {
-			s.logger.WithContext(ctx).WithError(err).Error("Failed to update attribute value sets")
-		}
-	}
-
-	// Create inventory record
+	// Build inventory record to include in the same transaction
 	inventory := &domain.Inventory{
 		ID:                product.ID,
 		ProductID:         product.ID,
@@ -87,13 +78,22 @@ func (s *ProductService) Create(ctx context.Context, req domain.CreateProductReq
 	}
 	inventory.CreatedBy = createdBy
 
-	if err := s.inventoryRepo.Create(ctx, inventory); err != nil {
-		s.logger.WithContext(ctx).WithError(err).Error("Failed to create inventory record")
+	// Create product with attribute indexes and inventory atomically
+	if err := s.productRepo.CreateWithAttributeIndexes(ctx, product, searchableAttrs, inventory); err != nil {
+		return nil, err
 	}
 
-	// Increment counts
-	_ = s.categoryRepo.IncrementProductCount(ctx, category.ID, 1)
-	_ = s.designRepo.IncrementProductCount(ctx, design.ID, 1)
+	// Add attribute values to the stored distinct value sets for this category
+	if len(searchableAttrs) > 0 {
+		if err := s.productRepo.AddAttributeValues(ctx, product.CategoryID, searchableAttrs); err != nil {
+			return nil, errors.Wrap(err, "failed to update attribute value sets")
+		}
+	}
+
+	// Increment category product count
+	if err := s.categoryRepo.IncrementProductCount(ctx, category.ID, 1); err != nil {
+		return nil, errors.Wrap(err, "failed to increment category product count")
+	}
 
 	s.logger.WithContext(ctx).Infof("Created product: %s", product.ID)
 	return product, nil
@@ -120,16 +120,6 @@ func (s *ProductService) GetByID(ctx context.Context, id string) (*domain.Produc
 		}
 	}
 
-	// Get design info
-	design, err := s.designRepo.GetByID(ctx, product.DesignID)
-	if err == nil {
-		result.Design = &domain.DesignSummary{
-			ID:   design.ID,
-			Name: design.Name,
-			Slug: design.Slug,
-		}
-	}
-
 	// Get inventory info
 	inventory, err := s.inventoryRepo.GetByProductID(ctx, product.ID)
 	if err == nil {
@@ -150,6 +140,15 @@ func (s *ProductService) Update(ctx context.Context, id string, req domain.Updat
 	category, err := s.categoryRepo.GetByID(ctx, product.CategoryID)
 	if err != nil {
 		return nil, err
+	}
+
+	// Finalize any tmp/ image keys in the update request
+	for i, img := range req.Images {
+		finalURL, err := s.assetFinalizer.FinalizeIfTemp(ctx, img.URL)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to finalize image")
+		}
+		req.Images[i].URL = finalURL
 	}
 
 	// Extract old searchable attributes before update
@@ -180,7 +179,7 @@ func (s *ProductService) Update(ctx context.Context, id string, req domain.Updat
 	// Add new attribute values to the stored distinct value sets
 	if len(newSearchableAttrs) > 0 {
 		if err := s.productRepo.AddAttributeValues(ctx, product.CategoryID, newSearchableAttrs); err != nil {
-			s.logger.WithContext(ctx).WithError(err).Error("Failed to update attribute value sets")
+			return nil, errors.Wrap(err, "failed to update attribute value sets")
 		}
 	}
 
@@ -214,12 +213,13 @@ func (s *ProductService) Delete(ctx context.Context, id string) error {
 
 	// Delete inventory record and its transactions
 	if err := s.inventoryRepo.DeleteByProductID(ctx, id); err != nil {
-		s.logger.WithContext(ctx).WithError(err).Error("Failed to delete inventory for product")
+		return errors.Wrap(err, "failed to delete inventory for product")
 	}
 
-	// Decrement counts
-	_ = s.categoryRepo.IncrementProductCount(ctx, product.CategoryID, -1)
-	_ = s.designRepo.IncrementProductCount(ctx, product.DesignID, -1)
+	// Decrement category count
+	if err := s.categoryRepo.IncrementProductCount(ctx, product.CategoryID, -1); err != nil {
+		return errors.Wrap(err, "failed to decrement category product count")
+	}
 
 	s.logger.WithContext(ctx).Infof("Deleted product: %s", id)
 	return nil

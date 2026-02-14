@@ -104,7 +104,7 @@ export function BulkExportModal({ isOpen, onClose, entityType }: BulkExportModal
           {entityType === 'products' ? (
             <ul className="text-sm text-gray-600 space-y-1 list-disc list-inside">
               <li>Product ID, SKU, Name</li>
-              <li>Category, Design, Description</li>
+              <li>Category, Description</li>
               <li>Base Price, Selling Price</li>
               <li>Quantity, Available Stock</li>
               <li>Status, Tags, Metadata</li>

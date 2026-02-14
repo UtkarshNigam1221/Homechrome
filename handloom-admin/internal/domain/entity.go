@@ -41,33 +41,25 @@ const (
 	ProductStatusDraft    ProductStatus = "DRAFT"
 )
 
-// DesignStatus defines the status of a design
-type DesignStatus string
-
-const (
-	DesignStatusActive   DesignStatus = "ACTIVE"
-	DesignStatusInactive DesignStatus = "INACTIVE"
-)
-
 // AttributeType defines the type of a category attribute
 type AttributeType string
 
 const (
-	AttributeTypeSelect        AttributeType = "SELECT"
-	AttributeTypeMultiSelect   AttributeType = "MULTI_SELECT"
-	AttributeTypeText          AttributeType = "TEXT"
-	AttributeTypeNumber        AttributeType = "NUMBER"
-	AttributeTypeBoolean       AttributeType = "BOOLEAN"
+	AttributeTypeSelect      AttributeType = "SELECT"
+	AttributeTypeMultiSelect AttributeType = "MULTI_SELECT"
+	AttributeTypeText        AttributeType = "TEXT"
+	AttributeTypeNumber      AttributeType = "NUMBER"
+	AttributeTypeBoolean     AttributeType = "BOOLEAN"
 )
 
 // PricingRuleScope defines where a pricing rule applies
 type PricingRuleScope string
 
 const (
-	PricingRuleScopeGlobal      PricingRuleScope = "GLOBAL"
-	PricingRuleScopeCategory    PricingRuleScope = "CATEGORY"
-	PricingRuleScopeProduct     PricingRuleScope = "PRODUCT"
-	PricingRuleScopeMaterial    PricingRuleScope = "MATERIAL"
+	PricingRuleScopeGlobal   PricingRuleScope = "GLOBAL"
+	PricingRuleScopeCategory PricingRuleScope = "CATEGORY"
+	PricingRuleScopeProduct  PricingRuleScope = "PRODUCT"
+	PricingRuleScopeMaterial PricingRuleScope = "MATERIAL"
 )
 
 // PricingType defines how price is calculated
@@ -151,12 +143,12 @@ type BaseEntity struct {
 
 // User represents an admin or operator user
 type User struct {
-	ID           string     `json:"id" dynamodbav:"id"`
-	PK           string     `json:"-" dynamodbav:"PK"`
-	SK           string     `json:"-" dynamodbav:"SK"`
-	GSI1PK       string     `json:"-" dynamodbav:"GSI1PK"`
-	GSI1SK       string     `json:"-" dynamodbav:"GSI1SK"`
-	EntityType   string     `json:"-" dynamodbav:"entity_type"`
+	ID         string `json:"id" dynamodbav:"id"`
+	PK         string `json:"-" dynamodbav:"PK"`
+	SK         string `json:"-" dynamodbav:"SK"`
+	GSI1PK     string `json:"-" dynamodbav:"GSI1PK"`
+	GSI1SK     string `json:"-" dynamodbav:"GSI1SK"`
+	EntityType string `json:"-" dynamodbav:"entity_type"`
 
 	Email        string     `json:"email" dynamodbav:"email"`
 	PasswordHash string     `json:"-" dynamodbav:"password_hash"`
@@ -167,7 +159,7 @@ type User struct {
 	Permissions  []string   `json:"permissions" dynamodbav:"permissions"`
 	Status       UserStatus `json:"status" dynamodbav:"status"`
 
-	LastLoginAt  *time.Time `json:"last_login_at,omitempty" dynamodbav:"last_login_at,omitempty"`
+	LastLoginAt *time.Time `json:"last_login_at,omitempty" dynamodbav:"last_login_at,omitempty"`
 	BaseEntity
 }
 
@@ -189,22 +181,22 @@ func (u *User) SetKeys() {
 
 // Category represents a flat product category
 type Category struct {
-	ID           string         `json:"id" dynamodbav:"id"`
-	PK           string         `json:"-" dynamodbav:"PK"`
-	SK           string         `json:"-" dynamodbav:"SK"`
-	GSI1PK       string         `json:"-" dynamodbav:"GSI1PK"`
-	GSI1SK       string         `json:"-" dynamodbav:"GSI1SK"`
-	EntityType   string         `json:"-" dynamodbav:"entity_type"`
+	ID         string `json:"id" dynamodbav:"id"`
+	PK         string `json:"-" dynamodbav:"PK"`
+	SK         string `json:"-" dynamodbav:"SK"`
+	GSI1PK     string `json:"-" dynamodbav:"GSI1PK"`
+	GSI1SK     string `json:"-" dynamodbav:"GSI1SK"`
+	EntityType string `json:"-" dynamodbav:"entity_type"`
 
-	Name         string         `json:"name" dynamodbav:"name"`
-	Slug         string         `json:"slug" dynamodbav:"slug"`
-	Description  string         `json:"description,omitempty" dynamodbav:"description,omitempty"`
-	ImageURL     string         `json:"image_url,omitempty" dynamodbav:"image_url,omitempty"`
+	Name        string `json:"name" dynamodbav:"name"`
+	Slug        string `json:"slug" dynamodbav:"slug"`
+	Description string `json:"description,omitempty" dynamodbav:"description,omitempty"`
+	ImageURL    string `json:"image_url,omitempty" dynamodbav:"image_url,omitempty"`
 
 	// Attributes
 	OwnAttributes []CategoryAttribute `json:"own_attributes,omitempty" dynamodbav:"own_attributes,omitempty"`
 
-	Status       CategoryStatus `json:"status" dynamodbav:"status"`
+	Status CategoryStatus `json:"status" dynamodbav:"status"`
 
 	// Counts (denormalized)
 	ProductCount int `json:"product_count" dynamodbav:"product_count"`
@@ -267,51 +259,7 @@ type DimensionConfig struct {
 	PricingModel string `json:"pricing_model" dynamodbav:"pricing_model"` // AREA_BASED, LENGTH_BASED, VOLUME_BASED
 }
 
-// ==================== DESIGN ENTITY ====================
-
-// Design represents a design/pattern template
-type Design struct {
-	ID           string             `json:"id" dynamodbav:"id"`
-	PK           string             `json:"-" dynamodbav:"PK"`
-	SK           string             `json:"-" dynamodbav:"SK"`
-	GSI1PK       string             `json:"-" dynamodbav:"GSI1PK"`
-	GSI1SK       string             `json:"-" dynamodbav:"GSI1SK"`
-	EntityType   string             `json:"-" dynamodbav:"entity_type"`
-
-	Name         string             `json:"name" dynamodbav:"name"`
-	Slug         string             `json:"slug" dynamodbav:"slug"`
-	CategoryID   string             `json:"category_id" dynamodbav:"category_id"`
-	Description  string             `json:"description,omitempty" dynamodbav:"description,omitempty"`
-	Images       []ProductImage     `json:"images,omitempty" dynamodbav:"images,omitempty"`
-	Attributes   []DesignAttribute  `json:"attributes,omitempty" dynamodbav:"attributes,omitempty"`
-	Status       DesignStatus       `json:"status" dynamodbav:"status"`
-
-	ProductCount int `json:"product_count" dynamodbav:"product_count"`
-
-	BaseEntity
-}
-
-// TableName returns the DynamoDB table name for Design
-func (d *Design) TableName() string {
-	return "handloom-core"
-}
-
-// SetKeys sets the DynamoDB keys for Design
-func (d *Design) SetKeys() {
-	d.PK = "DESIGN#" + d.ID
-	d.SK = "METADATA"
-	d.GSI1PK = "CATEGORY#" + d.CategoryID
-	d.GSI1SK = "DESIGN#" + d.ID
-	d.EntityType = "DESIGN"
-}
-
-// DesignAttribute defines an attribute of a design
-type DesignAttribute struct {
-	Name   string   `json:"name" dynamodbav:"name"`
-	Values []string `json:"values" dynamodbav:"values"`
-}
-
-// ProductImage represents an image for a product or design
+// ProductImage represents an image for a product
 type ProductImage struct {
 	URL       string `json:"url" dynamodbav:"url"`
 	AltText   string `json:"alt_text,omitempty" dynamodbav:"alt_text,omitempty"`
@@ -323,65 +271,64 @@ type ProductImage struct {
 
 // Product represents a handloom product
 type Product struct {
-	ID           string                 `json:"id" dynamodbav:"id"`
-	PK           string                 `json:"-" dynamodbav:"PK"`
-	SK           string                 `json:"-" dynamodbav:"SK"`
-	GSI1PK       string                 `json:"-" dynamodbav:"GSI1PK"`
-	GSI1SK       string                 `json:"-" dynamodbav:"GSI1SK"`
-	GSI2PK       string                 `json:"-" dynamodbav:"GSI2PK"`
-	GSI2SK       string                 `json:"-" dynamodbav:"GSI2SK"`
-	EntityType   string                 `json:"-" dynamodbav:"entity_type"`
+	ID         string `json:"id" dynamodbav:"id"`
+	PK         string `json:"-" dynamodbav:"PK"`
+	SK         string `json:"-" dynamodbav:"SK"`
+	GSI1PK     string `json:"-" dynamodbav:"GSI1PK"`
+	GSI1SK     string `json:"-" dynamodbav:"GSI1SK"`
+	GSI2PK     string `json:"-" dynamodbav:"GSI2PK"`
+	GSI2SK     string `json:"-" dynamodbav:"GSI2SK"`
+	EntityType string `json:"-" dynamodbav:"entity_type"`
 
 	// Basic Info
-	Name         string                 `json:"name" dynamodbav:"name"`
-	Slug         string                 `json:"slug" dynamodbav:"slug"`
-	SKU          string                 `json:"sku" dynamodbav:"sku"`
-	Description  string                 `json:"description,omitempty" dynamodbav:"description,omitempty"`
+	Name        string `json:"name" dynamodbav:"name"`
+	Slug        string `json:"slug" dynamodbav:"slug"`
+	SKU         string `json:"sku" dynamodbav:"sku"`
+	Description string `json:"description,omitempty" dynamodbav:"description,omitempty"`
 
 	// Relations
-	DesignID     string                 `json:"design_id" dynamodbav:"design_id"`
-	CategoryID   string                 `json:"category_id" dynamodbav:"category_id"`
-	ArtisanID    *string                `json:"artisan_id,omitempty" dynamodbav:"artisan_id,omitempty"`
+	CategoryID string  `json:"category_id" dynamodbav:"category_id"`
+	ArtisanID  *string `json:"artisan_id,omitempty" dynamodbav:"artisan_id,omitempty"`
 
 	// Pricing (in paise)
-	BasePrice    int64                  `json:"base_price" dynamodbav:"base_price"`
-	SellingPrice int64                  `json:"selling_price" dynamodbav:"selling_price"`
-	CostPrice    int64                  `json:"cost_price,omitempty" dynamodbav:"cost_price,omitempty"`
-	Currency     string                 `json:"currency" dynamodbav:"currency"`
+	BasePrice    int64  `json:"base_price" dynamodbav:"base_price"`
+	SellingPrice int64  `json:"selling_price" dynamodbav:"selling_price"`
+	CostPrice    int64  `json:"cost_price,omitempty" dynamodbav:"cost_price,omitempty"`
+	Currency     string `json:"currency" dynamodbav:"currency"`
 
 	// Dimensions
-	Dimensions   *Dimensions            `json:"dimensions,omitempty" dynamodbav:"dimensions,omitempty"`
-	Weight       int                    `json:"weight,omitempty" dynamodbav:"weight,omitempty"` // in grams
+	Dimensions *Dimensions `json:"dimensions,omitempty" dynamodbav:"dimensions,omitempty"`
+	Weight     int         `json:"weight,omitempty" dynamodbav:"weight,omitempty"` // in grams
 
 	// Custom Dimension Support
-	AllowCustomDimensions bool           `json:"allow_custom_dimensions" dynamodbav:"allow_custom_dimensions"`
-	PricingRuleID         *string        `json:"pricing_rule_id,omitempty" dynamodbav:"pricing_rule_id,omitempty"`
+	AllowCustomDimensions bool    `json:"allow_custom_dimensions" dynamodbav:"allow_custom_dimensions"`
+	PricingRuleID         *string `json:"pricing_rule_id,omitempty" dynamodbav:"pricing_rule_id,omitempty"`
 
 	// Attributes (flexible storage for category-specific attributes)
-	Attributes   map[string]interface{} `json:"attributes,omitempty" dynamodbav:"attributes,omitempty"`
+	Attributes map[string]interface{} `json:"attributes,omitempty" dynamodbav:"attributes,omitempty"`
 
 	// Common Attributes (indexed for filtering)
-	Material     string                 `json:"material,omitempty" dynamodbav:"material,omitempty"`
-	Color        string                 `json:"color,omitempty" dynamodbav:"color,omitempty"`
-	WeaveType    string                 `json:"weave_type,omitempty" dynamodbav:"weave_type,omitempty"`
+	Material  string `json:"material,omitempty" dynamodbav:"material,omitempty"`
+	Color     string `json:"color,omitempty" dynamodbav:"color,omitempty"`
+	WeaveType string `json:"weave_type,omitempty" dynamodbav:"weave_type,omitempty"`
 
 	// Provenance
-	Origin       string                 `json:"origin,omitempty" dynamodbav:"origin,omitempty"`
-	CraftType    string                 `json:"craft_type,omitempty" dynamodbav:"craft_type,omitempty"`
+	Origin    string `json:"origin,omitempty" dynamodbav:"origin,omitempty"`
+	CraftType string `json:"craft_type,omitempty" dynamodbav:"craft_type,omitempty"`
 
 	// Media
-	Images       []ProductImage         `json:"images,omitempty" dynamodbav:"images,omitempty"`
+	Images []ProductImage `json:"images,omitempty" dynamodbav:"images,omitempty"`
 
 	// Tags & SEO
-	Tags         []string               `json:"tags,omitempty" dynamodbav:"tags,omitempty"`
+	Tags []string `json:"tags,omitempty" dynamodbav:"tags,omitempty"`
 
 	// Inventory (denormalized)
-	Quantity          int  `json:"quantity" dynamodbav:"quantity"`
-	ReservedQty       int  `json:"reserved_qty" dynamodbav:"reserved_qty"`
-	AvailableQty      int  `json:"available_qty" dynamodbav:"available_qty"`
-	LowStockThreshold int  `json:"low_stock_threshold" dynamodbav:"low_stock_threshold"`
+	Quantity          int `json:"quantity" dynamodbav:"quantity"`
+	ReservedQty       int `json:"reserved_qty" dynamodbav:"reserved_qty"`
+	AvailableQty      int `json:"available_qty" dynamodbav:"available_qty"`
+	LowStockThreshold int `json:"low_stock_threshold" dynamodbav:"low_stock_threshold"`
 
-	Status       ProductStatus          `json:"status" dynamodbav:"status"`
+	Status ProductStatus `json:"status" dynamodbav:"status"`
 
 	BaseEntity
 }
@@ -410,7 +357,6 @@ func NewProduct(req CreateProductRequest, id, slug, createdBy string) *Product {
 		Slug:                  slug,
 		SKU:                   req.SKU,
 		Description:           req.Description,
-		DesignID:              req.DesignID,
 		CategoryID:            req.CategoryID,
 		ArtisanID:             req.ArtisanID,
 		BasePrice:             req.BasePrice,
@@ -562,29 +508,29 @@ func (c *CategoryAttributeValues) SetKeys() {
 
 // PricingRule defines how to calculate price for a category/product
 type PricingRule struct {
-	ID           string                  `json:"id" dynamodbav:"id"`
-	PK           string                  `json:"-" dynamodbav:"PK"`
-	SK           string                  `json:"-" dynamodbav:"SK"`
-	GSI1PK       string                  `json:"-" dynamodbav:"GSI1PK"`
-	GSI1SK       string                  `json:"-" dynamodbav:"GSI1SK"`
-	EntityType   string                  `json:"-" dynamodbav:"entity_type"`
+	ID         string `json:"id" dynamodbav:"id"`
+	PK         string `json:"-" dynamodbav:"PK"`
+	SK         string `json:"-" dynamodbav:"SK"`
+	GSI1PK     string `json:"-" dynamodbav:"GSI1PK"`
+	GSI1SK     string `json:"-" dynamodbav:"GSI1SK"`
+	EntityType string `json:"-" dynamodbav:"entity_type"`
 
-	Name         string                  `json:"name" dynamodbav:"name"`
-	Description  string                  `json:"description,omitempty" dynamodbav:"description,omitempty"`
+	Name        string `json:"name" dynamodbav:"name"`
+	Description string `json:"description,omitempty" dynamodbav:"description,omitempty"`
 
 	// Scope
-	ScopeType    PricingRuleScope        `json:"scope_type" dynamodbav:"scope_type"`
-	ScopeID      string                  `json:"scope_id,omitempty" dynamodbav:"scope_id,omitempty"`
-	CategoryID   *string                 `json:"category_id,omitempty" dynamodbav:"category_id,omitempty"`
-	MaterialName *string                 `json:"material_name,omitempty" dynamodbav:"material_name,omitempty"`
+	ScopeType    PricingRuleScope `json:"scope_type" dynamodbav:"scope_type"`
+	ScopeID      string           `json:"scope_id,omitempty" dynamodbav:"scope_id,omitempty"`
+	CategoryID   *string          `json:"category_id,omitempty" dynamodbav:"category_id,omitempty"`
+	MaterialName *string          `json:"material_name,omitempty" dynamodbav:"material_name,omitempty"`
 
 	// Pricing Type
-	PricingType  PricingType             `json:"pricing_type" dynamodbav:"pricing_type"`
+	PricingType PricingType `json:"pricing_type" dynamodbav:"pricing_type"`
 
 	// Base Pricing
-	BasePrice    int64                   `json:"base_price" dynamodbav:"base_price"`       // in paise
-	PricePerUnit int64                   `json:"price_per_unit" dynamodbav:"price_per_unit"` // in paise
-	Unit         PricingUnit             `json:"unit" dynamodbav:"unit"`
+	BasePrice    int64       `json:"base_price" dynamodbav:"base_price"`         // in paise
+	PricePerUnit int64       `json:"price_per_unit" dynamodbav:"price_per_unit"` // in paise
+	Unit         PricingUnit `json:"unit" dynamodbav:"unit"`
 
 	// Material Multipliers
 	MaterialMultipliers map[string]float64 `json:"material_multipliers,omitempty" dynamodbav:"material_multipliers,omitempty"`
@@ -593,21 +539,21 @@ type PricingRule struct {
 	AttributeSurcharges []AttributeSurcharge `json:"attribute_surcharges,omitempty" dynamodbav:"attribute_surcharges,omitempty"`
 
 	// Tiered Pricing
-	Tiers        []PricingTier           `json:"tiers,omitempty" dynamodbav:"tiers,omitempty"`
+	Tiers []PricingTier `json:"tiers,omitempty" dynamodbav:"tiers,omitempty"`
 
 	// Formula
-	Formula      string                  `json:"formula,omitempty" dynamodbav:"formula,omitempty"`
+	Formula string `json:"formula,omitempty" dynamodbav:"formula,omitempty"`
 
 	// Constraints
-	MinArea      *float64                `json:"min_area,omitempty" dynamodbav:"min_area,omitempty"`
-	MaxArea      *float64                `json:"max_area,omitempty" dynamodbav:"max_area,omitempty"`
-	MinOrderValue int64                  `json:"min_order_value" dynamodbav:"min_order_value"`
+	MinArea       *float64 `json:"min_area,omitempty" dynamodbav:"min_area,omitempty"`
+	MaxArea       *float64 `json:"max_area,omitempty" dynamodbav:"max_area,omitempty"`
+	MinOrderValue int64    `json:"min_order_value" dynamodbav:"min_order_value"`
 
 	// Status
-	Priority     int                     `json:"priority" dynamodbav:"priority"`
-	IsActive     bool                    `json:"is_active" dynamodbav:"is_active"`
-	ValidFrom    *time.Time              `json:"valid_from,omitempty" dynamodbav:"valid_from,omitempty"`
-	ValidUntil   *time.Time              `json:"valid_until,omitempty" dynamodbav:"valid_until,omitempty"`
+	Priority   int        `json:"priority" dynamodbav:"priority"`
+	IsActive   bool       `json:"is_active" dynamodbav:"is_active"`
+	ValidFrom  *time.Time `json:"valid_from,omitempty" dynamodbav:"valid_from,omitempty"`
+	ValidUntil *time.Time `json:"valid_until,omitempty" dynamodbav:"valid_until,omitempty"`
 
 	BaseEntity
 }
@@ -649,26 +595,26 @@ type PricingTier struct {
 
 // PriceQuote represents a calculated price quote
 type PriceQuote struct {
-	ID           string                 `json:"id" dynamodbav:"id"`
-	PK           string                 `json:"-" dynamodbav:"PK"`
-	SK           string                 `json:"-" dynamodbav:"SK"`
-	EntityType   string                 `json:"-" dynamodbav:"entity_type"`
-	TTL          int64                  `json:"-" dynamodbav:"ttl"`
+	ID         string `json:"id" dynamodbav:"id"`
+	PK         string `json:"-" dynamodbav:"PK"`
+	SK         string `json:"-" dynamodbav:"SK"`
+	EntityType string `json:"-" dynamodbav:"entity_type"`
+	TTL        int64  `json:"-" dynamodbav:"ttl"`
 
-	CategoryID   string                 `json:"category_id" dynamodbav:"category_id"`
-	ProductID    *string                `json:"product_id,omitempty" dynamodbav:"product_id,omitempty"`
-	Dimensions   *Dimensions            `json:"dimensions" dynamodbav:"dimensions"`
-	Attributes   map[string]interface{} `json:"attributes" dynamodbav:"attributes"`
-	Quantity     int                    `json:"quantity" dynamodbav:"quantity"`
+	CategoryID string                 `json:"category_id" dynamodbav:"category_id"`
+	ProductID  *string                `json:"product_id,omitempty" dynamodbav:"product_id,omitempty"`
+	Dimensions *Dimensions            `json:"dimensions" dynamodbav:"dimensions"`
+	Attributes map[string]interface{} `json:"attributes" dynamodbav:"attributes"`
+	Quantity   int                    `json:"quantity" dynamodbav:"quantity"`
 
-	PricingRuleID   string              `json:"pricing_rule_id" dynamodbav:"pricing_rule_id"`
-	CalculatedPrice int64               `json:"calculated_price" dynamodbav:"calculated_price"`
-	PriceBreakdown  *PriceBreakdown     `json:"price_breakdown" dynamodbav:"price_breakdown"`
+	PricingRuleID   string          `json:"pricing_rule_id" dynamodbav:"pricing_rule_id"`
+	CalculatedPrice int64           `json:"calculated_price" dynamodbav:"calculated_price"`
+	PriceBreakdown  *PriceBreakdown `json:"price_breakdown" dynamodbav:"price_breakdown"`
 
-	ValidUntil   time.Time              `json:"valid_until" dynamodbav:"valid_until"`
-	UsedInOrder  *string                `json:"used_in_order,omitempty" dynamodbav:"used_in_order,omitempty"`
+	ValidUntil  time.Time `json:"valid_until" dynamodbav:"valid_until"`
+	UsedInOrder *string   `json:"used_in_order,omitempty" dynamodbav:"used_in_order,omitempty"`
 
-	CreatedAt    time.Time              `json:"created_at" dynamodbav:"created_at"`
+	CreatedAt time.Time `json:"created_at" dynamodbav:"created_at"`
 }
 
 // TableName returns the DynamoDB table name for PriceQuote
@@ -685,16 +631,16 @@ func (p *PriceQuote) SetKeys() {
 
 // PriceBreakdown shows the detailed price calculation
 type PriceBreakdown struct {
-	Area               float64            `json:"area,omitempty"`
-	AreaUnit           string             `json:"area_unit,omitempty"`
-	BaseCost           int64              `json:"base_cost"`
-	MaterialMultiplier float64            `json:"material_multiplier,omitempty"`
-	MaterialCost       int64              `json:"material_cost,omitempty"`
-	Surcharges         []SurchargeDetail  `json:"surcharges,omitempty"`
-	SurchargesTotal    int64              `json:"surcharges_total"`
-	SubtotalPerUnit    int64              `json:"subtotal_per_unit"`
-	Quantity           int                `json:"quantity"`
-	Total              int64              `json:"total"`
+	Area               float64           `json:"area,omitempty"`
+	AreaUnit           string            `json:"area_unit,omitempty"`
+	BaseCost           int64             `json:"base_cost"`
+	MaterialMultiplier float64           `json:"material_multiplier,omitempty"`
+	MaterialCost       int64             `json:"material_cost,omitempty"`
+	Surcharges         []SurchargeDetail `json:"surcharges,omitempty"`
+	SurchargesTotal    int64             `json:"surcharges_total"`
+	SubtotalPerUnit    int64             `json:"subtotal_per_unit"`
+	Quantity           int               `json:"quantity"`
+	Total              int64             `json:"total"`
 }
 
 // SurchargeDetail shows details of a surcharge
@@ -708,23 +654,23 @@ type SurchargeDetail struct {
 
 // Inventory represents inventory for a product
 type Inventory struct {
-	ID                string    `json:"id" dynamodbav:"id"`
-	PK                string    `json:"-" dynamodbav:"PK"`
-	SK                string    `json:"-" dynamodbav:"SK"`
-	EntityType        string    `json:"-" dynamodbav:"entity_type"`
+	ID         string `json:"id" dynamodbav:"id"`
+	PK         string `json:"-" dynamodbav:"PK"`
+	SK         string `json:"-" dynamodbav:"SK"`
+	EntityType string `json:"-" dynamodbav:"entity_type"`
 
-	ProductID         string    `json:"product_id" dynamodbav:"product_id"`
-	ProductSKU        string    `json:"product_sku" dynamodbav:"product_sku"`
-	ProductName       string    `json:"product_name" dynamodbav:"product_name"`
+	ProductID   string `json:"product_id" dynamodbav:"product_id"`
+	ProductSKU  string `json:"product_sku" dynamodbav:"product_sku"`
+	ProductName string `json:"product_name" dynamodbav:"product_name"`
 
-	Quantity          int       `json:"quantity" dynamodbav:"quantity"`
-	ReservedQty       int       `json:"reserved_qty" dynamodbav:"reserved_qty"`
-	AvailableQty      int       `json:"available_qty" dynamodbav:"available_qty"`
+	Quantity     int `json:"quantity" dynamodbav:"quantity"`
+	ReservedQty  int `json:"reserved_qty" dynamodbav:"reserved_qty"`
+	AvailableQty int `json:"available_qty" dynamodbav:"available_qty"`
 
-	LowStockThreshold int       `json:"low_stock_threshold" dynamodbav:"low_stock_threshold"`
-	ReorderPoint      int       `json:"reorder_point" dynamodbav:"reorder_point"`
+	LowStockThreshold int `json:"low_stock_threshold" dynamodbav:"low_stock_threshold"`
+	ReorderPoint      int `json:"reorder_point" dynamodbav:"reorder_point"`
 
-	LastRestockAt     *time.Time `json:"last_restock_at,omitempty" dynamodbav:"last_restock_at,omitempty"`
+	LastRestockAt *time.Time `json:"last_restock_at,omitempty" dynamodbav:"last_restock_at,omitempty"`
 
 	BaseEntity
 }
@@ -743,10 +689,10 @@ func (i *Inventory) SetKeys() {
 
 // InventoryTransaction represents a transaction in inventory
 type InventoryTransaction struct {
-	ID            string                   `json:"id" dynamodbav:"id"`
-	PK            string                   `json:"-" dynamodbav:"PK"`
-	SK            string                   `json:"-" dynamodbav:"SK"`
-	EntityType    string                   `json:"-" dynamodbav:"entity_type"`
+	ID         string `json:"id" dynamodbav:"id"`
+	PK         string `json:"-" dynamodbav:"PK"`
+	SK         string `json:"-" dynamodbav:"SK"`
+	EntityType string `json:"-" dynamodbav:"entity_type"`
 
 	ProductID     string                   `json:"product_id" dynamodbav:"product_id"`
 	Type          InventoryTransactionType `json:"type" dynamodbav:"type"`
@@ -757,8 +703,8 @@ type InventoryTransaction struct {
 	ReferenceType string                   `json:"reference_type,omitempty" dynamodbav:"reference_type,omitempty"`
 	ReferenceID   string                   `json:"reference_id,omitempty" dynamodbav:"reference_id,omitempty"`
 
-	CreatedAt     time.Time                `json:"created_at" dynamodbav:"created_at"`
-	CreatedBy     string                   `json:"created_by" dynamodbav:"created_by"`
+	CreatedAt time.Time `json:"created_at" dynamodbav:"created_at"`
+	CreatedBy string    `json:"created_by" dynamodbav:"created_by"`
 }
 
 // TableName returns the DynamoDB table name for InventoryTransaction

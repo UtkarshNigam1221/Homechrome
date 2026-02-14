@@ -3,6 +3,8 @@ package dynamodb
 import (
 	"context"
 	stderrors "errors"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -148,41 +150,18 @@ func (r *CategoryRepository) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
-// List retrieves categories with cursor-based pagination
+// List retrieves categories with in-memory search, sort, and pagination.
+// Fetches all categories from GSI1, then applies filters/sort/paginate in memory.
 func (r *CategoryRepository) List(ctx context.Context, req domain.ListCategoriesRequest) (*domain.ListCategoriesResponse, error) {
-	limit := DefaultLimit(req.Limit)
-
-	exclusiveStartKey, err := DecodeCursor(req.Cursor)
-	if err != nil {
-		return nil, err
-	}
-
-	// Query GSI1 using CATEGORY#ALL partition key
+	// Fetch all categories from GSI1
 	keyExpr := expression.Key("GSI1PK").Equal(expression.Value("CATEGORY#ALL"))
-	builder := expression.NewBuilder().WithKeyCondition(keyExpr)
-
-	hasFilter := req.Status != nil
-	if hasFilter {
-		builder = builder.WithFilter(expression.Name("status").Equal(expression.Value(string(*req.Status))))
-	}
-
-	expr, err := builder.Build()
+	expr, err := expression.NewBuilder().WithKeyCondition(keyExpr).Build()
 	if err != nil {
 		return nil, errors.Internal(err)
 	}
 
-	// Over-fetch when filters are active to reduce round-trips
-	fetchLimit := int32(limit)
-	if hasFilter {
-		fetchLimit = int32(limit * 3)
-		if fetchLimit > 300 {
-			fetchLimit = 300
-		}
-	}
-
-	var collected []*domain.Category
-	var lastEvaluatedKey map[string]types.AttributeValue
-	currentStartKey := exclusiveStartKey
+	var all []*domain.Category
+	var lastKey map[string]types.AttributeValue
 
 	for {
 		queryInput := &dynamodb.QueryInput{
@@ -191,11 +170,7 @@ func (r *CategoryRepository) List(ctx context.Context, req domain.ListCategories
 			KeyConditionExpression:    expr.KeyCondition(),
 			ExpressionAttributeNames:  expr.Names(),
 			ExpressionAttributeValues: expr.Values(),
-			Limit:                     aws.Int32(fetchLimit),
-			ExclusiveStartKey:         currentStartKey,
-		}
-		if expr.Filter() != nil {
-			queryInput.FilterExpression = expr.Filter()
+			ExclusiveStartKey:         lastKey,
 		}
 
 		result, err := r.client.db.Query(ctx, queryInput)
@@ -207,39 +182,54 @@ func (r *CategoryRepository) List(ctx context.Context, req domain.ListCategories
 		if err := attributevalue.UnmarshalListOfMaps(result.Items, &batch); err != nil {
 			return nil, errors.Internal(err)
 		}
-
-		collected = append(collected, batch...)
-		lastEvaluatedKey = result.LastEvaluatedKey
-
-		if len(collected) >= limit || lastEvaluatedKey == nil {
+		all = append(all, batch...)
+		lastKey = result.LastEvaluatedKey
+		if lastKey == nil {
 			break
 		}
-
-		currentStartKey = lastEvaluatedKey
 	}
 
-	// Trim to exactly limit items if we over-collected
-	if len(collected) > limit {
-		collected = collected[:limit]
-		// Build cursor from the last returned item's keys
-		last := collected[limit-1]
-		lastEvaluatedKey = map[string]types.AttributeValue{
-			"PK":     &types.AttributeValueMemberS{Value: last.PK},
-			"SK":     &types.AttributeValueMemberS{Value: last.SK},
-			"GSI1PK": &types.AttributeValueMemberS{Value: last.GSI1PK},
-			"GSI1SK": &types.AttributeValueMemberS{Value: last.GSI1SK},
+	// Filter by status
+	if req.Status != nil {
+		filtered := make([]*domain.Category, 0, len(all))
+		for _, c := range all {
+			if c.Status == *req.Status {
+				filtered = append(filtered, c)
+			}
 		}
+		all = filtered
 	}
+
+	// Filter by search (case-insensitive name contains)
+	if req.Search != "" {
+		search := strings.ToLower(req.Search)
+		filtered := make([]*domain.Category, 0, len(all))
+		for _, c := range all {
+			if strings.Contains(strings.ToLower(c.Name), search) {
+				filtered = append(filtered, c)
+			}
+		}
+		all = filtered
+	}
+
+	// Sort (default: created_at desc)
+	sort.Slice(all, func(i, j int) bool {
+		return all[i].CreatedAt.After(all[j].CreatedAt)
+	})
+
+	// Paginate
+	paged, pg := InMemoryPaginate(all, req.PaginationRequest)
 
 	return &domain.ListCategoriesResponse{
-		Categories: collected,
-		Pagination: BuildPaginationResponse(limit, lastEvaluatedKey),
+		Categories: paged,
+		Pagination: pg,
 	}, nil
 }
 
-// IncrementProductCount increments the product count
+// IncrementProductCount increments the product count and updates the timestamp
 func (r *CategoryRepository) IncrementProductCount(ctx context.Context, id string, delta int) error {
-	update := expression.Add(expression.Name("product_count"), expression.Value(delta))
+	update := expression.Add(expression.Name("product_count"), expression.Value(delta)).
+		Set(expression.Name("updated_at"), expression.Value(time.Now().UTC()))
 	expr, err := expression.NewBuilder().WithUpdate(update).Build()
 	if err != nil {
 		return errors.Internal(err)

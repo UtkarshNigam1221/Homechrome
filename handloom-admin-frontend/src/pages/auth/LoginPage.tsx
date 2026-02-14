@@ -42,7 +42,7 @@ export function LoginPage() {
     setIsLoading(true);
     try {
       const response = await authApi.login(data);
-      login(response.user, response.tokens.access_token, response.tokens.refresh_token);
+      login(response.user);
       toast.success('Welcome back!');
       navigate(from, { replace: true });
     } catch (error) {

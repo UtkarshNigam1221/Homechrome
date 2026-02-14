@@ -53,6 +53,9 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 		Tier:          awsssm.ParameterTier_STANDARD,
 	})
 
+	// S3 buckets from StorageStack
+	assetsBucket := props.StorageStack.AssetsBucket
+
 	// Common environment variables for all Lambdas
 	commonEnv := map[string]*string{
 		"APP_ENV":                    jsii.String(props.Environment),
@@ -61,9 +64,7 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 		"DYNAMODB_ORDERS_TABLE":      props.DatabaseStack.OrdersTable.TableName(),
 		"DYNAMODB_AUDIT_TABLE":       props.DatabaseStack.AuditTable.TableName(),
 		"DYNAMODB_ANALYTICS_TABLE":   props.DatabaseStack.AnalyticsTable.TableName(),
-		"S3_ASSETS_BUCKET":           props.StorageStack.AssetsBucket.BucketName(),
-		"S3_UPLOADS_BUCKET":          props.StorageStack.UploadsBucket.BucketName(),
-		"CDN_DOMAIN":                 props.StorageStack.CDNDistribution.DistributionDomainName(),
+		"S3_ASSETS_BUCKET":           assetsBucket.BucketName(),
 		"JWT_SECRET_PARAM":           jwtSecret.ParameterName(),
 		"JWT_ISSUER":                 jsii.String("handloom-admin"),
 		"JWT_ACCESS_TOKEN_DURATION":  jsii.String("15m"),
@@ -92,6 +93,7 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 		"auth",
 		"user",
 		"catalog",
+		"asset",
 		// "order",
 		// "pricing",
 		// "inventory",
@@ -100,7 +102,6 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 		// "coupon",
 		// "artisan",
 		// "bulk",
-		// "asset",
 		// "report",
 		// "audit",
 	}
@@ -118,8 +119,7 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 		props.DatabaseStack.OrdersTable.GrantReadWriteData(lambdaFn)
 		props.DatabaseStack.AuditTable.GrantReadWriteData(lambdaFn)
 		props.DatabaseStack.AnalyticsTable.GrantReadWriteData(lambdaFn)
-		props.StorageStack.AssetsBucket.GrantReadWrite(lambdaFn, nil)
-		props.StorageStack.UploadsBucket.GrantReadWrite(lambdaFn, nil)
+		assetsBucket.GrantReadWrite(lambdaFn, nil)
 		jwtSecret.GrantRead(lambdaFn)
 	}
 
@@ -218,6 +218,7 @@ func setupAPIRoutes(api awsapigateway.RestApi, lambdas map[string]*ServiceLambda
 	auth.AddResource(jsii.String("login"), nil).AddMethod(jsii.String("POST"), authIntegration, nil)
 	auth.AddResource(jsii.String("refresh"), nil).AddMethod(jsii.String("POST"), authIntegration, nil)
 	auth.AddResource(jsii.String("logout"), nil).AddMethod(jsii.String("POST"), authIntegration, nil)
+	auth.AddResource(jsii.String("me"), nil).AddMethod(jsii.String("GET"), authIntegration, nil)
 	password := auth.AddResource(jsii.String("password"), nil)
 	password.AddResource(jsii.String("change"), nil).AddMethod(jsii.String("POST"), authIntegration, nil)
 	password.AddResource(jsii.String("reset-request"), nil).AddMethod(jsii.String("POST"), authIntegration, nil)
@@ -236,7 +237,7 @@ func setupAPIRoutes(api awsapigateway.RestApi, lambdas map[string]*ServiceLambda
 	userId.AddMethod(jsii.String("DELETE"), userIntegration, nil)
 	userId.AddResource(jsii.String("status"), nil).AddMethod(jsii.String("PATCH"), userIntegration, nil)
 
-	// Catalog routes (categories, designs, products) - use proxy integration with single wildcard permission
+	// Catalog routes (categories, products) - use proxy integration with single wildcard permission
 	// This avoids the Lambda resource policy size limit (20KB) by using a single permission
 	catalogLambda := lambdas["catalog"].Function
 
@@ -264,14 +265,6 @@ func setupAPIRoutes(api awsapigateway.RestApi, lambdas map[string]*ServiceLambda
 		DefaultIntegration: catalogIntegration,
 	})
 
-	// Designs routes
-	designs := admin.AddResource(jsii.String("designs"), nil)
-	designs.AddMethod(jsii.String("ANY"), catalogIntegration, &awsapigateway.MethodOptions{})
-	designs.AddProxy(&awsapigateway.ProxyResourceOptions{
-		AnyMethod:          jsii.Bool(true),
-		DefaultIntegration: catalogIntegration,
-	})
-
 	// Products routes
 	products := admin.AddResource(jsii.String("products"), nil)
 	products.AddMethod(jsii.String("ANY"), catalogIntegration, &awsapigateway.MethodOptions{})
@@ -279,6 +272,30 @@ func setupAPIRoutes(api awsapigateway.RestApi, lambdas map[string]*ServiceLambda
 		AnyMethod:          jsii.Bool(true),
 		DefaultIntegration: catalogIntegration,
 	})
+
+	// Asset routes
+	if assetLambda, ok := lambdas["asset"]; ok {
+		assetLambda.Function.AddPermission(jsii.String("AssetApiInvoke"), &awslambda.Permission{
+			Principal: awsiam.NewServicePrincipal(jsii.String("apigateway.amazonaws.com"), nil),
+			Action:    jsii.String("lambda:InvokeFunction"),
+			SourceArn: jsii.String(fmt.Sprintf("arn:aws:execute-api:%s:%s:%s/*",
+				*awscdk.Aws_REGION(),
+				*awscdk.Aws_ACCOUNT_ID(),
+				*api.RestApiId(),
+			)),
+		})
+
+		assetIntegration := awsapigateway.NewLambdaIntegration(assetLambda.Function, &awsapigateway.LambdaIntegrationOptions{
+			Proxy: jsii.Bool(true),
+		})
+
+		assets := admin.AddResource(jsii.String("assets"), nil)
+		assets.AddMethod(jsii.String("ANY"), assetIntegration, &awsapigateway.MethodOptions{})
+		assets.AddProxy(&awsapigateway.ProxyResourceOptions{
+			AnyMethod:          jsii.Bool(true),
+			DefaultIntegration: assetIntegration,
+		})
+	}
 
 	// TODO: Uncomment routes as services are implemented
 	/*

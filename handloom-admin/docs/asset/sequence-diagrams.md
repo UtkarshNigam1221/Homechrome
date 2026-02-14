@@ -1,19 +1,23 @@
-# Asset Lambda - Sequence Diagrams
+# Asset Service - Sequence Diagrams
 
 ## Overview
-This document contains sequence diagrams for the Asset Lambda service, illustrating the interactions between components for file upload, management, and delivery.
+Sequence diagrams for the Asset Service's tmp/ → assets/ S3-only upload flow. There is no DynamoDB involvement — the service only interacts with S3.
 
 ---
 
-## 1. Get Pre-signed Upload URL
+## 1. Upload File (Frontend: Upload URL → S3 PUT → Store tmp_key)
 
 ```
 ┌─────────┐     ┌─────────────┐     ┌──────────────┐     ┌─────────┐
-│ Client  │     │   API GW    │     │  Asset Svc   │     │   S3    │
+│ Browser  │     │   API GW    │     │  Asset Svc   │     │   S3    │
+│(Frontend)│     │  + Lambda   │     │              │     │         │
 └────┬────┘     └──────┬──────┘     └──────┬───────┘     └────┬────┘
      │                 │                   │                  │
-     │ POST /assets/upload-url             │                  │
-     │ {filename, content_type, size}      │                  │
+     │ ─ Step 1: Get presigned URL ─────────────────────────  │
+     │                 │                   │                  │
+     │ POST /admin/assets/upload-url       │                  │
+     │ {file_name, content_type,           │                  │
+     │  size, type: "IMAGE"}               │                  │
      │────────────────>│                   │                  │
      │                 │                   │                  │
      │                 │ Validate JWT      │                  │
@@ -24,365 +28,243 @@ This document contains sequence diagrams for the Asset Lambda service, illustrat
      │                 │ GetUploadURL()    │                  │
      │                 │──────────────────>│                  │
      │                 │                   │                  │
-     │                 │                   │ Validate file    │
+     │                 │                   │ Validate content │
      │                 │                   │ type & size      │
      │                 │                   │──────────┐       │
      │                 │                   │          │       │
      │                 │                   │<─────────┘       │
      │                 │                   │                  │
-     │                 │                   │ Generate key     │
+     │                 │                   │ Generate UUID    │
+     │                 │                   │ key = tmp/IMAGE/ │
+     │                 │                   │ {uuid}.jpg       │
      │                 │                   │──────────┐       │
      │                 │                   │          │       │
      │                 │                   │<─────────┘       │
      │                 │                   │                  │
-     │                 │                   │ Create pre-signed│
-     │                 │                   │ PUT URL          │
+     │                 │                   │ PresignPutObject │
+     │                 │                   │ (15 min expiry)  │
      │                 │                   │─────────────────>│
      │                 │                   │                  │
-     │                 │                   │ Pre-signed URL   │
+     │                 │                   │ Presigned URL    │
      │                 │                   │<─────────────────│
      │                 │                   │                  │
-     │                 │ Upload URL + key  │                  │
+     │                 │ {upload_url,      │                  │
+     │                 │  tmp_key,         │                  │
+     │                 │  expires_at}      │                  │
      │                 │<──────────────────│                  │
      │                 │                   │                  │
      │ 200 OK          │                   │                  │
      │ {upload_url,    │                   │                  │
-     │  asset_key}     │                   │                  │
+     │  tmp_key}       │                   │                  │
+     │<────────────────│                   │                  │
+     │                 │                   │                  │
+     │ ─ Step 2: Upload file directly to S3 ─────────────────│
+     │                 │                   │                  │
+     │ PUT <upload_url>│                   │                  │
+     │ Content-Type: image/jpeg            │                  │
+     │ Body: <raw file bytes>              │                  │
+     │────────────────────────────────────────────────────────>│
+     │                 │                   │                  │
+     │ 200 OK          │                   │                  │
+     │<────────────────────────────────────────────────────────│
+     │                 │                   │                  │
+     │ ─ Step 3: Store tmp_key, show blob preview ────────── │
+     │                 │                   │                  │
+     │ Create blob URL │                   │                  │
+     │ for local       │                   │                  │
+     │ preview.        │                   │                  │
+     │ Store tmp_key   │                   │                  │
+     │ in form state.  │                   │                  │
+     │                 │                   │                  │
+     │ (No /finalize   │                   │                  │
+     │  call — backend │                   │                  │
+     │  finalizes on   │                   │                  │
+     │  entity save)   │                   │                  │
+     │                 │                   │                  │
+```
+
+---
+
+## 2. Delete Asset
+
+```
+┌─────────┐     ┌─────────────┐     ┌──────────────┐     ┌─────────┐
+│ Browser  │     │   API GW    │     │  Asset Svc   │     │   S3    │
+│(Frontend)│     │  + Lambda   │     │              │     │         │
+└────┬────┘     └──────┬──────┘     └──────┬───────┘     └────┬────┘
+     │                 │                   │                  │
+     │ DELETE /admin/assets                │                  │
+     │ {url: "https://bucket.s3.../       │                  │
+     │  assets/IMAGE/2026/02/14/          │                  │
+     │  {uuid}.jpg"}                      │                  │
+     │────────────────>│                   │                  │
+     │                 │                   │                  │
+     │                 │ Validate JWT      │                  │
+     │                 │──────────┐        │                  │
+     │                 │          │        │                  │
+     │                 │<─────────┘        │                  │
+     │                 │                   │                  │
+     │                 │ DeleteAsset()     │                  │
+     │                 │──────────────────>│                  │
+     │                 │                   │                  │
+     │                 │                   │ Parse key from   │
+     │                 │                   │ URL, validate    │
+     │                 │                   │ assets/ prefix   │
+     │                 │                   │──────────┐       │
+     │                 │                   │          │       │
+     │                 │                   │<─────────┘       │
+     │                 │                   │                  │
+     │                 │                   │ DeleteObject     │
+     │                 │                   │─────────────────>│
+     │                 │                   │                  │
+     │                 │                   │ Success          │
+     │                 │                   │<─────────────────│
+     │                 │                   │                  │
+     │                 │ Success           │                  │
+     │                 │<──────────────────│                  │
+     │                 │                   │                  │
+     │ 200 OK          │                   │                  │
+     │ {message: "..."}│                   │                  │
      │<────────────────│                   │                  │
      │                 │                   │                  │
 ```
 
 ---
 
-## 2. Direct Upload to S3
-
-```
-┌─────────┐     ┌─────────┐     ┌─────────────┐     ┌──────────────┐     ┌──────────────┐
-│ Client  │     │   S3    │     │   API GW    │     │  Asset Svc   │     │  DynamoDB    │
-└────┬────┘     └────┬────┘     └──────┬──────┘     └──────┬───────┘     └──────┬───────┘
-     │               │                 │                   │                    │
-     │ PUT file to   │                 │                   │                    │
-     │ pre-signed URL│                 │                   │                    │
-     │──────────────>│                 │                   │                    │
-     │               │                 │                   │                    │
-     │ 200 OK        │                 │                   │                    │
-     │<──────────────│                 │                   │                    │
-     │               │                 │                   │                    │
-     │ POST /assets/confirm            │                   │                    │
-     │ {asset_key, filename, metadata} │                   │                    │
-     │────────────────────────────────>│                   │                    │
-     │               │                 │                   │                    │
-     │               │                 │ ConfirmUpload()   │                    │
-     │               │                 │──────────────────>│                    │
-     │               │                 │                   │                    │
-     │               │                 │                   │ Verify file exists │
-     │               │                 │                   │──────────┐         │
-     │               │                 │                   │          │         │
-     │               │                 │                   │<─────────┘         │
-     │               │                 │                   │                    │
-     │               │                 │                   │ Create asset record│
-     │               │                 │                   │───────────────────>│
-     │               │                 │                   │                    │
-     │               │                 │                   │ Success            │
-     │               │                 │                   │<───────────────────│
-     │               │                 │                   │                    │
-     │               │                 │                   │ Trigger thumbnail  │
-     │               │                 │                   │ generation (async) │
-     │               │                 │                   │──────────┐         │
-     │               │                 │                   │          │         │
-     │               │                 │                   │<─────────┘         │
-     │               │                 │                   │                    │
-     │               │                 │ Asset created     │                    │
-     │               │                 │<──────────────────│                    │
-     │               │                 │                   │                    │
-     │ 201 Created   │                 │                   │                    │
-     │ {asset}       │                 │                   │                    │
-     │<────────────────────────────────│                   │                    │
-     │               │                 │                   │                    │
-```
-
----
-
-## 3. Get Asset Details
-
-```
-┌─────────┐     ┌─────────────┐     ┌──────────────┐     ┌──────────────┐
-│ Client  │     │   API GW    │     │  Asset Svc   │     │  DynamoDB    │
-└────┬────┘     └──────┬──────┘     └──────┬───────┘     └──────┬───────┘
-     │                 │                   │                    │
-     │ GET /assets/{id}│                   │                    │
-     │────────────────>│                   │                    │
-     │                 │                   │                    │
-     │                 │ Validate JWT      │                    │
-     │                 │──────────┐        │                    │
-     │                 │          │        │                    │
-     │                 │<─────────┘        │                    │
-     │                 │                   │                    │
-     │                 │ GetAsset()        │                    │
-     │                 │──────────────────>│                    │
-     │                 │                   │                    │
-     │                 │                   │ Get by ID          │
-     │                 │                   │───────────────────>│
-     │                 │                   │                    │
-     │                 │                   │ Asset data         │
-     │                 │                   │<───────────────────│
-     │                 │                   │                    │
-     │                 │                   │ Get usage refs     │
-     │                 │                   │───────────────────>│
-     │                 │                   │                    │
-     │                 │                   │ References         │
-     │                 │                   │<───────────────────│
-     │                 │                   │                    │
-     │                 │ Asset + metadata  │                    │
-     │                 │<──────────────────│                    │
-     │                 │                   │                    │
-     │ 200 OK          │                   │                    │
-     │ {asset, usage}  │                   │                    │
-     │<────────────────│                   │                    │
-     │                 │                   │                    │
-```
-
----
-
-## 4. List Assets
-
-```
-┌─────────┐     ┌─────────────┐     ┌──────────────┐     ┌──────────────┐
-│ Client  │     │   API GW    │     │  Asset Svc   │     │  DynamoDB    │
-└────┬────┘     └──────┬──────┘     └──────┬───────┘     └──────┬───────┘
-     │                 │                   │                    │
-     │ GET /assets?folder=products&type=image                   │
-     │────────────────>│                   │                    │
-     │                 │                   │                    │
-     │                 │ Validate JWT      │                    │
-     │                 │──────────┐        │                    │
-     │                 │          │        │                    │
-     │                 │<─────────┘        │                    │
-     │                 │                   │                    │
-     │                 │ ListAssets()      │                    │
-     │                 │──────────────────>│                    │
-     │                 │                   │                    │
-     │                 │                   │ Query with filters │
-     │                 │                   │ (GSI: folder-type) │
-     │                 │                   │───────────────────>│
-     │                 │                   │                    │
-     │                 │                   │ Assets list        │
-     │                 │                   │<───────────────────│
-     │                 │                   │                    │
-     │                 │ Assets + pagination                    │
-     │                 │<──────────────────│                    │
-     │                 │                   │                    │
-     │ 200 OK          │                   │                    │
-     │ {assets, total} │                   │                    │
-     │<────────────────│                   │                    │
-     │                 │                   │                    │
-```
-
----
-
-## 5. Update Asset Metadata
-
-```
-┌─────────┐     ┌─────────────┐     ┌──────────────┐     ┌──────────────┐
-│ Client  │     │   API GW    │     │  Asset Svc   │     │  DynamoDB    │
-└────┬────┘     └──────┬──────┘     └──────┬───────┘     └──────┬───────┘
-     │                 │                   │                    │
-     │ PUT /assets/{id}│                   │                    │
-     │ {title, alt_text, tags, folder}     │                    │
-     │────────────────>│                   │                    │
-     │                 │                   │                    │
-     │                 │ Validate JWT      │                    │
-     │                 │──────────┐        │                    │
-     │                 │          │        │                    │
-     │                 │<─────────┘        │                    │
-     │                 │                   │                    │
-     │                 │ UpdateAsset()     │                    │
-     │                 │──────────────────>│                    │
-     │                 │                   │                    │
-     │                 │                   │ Get existing       │
-     │                 │                   │───────────────────>│
-     │                 │                   │                    │
-     │                 │                   │ Asset data         │
-     │                 │                   │<───────────────────│
-     │                 │                   │                    │
-     │                 │                   │ Update record      │
-     │                 │                   │───────────────────>│
-     │                 │                   │                    │
-     │                 │                   │ Success            │
-     │                 │                   │<───────────────────│
-     │                 │                   │                    │
-     │                 │ Updated asset     │                    │
-     │                 │<──────────────────│                    │
-     │                 │                   │                    │
-     │ 200 OK          │                   │                    │
-     │ {asset}         │                   │                    │
-     │<────────────────│                   │                    │
-     │                 │                   │                    │
-```
-
----
-
-## 6. Delete Asset
+## 3. Product Save with Uploaded Images (End-to-End)
 
 ```
 ┌─────────┐     ┌─────────────┐     ┌──────────────┐     ┌──────────────┐     ┌─────────┐
-│ Client  │     │   API GW    │     │  Asset Svc   │     │  DynamoDB    │     │   S3    │
+│ Browser  │     │   API GW    │     │  Asset Svc   │     │ Product Svc  │     │   S3    │
 └────┬────┘     └──────┬──────┘     └──────┬───────┘     └──────┬───────┘     └────┬────┘
      │                 │                   │                    │                  │
-     │ DELETE /assets/{id}                 │                    │                  │
+     │  ── Upload Phase (per file) ──      │                    │                  │
+     │                 │                   │                    │                  │
+     │ POST /upload-url│                   │                    │                  │
+     │────────────────>│──────────────────>│                    │                  │
+     │                 │                   │ presign            │                  │
+     │                 │                   │─────────────────────────────────────>│
+     │ {upload_url,    │                   │                    │                  │
+     │  tmp_key}       │                   │                    │                  │
+     │<────────────────│<──────────────────│                    │                  │
+     │                 │                   │                    │                  │
+     │ PUT file → S3   │                   │                    │                  │
+     │────────────────────────────────────────────────────────────────────────────>│
+     │ 200             │                   │                    │                  │
+     │<────────────────────────────────────────────────────────────────────────────│
+     │                 │                   │                    │                  │
+     │ Store tmp_key   │                   │                    │                  │
+     │ in form state,  │                   │                    │                  │
+     │ blob URL for    │                   │                    │                  │
+     │ preview         │                   │                    │                  │
+     │                 │                   │                    │                  │
+     │  ── Save Phase (backend finalizes) ─│                    │                  │
+     │                 │                   │                    │                  │
+     │ POST /admin/products                │                    │                  │
+     │ {name: "...",   │                   │                    │                  │
+     │  images: [{url: │                   │                    │                  │
+     │  "tmp/IMAGE/    │                   │                    │                  │
+     │   {uuid}.jpg"}]}│                   │                    │                  │
      │────────────────>│                   │                    │                  │
      │                 │                   │                    │                  │
-     │                 │ Validate JWT      │                    │                  │
-     │                 │──────────┐        │                    │                  │
-     │                 │          │        │                    │                  │
-     │                 │<─────────┘        │                    │                  │
+     │                 │ CreateProduct()   │                    │                  │
+     │                 │──────────────────────────────────────>│                  │
      │                 │                   │                    │                  │
-     │                 │ DeleteAsset()     │                    │                  │
-     │                 │──────────────────>│                    │                  │
-     │                 │                   │                    │                  │
-     │                 │                   │ Get asset          │                  │
-     │                 │                   │───────────────────>│                  │
-     │                 │                   │                    │                  │
-     │                 │                   │ Asset data         │                  │
+     │                 │                   │  FinalizeIfTemp()  │                  │
      │                 │                   │<───────────────────│                  │
      │                 │                   │                    │                  │
-     │                 │                   │ Check usage refs   │                  │
+     │                 │                   │ CopyObject         │                  │
+     │                 │                   │ tmp/ → assets/     │                  │
+     │                 │                   │─────────────────────────────────────>│
+     │                 │                   │                    │                  │
+     │                 │                   │ permanent URL      │                  │
      │                 │                   │───────────────────>│                  │
      │                 │                   │                    │                  │
-     │                 │                   │ References (if any)│                  │
-     │                 │                   │<───────────────────│                  │
+     │                 │                   │ Save to DynamoDB   │                  │
+     │                 │                   │ (permanent URLs)   │                  │
      │                 │                   │                    │                  │
-     │                 │                   │ Delete from S3     │                  │
-     │                 │                   │───────────────────────────────────────>│
+     │                 │ Product created   │                    │                  │
+     │                 │<──────────────────────────────────────│                  │
      │                 │                   │                    │                  │
-     │                 │                   │ Success            │                  │
-     │                 │                   │<───────────────────────────────────────│
-     │                 │                   │                    │                  │
-     │                 │                   │ Delete thumbnails  │                  │
-     │                 │                   │───────────────────────────────────────>│
-     │                 │                   │                    │                  │
-     │                 │                   │ Success            │                  │
-     │                 │                   │<───────────────────────────────────────│
-     │                 │                   │                    │                  │
-     │                 │                   │ Delete DB record   │                  │
-     │                 │                   │───────────────────>│                  │
-     │                 │                   │                    │                  │
-     │                 │                   │ Success            │                  │
-     │                 │                   │<───────────────────│                  │
-     │                 │                   │                    │                  │
-     │                 │ Deleted           │                    │                  │
-     │                 │<──────────────────│                    │                  │
-     │                 │                   │                    │                  │
-     │ 204 No Content  │                   │                    │                  │
+     │ 201 Created     │                   │                    │                  │
+     │ {product}       │                   │                    │                  │
      │<────────────────│                   │                    │                  │
      │                 │                   │                    │                  │
 ```
 
----
-
-## 7. Generate Thumbnails (Async)
-
-```
-┌──────────────┐     ┌──────────────┐     ┌─────────┐     ┌──────────────┐
-│  Asset Svc   │     │ Lambda/Worker│     │   S3    │     │  DynamoDB    │
-└──────┬───────┘     └──────┬───────┘     └────┬────┘     └──────┬───────┘
-       │                    │                  │                  │
-       │ Trigger thumbnail  │                  │                  │
-       │ generation         │                  │                  │
-       │───────────────────>│                  │                  │
-       │                    │                  │                  │
-       │                    │ Download original│                  │
-       │                    │─────────────────>│                  │
-       │                    │                  │                  │
-       │                    │ Image data       │                  │
-       │                    │<─────────────────│                  │
-       │                    │                  │                  │
-       │                    │ Generate sizes:  │                  │
-       │                    │ - thumbnail      │                  │
-       │                    │ - medium         │                  │
-       │                    │ - large          │                  │
-       │                    │──────────┐       │                  │
-       │                    │          │       │                  │
-       │                    │<─────────┘       │                  │
-       │                    │                  │                  │
-       │                    │ Upload thumbnails│                  │
-       │                    │─────────────────>│                  │
-       │                    │                  │                  │
-       │                    │ Success          │                  │
-       │                    │<─────────────────│                  │
-       │                    │                  │                  │
-       │                    │ Update asset     │                  │
-       │                    │ with thumbnail   │                  │
-       │                    │ URLs             │                  │
-       │                    │─────────────────────────────────────>│
-       │                    │                  │                  │
-       │                    │ Success          │                  │
-       │                    │<─────────────────────────────────────│
-       │                    │                  │                  │
-```
+Note: The Product Service depends on `AssetFinalizer` (implemented by `AssetService`). It finalizes tmp/ keys to permanent URLs atomically during entity save. If the user never saves, no orphaned files are created in assets/.
 
 ---
 
-## 8. Get CDN URL for Asset
+## 4. Unfinalized Upload (Auto-Cleanup)
 
 ```
-┌─────────┐     ┌─────────────┐     ┌──────────────┐     ┌──────────────┐
-│ Client  │     │   API GW    │     │  Asset Svc   │     │  CloudFront  │
-└────┬────┘     └──────┬──────┘     └──────┬───────┘     └──────┬───────┘
-     │                 │                   │                    │
-     │ GET /assets/{id}/url                │                    │
-     │ ?size=thumbnail                     │                    │
-     │────────────────>│                   │                    │
-     │                 │                   │                    │
-     │                 │ GetAssetURL()     │                    │
-     │                 │──────────────────>│                    │
-     │                 │                   │                    │
-     │                 │                   │ Generate signed    │
-     │                 │                   │ CloudFront URL     │
-     │                 │                   │───────────────────>│
-     │                 │                   │                    │
-     │                 │                   │ Signed URL         │
-     │                 │                   │<───────────────────│
-     │                 │                   │                    │
-     │                 │ CDN URL           │                    │
-     │                 │<──────────────────│                    │
-     │                 │                   │                    │
-     │ 200 OK          │                   │                    │
-     │ {url}           │                   │                    │
-     │<────────────────│                   │                    │
-     │                 │                   │                    │
+┌─────────┐     ┌─────────────┐     ┌──────────────┐     ┌─────────┐
+│ Browser  │     │   API GW    │     │  Asset Svc   │     │   S3    │
+└────┬────┘     └──────┬──────┘     └──────┬───────┘     └────┬────┘
+     │                 │                   │                  │
+     │ POST /upload-url│                   │                  │
+     │────────────────>│──────────────────>│                  │
+     │                 │                   │ presign           │
+     │                 │                   │─────────────────>│
+     │ {upload_url,    │                   │                  │
+     │  tmp_key}       │                   │                  │
+     │<────────────────│<──────────────────│                  │
+     │                 │                   │                  │
+     │ PUT file → S3   │                   │                  │
+     │────────────────────────────────────────────────────────>│
+     │ 200             │                   │                  │
+     │<────────────────────────────────────────────────────────│
+     │                 │                   │                  │
+     │ ❌ User closes  │                   │                  │
+     │ browser / never │                   │                  │
+     │ calls finalize  │                   │                  │
+     │                 │                   │                  │
+     │    ... 24 hours pass ...            │                  │
+     │                 │                   │                  │
+     │                 │                   │    S3 Lifecycle   │
+     │                 │                   │    Rule deletes   │
+     │                 │                   │    tmp/ object    │
+     │                 │                   │                  │
+     │                 │                   │                  │
 ```
+
+No Lambda, no DynamoDB scan needed — S3 lifecycle handles cleanup automatically.
 
 ---
 
-## 9. Error Handling - Invalid File Type
+## 5. Error: Invalid File Type
 
 ```
 ┌─────────┐     ┌─────────────┐     ┌──────────────┐
-│ Client  │     │   API GW    │     │  Asset Svc   │
+│ Browser  │     │   API GW    │     │  Asset Svc   │
 └────┬────┘     └──────┬──────┘     └──────┬───────┘
      │                 │                   │
-     │ POST /assets/upload-url             │
-     │ {filename: "doc.exe", ...}          │
+     │ POST /upload-url│                   │
+     │ {file_name: "script.exe",           │
+     │  content_type: "application/exe",   │
+     │  size: 5000, type: "IMAGE"}         │
      │────────────────>│                   │
      │                 │                   │
      │                 │ GetUploadURL()    │
      │                 │──────────────────>│
      │                 │                   │
-     │                 │                   │ Validate file type
+     │                 │                   │ isValidContentType
+     │                 │                   │ → false
      │                 │                   │──────────┐
      │                 │                   │          │
      │                 │                   │<─────────┘
      │                 │                   │
-     │                 │                   │ Invalid extension
-     │                 │                   │
      │                 │ Error: Invalid    │
-     │                 │ file type         │
+     │                 │ content type      │
      │                 │<──────────────────│
      │                 │                   │
      │ 400 Bad Request │                   │
-     │ {error}         │                   │
+     │ {error:         │                   │
+     │  "Invalid       │                   │
+     │   content type  │                   │
+     │   for asset     │                   │
+     │   type"}        │                   │
      │<────────────────│                   │
      │                 │                   │
 ```
-

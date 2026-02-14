@@ -179,50 +179,6 @@ type CategoryAttributesResponse struct {
 	TotalCount    int                 `json:"total_count"`
 }
 
-// ==================== DESIGN SERVICE ====================
-
-// DesignService defines the interface for design operations
-type DesignService interface {
-	// Create creates a new design
-	Create(ctx context.Context, req CreateDesignRequest, createdBy string) (*Design, error)
-
-	// GetByID retrieves a design by ID
-	GetByID(ctx context.Context, id string) (*DesignWithCategory, error)
-
-	// Update updates an existing design
-	Update(ctx context.Context, id string, req UpdateDesignRequest, updatedBy string) (*Design, error)
-
-	// Delete deletes a design by ID
-	Delete(ctx context.Context, id string) error
-
-	// List retrieves designs with filters
-	List(ctx context.Context, req ListDesignsRequest) (*ListDesignsResponse, error)
-}
-
-// CreateDesignRequest contains data for creating a design
-type CreateDesignRequest struct {
-	Name        string            `json:"name" validate:"required"`
-	CategoryID  string            `json:"category_id" validate:"required"`
-	Description string            `json:"description,omitempty"`
-	Images      []ProductImage    `json:"images,omitempty"`
-	Attributes  []DesignAttribute `json:"attributes,omitempty"`
-}
-
-// UpdateDesignRequest contains data for updating a design
-type UpdateDesignRequest struct {
-	Name        *string           `json:"name,omitempty"`
-	Description *string           `json:"description,omitempty"`
-	Images      []ProductImage    `json:"images,omitempty"`
-	Attributes  []DesignAttribute `json:"attributes,omitempty"`
-	Status      *DesignStatus     `json:"status,omitempty"`
-}
-
-// DesignWithCategory contains a design with its category info
-type DesignWithCategory struct {
-	*Design
-	Category *CategorySummary `json:"category,omitempty"`
-}
-
 // ==================== PRODUCT SERVICE ====================
 
 // ProductService defines the interface for product operations
@@ -250,7 +206,6 @@ type ProductService interface {
 type CreateProductRequest struct {
 	Name                  string                 `json:"name" validate:"required"`
 	SKU                   string                 `json:"sku" validate:"required"`
-	DesignID              string                 `json:"design_id" validate:"required"`
 	CategoryID            string                 `json:"category_id" validate:"required"`
 	Description           string                 `json:"description,omitempty"`
 	BasePrice             int64                  `json:"base_price" validate:"required,gt=0"`
@@ -301,15 +256,7 @@ type UpdateProductRequest struct {
 type ProductWithRelations struct {
 	*Product
 	Category  *CategorySummary `json:"category,omitempty"`
-	Design    *DesignSummary   `json:"design,omitempty"`
 	Inventory *Inventory       `json:"inventory,omitempty"`
-}
-
-// DesignSummary contains minimal design info
-type DesignSummary struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-	Slug string `json:"slug"`
 }
 
 // ==================== PRICING SERVICE ====================
@@ -488,6 +435,15 @@ type BulkCalculationResult struct {
 	Price              int64                  `json:"price"`
 	FormattedPrice     string                 `json:"formatted_price"`
 	Error              string                 `json:"error,omitempty"`
+}
+
+// ==================== ASSET FINALIZER ====================
+
+// AssetFinalizer handles moving temporary uploads to permanent storage.
+// If the value starts with "tmp/", it finalizes the upload and returns a permanent URL.
+// Otherwise, it returns the value as-is (already a permanent URL).
+type AssetFinalizer interface {
+	FinalizeIfTemp(ctx context.Context, value string) (string, error)
 }
 
 // ==================== INVENTORY SERVICE ====================

@@ -1,350 +1,155 @@
-# Asset Lambda API Documentation
+# Asset Service - API Documentation
 
-Media and file asset management service.
+File upload and storage service using presigned S3 URLs.
 
 ## Base Path
 `/admin/assets`
 
 ## Authentication
-All endpoints require authentication.
-
----
-
-### List Assets
-
-Get paginated list of all assets.
-
-**Endpoint:** `GET /admin/assets`
-**Authentication:** Required
-
-**Query Parameters:**
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| page | int | 1 | Page number |
-| per_page | int | 10 | Items per page |
-| type | string | - | Filter by asset type (image, video, document) |
-| status | string | - | Filter by status |
-
-**Response (200 OK):**
-```json
-{
-  "data": [
-    {
-      "id": "asset_abc123",
-      "filename": "saree_product_01.jpg",
-      "original_filename": "IMG_2024.jpg",
-      "type": "image",
-      "mime_type": "image/jpeg",
-      "size": 256000,
-      "url": "https://cdn.example.com/assets/saree_product_01.jpg",
-      "thumbnail_url": "https://cdn.example.com/assets/thumb/saree_product_01.jpg",
-      "dimensions": {
-        "width": 1920,
-        "height": 1080
-      },
-      "alt_text": "Kanchipuram Silk Saree - Red",
-      "tags": ["product", "saree", "silk"],
-      "usage_count": 3,
-      "status": "active",
-      "created_by": "user_xyz789",
-      "created_at": "2024-01-15T10:30:00Z"
-    }
-  ],
-  "pagination": {
-    "current_page": 1,
-    "per_page": 10,
-    "total_count": 250,
-    "total_pages": 25
-  }
-}
-```
+All endpoints require a valid JWT token in the `Authorization` header.
 
 ---
 
 ### Get Upload URL
 
-Get a pre-signed URL for uploading an asset.
+Request a presigned PUT URL to upload a file to the temporary S3 prefix (`tmp/`).
 
 **Endpoint:** `POST /admin/assets/upload-url`
-**Authentication:** Required
 
 **Request Body:**
 ```json
 {
-  "filename": "product_image.jpg",
+  "file_name": "product-hero.jpg",
   "content_type": "image/jpeg",
-  "size": 256000
+  "size": 2048000,
+  "type": "IMAGE"
 }
 ```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `file_name` | string | Yes | Original file name (used for extension extraction) |
+| `content_type` | string | Yes | MIME type (e.g. `image/jpeg`, `video/mp4`) |
+| `size` | integer | Yes | File size in bytes |
+| `type` | string | Yes | Asset type: `IMAGE`, `VIDEO`, or `DOCUMENT` |
 
 **Response (200 OK):**
 ```json
 {
-  "upload_url": "https://s3.../presigned-upload-url",
-  "asset_id": "asset_xyz789",
-  "file_key": "uploads/user_xyz789/product_image_20240115.jpg",
-  "expires_at": "2024-01-15T11:30:00Z"
+  "upload_url": "https://handloom-assets-dev.s3.amazonaws.com/tmp/IMAGE/a1b2c3d4-e5f6-7890-abcd-ef1234567890.jpg?X-Amz-Algorithm=AWS4-HMAC-SHA256&...",
+  "tmp_key": "tmp/IMAGE/a1b2c3d4-e5f6-7890-abcd-ef1234567890.jpg",
+  "tmp_url": "https://handloom-assets-dev.s3.amazonaws.com/tmp/IMAGE/a1b2c3d4-e5f6-7890-abcd-ef1234567890.jpg",
+  "expires_at": "2026-02-14T12:15:00Z"
 }
 ```
 
----
+| Field | Description |
+|-------|-------------|
+| `upload_url` | Presigned S3 PUT URL (expires in 15 minutes) |
+| `tmp_key` | S3 key of the temporary file (used for finalize) |
+| `tmp_url` | Direct S3 URL (NOT publicly readable — for reference only) |
+| `expires_at` | When the presigned URL expires |
 
-### Get Asset by ID
-
-**Endpoint:** `GET /admin/assets/{id}`
-**Authentication:** Required
-
-**Response (200 OK):**
-```json
-{
-  "id": "asset_abc123",
-  "filename": "saree_product_01.jpg",
-  "original_filename": "IMG_2024.jpg",
-  "type": "image",
-  "mime_type": "image/jpeg",
-  "size": 256000,
-  "url": "https://cdn.example.com/assets/saree_product_01.jpg",
-  "thumbnail_url": "https://cdn.example.com/assets/thumb/saree_product_01.jpg",
-  "dimensions": {
-    "width": 1920,
-    "height": 1080
-  },
-  "alt_text": "Kanchipuram Silk Saree - Red",
-  "description": "Product image for SKU SAR-SLK-001",
-  "tags": ["product", "saree", "silk"],
-  "metadata": {
-    "camera": "Canon EOS R5",
-    "iso": 400
-  },
-  "usage": [
-    {
-      "entity_type": "product",
-      "entity_id": "prod_abc123",
-      "field": "primary_image"
-    }
-  ],
-  "usage_count": 1,
-  "status": "active",
-  "created_by": "user_xyz789",
-  "created_at": "2024-01-15T10:30:00Z",
-  "updated_at": "2024-01-15T10:30:00Z"
-}
+**After receiving this response, the client must:**
+```
+PUT <upload_url>
+Content-Type: image/jpeg
+Body: <raw file bytes>
 ```
 
----
-
-### Update Asset
-
-**Endpoint:** `PUT /admin/assets/{id}`
-**Authentication:** Required
-
-**Request Body:**
-```json
-{
-  "alt_text": "Updated alt text for the image",
-  "description": "Updated description",
-  "tags": ["product", "saree", "silk", "featured"]
-}
-```
-
-**Response (200 OK):**
-```json
-{
-  "id": "asset_abc123",
-  "alt_text": "Updated alt text for the image",
-  "tags": ["product", "saree", "silk", "featured"],
-  "updated_at": "2024-01-15T11:00:00Z"
-}
-```
+**Error Responses:**
+- `400` — Invalid content type for asset type
+- `400` — File size exceeds maximum allowed
 
 ---
 
 ### Delete Asset
 
-**Endpoint:** `DELETE /admin/assets/{id}`
-**Authentication:** Required
+Delete a file from the `assets/` prefix by its public URL.
 
-**Response (204 No Content)**
+**Endpoint:** `DELETE /admin/assets`
+
+**Request Body:**
+```json
+{
+  "url": "https://handloom-assets-dev.s3.amazonaws.com/assets/IMAGE/2026/02/14/a1b2c3d4-e5f6-7890-abcd-ef1234567890.jpg"
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `url` | string | Yes | The full public S3 URL of the asset to delete |
+
+**Response (200 OK):**
+```json
+{
+  "message": "Asset deleted successfully"
+}
+```
 
 **Error Responses:**
-- `400 Bad Request` - Asset is in use
-
----
-
-### Confirm Upload
-
-Confirm that an asset upload is complete.
-
-**Endpoint:** `POST /admin/assets/{id}/confirm`
-**Authentication:** Required
-
-**Request Body:**
-```json
-{
-  "alt_text": "Product image description",
-  "tags": ["product", "saree"]
-}
-```
-
-**Response (200 OK):**
-```json
-{
-  "id": "asset_xyz789",
-  "status": "active",
-  "url": "https://cdn.example.com/assets/product_image_20240115.jpg",
-  "thumbnail_url": "https://cdn.example.com/assets/thumb/product_image_20240115.jpg"
-}
-```
-
----
-
-### Get Download URL
-
-Get a signed download URL for an asset.
-
-**Endpoint:** `GET /admin/assets/{id}/download`
-**Authentication:** Required
-
-**Response (200 OK):**
-```json
-{
-  "download_url": "https://s3.../presigned-download-url",
-  "filename": "saree_product_01.jpg",
-  "expires_at": "2024-01-15T11:30:00Z"
-}
-```
-
----
-
-### Add Usage
-
-Track where an asset is being used.
-
-**Endpoint:** `POST /admin/assets/{id}/usage`
-**Authentication:** Required
-
-**Request Body:**
-```json
-{
-  "entity_type": "product",
-  "entity_id": "prod_abc123",
-  "field": "gallery_images"
-}
-```
-
-**Response (200 OK):**
-```json
-{
-  "id": "asset_abc123",
-  "usage_count": 2,
-  "message": "Usage added successfully"
-}
-```
-
----
-
-### Remove Usage
-
-Remove usage tracking for an asset.
-
-**Endpoint:** `DELETE /admin/assets/{id}/usage`
-**Authentication:** Required
-
-**Request Body:**
-```json
-{
-  "entity_type": "product",
-  "entity_id": "prod_abc123",
-  "field": "gallery_images"
-}
-```
-
-**Response (200 OK):**
-```json
-{
-  "id": "asset_abc123",
-  "usage_count": 1,
-  "message": "Usage removed successfully"
-}
-```
-
----
-
-### Get Assets by Type
-
-**Endpoint:** `GET /admin/assets/type/{type}`
-**Authentication:** Required
-
-**Path Parameters:**
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| type | string | Asset type (image, video, document) |
-
-**Response (200 OK):**
-```json
-{
-  "data": [
-    {
-      "id": "asset_abc123",
-      "filename": "saree_product_01.jpg",
-      "type": "image",
-      "url": "https://cdn.example.com/assets/saree_product_01.jpg",
-      "thumbnail_url": "https://cdn.example.com/assets/thumb/saree_product_01.jpg"
-    }
-  ],
-  "pagination": {...}
-}
-```
-
----
-
-### Search Assets
-
-**Endpoint:** `GET /admin/assets/search`
-**Authentication:** Required
-
-**Query Parameters:**
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| q | string | Search query (filename, tags, alt_text) |
-| type | string | Filter by type |
-| tags | string | Comma-separated tags |
-
-**Response (200 OK):**
-```json
-{
-  "data": [
-    {
-      "id": "asset_abc123",
-      "filename": "saree_product_01.jpg",
-      "type": "image",
-      "url": "https://cdn.example.com/assets/saree_product_01.jpg",
-      "tags": ["product", "saree"]
-    }
-  ]
-}
-```
+- `400` — `url` is required
+- `400` — Invalid asset URL (doesn't match bucket)
+- `400` — Can only delete files in `assets/` prefix
+- `500` — Failed to delete asset
 
 ---
 
 ## Asset Types
 
-| Type | Description | Supported Formats |
-|------|-------------|-------------------|
-| `image` | Image files | jpg, jpeg, png, gif, webp |
-| `video` | Video files | mp4, webm, mov |
-| `document` | Documents | pdf, doc, docx, xls, xlsx |
-
-## Asset Status
-
-| Status | Description |
-|--------|-------------|
-| `pending` | Upload initiated but not confirmed |
-| `active` | Asset is available for use |
-| `archived` | Asset is archived (not deleted) |
+| Type | Description | Allowed Content Types | Max Size |
+|------|-------------|----------------------|----------|
+| `IMAGE` | Image files | `image/*` | 50 MB |
+| `VIDEO` | Video files | `video/*` | 100 MB |
+| `DOCUMENT` | Documents | `application/pdf`, `application/msword`, `application/vnd.openxmlformats-officedocument.*`, `text/csv` | 10 MB |
 
 ---
 
-## TODO
+## Complete Upload Flow
 
-No pending TODO items identified.
+```
+1. Client                → POST /admin/assets/upload-url {file_name, content_type, size, type}
+2. Server                → 200 {upload_url, tmp_key, expires_at}
+3. Client                → PUT <upload_url> with raw file body (direct to S3)
+4. S3                    → 200 OK
+5. Client stores tmp_key in form state, uses blob URL for preview
+6. Client saves entity   → POST/PUT /admin/products/{id} {images: [{url: "tmp/IMAGE/..."}]}
+7. Backend (ProductService/CategoryService) calls FinalizeIfTemp for each image
+8. AssetService copies tmp/ → assets/, returns permanent URL
+9. Entity saved to DynamoDB with permanent S3 URLs
+```
+
+**Key benefit:** If the user uploads but never saves, the tmp/ file auto-expires in 24h — no orphaned files in assets/.
+
+---
+
+## Frontend Integration
+
+The `ImageUpload` component handles this flow automatically:
+
+```typescript
+// 1. Get presigned URL
+const { upload_url, tmp_key } = await assetsApi.getUploadUrl(
+  file.name, assetType, file.type, file.size
+);
+
+// 2. PUT file directly to S3
+await fetch(upload_url, {
+  method: 'PUT',
+  body: file,
+  headers: { 'Content-Type': file.type },
+});
+
+// 3. Create blob URL for preview, store tmp_key in form state
+const blobUrl = URL.createObjectURL(file);
+// tmp_key is sent to the backend when the entity is saved
+// Backend finalizes tmp/ → assets/ during entity create/update
+```
+
+For deletion (best-effort, fire-and-forget — only for permanent URLs):
+```typescript
+if (url.startsWith('http')) {
+  assetsApi.delete(url).catch(() => {});
+}
+// tmp keys are not deleted — S3 lifecycle auto-cleans in 24h
+```

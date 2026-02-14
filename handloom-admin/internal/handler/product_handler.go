@@ -69,9 +69,6 @@ func (h *ProductHandler) List(w http.ResponseWriter, r *http.Request) {
 	if categoryID := r.URL.Query().Get("category_id"); categoryID != "" {
 		req.CategoryID = &categoryID
 	}
-	if designID := r.URL.Query().Get("design_id"); designID != "" {
-		req.DesignID = &designID
-	}
 	if status := r.URL.Query().Get("status"); status != "" {
 		statusEnum := domain.ProductStatus(status)
 		req.Status = &statusEnum

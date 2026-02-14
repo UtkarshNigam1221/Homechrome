@@ -19,6 +19,7 @@ import (
 	"github.com/handloom/admin/internal/handler"
 	"github.com/handloom/admin/internal/middleware"
 	"github.com/handloom/admin/internal/repository/dynamodb"
+	"github.com/handloom/admin/internal/s3client"
 	"github.com/handloom/admin/internal/service"
 	"github.com/handloom/admin/internal/validator"
 	"github.com/handloom/admin/pkg/logger"
@@ -43,6 +44,13 @@ func main() {
 	}
 	log.Info("DynamoDB client initialized")
 
+	// Initialize S3 client
+	s3c, err := s3client.New(ctx, cfg.AWS.Region)
+	if err != nil {
+		log.Fatalf("Failed to initialize S3 client: %v", err)
+	}
+	log.Info("S3 client initialized")
+
 	// Initialize repositories
 	userRepo := dynamodb.NewUserRepository(dbClient)
 	categoryRepo := dynamodb.NewCategoryRepository(dbClient)
@@ -50,7 +58,6 @@ func main() {
 	pricingRuleRepo := dynamodb.NewPricingRuleRepository(dbClient)
 	priceQuoteRepo := dynamodb.NewPriceQuoteRepository(dbClient)
 	inventoryRepo := dynamodb.NewInventoryRepository(dbClient)
-	designRepo := dynamodb.NewDesignRepository(dbClient)
 	orderRepo := dynamodb.NewOrderRepository(dbClient)
 	customerRepo := dynamodb.NewCustomerRepository(dbClient)
 	auditRepo := dynamodb.NewAuditRepository(dbClient)
@@ -60,7 +67,6 @@ func main() {
 	artisanRepo := dynamodb.NewArtisanRepository(dbClient)
 	analyticsRepo := dynamodb.NewAnalyticsRepository(dbClient)
 	bulkRepo := dynamodb.NewBulkOperationRepository(dbClient)
-	assetRepo := dynamodb.NewAssetRepository(dbClient)
 	reportRepo := dynamodb.NewReportRepository(dbClient)
 
 	// Initialize services
@@ -75,14 +81,14 @@ func main() {
 	)
 
 	userService := service.NewUserService(userRepo, tokenStore, log)
-	categoryService := service.NewCategoryService(categoryRepo, productRepo, log)
-	designService := service.NewDesignService(designRepo, categoryRepo, log)
+	assetService := service.NewAssetService(log, s3c, cfg.AWS.S3Bucket)
+	categoryService := service.NewCategoryService(categoryRepo, productRepo, assetService, log)
 	inventoryService := service.NewInventoryService(inventoryRepo, productRepo, log)
 	productService := service.NewProductService(
 		productRepo,
 		categoryRepo,
-		designRepo,
 		inventoryRepo,
+		assetService,
 		log,
 	)
 	pricingService := service.NewPricingService(
@@ -109,7 +115,6 @@ func main() {
 	artisanService := service.NewArtisanService(artisanRepo, log)
 	analyticsService := service.NewAnalyticsService(analyticsRepo, orderRepo, productRepo, inventoryRepo, log)
 	bulkService := service.NewBulkService(bulkRepo, productService, inventoryService, log)
-	assetService := service.NewAssetService(assetRepo, log, cfg.AWS.S3Bucket, cfg.AWS.CDNUrl)
 	reportService := service.NewReportService(reportRepo, orderService, productService, customerService, inventoryService, analyticsService, log)
 
 	// Initialize validation middleware
@@ -120,7 +125,6 @@ func main() {
 	authHandler := handler.NewAuthHandler(authService, userService, log, validation)
 	userHandler := handler.NewUserHandler(userService, log, validation)
 	categoryHandler := handler.NewCategoryHandler(categoryService, log, validation)
-	designHandler := handler.NewDesignHandler(designService, log, validation)
 	productHandler := handler.NewProductHandler(productService, inventoryService, log, validation)
 	inventoryHandler := handler.NewInventoryHandler(inventoryService, log)
 	pricingHandler := handler.NewPricingHandler(pricingService, log, validation)
@@ -140,7 +144,7 @@ func main() {
 
 	// Create router
 	r := createRouter(cfg, log, authMiddleware,
-		authHandler, userHandler, categoryHandler, designHandler,
+		authHandler, userHandler, categoryHandler,
 		productHandler, inventoryHandler, pricingHandler, orderHandler,
 		customerHandler, auditHandler, notificationHandler, couponHandler,
 		artisanHandler, analyticsHandler, bulkHandler, assetHandler, reportHandler)
@@ -186,7 +190,6 @@ func createRouter(
 	authHandler *handler.AuthHandler,
 	userHandler *handler.UserHandler,
 	categoryHandler *handler.CategoryHandler,
-	designHandler *handler.DesignHandler,
 	productHandler *handler.ProductHandler,
 	inventoryHandler *handler.InventoryHandler,
 	pricingHandler *handler.PricingHandler,
@@ -210,9 +213,9 @@ func createRouter(
 	r.Use(chimiddleware.RealIP)
 	r.Use(chimiddleware.Compress(5))
 
-	// CORS
+	// CORS — reflect origin to support credentials (cookies)
 	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   []string{"*"}, // Configure for production
+		AllowOriginFunc:  func(r *http.Request, origin string) bool { return true },
 		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-Request-ID"},
 		ExposedHeaders:   []string{"X-Request-ID"},
@@ -258,9 +261,6 @@ func createRouter(
 
 			// Categories
 			r.Mount("/categories", categoryHandler.Routes())
-
-			// Designs
-			r.Mount("/designs", designHandler.Routes())
 
 			// Products (includes inventory)
 			r.Mount("/products", productHandler.Routes())

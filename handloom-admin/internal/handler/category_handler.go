@@ -124,6 +124,9 @@ func (h *CategoryHandler) List(w http.ResponseWriter, r *http.Request) {
 		st := domain.CategoryStatus(status)
 		req.Status = &st
 	}
+	if search := r.URL.Query().Get("search"); search != "" {
+		req.Search = search
+	}
 
 	result, err := h.categoryService.List(r.Context(), req)
 	if err != nil {

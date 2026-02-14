@@ -1,7 +1,7 @@
 # Catalog Lambda - User Flows
 
 ## Overview
-This document describes the user flows for the Catalog Lambda service, covering Categories (flat with custom attributes), Designs, Products, and Inventory management.
+This document describes the user flows for the Catalog Lambda service, covering Categories (flat with custom attributes), Products, and Inventory management.
 
 ---
 
@@ -49,13 +49,6 @@ This document describes the user flows for the Catalog Lambda service, covering 
 │   with options  │
 │ - TEXT inputs   │
 │ - NUMBER inputs │
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│ Select Design   │
-│ (filtered by    │
-│  category)      │
 └────────┬────────┘
          │
          ▼
@@ -405,70 +398,7 @@ The products page supports category-based filtering with dynamic attribute filte
 
 ---
 
-## 5. Design Management Flow
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                          DESIGN MANAGEMENT FLOW                              │
-└─────────────────────────────────────────────────────────────────────────────┘
-
-    ┌──────────┐
-    │  START   │
-    └────┬─────┘
-         │
-         ▼
-┌─────────────────┐
-│ Navigate to     │
-│ Designs         │
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│ View Design     │
-│ List/Gallery    │
-│ (filter by      │
-│  category,      │
-│  status, search)│
-└────────┬────────┘
-         │
-         ├─────── Add New Design ──────┐
-         │                             │
-         ▼                             ▼
-┌─────────────────┐          ┌─────────────────┐
-│ VIEW DESIGN:    │          │ CREATE DESIGN:  │
-│ - Design images │          │ - Name          │
-│ - Category      │          │ - Category      │
-│ - Attributes    │          │ - Description   │
-│ - Product count │          │ - Upload images │
-│                 │          │ - Attributes    │
-│                 │          │   (name: values)│
-└────────┬────────┘          └────────┬────────┘
-         │                            │
-         ├── Edit ────────────────────┤
-         │                            │
-         ├── Delete ──────────────────┤
-         │                            │
-         ▼                            ▼
-┌─────────────────┐          ┌─────────────────┐
-│ EDIT DESIGN:    │          │ SAVE DESIGN:    │
-│ - Update name   │          │ - Validate      │
-│ - Update desc   │          │ - Save to DB    │
-│ - Change images │          │ - Show success  │
-│ - Update attrs  │          │                 │
-│ - Change status │          │                 │
-└────────┬────────┘          └────────┬────────┘
-         │                            │
-         └────────────┬───────────────┘
-                      │
-                      ▼
-                 ┌────────┐
-                 │  END   │
-                 └────────┘
-```
-
----
-
-## 6. Inventory Management Flow
+## 5. Inventory Management Flow
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐

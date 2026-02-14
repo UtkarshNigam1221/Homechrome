@@ -1,6 +1,6 @@
-sku,name,description,category_id,design_id,base_price,selling_price,quantity,low_stock_threshold,weight,dimensions,tags,status
-SKU-001,Handwoven Silk Saree - Royal Blue,"Beautiful handwoven silk saree with traditional motifs",cat_sarees,des_paisley,450000,399900,25,5,450,550x120cm,"silk,handwoven,traditional",ACTIVE
-SKU-002,Cotton Kurta Set - Indigo Block Print,"Premium cotton kurta with hand block printed design",cat_kurtas,des_block_print,250000,219900,50,10,350,M/L/XL,"cotton,blockprint,kurta",ACTIVE
-SKU-003,Pashmina Shawl - Ivory,"Authentic Kashmiri pashmina shawl with intricate embroidery",cat_shawls,des_kashmir,800000,749900,15,3,200,200x70cm,"pashmina,shawl,kashmiri",ACTIVE
-SKU-004,Banarasi Dupatta - Gold Zari,"Elegant Banarasi dupatta with gold zari work",cat_dupattas,des_banarasi,180000,159900,40,8,180,250x100cm,"banarasi,zari,dupatta",ACTIVE
-SKU-005,Handloom Cotton Bedsheet - Ikat,"Traditional ikat pattern handloom cotton bedsheet",cat_home,des_ikat,120000,99900,60,15,800,230x250cm,"bedsheet,ikat,cotton",ACTIVE
+sku,name,description,category_id,base_price,selling_price,quantity,low_stock_threshold,weight,dimensions,tags,status
+SKU-001,Handwoven Silk Saree - Royal Blue,"Beautiful handwoven silk saree with traditional motifs",cat_sarees,450000,399900,25,5,450,550x120cm,"silk,handwoven,traditional",ACTIVE
+SKU-002,Cotton Kurta Set - Indigo Block Print,"Premium cotton kurta with hand block printed design",cat_kurtas,250000,219900,50,10,350,M/L/XL,"cotton,blockprint,kurta",ACTIVE
+SKU-003,Pashmina Shawl - Ivory,"Authentic Kashmiri pashmina shawl with intricate embroidery",cat_shawls,800000,749900,15,3,200,200x70cm,"pashmina,shawl,kashmiri",ACTIVE
+SKU-004,Banarasi Dupatta - Gold Zari,"Elegant Banarasi dupatta with gold zari work",cat_dupattas,180000,159900,40,8,180,250x100cm,"banarasi,zari,dupatta",ACTIVE
+SKU-005,Handloom Cotton Bedsheet - Ikat,"Traditional ikat pattern handloom cotton bedsheet",cat_home,120000,99900,60,15,800,230x250cm,"bedsheet,ikat,cotton",ACTIVE

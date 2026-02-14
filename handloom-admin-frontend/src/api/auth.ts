@@ -1,21 +1,14 @@
-import type { LoginRequest, LoginResponse, User } from '../types';
+import type { LoginRequest, User } from '../types';
 import apiClient from './client';
 
 export const authApi = {
-  login: async (credentials: LoginRequest): Promise<LoginResponse> => {
-    const response = await apiClient.post<LoginResponse>('/admin/auth/login', credentials);
+  login: async (credentials: LoginRequest): Promise<{ user: User }> => {
+    const response = await apiClient.post<{ user: User }>('/admin/auth/login', credentials);
     return response.data;
   },
 
   logout: async (): Promise<void> => {
     await apiClient.post('/admin/auth/logout');
-  },
-
-  refreshToken: async (
-    refreshToken: string
-  ): Promise<{ access_token: string; refresh_token: string }> => {
-    const response = await apiClient.post('/admin/auth/refresh', { refresh_token: refreshToken });
-    return response.data;
   },
 
   changePassword: async (currentPassword: string, newPassword: string): Promise<void> => {

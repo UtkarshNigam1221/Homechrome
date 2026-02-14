@@ -223,7 +223,6 @@ export function BulkImportModal({ isOpen, onClose, operationType }: BulkImportMo
               </p>
               <p>
                 Optional columns: <code className="bg-gray-200 px-1 rounded">description</code>,{' '}
-                <code className="bg-gray-200 px-1 rounded">design_id</code>,{' '}
                 <code className="bg-gray-200 px-1 rounded">quantity</code>,{' '}
                 <code className="bg-gray-200 px-1 rounded">weight</code>,{' '}
                 <code className="bg-gray-200 px-1 rounded">tags</code>

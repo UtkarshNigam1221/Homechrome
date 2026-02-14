@@ -56,14 +56,6 @@ export interface LoginRequest {
   password: string;
 }
 
-export interface LoginResponse {
-  user: User;
-  tokens: {
-    access_token: string;
-    refresh_token: string;
-    expires_at: string;
-  };
-}
 
 export interface CreateUserRequest {
   email: string;
@@ -127,45 +119,11 @@ export interface CreateCategoryRequest {
   status?: CategoryStatus;
 }
 
-// ============================================================================
-// Design Types
-// ============================================================================
-
-export type DesignStatus = 'ACTIVE' | 'INACTIVE';
-
 export interface ProductImage {
   url: string;
   alt_text?: string;
   is_primary?: boolean;
   sort_order?: number;
-}
-
-export interface Design {
-  id: string;
-  name: string;
-  slug: string;
-  category_id: string;
-  description?: string;
-  images?: ProductImage[];
-  preview_image_url?: string;
-  attributes?: Record<string, unknown>;
-  status: DesignStatus;
-  product_count: number;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface CreateDesignRequest {
-  name: string;
-  slug: string;
-  category_id: string;
-  description?: string;
-  images?: ProductImage[];
-  attributes?: Record<string, unknown>;
-}
-
-export interface UpdateDesignRequest extends Partial<CreateDesignRequest> {
-  status?: DesignStatus;
 }
 
 // ============================================================================
@@ -187,7 +145,6 @@ export interface Product {
   sku: string;
   slug: string;
   description?: string;
-  design_id: string;
   category_id: string;
   artisan_id?: string;
   base_price: number;
@@ -219,7 +176,6 @@ export interface CreateProductRequest {
   name: string;
   sku: string;
   description?: string;
-  design_id: string;
   category_id: string;
   artisan_id?: string;
   base_price: number;
@@ -238,6 +194,7 @@ export interface CreateProductRequest {
   craft_type?: string;
   images?: ProductImage[];
   tags?: string[];
+  initial_stock?: number;
   low_stock_threshold?: number;
   status?: ProductStatus;
 }
@@ -691,27 +648,16 @@ export interface Report {
 }
 
 // ============================================================================
-// Asset Types
+// Asset Types (tmp/ → assets/ S3 flow, no DynamoDB records)
 // ============================================================================
 
-export type AssetType = 'IMAGE' | 'VIDEO' | 'DOCUMENT' | 'DESIGN' | 'CATALOG';
+export type AssetType = 'IMAGE' | 'VIDEO' | 'DOCUMENT';
 
-export interface Asset {
-  id: string;
-  name: string;
-  type: AssetType;
-  mime_type: string;
-  size: number;
-  url: string;
-  thumbnail_url?: string;
-  width?: number;
-  height?: number;
-  description?: string;
-  tags?: string[];
-  metadata?: Record<string, unknown>;
-  created_by: string;
-  created_at: string;
-  updated_at: string;
+export interface UploadURLResponse {
+  upload_url: string;
+  tmp_key: string;
+  tmp_url: string;
+  expires_at: string;
 }
 
 // ============================================================================

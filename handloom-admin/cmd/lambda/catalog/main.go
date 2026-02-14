@@ -10,6 +10,7 @@ import (
 	"github.com/handloom/admin/internal/middleware"
 	"github.com/handloom/admin/internal/repository/dynamodb"
 	"github.com/handloom/admin/internal/router"
+	"github.com/handloom/admin/internal/s3client"
 	"github.com/handloom/admin/internal/service"
 	"github.com/handloom/admin/internal/validator"
 	"github.com/handloom/admin/pkg/logger"
@@ -32,11 +33,16 @@ func main() {
 		log.Fatalf("Failed to initialize DynamoDB client: %v", err)
 	}
 
+	// Initialize S3 client
+	s3c, err := s3client.New(ctx, cfg.AWS.Region)
+	if err != nil {
+		log.Fatalf("Failed to initialize S3 client: %v", err)
+	}
+
 	// Initialize repositories
 	userRepo := dynamodb.NewUserRepository(dbClient)
 	tokenStore := dynamodb.NewTokenStore(dbClient)
 	categoryRepo := dynamodb.NewCategoryRepository(dbClient)
-	designRepo := dynamodb.NewDesignRepository(dbClient)
 	productRepo := dynamodb.NewProductRepository(dbClient)
 	inventoryRepo := dynamodb.NewInventoryRepository(dbClient)
 
@@ -50,14 +56,14 @@ func main() {
 		cfg.JWT.RefreshTokenDuration,
 		cfg.JWT.Issuer,
 	)
-	categoryService := service.NewCategoryService(categoryRepo, productRepo, log)
-	designService := service.NewDesignService(designRepo, categoryRepo, log)
+	assetService := service.NewAssetService(log, s3c, cfg.AWS.S3Bucket)
+	categoryService := service.NewCategoryService(categoryRepo, productRepo, assetService, log)
 	inventoryService := service.NewInventoryService(inventoryRepo, productRepo, log)
 	productService := service.NewProductService(
 		productRepo,
 		categoryRepo,
-		designRepo,
 		inventoryRepo,
+		assetService,
 		log,
 	)
 
@@ -67,7 +73,6 @@ func main() {
 
 	// Initialize handlers
 	categoryHandler := handler.NewCategoryHandler(categoryService, log, validation)
-	designHandler := handler.NewDesignHandler(designService, log, validation)
 	productHandler := handler.NewProductHandler(productService, inventoryService, log, validation)
 
 	// Initialize auth middleware
@@ -81,7 +86,7 @@ func main() {
 	r := router.NewAuthenticatedRouter(routerCfg, log, authMiddleware)
 
 	// Register routes
-	router.NewCatalogRouter(r, categoryHandler, designHandler, productHandler)
+	router.NewCatalogRouter(r, categoryHandler, productHandler)
 
 	// Start Lambda
 	adapter := router.NewLambdaAdapter(r)

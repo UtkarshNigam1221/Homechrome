@@ -5,14 +5,13 @@ import { Controller, useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
 import { z } from 'zod';
 
-import { artisansApi, categoriesApi, designsApi, getErrorMessage, productsApi } from '../../api';
+import { artisansApi, categoriesApi, getErrorMessage, productsApi } from '../../api';
 import { Button, ImageUpload, Input, Modal, Select } from '../../components/common';
 import type {
   Artisan,
   Category,
   CategoryAttribute,
   CreateProductRequest,
-  Design,
   Product,
 } from '../../types';
 
@@ -20,7 +19,6 @@ const productSchema = z.object({
   name: z.string().min(1, 'Name is required').max(200, 'Name must be less than 200 characters'),
   sku: z.string().min(1, 'SKU is required').max(50, 'SKU must be less than 50 characters'),
   description: z.string().optional(),
-  design_id: z.string().min(1, 'Design is required'),
   category_id: z.string().min(1, 'Category is required'),
   artisan_id: z.string().optional(),
   base_price: z.number().min(0, 'Base price must be positive'),
@@ -36,6 +34,7 @@ const productSchema = z.object({
   width: z.number().min(0).optional(),
   height: z.number().min(0).optional(),
   dimension_unit: z.string().optional(),
+  initial_stock: z.number().min(0, 'Initial stock must be positive').optional(),
   low_stock_threshold: z.number().min(0, 'Threshold must be positive'),
   status: z.enum(['ACTIVE', 'INACTIVE', 'DRAFT']),
   tags: z.string().optional(),
@@ -64,13 +63,6 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
     enabled: isOpen,
   });
 
-  // Fetch designs
-  const { data: designsData } = useQuery({
-    queryKey: ['designs-list'],
-    queryFn: () => designsApi.list({ limit: 100 }),
-    enabled: isOpen,
-  });
-
   // Fetch artisans
   const { data: artisansData } = useQuery({
     queryKey: ['artisans-list'],
@@ -92,7 +84,6 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
       name: '',
       sku: '',
       description: '',
-      design_id: '',
       category_id: '',
       artisan_id: '',
       base_price: 0,
@@ -108,6 +99,7 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
       width: 0,
       height: 0,
       dimension_unit: 'cm',
+      initial_stock: 0,
       low_stock_threshold: 5,
       status: 'DRAFT',
       tags: '',
@@ -160,7 +152,6 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
           name: product.name,
           sku: product.sku,
           description: product.description || '',
-          design_id: product.design_id,
           category_id: product.category_id,
           artisan_id: product.artisan_id || '',
           base_price: product.base_price / 100,
@@ -188,7 +179,6 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
           name: '',
           sku: '',
           description: '',
-          design_id: '',
           category_id: '',
           artisan_id: '',
           base_price: 0,
@@ -204,6 +194,7 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
           width: 0,
           height: 0,
           dimension_unit: 'cm',
+          initial_stock: 0,
           low_stock_threshold: 5,
           status: 'DRAFT',
           tags: '',
@@ -287,7 +278,6 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
       name: data.name,
       sku: data.sku,
       description: data.description || undefined,
-      design_id: data.design_id,
       category_id: data.category_id,
       artisan_id: data.artisan_id || undefined,
       base_price: Math.round(data.base_price * 100),
@@ -308,6 +298,7 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
               unit: data.dimension_unit || 'cm',
             }
           : undefined,
+      initial_stock: data.initial_stock || 0,
       low_stock_threshold: data.low_stock_threshold,
       status: data.status,
       tags: data.tags
@@ -329,7 +320,9 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
     };
 
     if (isEditing && product?.id) {
-      updateMutation.mutate({ id: product.id, data: requestData });
+      // SKU is immutable after creation — strip it from update payload
+      const { sku: _, ...updateData } = requestData;
+      updateMutation.mutate({ id: product.id, data: updateData });
     } else {
       createMutation.mutate(requestData);
     }
@@ -474,12 +467,9 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
   };
 
   const categories = extractItems<Category>(categoriesData, 'categories');
-  const designs = extractItems<Design>(designsData, 'designs');
   const artisans = extractItems<Artisan>(artisansData, 'artisans');
 
   const categoryOptions = getCategoryOptions(categories);
-
-  const designOptions = designs.map((d) => ({ value: d.id, label: d.name }));
 
   const artisanOptions = [
     { value: '', label: 'No artisan assigned' },
@@ -513,6 +503,8 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
               placeholder="e.g., SILK-BS-001"
               error={errors.sku?.message}
               required
+              disabled={isEditing}
+              hint={isEditing ? 'SKU cannot be changed after creation' : undefined}
               {...register('sku')}
             />
 
@@ -523,15 +515,6 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
               error={errors.category_id?.message}
               required
               {...register('category_id')}
-            />
-
-            <Select
-              label="Design"
-              options={designOptions}
-              placeholder="Select a design"
-              error={errors.design_id?.message}
-              required
-              {...register('design_id')}
             />
 
             <div className="md:col-span-2">
@@ -703,6 +686,18 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
         <div>
           <h3 className="text-sm font-medium text-gray-700 mb-3">Inventory & Status</h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {!isEditing && (
+              <Input
+                label="Initial Stock"
+                type="number"
+                min="0"
+                placeholder="0"
+                hint="Quantity to add on creation"
+                error={errors.initial_stock?.message}
+                {...register('initial_stock', { valueAsNumber: true })}
+              />
+            )}
+
             <Input
               label="Low Stock Threshold"
               type="number"

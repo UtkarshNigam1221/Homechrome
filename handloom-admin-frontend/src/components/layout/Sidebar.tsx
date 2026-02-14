@@ -8,7 +8,6 @@ import {
   FolderTree,
   LayoutDashboard,
   Package,
-  Palette,
   Percent,
   Settings,
   ShoppingCart,
@@ -26,7 +25,6 @@ import { useUIStore } from '../../stores/uiStore';
 const navigation = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard },
   { name: 'Categories', href: '/categories', icon: FolderTree },
-  { name: 'Designs', href: '/designs', icon: Palette },
   { name: 'Products', href: '/products', icon: Package },
   { name: 'Inventory', href: '/inventory', icon: Warehouse },
   { name: 'Orders', href: '/orders', icon: ShoppingCart },

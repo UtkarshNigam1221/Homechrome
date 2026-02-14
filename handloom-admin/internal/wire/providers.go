@@ -10,6 +10,7 @@ import (
 	"github.com/handloom/admin/internal/handler"
 	"github.com/handloom/admin/internal/middleware"
 	"github.com/handloom/admin/internal/repository/dynamodb"
+	"github.com/handloom/admin/internal/s3client"
 	"github.com/handloom/admin/internal/service"
 	"github.com/handloom/admin/internal/validator"
 	"github.com/handloom/admin/pkg/logger"
@@ -27,6 +28,11 @@ func ProvideLogger(cfg *config.Config) *logger.Logger {
 // ProvideDynamoDBClient creates a new DynamoDB client
 func ProvideDynamoDBClient(ctx context.Context, cfg *config.Config) (*dynamodb.Client, error) {
 	return dynamodb.NewClient(ctx, cfg)
+}
+
+// ProvideS3Client creates a new S3 client
+func ProvideS3Client(ctx context.Context, cfg *config.Config) (*s3client.S3Client, error) {
+	return s3client.New(ctx, cfg.AWS.Region)
 }
 
 // CoreSet contains core providers used by all services
@@ -52,11 +58,6 @@ func ProvideTokenStore(client *dynamodb.Client) domain.TokenStore {
 // ProvideCategoryRepository creates a new CategoryRepository
 func ProvideCategoryRepository(client *dynamodb.Client) domain.CategoryRepository {
 	return dynamodb.NewCategoryRepository(client)
-}
-
-// ProvideDesignRepository creates a new DesignRepository
-func ProvideDesignRepository(client *dynamodb.Client) domain.DesignRepository {
-	return dynamodb.NewDesignRepository(client)
 }
 
 // ProvideProductRepository creates a new ProductRepository
@@ -114,11 +115,6 @@ func ProvideBulkOperationRepository(client *dynamodb.Client) domain.BulkOperatio
 	return dynamodb.NewBulkOperationRepository(client)
 }
 
-// ProvideAssetRepository creates a new AssetRepository
-func ProvideAssetRepository(client *dynamodb.Client) domain.AssetRepository {
-	return dynamodb.NewAssetRepository(client)
-}
-
 // ProvideReportRepository creates a new ReportRepository
 func ProvideReportRepository(client *dynamodb.Client) domain.ReportRepository {
 	return dynamodb.NewReportRepository(client)
@@ -134,7 +130,6 @@ var RepositorySet = wire.NewSet(
 	ProvideUserRepository,
 	ProvideTokenStore,
 	ProvideCategoryRepository,
-	ProvideDesignRepository,
 	ProvideProductRepository,
 	ProvideInventoryRepository,
 	ProvideOrderRepository,
@@ -146,7 +141,6 @@ var RepositorySet = wire.NewSet(
 	ProvideCouponRepository,
 	ProvideArtisanRepository,
 	ProvideBulkOperationRepository,
-	ProvideAssetRepository,
 	ProvideReportRepository,
 	ProvideAuditRepository,
 )
@@ -186,29 +180,21 @@ func ProvideUserService(
 func ProvideCategoryService(
 	categoryRepo domain.CategoryRepository,
 	productRepo domain.ProductRepository,
+	assetService *service.AssetService,
 	log *logger.Logger,
 ) *service.CategoryService {
-	return service.NewCategoryService(categoryRepo, productRepo, log)
-}
-
-// ProvideDesignService creates a new DesignService
-func ProvideDesignService(
-	designRepo domain.DesignRepository,
-	categoryRepo domain.CategoryRepository,
-	log *logger.Logger,
-) *service.DesignService {
-	return service.NewDesignService(designRepo, categoryRepo, log)
+	return service.NewCategoryService(categoryRepo, productRepo, assetService, log)
 }
 
 // ProvideProductService creates a new ProductService
 func ProvideProductService(
 	productRepo domain.ProductRepository,
 	categoryRepo domain.CategoryRepository,
-	designRepo domain.DesignRepository,
 	inventoryRepo domain.InventoryRepository,
+	assetService *service.AssetService,
 	log *logger.Logger,
 ) *service.ProductService {
-	return service.NewProductService(productRepo, categoryRepo, designRepo, inventoryRepo, log)
+	return service.NewProductService(productRepo, categoryRepo, inventoryRepo, assetService, log)
 }
 
 // ProvideInventoryService creates a new InventoryService
@@ -309,11 +295,11 @@ func ProvideBulkService(
 
 // ProvideAssetService creates a new AssetService
 func ProvideAssetService(
-	assetRepo domain.AssetRepository,
 	log *logger.Logger,
+	s3Client *s3client.S3Client,
 	cfg *config.Config,
 ) *service.AssetService {
-	return service.NewAssetService(assetRepo, log, cfg.AWS.S3Bucket, cfg.AWS.CDNUrl)
+	return service.NewAssetService(log, s3Client, cfg.AWS.S3Bucket)
 }
 
 // ProvideReportService creates a new ReportService
@@ -342,7 +328,6 @@ var ServiceSet = wire.NewSet(
 	ProvideAuthService,
 	ProvideUserService,
 	ProvideCategoryService,
-	ProvideDesignService,
 	ProvideProductService,
 	ProvideInventoryService,
 	ProvideOrderService,
@@ -388,15 +373,6 @@ func ProvideCategoryHandler(
 	validation *middleware.Validation,
 ) *handler.CategoryHandler {
 	return handler.NewCategoryHandler(categoryService, log, validation)
-}
-
-// ProvideDesignHandler creates a new DesignHandler
-func ProvideDesignHandler(
-	designService *service.DesignService,
-	log *logger.Logger,
-	validation *middleware.Validation,
-) *handler.DesignHandler {
-	return handler.NewDesignHandler(designService, log, validation)
 }
 
 // ProvideProductHandler creates a new ProductHandler
@@ -511,7 +487,6 @@ var HandlerSet = wire.NewSet(
 	ProvideAuthHandler,
 	ProvideUserHandler,
 	ProvideCategoryHandler,
-	ProvideDesignHandler,
 	ProvideProductHandler,
 	ProvideInventoryHandler,
 	ProvideOrderHandler,

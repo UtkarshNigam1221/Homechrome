@@ -38,10 +38,6 @@ const (
 	ErrCodeCategoryHasChildren ErrorCode = "CATEGORY_HAS_CHILDREN"
 	ErrCodeCategoryHasProducts ErrorCode = "CATEGORY_HAS_PRODUCTS"
 
-	// Design errors
-	ErrCodeDesignNotFound    ErrorCode = "DESIGN_NOT_FOUND"
-	ErrCodeDesignHasProducts ErrorCode = "DESIGN_HAS_PRODUCTS"
-
 	// Product errors
 	ErrCodeProductNotFound  ErrorCode = "PRODUCT_NOT_FOUND"
 	ErrCodeProductSKUExists ErrorCode = "PRODUCT_SKU_EXISTS"
@@ -178,7 +174,6 @@ func IsNotFound(err error) bool {
 		return appErr.Code == ErrCodeNotFound ||
 			appErr.Code == ErrCodeUserNotFound ||
 			appErr.Code == ErrCodeCategoryNotFound ||
-			appErr.Code == ErrCodeDesignNotFound ||
 			appErr.Code == ErrCodeProductNotFound ||
 			appErr.Code == ErrCodePricingRuleNotFound ||
 			appErr.Code == ErrCodeQuoteNotFound ||
@@ -196,12 +191,12 @@ func codeToHTTPStatus(code ErrorCode) int {
 		return http.StatusUnauthorized
 	case ErrCodeForbidden:
 		return http.StatusForbidden
-	case ErrCodeNotFound, ErrCodeUserNotFound, ErrCodeCategoryNotFound, ErrCodeDesignNotFound,
+	case ErrCodeNotFound, ErrCodeUserNotFound, ErrCodeCategoryNotFound,
 		ErrCodeProductNotFound, ErrCodePricingRuleNotFound, ErrCodeQuoteNotFound, ErrCodeInventoryNotFound:
 		return http.StatusNotFound
 	case ErrCodeConflict, ErrCodeUserExists, ErrCodeProductSKUExists, ErrCodeConflictingPriority, ErrCodeAlreadyExists:
 		return http.StatusConflict
-	case ErrCodeCategoryHasChildren, ErrCodeCategoryHasProducts, ErrCodeDesignHasProducts,
+	case ErrCodeCategoryHasChildren, ErrCodeCategoryHasProducts,
 		ErrCodeProductHasOrders, ErrCodeRuleIsDefault, ErrCodeDimensionOutOfRange,
 		ErrCodeMinOrderValue, ErrCodeQuoteExpired, ErrCodeInsufficientStock, ErrCodeHasDependencies:
 		return http.StatusBadRequest

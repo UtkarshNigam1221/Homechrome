@@ -1,1 +1,0 @@
-export { DesignsPage } from './DesignsPage';

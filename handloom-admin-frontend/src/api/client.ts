@@ -3,7 +3,9 @@ import axios from 'axios';
 
 import { useAuthStore } from '../stores/authStore';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080';
+// In dev, Vite proxy handles /admin/* → API Gateway (same-origin, cookies work).
+// In production builds, VITE_API_URL points to the real API.
+const API_BASE_URL = import.meta.env.DEV ? '' : (import.meta.env.VITE_API_URL || '');
 
 // Create axios instance
 const apiClient: AxiosInstance = axios.create({
@@ -11,36 +13,23 @@ const apiClient: AxiosInstance = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  withCredentials: true,
   timeout: 30000,
 });
-
-// Request interceptor to add auth token
-apiClient.interceptors.request.use(
-  (config) => {
-    const token = useAuthStore.getState().accessToken;
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
-  },
-  (error) => {
-    return Promise.reject(error);
-  }
-);
 
 // Token refresh mutex to prevent concurrent refresh attempts
 let isRefreshing = false;
 let failedQueue: Array<{
-  resolve: (token: string) => void;
+  resolve: () => void;
   reject: (error: unknown) => void;
 }> = [];
 
-function processQueue(error: unknown, token: string | null = null) {
+function processQueue(error: unknown) {
   failedQueue.forEach((pending) => {
     if (error) {
       pending.reject(error);
     } else {
-      pending.resolve(token!);
+      pending.resolve();
     }
   });
   failedQueue = [];
@@ -62,12 +51,9 @@ apiClient.interceptors.response.use(
     if (error.response?.status === 401 && !originalRequest._retry) {
       // If already refreshing, queue this request
       if (isRefreshing) {
-        return new Promise<string>((resolve, reject) => {
+        return new Promise<void>((resolve, reject) => {
           failedQueue.push({ resolve, reject });
-        }).then((token) => {
-          if (originalRequest.headers) {
-            originalRequest.headers.Authorization = `Bearer ${token}`;
-          }
+        }).then(() => {
           return apiClient(originalRequest);
         });
       }
@@ -75,31 +61,21 @@ apiClient.interceptors.response.use(
       originalRequest._retry = true;
       isRefreshing = true;
 
-      const refreshToken = useAuthStore.getState().refreshToken;
-      if (refreshToken) {
-        try {
-          // Use raw axios to avoid interceptor loop
-          const response = await axios.post(`${API_BASE_URL}/admin/auth/refresh`, {
-            refresh_token: refreshToken,
-          });
+      try {
+        // Call refresh endpoint — cookie is sent automatically
+        await axios.post(`${API_BASE_URL}/admin/auth/refresh`, null, {
+          withCredentials: true,
+          headers: { 'Content-Type': 'application/json' },
+        });
 
-          const { access_token, refresh_token } = response.data.tokens || response.data;
-          useAuthStore.getState().setTokens(access_token, refresh_token);
-          processQueue(null, access_token);
-
-          if (originalRequest.headers) {
-            originalRequest.headers.Authorization = `Bearer ${access_token}`;
-          }
-          return apiClient(originalRequest);
-        } catch (refreshError) {
-          processQueue(refreshError, null);
-          useAuthStore.getState().logout();
-          return Promise.reject(refreshError);
-        } finally {
-          isRefreshing = false;
-        }
-      } else {
+        processQueue(null);
+        return apiClient(originalRequest);
+      } catch (refreshError) {
+        processQueue(refreshError);
         useAuthStore.getState().logout();
+        return Promise.reject(refreshError);
+      } finally {
+        isRefreshing = false;
       }
     }
 
