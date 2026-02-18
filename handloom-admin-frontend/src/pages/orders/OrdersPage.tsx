@@ -26,6 +26,7 @@ import {
 } from '../../components/common';
 import { useCursorPagination } from '../../hooks';
 import type { Order, OrderStatus } from '../../types';
+import { formatCurrency } from '@/utils/currency';
 
 const ORDER_STATUSES: OrderStatus[] = [
   'PENDING',
@@ -87,14 +88,6 @@ export function OrdersPage() {
 
   const orders = ordersData?.items || [];
   const pagination = ordersData?.pagination;
-
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('en-IN', {
-      style: 'currency',
-      currency: 'INR',
-      minimumFractionDigits: 0,
-    }).format(value / 100);
-  };
 
   const handleUpdateStatus = () => {
     if (selectedOrder && newStatus) {

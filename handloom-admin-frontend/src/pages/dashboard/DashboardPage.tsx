@@ -31,6 +31,7 @@ import {
   getStatusBadgeVariant,
   StatCard,
 } from '../../components/common';
+import { formatCurrency } from '@/utils/currency';
 
 export function DashboardPage() {
   // Fetch dashboard stats
@@ -67,14 +68,6 @@ export function DashboardPage() {
   if (statsLoading) {
     return <DashboardSkeleton />;
   }
-
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('en-IN', {
-      style: 'currency',
-      currency: 'INR',
-      minimumFractionDigits: 0,
-    }).format(value / 100);
-  };
 
   return (
     <div className="space-y-6">

@@ -18,6 +18,7 @@ import {
 
 import { analyticsApi } from '../../api';
 import { Card, CardHeader, PageLoading, StatCard } from '../../components/common';
+import { formatCurrency } from '@/utils/currency';
 
 const COLORS = ['#ec7428', '#f59e0b', '#10b981', '#3b82f6', '#8b5cf6'];
 
@@ -45,14 +46,6 @@ export function AnalyticsPage() {
   if (statsLoading) {
     return <PageLoading />;
   }
-
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('en-IN', {
-      style: 'currency',
-      currency: 'INR',
-      minimumFractionDigits: 0,
-    }).format(value / 100);
-  };
 
   return (
     <div className="space-y-6">

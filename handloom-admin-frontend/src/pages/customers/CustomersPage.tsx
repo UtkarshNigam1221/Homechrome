@@ -25,6 +25,7 @@ import {
 } from '../../components/common';
 import { useCursorPagination } from '../../hooks';
 import type { Customer } from '../../types';
+import { formatCurrency } from '@/utils/currency';
 import { CustomerFormModal } from './CustomerFormModal';
 
 export function CustomersPage() {
@@ -62,14 +63,6 @@ export function CustomersPage() {
 
   const customers = customersData?.items || [];
   const pagination = customersData?.pagination;
-
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('en-IN', {
-      style: 'currency',
-      currency: 'INR',
-      minimumFractionDigits: 0,
-    }).format(value / 100);
-  };
 
   const handleOpenCreate = () => {
     setEditingCustomer(null);

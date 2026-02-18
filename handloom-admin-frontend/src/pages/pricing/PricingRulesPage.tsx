@@ -22,6 +22,7 @@ import {
 } from '../../components/common';
 import { useCursorPagination } from '../../hooks';
 import type { PricingRule } from '../../types';
+import { formatCurrency } from '@/utils/currency';
 import { PricingRuleFormModal } from './PricingRuleFormModal';
 
 export function PricingRulesPage() {
@@ -62,13 +63,6 @@ export function PricingRulesPage() {
     setEditingRule(rule);
     setShowFormModal(true);
   };
-
-  const formatCurrency = (value: number) =>
-    new Intl.NumberFormat('en-IN', {
-      style: 'currency',
-      currency: 'INR',
-      minimumFractionDigits: 0,
-    }).format(value / 100);
 
   // Filter by search (client-side for now)
   const filteredRules = searchQuery

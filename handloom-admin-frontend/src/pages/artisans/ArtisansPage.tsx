@@ -23,6 +23,7 @@ import {
 } from '../../components/common';
 import { useCursorPagination } from '../../hooks';
 import type { Artisan } from '../../types';
+import { formatCurrency } from '@/utils/currency';
 import { ArtisanFormModal } from './ArtisanFormModal';
 
 export function ArtisansPage() {
@@ -62,14 +63,6 @@ export function ArtisansPage() {
   const handleEdit = (artisan: Artisan) => {
     setEditingArtisan(artisan);
     setShowFormModal(true);
-  };
-
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('en-IN', {
-      style: 'currency',
-      currency: 'INR',
-      minimumFractionDigits: 0,
-    }).format(value / 100);
   };
 
   return (

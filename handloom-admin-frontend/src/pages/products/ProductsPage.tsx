@@ -25,6 +25,7 @@ import {
 } from '../../components/common';
 import { useCursorPagination } from '../../hooks';
 import type { Category, CategoryAttribute, Product } from '../../types';
+import { formatCurrency } from '@/utils/currency';
 import { ProductFormModal } from './ProductFormModal';
 
 export function ProductsPage() {
@@ -96,14 +97,6 @@ export function ProductsPage() {
       toast.error(getErrorMessage(error));
     },
   });
-
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('en-IN', {
-      style: 'currency',
-      currency: 'INR',
-      minimumFractionDigits: 0,
-    }).format(value / 100);
-  };
 
   // Handle various response formats from the API
   // Backend returns { products: [...], pagination: {...} } or { categories: [...] } etc.
