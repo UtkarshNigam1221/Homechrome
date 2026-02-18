@@ -18,9 +18,8 @@ import {
 
 import { analyticsApi } from '../../api';
 import { Card, CardHeader, PageLoading, StatCard } from '../../components/common';
+import { CHART_COLORS, PIE_COLORS } from '@/utils/chartColors';
 import { formatCurrency } from '@/utils/currency';
-
-const COLORS = ['#ec7428', '#f59e0b', '#10b981', '#3b82f6', '#8b5cf6'];
 
 export function AnalyticsPage() {
   const { data: stats, isLoading: statsLoading } = useQuery({
@@ -88,16 +87,16 @@ export function AnalyticsPage() {
         <div className="h-80">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={salesData?.data || []}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+              <CartesianGrid strokeDasharray="3 3" stroke={CHART_COLORS.grid} />
               <XAxis
                 dataKey="date"
                 tickFormatter={(value) => format(new Date(value), 'MMM d')}
-                stroke="#9ca3af"
+                stroke={CHART_COLORS.axis}
                 fontSize={12}
               />
               <YAxis
                 tickFormatter={(value) => `₹${(value / 100000).toFixed(0)}K`}
-                stroke="#9ca3af"
+                stroke={CHART_COLORS.axis}
                 fontSize={12}
               />
               <Tooltip
@@ -107,7 +106,7 @@ export function AnalyticsPage() {
               <Line
                 type="monotone"
                 dataKey="revenue"
-                stroke="#ec7428"
+                stroke={CHART_COLORS.primary}
                 strokeWidth={2}
                 dot={false}
                 activeDot={{ r: 4, strokeWidth: 0 }}
@@ -124,25 +123,25 @@ export function AnalyticsPage() {
           <div className="h-80">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={topProducts || []} layout="vertical">
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <CartesianGrid strokeDasharray="3 3" stroke={CHART_COLORS.grid} />
                 <XAxis
                   type="number"
                   tickFormatter={(value) => `₹${(value / 100000).toFixed(0)}K`}
-                  stroke="#9ca3af"
+                  stroke={CHART_COLORS.axis}
                   fontSize={12}
                 />
                 <YAxis
                   type="category"
                   dataKey="product_name"
                   width={120}
-                  stroke="#9ca3af"
+                  stroke={CHART_COLORS.axis}
                   fontSize={12}
                   tickFormatter={(value) =>
                     value.length > 15 ? `${value.slice(0, 15)}...` : value
                   }
                 />
                 <Tooltip formatter={(value) => [formatCurrency(Number(value) || 0), 'Revenue']} />
-                <Bar dataKey="revenue" fill="#ec7428" radius={[0, 4, 4, 0]} />
+                <Bar dataKey="revenue" fill={CHART_COLORS.primary} radius={[0, 4, 4, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -167,7 +166,7 @@ export function AnalyticsPage() {
                   labelLine={false}
                 >
                   {(topCategories || []).map((_, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                    <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
                   ))}
                 </Pie>
                 <Tooltip formatter={(value) => [formatCurrency(Number(value) || 0), 'Revenue']} />
@@ -183,19 +182,19 @@ export function AnalyticsPage() {
         <div className="h-80">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={salesData?.data || []}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+              <CartesianGrid strokeDasharray="3 3" stroke={CHART_COLORS.grid} />
               <XAxis
                 dataKey="date"
                 tickFormatter={(value) => format(new Date(value), 'MMM d')}
-                stroke="#9ca3af"
+                stroke={CHART_COLORS.axis}
                 fontSize={12}
               />
-              <YAxis stroke="#9ca3af" fontSize={12} />
+              <YAxis stroke={CHART_COLORS.axis} fontSize={12} />
               <Tooltip
                 formatter={(value) => [Number(value) || 0, 'Orders']}
                 labelFormatter={(label) => format(new Date(label), 'MMM d, yyyy')}
               />
-              <Bar dataKey="orders" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="orders" fill={CHART_COLORS.blue} radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
