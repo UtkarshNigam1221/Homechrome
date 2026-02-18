@@ -15,7 +15,7 @@ export function MainLayout() {
       <main
         className={clsx(
           'pt-16 min-h-screen transition-all duration-300',
-          sidebarCollapsed ? 'ml-20' : 'ml-64'
+          sidebarCollapsed ? 'lg:ml-20' : 'lg:ml-64'
         )}
       >
         <div className="p-6">
