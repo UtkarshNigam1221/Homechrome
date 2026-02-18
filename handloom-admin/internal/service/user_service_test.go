@@ -218,6 +218,18 @@ func TestUserService_Delete(t *testing.T) {
 
 		require.Error(t, err)
 	})
+
+	t.Run("delete - token revoke failure is non-fatal", func(t *testing.T) {
+		mockUserRepo.EXPECT().
+			Delete(ctx, "user_456").
+			Return(nil)
+		mockTokenStore.EXPECT().
+			RevokeAllUserTokens(ctx, "user_456").
+			Return(errors.Internal("redis down"))
+
+		err := service.Delete(ctx, "user_456")
+		require.NoError(t, err) // should still succeed
+	})
 }
 
 func TestUserService_List(t *testing.T) {

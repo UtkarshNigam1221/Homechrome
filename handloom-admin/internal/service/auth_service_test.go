@@ -113,6 +113,21 @@ func TestAuthService_Login(t *testing.T) {
 			wantErr: true,
 			errCode: "USER_INACTIVE",
 		},
+		{
+			name: "store refresh token fails - returns error",
+			req:  domain.LoginRequest{Email: "test@example.com", Password: "password123"},
+			setup: func() {
+				userRepo.EXPECT().GetByEmail(ctx, "test@example.com").Return(&domain.User{
+					ID: "user_123", Email: "test@example.com",
+					PasswordHash: string(hashedPassword), Status: domain.UserStatusActive,
+					Role: domain.UserRoleAdmin, Permissions: []string{"*"},
+				}, nil)
+				tokenStore.EXPECT().RevokeAllUserTokens(ctx, "user_123").Return(nil)
+				tokenStore.EXPECT().StoreRefreshToken(ctx, "user_123", gomock.Any(), gomock.Any()).Return(errors.Internal("redis down"))
+			},
+			wantErr: true,
+			errCode: "INTERNAL",
+		},
 	}
 
 	for _, tt := range tests {
@@ -319,4 +334,125 @@ func TestAuthService_ChangePassword(t *testing.T) {
 		})
 		require.Error(t, err)
 	})
+}
+
+func TestAuthService_RequestPasswordReset(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	userRepo := mocks.NewMockUserRepository(ctrl)
+	tokenStore := mocks.NewMockTokenStore(ctrl)
+	log := logger.New(true)
+
+	svc := NewAuthService(userRepo, tokenStore, log, "test-secret", 15*time.Minute, 7*24*time.Hour, "test-issuer")
+	ctx := context.Background()
+
+	tests := []struct {
+		name    string
+		email   string
+		setup   func()
+		wantErr bool
+	}{
+		{
+			name:  "existing user - stores reset token",
+			email: "test@example.com",
+			setup: func() {
+				userRepo.EXPECT().GetByEmail(ctx, "test@example.com").Return(&domain.User{
+					ID:    "user_123",
+					Email: "test@example.com",
+				}, nil)
+				tokenStore.EXPECT().StorePasswordResetToken(ctx, "user_123", gomock.Any(), time.Hour).Return(nil)
+			},
+			wantErr: false,
+		},
+		{
+			name:  "non-existent email - succeeds silently (no leak)",
+			email: "noone@example.com",
+			setup: func() {
+				userRepo.EXPECT().GetByEmail(ctx, "noone@example.com").Return(nil, errors.NotFound("User"))
+			},
+			wantErr: false,
+		},
+		{
+			name:  "repo error - returns error",
+			email: "test@example.com",
+			setup: func() {
+				userRepo.EXPECT().GetByEmail(ctx, "test@example.com").Return(nil, errors.Internal("db error"))
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.setup()
+			err := svc.RequestPasswordReset(ctx, tt.email)
+			if tt.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestAuthService_ResetPassword(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	userRepo := mocks.NewMockUserRepository(ctrl)
+	tokenStore := mocks.NewMockTokenStore(ctrl)
+	log := logger.New(true)
+
+	svc := NewAuthService(userRepo, tokenStore, log, "test-secret", 15*time.Minute, 7*24*time.Hour, "test-issuer")
+	ctx := context.Background()
+
+	tests := []struct {
+		name    string
+		req     domain.ResetPasswordRequest
+		setup   func()
+		wantErr bool
+	}{
+		{
+			name: "valid reset token",
+			req:  domain.ResetPasswordRequest{Token: "valid-token", NewPassword: "newpass123"},
+			setup: func() {
+				tokenStore.EXPECT().ValidatePasswordResetToken(ctx, "valid-token").Return("user_123", nil)
+				userRepo.EXPECT().GetByID(ctx, "user_123").Return(&domain.User{ID: "user_123"}, nil)
+				userRepo.EXPECT().Update(ctx, gomock.Any()).Return(nil)
+				tokenStore.EXPECT().RevokePasswordResetToken(ctx, "valid-token").Return(nil)
+				tokenStore.EXPECT().RevokeAllUserTokens(ctx, "user_123").Return(nil)
+			},
+			wantErr: false,
+		},
+		{
+			name: "invalid reset token",
+			req:  domain.ResetPasswordRequest{Token: "bad-token", NewPassword: "newpass123"},
+			setup: func() {
+				tokenStore.EXPECT().ValidatePasswordResetToken(ctx, "bad-token").Return("", errors.New(errors.ErrCodeInvalidToken, "expired"))
+			},
+			wantErr: true,
+		},
+		{
+			name: "user not found after token validation",
+			req:  domain.ResetPasswordRequest{Token: "valid-token", NewPassword: "newpass123"},
+			setup: func() {
+				tokenStore.EXPECT().ValidatePasswordResetToken(ctx, "valid-token").Return("user_999", nil)
+				userRepo.EXPECT().GetByID(ctx, "user_999").Return(nil, errors.NotFound("User"))
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.setup()
+			err := svc.ResetPassword(ctx, tt.req)
+			if tt.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
 }
