@@ -40,22 +40,8 @@ export function InventoryPage() {
     queryFn: () => productsApi.list({ limit, cursor, search: searchQuery || undefined }),
   });
 
-  // Handle various response formats from the API
-  const extractItems = <T,>(data: unknown, key?: string): T[] => {
-    if (!data) return [];
-    if (Array.isArray(data)) return data as T[];
-    if (typeof data === 'object' && data !== null) {
-      const record = data as Record<string, unknown>;
-      if (key && key in record) return record[key] as T[];
-      if ('items' in record) return record.items as T[];
-      if ('inventories' in record) return record.inventories as T[];
-      if ('data' in record) return Array.isArray(record.data) ? (record.data as T[]) : [];
-    }
-    return [];
-  };
-
-  const lowStockItems = extractItems<Product>(lowStockData, 'inventories');
-  const products = extractItems<Product>(productsData, 'products');
+  const lowStockItems = lowStockData?.items ?? [];
+  const products = productsData?.items ?? [];
   const pagination = productsData?.pagination;
 
   const lowStockCount = lowStockItems.length;

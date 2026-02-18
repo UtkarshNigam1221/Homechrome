@@ -24,7 +24,7 @@ import {
   TableRow,
 } from '../../components/common';
 import { useCursorPagination } from '../../hooks';
-import type { Category, CategoryAttribute, Product } from '../../types';
+import type { CategoryAttribute, Product } from '../../types';
 import { formatCurrency } from '@/utils/currency';
 import { ProductFormModal } from './ProductFormModal';
 
@@ -98,21 +98,7 @@ export function ProductsPage() {
     },
   });
 
-  // Handle various response formats from the API
-  // Backend returns { products: [...], pagination: {...} } or { categories: [...] } etc.
-  const extractItems = <T,>(data: unknown, key?: string): T[] => {
-    if (!data) return [];
-    if (Array.isArray(data)) return data as T[];
-    if (typeof data === 'object' && data !== null) {
-      const record = data as Record<string, unknown>;
-      if (key && key in record) return (record[key] as T[]) || [];
-      if ('items' in record) return (record.items as T[]) || [];
-      if ('data' in record) return Array.isArray(record.data) ? (record.data as T[]) : [];
-    }
-    return [];
-  };
-
-  const products = extractItems<Product>(productsData, 'products');
+  const products = productsData?.items ?? [];
   const pagination = productsData?.pagination;
 
   // Build category attributes enriched with distinct values from GSI
@@ -137,7 +123,7 @@ export function ProductsPage() {
     });
   })();
 
-  const categories = extractItems<Category>(categoriesData, 'categories');
+  const categories = categoriesData?.items ?? [];
   const categoryOptions = [
     { value: '', label: 'All Categories' },
     ...categories.map((cat) => ({ value: cat.id, label: cat.name })),

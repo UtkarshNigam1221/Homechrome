@@ -165,21 +165,7 @@ export function PricingRuleFormModal({ isOpen, onClose, rule }: PricingRuleFormM
     }));
   };
 
-  // Handle various response formats from the API
-  // Backend returns { categories: [...], pagination: {...} }
-  const extractItems = (data: unknown, key?: string): Category[] => {
-    if (!data) return [];
-    if (Array.isArray(data)) return data as Category[];
-    if (typeof data === 'object' && data !== null) {
-      const record = data as Record<string, unknown>;
-      if (key && key in record) return record[key] as Category[];
-      if ('items' in record) return record.items as Category[];
-      if ('data' in record) return Array.isArray(record.data) ? (record.data as Category[]) : [];
-    }
-    return [];
-  };
-
-  const categories = extractItems(categoriesData, 'categories');
+  const categories = categoriesData?.items ?? [];
   const categoryOptions = [
     { value: '', label: 'Select a category' },
     ...flattenCategories(categories),

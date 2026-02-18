@@ -8,7 +8,6 @@ import { z } from 'zod';
 import { artisansApi, categoriesApi, getErrorMessage, productsApi } from '../../api';
 import { Button, ImageUpload, Input, Modal, Select } from '../../components/common';
 import type {
-  Artisan,
   Category,
   CategoryAttribute,
   CreateProductRequest,
@@ -336,19 +335,6 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
     }));
   };
 
-  // Handle various response formats from the API
-  const extractItems = <T,>(data: unknown, key?: string): T[] => {
-    if (!data) return [];
-    if (Array.isArray(data)) return data as T[];
-    if (typeof data === 'object' && data !== null) {
-      const record = data as Record<string, unknown>;
-      if (key && key in record) return record[key] as T[];
-      if ('items' in record) return record.items as T[];
-      if ('data' in record) return Array.isArray(record.data) ? (record.data as T[]) : [];
-    }
-    return [];
-  };
-
   // Render a dynamic form field based on attribute type
   const renderAttributeField = (attr: CategoryAttribute) => {
     const value = attributeValues[attr.name];
@@ -466,8 +452,8 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
     }
   };
 
-  const categories = extractItems<Category>(categoriesData, 'categories');
-  const artisans = extractItems<Artisan>(artisansData, 'artisans');
+  const categories = categoriesData?.items ?? [];
+  const artisans = artisansData?.items ?? [];
 
   const categoryOptions = getCategoryOptions(categories);
 

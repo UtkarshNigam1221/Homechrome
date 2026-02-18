@@ -66,22 +66,7 @@ export function BulkOperationsPage() {
     queryFn: () => bulkApi.list({ limit, cursor }),
   });
 
-  // Handle various response formats from the API
-  const extractItems = (responseData: unknown, key?: string): BulkOperation[] => {
-    if (!responseData) return [];
-    if (Array.isArray(responseData)) return responseData as BulkOperation[];
-    if (typeof responseData === 'object' && responseData !== null) {
-      const record = responseData as Record<string, unknown>;
-      if (key && key in record) return record[key] as BulkOperation[];
-      if ('operations' in record) return record.operations as BulkOperation[];
-      if ('items' in record) return record.items as BulkOperation[];
-      if ('data' in record)
-        return Array.isArray(record.data) ? (record.data as BulkOperation[]) : [];
-    }
-    return [];
-  };
-
-  const operations = extractItems(data, 'operations');
+  const operations = data?.items ?? [];
   const pagination = data?.pagination;
 
   const getStatusIcon = (status: string) => {
