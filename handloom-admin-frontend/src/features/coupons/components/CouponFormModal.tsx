@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { couponsApi } from '@/features/coupons/api';
 import { getErrorMessage } from '@/shared/api/client';
 import { Button, Input, Modal, Select } from '@/shared/components/ui';
+
 import type { Coupon, CreateCouponRequest } from '../types';
 
 const couponSchema = z.object({

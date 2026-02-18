@@ -21,8 +21,8 @@ import {
   TableRow,
 } from '@/shared/components/ui';
 import { useCursorPagination, useDebounce } from '@/shared/hooks';
-import type { Product } from '../types';
 
+import type { Product } from '../types';
 import { StockAdjustmentModal } from './StockAdjustmentModal';
 
 export function InventoryPage() {

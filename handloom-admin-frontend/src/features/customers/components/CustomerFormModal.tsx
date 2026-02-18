@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { customersApi } from '@/features/customers/api';
 import { getErrorMessage } from '@/shared/api/client';
 import { Button, Input, Modal, Select } from '@/shared/components/ui';
+
 import type { CreateCustomerRequest, Customer, UpdateCustomerRequest } from '../types';
 
 const customerSchema = z.object({

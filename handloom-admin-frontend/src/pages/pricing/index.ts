@@ -1,1 +1,0 @@
-export { PricingRulesPage } from './PricingRulesPage';

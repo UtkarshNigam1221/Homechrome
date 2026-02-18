@@ -1,7 +1,6 @@
+import type { Product } from '@/features/products/types';
 import apiClient, { normalizeListResponse } from '@/shared/api/client';
 import type { ListResponse, PaginationParams } from '@/shared/types/common';
-
-import type { Product } from '@/features/products/types';
 
 import type { Artisan, CreateArtisanRequest } from './types';
 

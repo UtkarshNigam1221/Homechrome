@@ -9,10 +9,10 @@ import { artisansApi } from '@/features/artisans/api';
 import { categoriesApi } from '@/features/categories/api';
 import type { Category, CategoryAttribute } from '@/features/categories/types';
 import { productsApi } from '@/features/products/api';
-import type { CreateProductRequest, Product } from '../../types';
 import { getErrorMessage } from '@/shared/api/client';
 import { Button, ImageUpload, Input, Modal, Select } from '@/shared/components/ui';
 
+import type { CreateProductRequest, Product } from '../../types';
 import { AttributeFields } from './AttributeFields';
 
 const productSchema = z.object({

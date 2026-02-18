@@ -16,19 +16,11 @@ import { useNavigate, useParams } from 'react-router-dom';
 
 import { ordersApi } from '@/features/orders/api';
 import { getErrorMessage } from '@/shared/api/client';
-import {
-  Badge,
-  Button,
-  Card,
-  ConfirmModal,
-  Input,
-  Modal,
-  Select,
-} from '@/shared/components/ui';
+import { Badge, Button, Card, ConfirmModal, Input, Modal, Select } from '@/shared/components/ui';
 import { getStatusBadgeVariant } from '@/shared/utils/badge';
-import type { OrderStatus } from '../../types';
 import { formatCurrency } from '@/shared/utils/currency';
 
+import type { OrderStatus } from '../../types';
 import { OrderNotes } from './OrderNotes';
 import { OrderTimeline } from './OrderTimeline';
 
@@ -285,9 +277,7 @@ export function OrderDetailPage() {
           </Card>
 
           {/* Notes */}
-          {order.notes && order.notes.length > 0 && (
-            <OrderNotes notes={order.notes} />
-          )}
+          {order.notes && order.notes.length > 0 && <OrderNotes notes={order.notes} />}
         </div>
 
         {/* Sidebar */}

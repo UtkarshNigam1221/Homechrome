@@ -7,8 +7,9 @@ import toast from 'react-hot-toast';
 
 import { notificationsApi } from '@/features/notifications/api';
 import { getErrorMessage } from '@/shared/api/client';
-import { Badge, Button, Card } from '@/shared/components/ui';
 import { PageLoading } from '@/shared/components/loading';
+import { Badge, Button, Card } from '@/shared/components/ui';
+
 import type { NotificationType } from '../types';
 
 const getNotificationIcon = (type: NotificationType) => {

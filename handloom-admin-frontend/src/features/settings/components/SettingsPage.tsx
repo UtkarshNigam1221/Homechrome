@@ -8,12 +8,12 @@ import toast from 'react-hot-toast';
 import { z } from 'zod';
 
 import { authApi } from '@/features/auth/api';
+import type { User } from '@/features/auth/types';
 import { usersApi } from '@/features/settings/api';
 import { getErrorMessage } from '@/shared/api/client';
 import { Button, Card, CardHeader, Input } from '@/shared/components/ui';
 import { useAuthStore } from '@/shared/stores/authStore';
 import { useUIStore } from '@/shared/stores/uiStore';
-import type { User } from '@/features/auth/types';
 
 type SettingsTab = 'profile' | 'security' | 'notifications' | 'appearance';
 

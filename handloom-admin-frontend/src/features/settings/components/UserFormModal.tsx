@@ -5,10 +5,10 @@ import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
 import { z } from 'zod';
 
+import type { CreateUserRequest, User } from '@/features/auth/types';
 import { usersApi } from '@/features/settings/api';
 import { getErrorMessage } from '@/shared/api/client';
 import { Button, Input, Modal, Select } from '@/shared/components/ui';
-import type { CreateUserRequest, User } from '@/features/auth/types';
 
 const userSchema = z.object({
   first_name: z

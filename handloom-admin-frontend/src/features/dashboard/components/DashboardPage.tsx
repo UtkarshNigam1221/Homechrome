@@ -25,13 +25,8 @@ import {
 import { analyticsApi } from '@/features/analytics/api';
 import { inventoryApi } from '@/features/inventory/api';
 import { ordersApi } from '@/features/orders/api';
-import {
-  Badge,
-  Card,
-  CardHeader,
-  StatCard,
-} from '@/shared/components/ui';
 import { DashboardSkeleton } from '@/shared/components/loading';
+import { Badge, Card, CardHeader, StatCard } from '@/shared/components/ui';
 import { getStatusBadgeVariant } from '@/shared/utils/badge';
 import { CHART_COLORS } from '@/shared/utils/chartColors';
 import { formatCurrency } from '@/shared/utils/currency';

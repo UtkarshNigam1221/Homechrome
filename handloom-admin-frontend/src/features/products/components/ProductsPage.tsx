@@ -6,7 +6,6 @@ import toast from 'react-hot-toast';
 import { categoriesApi } from '@/features/categories/api';
 import type { CategoryAttribute } from '@/features/categories/types';
 import { productsApi } from '@/features/products/api';
-import type { Product } from '../types';
 import { getErrorMessage } from '@/shared/api/client';
 import {
   Badge,
@@ -25,10 +24,11 @@ import {
   TableLoading,
   TableRow,
 } from '@/shared/components/ui';
-import { getStatusBadgeVariant } from '@/shared/utils/badge';
 import { useCursorPagination, useDebounce } from '@/shared/hooks';
+import { getStatusBadgeVariant } from '@/shared/utils/badge';
 import { formatCurrency } from '@/shared/utils/currency';
 
+import type { Product } from '../types';
 import { AttributeFilterSidebar } from './AttributeFilterSidebar';
 import { ProductFormModal } from './ProductFormModal';
 

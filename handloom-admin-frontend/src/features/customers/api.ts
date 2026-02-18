@@ -1,7 +1,6 @@
+import type { Order } from '@/features/orders/types';
 import apiClient, { normalizeListResponse } from '@/shared/api/client';
 import type { ListResponse, PaginationParams } from '@/shared/types/common';
-
-import type { Order } from '@/features/orders/types';
 
 import type { CreateCustomerRequest, Customer } from './types';
 

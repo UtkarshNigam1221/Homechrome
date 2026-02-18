@@ -22,10 +22,10 @@ import {
   TableLoading,
   TableRow,
 } from '@/shared/components/ui';
-import { getStatusBadgeVariant } from '@/shared/utils/badge';
 import { useCursorPagination, useDebounce } from '@/shared/hooks';
-import type { Coupon } from '../types';
+import { getStatusBadgeVariant } from '@/shared/utils/badge';
 
+import type { Coupon } from '../types';
 import { CouponFormModal } from './CouponFormModal';
 
 export function CouponsPage() {

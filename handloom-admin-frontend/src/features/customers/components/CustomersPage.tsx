@@ -23,11 +23,11 @@ import {
   TableLoading,
   TableRow,
 } from '@/shared/components/ui';
-import { getStatusBadgeVariant } from '@/shared/utils/badge';
 import { useCursorPagination, useDebounce } from '@/shared/hooks';
-import type { Customer } from '../types';
+import { getStatusBadgeVariant } from '@/shared/utils/badge';
 import { formatCurrency } from '@/shared/utils/currency';
 
+import type { Customer } from '../types';
 import { CustomerFormModal } from './CustomerFormModal';
 
 export function CustomersPage() {

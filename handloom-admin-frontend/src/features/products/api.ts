@@ -1,7 +1,6 @@
+import type { Inventory, InventoryTransaction } from '@/features/inventory/types';
 import apiClient, { normalizeListResponse } from '@/shared/api/client';
 import type { ListResponse, PaginationParams } from '@/shared/types/common';
-
-import type { Inventory, InventoryTransaction } from '@/features/inventory/types';
 
 import type { CreateProductRequest, Product } from './types';
 

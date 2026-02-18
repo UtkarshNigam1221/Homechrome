@@ -6,10 +6,11 @@ import toast from 'react-hot-toast';
 import { z } from 'zod';
 
 import { categoriesApi } from '@/features/categories/api';
+import type { Category } from '@/features/categories/types';
 import { pricingApi } from '@/features/pricing/api';
 import { getErrorMessage } from '@/shared/api/client';
 import { Button, Input, Modal, Select } from '@/shared/components/ui';
-import type { Category } from '@/features/categories/types';
+
 import type { PricingRule, PricingUnit } from '../types';
 
 const pricingRuleSchema = z.object({

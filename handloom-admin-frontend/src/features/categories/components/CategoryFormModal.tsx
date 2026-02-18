@@ -9,6 +9,7 @@ import { z } from 'zod';
 import { categoriesApi } from '@/features/categories/api';
 import { getErrorMessage } from '@/shared/api/client';
 import { Button, Input, Modal, Select } from '@/shared/components/ui';
+
 import type { AttributeType, Category, CategoryAttribute, CreateCategoryRequest } from '../types';
 
 const attributeOptionSchema = z.object({

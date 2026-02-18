@@ -1,8 +1,8 @@
 import type { AxiosError, AxiosInstance, AxiosRequestConfig } from 'axios';
 import axios from 'axios';
 
-import type { ListResponse } from '@/shared/types/common';
 import { useAuthStore } from '@/shared/stores/authStore';
+import type { ListResponse } from '@/shared/types/common';
 
 // In dev, Vite proxy handles /admin/* → API Gateway (same-origin, cookies work).
 // In production builds, VITE_API_URL points to the real API.

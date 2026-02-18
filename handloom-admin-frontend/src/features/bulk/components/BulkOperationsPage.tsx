@@ -18,10 +18,10 @@ import {
   TableLoading,
   TableRow,
 } from '@/shared/components/ui';
-import { getStatusBadgeVariant } from '@/shared/utils/badge';
 import { useCursorPagination } from '@/shared/hooks';
-import type { BulkOperation } from '../types';
+import { getStatusBadgeVariant } from '@/shared/utils/badge';
 
+import type { BulkOperation } from '../types';
 import { BulkExportModal } from './BulkExportModal';
 import { BulkImportModal } from './BulkImportModal';
 

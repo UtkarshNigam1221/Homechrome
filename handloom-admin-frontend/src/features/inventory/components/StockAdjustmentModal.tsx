@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { inventoryApi } from '@/features/inventory/api';
 import { getErrorMessage } from '@/shared/api/client';
 import { Button, Input, Modal, Select } from '@/shared/components/ui';
+
 import type { Product } from '../types';
 
 const stockAdjustmentSchema = z.object({

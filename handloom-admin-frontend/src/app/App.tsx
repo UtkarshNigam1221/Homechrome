@@ -3,6 +3,7 @@ import { BrowserRouter } from 'react-router-dom';
 
 import { authApi } from '@/features/auth/api';
 import { useAuthStore } from '@/shared/stores/authStore';
+
 import { Providers } from './providers';
 import { AppRoutes } from './routes';
 

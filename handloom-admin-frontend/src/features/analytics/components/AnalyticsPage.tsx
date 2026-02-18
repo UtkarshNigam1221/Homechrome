@@ -17,8 +17,8 @@ import {
 } from 'recharts';
 
 import { analyticsApi } from '@/features/analytics/api';
-import { Card, CardHeader, StatCard } from '@/shared/components/ui';
 import { PageLoading } from '@/shared/components/loading';
+import { Card, CardHeader, StatCard } from '@/shared/components/ui';
 import { CHART_COLORS, PIE_COLORS } from '@/shared/utils/chartColors';
 import { formatCurrency } from '@/shared/utils/currency';
 

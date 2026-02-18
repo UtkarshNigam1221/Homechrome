@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { artisansApi } from '@/features/artisans/api';
 import { getErrorMessage } from '@/shared/api/client';
 import { Button, Input, Modal, Select } from '@/shared/components/ui';
+
 import type { Artisan, CreateArtisanRequest, UpdateArtisanRequest } from '../types';
 
 const artisanSchema = z.object({

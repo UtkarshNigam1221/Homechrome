@@ -24,10 +24,11 @@ import {
   TableLoading,
   TableRow,
 } from '@/shared/components/ui';
-import { getStatusBadgeVariant } from '@/shared/utils/badge';
 import { useCursorPagination, useDebounce } from '@/shared/hooks';
-import type { Order, OrderStatus } from '../types';
+import { getStatusBadgeVariant } from '@/shared/utils/badge';
 import { formatCurrency } from '@/shared/utils/currency';
+
+import type { Order, OrderStatus } from '../types';
 
 const ORDER_STATUSES: OrderStatus[] = [
   'PENDING',

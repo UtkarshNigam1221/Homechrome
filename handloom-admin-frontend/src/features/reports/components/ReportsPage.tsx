@@ -23,8 +23,9 @@ import {
   TableLoading,
   TableRow,
 } from '@/shared/components/ui';
-import { getStatusBadgeVariant } from '@/shared/utils/badge';
 import { useCursorPagination } from '@/shared/hooks';
+import { getStatusBadgeVariant } from '@/shared/utils/badge';
+
 import type { ReportFormat, ReportType } from '../types';
 
 const REPORT_TYPES: { value: ReportType; label: string; description: string }[] = [

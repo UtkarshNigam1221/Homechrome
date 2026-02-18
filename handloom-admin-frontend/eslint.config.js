@@ -10,7 +10,7 @@ import prettierConfig from 'eslint-config-prettier';
 export default [
   // Ignore patterns
   {
-    ignores: ['dist', 'node_modules', 'coverage', '*.min.js'],
+    ignores: ['dist', 'node_modules', 'coverage', '*.min.js', 'infra'],
   },
 
   // Base JavaScript config

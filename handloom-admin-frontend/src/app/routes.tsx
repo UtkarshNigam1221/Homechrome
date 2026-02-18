@@ -2,10 +2,10 @@ import type { ComponentType } from 'react';
 import { lazy, Suspense } from 'react';
 import { Navigate, Outlet, Route, Routes } from 'react-router-dom';
 
-import { LoadingOverlay, PageLoading } from '@/shared/components/loading';
-import { MainLayout } from '@/shared/components/layout';
-import { useAuthStore } from '@/shared/stores/authStore';
 import { LoginPage } from '@/features/auth';
+import { MainLayout } from '@/shared/components/layout';
+import { LoadingOverlay, PageLoading } from '@/shared/components/loading';
+import { useAuthStore } from '@/shared/stores/authStore';
 
 // Suspense wrapper to reduce repetitive <Suspense> in routes
 function withSuspense<P extends object>(LazyComponent: ComponentType<P>) {
@@ -68,9 +68,7 @@ const Settings = withSuspense(
   lazy(() => import('@/features/settings').then((m) => ({ default: m.SettingsPage })))
 );
 const NotFound = withSuspense(
-  lazy(() =>
-    import('@/shared/components/NotFoundPage').then((m) => ({ default: m.NotFoundPage }))
-  )
+  lazy(() => import('@/shared/components/NotFoundPage').then((m) => ({ default: m.NotFoundPage })))
 );
 
 // Protected Route wrapper

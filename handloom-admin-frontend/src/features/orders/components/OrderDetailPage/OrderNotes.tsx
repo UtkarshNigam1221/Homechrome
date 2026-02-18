@@ -2,6 +2,7 @@ import { format } from 'date-fns';
 import { MessageSquare } from 'lucide-react';
 
 import { Badge, Card } from '@/shared/components/ui';
+
 import type { OrderNote } from '../../types';
 
 interface OrderNotesProps {

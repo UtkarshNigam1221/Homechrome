@@ -5,19 +5,12 @@ import toast from 'react-hot-toast';
 
 import { categoriesApi } from '@/features/categories/api';
 import { getErrorMessage } from '@/shared/api/client';
-import {
-  Badge,
-  Button,
-  Card,
-  ConfirmModal,
-  Input,
-  Pagination,
-} from '@/shared/components/ui';
 import { PageLoading } from '@/shared/components/loading';
-import { getStatusBadgeVariant } from '@/shared/utils/badge';
+import { Badge, Button, Card, ConfirmModal, Input, Pagination } from '@/shared/components/ui';
 import { useCursorPagination } from '@/shared/hooks';
-import type { Category } from '../types';
+import { getStatusBadgeVariant } from '@/shared/utils/badge';
 
+import type { Category } from '../types';
 import { CategoryFormModal } from './CategoryFormModal';
 
 export function CategoriesPage() {

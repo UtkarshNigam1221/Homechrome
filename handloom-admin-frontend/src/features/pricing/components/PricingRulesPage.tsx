@@ -22,9 +22,9 @@ import {
   TableRow,
 } from '@/shared/components/ui';
 import { useCursorPagination } from '@/shared/hooks';
-import type { PricingRule } from '../types';
 import { formatCurrency } from '@/shared/utils/currency';
 
+import type { PricingRule } from '../types';
 import { PricingRuleFormModal } from './PricingRuleFormModal';
 
 export function PricingRulesPage() {

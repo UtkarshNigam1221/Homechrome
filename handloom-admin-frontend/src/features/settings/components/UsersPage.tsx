@@ -4,6 +4,7 @@ import { Edit, Plus, Search, Shield, Trash2, User, UserCheck, UserX } from 'luci
 import { useState } from 'react';
 import toast from 'react-hot-toast';
 
+import type { User as UserType, UserRole, UserStatus } from '@/features/auth/types';
 import { usersApi } from '@/features/settings/api';
 import { getErrorMessage } from '@/shared/api/client';
 import {
@@ -23,9 +24,8 @@ import {
   TableHeader,
   TableRow,
 } from '@/shared/components/ui';
-import { getStatusBadgeVariant } from '@/shared/utils/badge';
 import { useCursorPagination, useDebounce } from '@/shared/hooks';
-import type { User as UserType, UserRole, UserStatus } from '@/features/auth/types';
+import { getStatusBadgeVariant } from '@/shared/utils/badge';
 
 import { UserFormModal } from './UserFormModal';
 
