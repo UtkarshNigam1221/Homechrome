@@ -41,7 +41,13 @@ const navigation = [
 
 const adminNavigation = [{ name: 'Users', href: '/users', icon: Users }];
 
-function SidebarContent({ collapsed, onNavClick }: { collapsed: boolean; onNavClick?: () => void }) {
+function SidebarContent({
+  collapsed,
+  onNavClick,
+}: {
+  collapsed: boolean;
+  onNavClick?: () => void;
+}) {
   const location = useLocation();
   const { user } = useAuthStore();
   const isAdmin = user?.role === 'ADMIN';

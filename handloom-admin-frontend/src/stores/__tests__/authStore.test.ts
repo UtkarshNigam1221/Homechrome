@@ -27,7 +27,9 @@ describe('authStore', () => {
   });
 
   it('logout clears user', () => {
-    useAuthStore.getState().login({ id: '1', email: 'test@test.com', name: 'Test', role: 'ADMIN' } as never);
+    useAuthStore
+      .getState()
+      .login({ id: '1', email: 'test@test.com', name: 'Test', role: 'ADMIN' } as never);
     useAuthStore.getState().logout();
     const state = useAuthStore.getState();
     expect(state.isAuthenticated).toBe(false);

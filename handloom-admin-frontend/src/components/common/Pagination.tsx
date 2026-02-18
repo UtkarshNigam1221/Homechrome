@@ -61,9 +61,7 @@ export function Pagination({
           disabled={!hasPrevious}
           className={clsx(
             'flex items-center gap-1 px-3 py-1.5 text-sm font-medium rounded-lg transition-colors',
-            !hasPrevious
-              ? 'text-gray-300 cursor-not-allowed'
-              : 'text-gray-600 hover:bg-gray-100'
+            !hasPrevious ? 'text-gray-300 cursor-not-allowed' : 'text-gray-600 hover:bg-gray-100'
           )}
         >
           <ChevronLeft className="w-4 h-4" />
@@ -74,9 +72,7 @@ export function Pagination({
           disabled={!hasMore}
           className={clsx(
             'flex items-center gap-1 px-3 py-1.5 text-sm font-medium rounded-lg transition-colors',
-            !hasMore
-              ? 'text-gray-300 cursor-not-allowed'
-              : 'text-gray-600 hover:bg-gray-100'
+            !hasMore ? 'text-gray-300 cursor-not-allowed' : 'text-gray-600 hover:bg-gray-100'
           )}
         >
           Next

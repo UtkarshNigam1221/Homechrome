@@ -136,14 +136,16 @@ function ProfileSettings({ user }: { user: User | null }) {
   );
 }
 
-const passwordSchema = z.object({
-  current_password: z.string().min(1, 'Current password is required'),
-  new_password: z.string().min(8, 'Password must be at least 8 characters'),
-  confirm_password: z.string(),
-}).refine(data => data.new_password === data.confirm_password, {
-  message: 'Passwords do not match',
-  path: ['confirm_password'],
-});
+const passwordSchema = z
+  .object({
+    current_password: z.string().min(1, 'Current password is required'),
+    new_password: z.string().min(8, 'Password must be at least 8 characters'),
+    confirm_password: z.string(),
+  })
+  .refine((data) => data.new_password === data.confirm_password, {
+    message: 'Passwords do not match',
+    path: ['confirm_password'],
+  });
 
 type PasswordFormData = z.infer<typeof passwordSchema>;
 
@@ -226,7 +228,9 @@ function NotificationSettings() {
               <input
                 type="checkbox"
                 checked={notificationPrefs.orderUpdates}
-                onChange={() => setNotificationPref('orderUpdates', !notificationPrefs.orderUpdates)}
+                onChange={() =>
+                  setNotificationPref('orderUpdates', !notificationPrefs.orderUpdates)
+                }
                 className="w-4 h-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
               />
             </label>
@@ -235,7 +239,9 @@ function NotificationSettings() {
               <input
                 type="checkbox"
                 checked={notificationPrefs.inventoryAlerts}
-                onChange={() => setNotificationPref('inventoryAlerts', !notificationPrefs.inventoryAlerts)}
+                onChange={() =>
+                  setNotificationPref('inventoryAlerts', !notificationPrefs.inventoryAlerts)
+                }
                 className="w-4 h-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
               />
             </label>
@@ -244,7 +250,9 @@ function NotificationSettings() {
               <input
                 type="checkbox"
                 checked={notificationPrefs.systemNotifications}
-                onChange={() => setNotificationPref('systemNotifications', !notificationPrefs.systemNotifications)}
+                onChange={() =>
+                  setNotificationPref('systemNotifications', !notificationPrefs.systemNotifications)
+                }
                 className="w-4 h-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
               />
             </label>
@@ -253,7 +261,9 @@ function NotificationSettings() {
               <input
                 type="checkbox"
                 checked={notificationPrefs.emailNotifications}
-                onChange={() => setNotificationPref('emailNotifications', !notificationPrefs.emailNotifications)}
+                onChange={() =>
+                  setNotificationPref('emailNotifications', !notificationPrefs.emailNotifications)
+                }
                 className="w-4 h-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
               />
             </label>

@@ -322,11 +322,7 @@ export function OrderDetailPage() {
                 <p className="font-medium">{order.customer_name}</p>
                 <p className="text-sm text-gray-500">{order.customer_email}</p>
               </div>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => navigate('/customers')}
-              >
+              <Button variant="secondary" size="sm" onClick={() => navigate('/customers')}>
                 View Customer
               </Button>
             </div>

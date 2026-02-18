@@ -21,10 +21,19 @@ import {
 } from '@/components/common';
 import { useCursorPagination, useDebounce } from '@/hooks';
 import type { Product } from '@/types';
+
 import { StockAdjustmentModal } from './StockAdjustmentModal';
 
 export function InventoryPage() {
-  const { limit, cursor, hasPrevious, goToNextPage, goToPreviousPage, resetPagination, changeLimit } = useCursorPagination(10);
+  const {
+    limit,
+    cursor,
+    hasPrevious,
+    goToNextPage,
+    goToPreviousPage,
+    resetPagination,
+    changeLimit,
+  } = useCursorPagination(10);
   const [searchQuery, setSearchQuery] = useState('');
   const debouncedSearch = useDebounce(searchQuery, 300);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);

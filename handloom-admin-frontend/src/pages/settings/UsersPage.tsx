@@ -25,6 +25,7 @@ import {
 } from '@/components/common';
 import { useCursorPagination, useDebounce } from '@/hooks';
 import type { User as UserType, UserRole, UserStatus } from '@/types';
+
 import { UserFormModal } from './UserFormModal';
 
 // Skeleton for Users table rows
@@ -79,7 +80,15 @@ function UsersTableSkeleton({ rows = 5 }: { rows?: number }) {
 
 export function UsersPage() {
   const queryClient = useQueryClient();
-  const { limit, cursor, hasPrevious, goToNextPage, goToPreviousPage, resetPagination, changeLimit } = useCursorPagination(10);
+  const {
+    limit,
+    cursor,
+    hasPrevious,
+    goToNextPage,
+    goToPreviousPage,
+    resetPagination,
+    changeLimit,
+  } = useCursorPagination(10);
   const [searchInput, setSearchInput] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');

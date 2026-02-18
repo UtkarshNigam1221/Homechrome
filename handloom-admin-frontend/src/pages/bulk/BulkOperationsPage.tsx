@@ -21,6 +21,7 @@ import {
 } from '@/components/common';
 import { useCursorPagination } from '@/hooks';
 import type { BulkOperation } from '@/types';
+
 import { BulkExportModal } from './BulkExportModal';
 import { BulkImportModal } from './BulkImportModal';
 
@@ -58,7 +59,8 @@ const OPERATION_TYPES = [
 type OperationType = 'import-products' | 'update-inventory' | 'export-products' | 'export-orders';
 
 export function BulkOperationsPage() {
-  const { limit, cursor, hasPrevious, goToNextPage, goToPreviousPage, changeLimit } = useCursorPagination(10);
+  const { limit, cursor, hasPrevious, goToNextPage, goToPreviousPage, changeLimit } =
+    useCursorPagination(10);
   const [activeModal, setActiveModal] = useState<OperationType | null>(null);
 
   const { data, isLoading, refetch } = useQuery({

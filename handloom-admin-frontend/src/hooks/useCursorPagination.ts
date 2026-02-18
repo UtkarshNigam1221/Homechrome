@@ -1,17 +1,20 @@
-import { useState, useCallback } from 'react';
+import { useCallback, useState } from 'react';
 
 export function useCursorPagination(initialLimit = 20) {
   const [limit, setLimit] = useState(initialLimit);
   const [currentCursor, setCurrentCursor] = useState<string | undefined>(undefined);
   const [cursorStack, setCursorStack] = useState<string[]>([]);
 
-  const goToNextPage = useCallback((nextCursor: string) => {
-    setCursorStack(prev => [...prev, currentCursor ?? '']);
-    setCurrentCursor(nextCursor);
-  }, [currentCursor]);
+  const goToNextPage = useCallback(
+    (nextCursor: string) => {
+      setCursorStack((prev) => [...prev, currentCursor ?? '']);
+      setCurrentCursor(nextCursor);
+    },
+    [currentCursor]
+  );
 
   const goToPreviousPage = useCallback(() => {
-    setCursorStack(prev => {
+    setCursorStack((prev) => {
       const newStack = [...prev];
       const previousCursor = newStack.pop();
       setCurrentCursor(previousCursor === '' ? undefined : previousCursor);

@@ -22,7 +22,15 @@ const attributeSchema = z.object({
     .min(1, 'Name is required')
     .regex(/^[a-z0-9_]+$/, 'Name must be lowercase letters, numbers, and underscores only'),
   label: z.string().min(1, 'Label is required'),
-  type: z.enum(['SELECT', 'MULTI_SELECT', 'TEXT', 'NUMBER', 'BOOLEAN', 'DIMENSION', 'DIMENSION_RANGE'] as const),
+  type: z.enum([
+    'SELECT',
+    'MULTI_SELECT',
+    'TEXT',
+    'NUMBER',
+    'BOOLEAN',
+    'DIMENSION',
+    'DIMENSION_RANGE',
+  ] as const),
   required: z.boolean(),
   searchable: z.boolean(),
   display_order: z.number(),
@@ -351,7 +359,9 @@ export function CategoryFormModal({ isOpen, onClose, category }: CategoryFormMod
                             className="w-4 h-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
                             {...register(`own_attributes.${index}.searchable`)}
                           />
-                          <span className="text-sm text-gray-700">Searchable (show in filters)</span>
+                          <span className="text-sm text-gray-700">
+                            Searchable (show in filters)
+                          </span>
                         </label>
                       </div>
 

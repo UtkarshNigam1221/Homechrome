@@ -26,11 +26,20 @@ import {
 import { useCursorPagination, useDebounce } from '@/hooks';
 import type { CategoryAttribute, Product } from '@/types';
 import { formatCurrency } from '@/utils/currency';
+
 import { ProductFormModal } from './ProductFormModal';
 
 export function ProductsPage() {
   const queryClient = useQueryClient();
-  const { limit, cursor, hasPrevious, goToNextPage, goToPreviousPage, resetPagination, changeLimit } = useCursorPagination(10);
+  const {
+    limit,
+    cursor,
+    hasPrevious,
+    goToNextPage,
+    goToPreviousPage,
+    resetPagination,
+    changeLimit,
+  } = useCursorPagination(10);
   const [searchQuery, setSearchQuery] = useState('');
   const debouncedSearch = useDebounce(searchQuery, 300);
   const [statusFilter, setStatusFilter] = useState('');
@@ -200,22 +209,23 @@ export function ProductsPage() {
                 resetPagination();
               }}
             />
-            {categoryFilter && categoryAttributes.some((a) => a.searchable && a.options?.length) && (
-              <div className="flex items-end">
-                <Button
-                  variant={showAttributeFilters ? 'primary' : 'secondary'}
-                  onClick={() => setShowAttributeFilters(!showAttributeFilters)}
-                >
-                  <Filter className="w-4 h-4 mr-2" />
-                  Attribute Filters
-                  {Object.keys(attributeFilters).length > 0 && (
-                    <span className="ml-2 inline-flex items-center justify-center px-2 py-0.5 text-xs font-medium bg-white text-indigo-600 rounded-full">
-                      {Object.values(attributeFilters).reduce((sum, arr) => sum + arr.length, 0)}
-                    </span>
-                  )}
-                </Button>
-              </div>
-            )}
+            {categoryFilter &&
+              categoryAttributes.some((a) => a.searchable && a.options?.length) && (
+                <div className="flex items-end">
+                  <Button
+                    variant={showAttributeFilters ? 'primary' : 'secondary'}
+                    onClick={() => setShowAttributeFilters(!showAttributeFilters)}
+                  >
+                    <Filter className="w-4 h-4 mr-2" />
+                    Attribute Filters
+                    {Object.keys(attributeFilters).length > 0 && (
+                      <span className="ml-2 inline-flex items-center justify-center px-2 py-0.5 text-xs font-medium bg-white text-indigo-600 rounded-full">
+                        {Object.values(attributeFilters).reduce((sum, arr) => sum + arr.length, 0)}
+                      </span>
+                    )}
+                  </Button>
+                </div>
+              )}
             <div className="flex items-end">
               <Button
                 variant="ghost"
@@ -311,172 +321,174 @@ export function ProductsPage() {
         {/* Products Table */}
         <Card padding="none" className="flex-1">
           <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Product</TableHead>
-              <TableHead>SKU</TableHead>
-              <TableHead>Category</TableHead>
-              <TableHead>Price</TableHead>
-              <TableHead>Stock</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {isLoading ? (
-              <TableLoading rows={5} colSpan={7} />
-            ) : products.length === 0 ? (
-              <TableEmpty
-                colSpan={7}
-                message="No products found"
-                description={
-                  searchQuery || statusFilter || categoryFilter
-                    ? 'Try adjusting your filters'
-                    : 'Start by adding your first product'
-                }
-                action={
-                  !searchQuery &&
-                  !statusFilter &&
-                  !categoryFilter && (
-                    <Button
-                      leftIcon={<Plus className="w-4 h-4" />}
-                      onClick={() => {
-                        setEditingProduct(null);
-                        setShowFormModal(true);
-                      }}
-                    >
-                      Add Product
-                    </Button>
-                  )
-                }
-              />
-            ) : (
-              products.map((product) => (
-                <TableRow
-                  key={product.id}
-                  clickable
-                  onClick={() => {
-                    setEditingProduct(product);
-                    setShowFormModal(true);
-                  }}
-                >
-                  <TableCell>
-                    <div className="flex items-center gap-3">
-                      {product.images?.[0] ? (
-                        <img
-                          src={product.images[0].url}
-                          alt={product.images[0].alt_text || product.name}
-                          className="w-10 h-10 rounded-lg object-cover"
-                        />
-                      ) : (
-                        <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center">
-                          <Package className="w-5 h-5 text-gray-400" />
+            <TableHeader>
+              <TableRow>
+                <TableHead>Product</TableHead>
+                <TableHead>SKU</TableHead>
+                <TableHead>Category</TableHead>
+                <TableHead>Price</TableHead>
+                <TableHead>Stock</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {isLoading ? (
+                <TableLoading rows={5} colSpan={7} />
+              ) : products.length === 0 ? (
+                <TableEmpty
+                  colSpan={7}
+                  message="No products found"
+                  description={
+                    searchQuery || statusFilter || categoryFilter
+                      ? 'Try adjusting your filters'
+                      : 'Start by adding your first product'
+                  }
+                  action={
+                    !searchQuery &&
+                    !statusFilter &&
+                    !categoryFilter && (
+                      <Button
+                        leftIcon={<Plus className="w-4 h-4" />}
+                        onClick={() => {
+                          setEditingProduct(null);
+                          setShowFormModal(true);
+                        }}
+                      >
+                        Add Product
+                      </Button>
+                    )
+                  }
+                />
+              ) : (
+                products.map((product) => (
+                  <TableRow
+                    key={product.id}
+                    clickable
+                    onClick={() => {
+                      setEditingProduct(product);
+                      setShowFormModal(true);
+                    }}
+                  >
+                    <TableCell>
+                      <div className="flex items-center gap-3">
+                        {product.images?.[0] ? (
+                          <img
+                            src={product.images[0].url}
+                            alt={product.images[0].alt_text || product.name}
+                            className="w-10 h-10 rounded-lg object-cover"
+                          />
+                        ) : (
+                          <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center">
+                            <Package className="w-5 h-5 text-gray-400" />
+                          </div>
+                        )}
+                        <div>
+                          <p className="font-medium text-gray-900">{product.name}</p>
+                          {product.material && (
+                            <p className="text-sm text-gray-500">{product.material}</p>
+                          )}
                         </div>
-                      )}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <span className="font-mono text-sm">{product.sku}</span>
+                    </TableCell>
+                    <TableCell>
+                      <span className="text-gray-600">{product.category_id}</span>
+                    </TableCell>
+                    <TableCell>
                       <div>
-                        <p className="font-medium text-gray-900">{product.name}</p>
-                        {product.material && (
-                          <p className="text-sm text-gray-500">{product.material}</p>
+                        <p className="font-medium">{formatCurrency(product.selling_price)}</p>
+                        {product.base_price !== product.selling_price && (
+                          <p className="text-sm text-gray-500 line-through">
+                            {formatCurrency(product.base_price)}
+                          </p>
                         )}
                       </div>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <span className="font-mono text-sm">{product.sku}</span>
-                  </TableCell>
-                  <TableCell>
-                    <span className="text-gray-600">{product.category_id}</span>
-                  </TableCell>
-                  <TableCell>
-                    <div>
-                      <p className="font-medium">{formatCurrency(product.selling_price)}</p>
-                      {product.base_price !== product.selling_price && (
-                        <p className="text-sm text-gray-500 line-through">
-                          {formatCurrency(product.base_price)}
-                        </p>
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      <span
-                        className={
-                          product.available_qty <= product.low_stock_threshold
-                            ? 'text-red-600 font-medium'
-                            : ''
-                        }
-                      >
-                        {product.available_qty}
-                      </span>
-                      {product.available_qty <= product.low_stock_threshold && (
-                        <Badge variant="danger" size="sm">
-                          Low
-                        </Badge>
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={getStatusBadgeVariant(product.status)}>{product.status}</Badge>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center justify-end gap-1">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setEditingProduct(product);
-                          setShowFormModal(true);
-                        }}
-                        title="View product"
-                      >
-                        <Eye className="w-4 h-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setEditingProduct(product);
-                          setShowFormModal(true);
-                        }}
-                        title="Edit product"
-                      >
-                        <Edit className="w-4 h-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setDeleteProduct(product);
-                        }}
-                        title="Delete product"
-                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={
+                            product.available_qty <= product.low_stock_threshold
+                              ? 'text-red-600 font-medium'
+                              : ''
+                          }
+                        >
+                          {product.available_qty}
+                        </span>
+                        {product.available_qty <= product.low_stock_threshold && (
+                          <Badge variant="danger" size="sm">
+                            Low
+                          </Badge>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={getStatusBadgeVariant(product.status)}>
+                        {product.status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center justify-end gap-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setEditingProduct(product);
+                            setShowFormModal(true);
+                          }}
+                          title="View product"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setEditingProduct(product);
+                            setShowFormModal(true);
+                          }}
+                          title="Edit product"
+                        >
+                          <Edit className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setDeleteProduct(product);
+                          }}
+                          title="Delete product"
+                          className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
 
-        {(pagination?.has_more || hasPrevious) && (
-          <div className="border-t border-gray-200 px-6">
-            <Pagination
-              hasMore={pagination?.has_more ?? false}
-              hasPrevious={hasPrevious}
-              perPage={limit}
-              onNextPage={() => pagination?.next_cursor && goToNextPage(pagination.next_cursor)}
-              onPreviousPage={goToPreviousPage}
-              onPerPageChange={changeLimit}
-              itemCount={products.length}
-            />
-          </div>
-        )}
+          {(pagination?.has_more || hasPrevious) && (
+            <div className="border-t border-gray-200 px-6">
+              <Pagination
+                hasMore={pagination?.has_more ?? false}
+                hasPrevious={hasPrevious}
+                perPage={limit}
+                onNextPage={() => pagination?.next_cursor && goToNextPage(pagination.next_cursor)}
+                onPreviousPage={goToPreviousPage}
+                onPerPageChange={changeLimit}
+                itemCount={products.length}
+              />
+            </div>
+          )}
         </Card>
       </div>
 

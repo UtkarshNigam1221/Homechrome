@@ -24,11 +24,20 @@ import {
 import { useCursorPagination, useDebounce } from '@/hooks';
 import type { Artisan } from '@/types';
 import { formatCurrency } from '@/utils/currency';
+
 import { ArtisanFormModal } from './ArtisanFormModal';
 
 export function ArtisansPage() {
   const queryClient = useQueryClient();
-  const { limit, cursor, hasPrevious, goToNextPage, goToPreviousPage, resetPagination, changeLimit } = useCursorPagination(10);
+  const {
+    limit,
+    cursor,
+    hasPrevious,
+    goToNextPage,
+    goToPreviousPage,
+    resetPagination,
+    changeLimit,
+  } = useCursorPagination(10);
   const [searchQuery, setSearchQuery] = useState('');
   const debouncedSearch = useDebounce(searchQuery, 300);
   const [showFormModal, setShowFormModal] = useState(false);

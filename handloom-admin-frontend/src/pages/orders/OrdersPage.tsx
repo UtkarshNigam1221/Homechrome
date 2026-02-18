@@ -41,7 +41,15 @@ const ORDER_STATUSES: OrderStatus[] = [
 export function OrdersPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { limit, cursor, hasPrevious, goToNextPage, goToPreviousPage, resetPagination, changeLimit } = useCursorPagination(10);
+  const {
+    limit,
+    cursor,
+    hasPrevious,
+    goToNextPage,
+    goToPreviousPage,
+    resetPagination,
+    changeLimit,
+  } = useCursorPagination(10);
   const [searchQuery, setSearchQuery] = useState('');
   const debouncedSearch = useDebounce(searchQuery, 300);
   const [statusFilter, setStatusFilter] = useState('');

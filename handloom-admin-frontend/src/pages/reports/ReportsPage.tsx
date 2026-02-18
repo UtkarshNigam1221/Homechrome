@@ -37,7 +37,8 @@ const REPORT_TYPES: { value: ReportType; label: string; description: string }[] 
 
 export function ReportsPage() {
   const queryClient = useQueryClient();
-  const { limit, cursor, hasPrevious, goToNextPage, goToPreviousPage, changeLimit } = useCursorPagination(10);
+  const { limit, cursor, hasPrevious, goToNextPage, goToPreviousPage, changeLimit } =
+    useCursorPagination(10);
   const [showGenerateModal, setShowGenerateModal] = useState(false);
   const [selectedType, setSelectedType] = useState<ReportType>('SALES');
   const [selectedFormat, setSelectedFormat] = useState<ReportFormat>('CSV');

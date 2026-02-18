@@ -204,9 +204,7 @@ export function DashboardPage() {
                       value.length > 20 ? `${value.slice(0, 20)}...` : value
                     }
                   />
-                  <Tooltip
-                    formatter={(value) => [formatCurrency(Number(value) || 0), 'Revenue']}
-                  />
+                  <Tooltip formatter={(value) => [formatCurrency(Number(value) || 0), 'Revenue']} />
                   <Bar dataKey="revenue" fill={CHART_COLORS.primary} radius={[0, 4, 4, 0]} />
                 </BarChart>
               </ResponsiveContainer>
@@ -301,12 +299,8 @@ export function DashboardPage() {
                       <p className="text-sm text-gray-500">SKU: {item.sku}</p>
                     </div>
                     <div className="text-right">
-                      <p className="text-sm font-medium text-red-600">
-                        {item.available_qty} left
-                      </p>
-                      <p className="text-xs text-gray-500">
-                        Threshold: {item.low_stock_threshold}
-                      </p>
+                      <p className="text-sm font-medium text-red-600">{item.available_qty} left</p>
+                      <p className="text-xs text-gray-500">Threshold: {item.low_stock_threshold}</p>
                     </div>
                   </div>
                 </div>

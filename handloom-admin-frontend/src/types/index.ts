@@ -56,7 +56,6 @@ export interface LoginRequest {
   password: string;
 }
 
-
 export interface CreateUserRequest {
   email: string;
   password: string;

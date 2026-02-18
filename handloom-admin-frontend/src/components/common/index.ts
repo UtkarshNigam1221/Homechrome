@@ -1,12 +1,11 @@
-export { getStatusBadgeVariant } from '@/utils/badge';
 export { AttributeFilterSidebar } from './AttributeFilterSidebar';
-export { ErrorBoundary } from './ErrorBoundary';
 export type { BadgeProps } from './Badge';
 export { Badge } from './Badge';
 export type { ButtonProps } from './Button';
 export { Button } from './Button';
 export type { CardHeaderProps, CardProps, StatCardProps } from './Card';
 export { Card, CardHeader, StatCard } from './Card';
+export { ErrorBoundary } from './ErrorBoundary';
 export { ImageUpload } from './ImageUpload';
 export type { InputProps } from './Input';
 export { Input } from './Input';
@@ -62,3 +61,4 @@ export {
 } from './Table';
 export type { TabItem, TabsProps } from './Tabs';
 export { Tabs } from './Tabs';
+export { getStatusBadgeVariant } from '@/utils/badge';

@@ -192,9 +192,7 @@ export function ImageUpload({
           onChange(uploadedKeys[0]);
         }
 
-        toast.success(
-          `${fileArray.length > 1 ? 'Files' : 'File'} uploaded successfully`
-        );
+        toast.success(`${fileArray.length > 1 ? 'Files' : 'File'} uploaded successfully`);
       } catch (err) {
         console.error('Upload error:', err);
         toast.error('Failed to upload file');
@@ -290,7 +288,11 @@ export function ImageUpload({
                       <Film className="absolute w-8 h-8 text-white opacity-75" />
                     </div>
                   ) : (
-                    <img src={src} alt={`Preview ${index + 1}`} className="w-full h-full object-cover" />
+                    <img
+                      src={src}
+                      alt={`Preview ${index + 1}`}
+                      className="w-full h-full object-cover"
+                    />
                   )
                 ) : (
                   <div className="w-full h-full flex items-center justify-center">

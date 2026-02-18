@@ -39,9 +39,10 @@ export const useUIStore = create<UIState>()(
       setSidebarOpen: (open) => set({ sidebarOpen: open }),
       toggleSidebarCollapse: () => set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
       setTheme: (theme) => set({ theme }),
-      setNotificationPref: (key, value) => set((state) => ({
-        notificationPrefs: { ...state.notificationPrefs, [key]: value },
-      })),
+      setNotificationPref: (key, value) =>
+        set((state) => ({
+          notificationPrefs: { ...state.notificationPrefs, [key]: value },
+        })),
     }),
     {
       name: 'handloom-ui',

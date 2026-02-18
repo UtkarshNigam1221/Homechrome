@@ -16,6 +16,7 @@ import {
 } from '@/components/common';
 import { useCursorPagination } from '@/hooks';
 import type { Category } from '@/types';
+
 import { CategoryFormModal } from './CategoryFormModal';
 
 export function CategoriesPage() {
@@ -24,7 +25,15 @@ export function CategoriesPage() {
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-  const { limit, cursor, hasPrevious, goToNextPage, goToPreviousPage, resetPagination, changeLimit } = useCursorPagination(20);
+  const {
+    limit,
+    cursor,
+    hasPrevious,
+    goToNextPage,
+    goToPreviousPage,
+    resetPagination,
+    changeLimit,
+  } = useCursorPagination(20);
 
   // Fetch categories list
   const { data, isLoading } = useQuery({
@@ -65,10 +74,12 @@ export function CategoriesPage() {
     return <PageLoading />;
   }
 
-  const categories = (data as { items?: Category[]; categories?: Category[] })?.items
-    || (data as { categories?: Category[] })?.categories
-    || (Array.isArray(data) ? data : []) as Category[];
-  const pagination = (data as { pagination?: { has_more: boolean; next_cursor?: string } })?.pagination;
+  const categories =
+    (data as { items?: Category[]; categories?: Category[] })?.items ||
+    (data as { categories?: Category[] })?.categories ||
+    ((Array.isArray(data) ? data : []) as Category[]);
+  const pagination = (data as { pagination?: { has_more: boolean; next_cursor?: string } })
+    ?.pagination;
 
   const filteredCategories = searchQuery
     ? categories.filter(
@@ -153,9 +164,7 @@ export function CategoriesPage() {
                       <span className="text-sm text-gray-500">{category.slug}</span>
                     </td>
                     <td className="px-6 py-4">
-                      <span className="text-sm text-gray-700">
-                        {category.product_count || 0}
-                      </span>
+                      <span className="text-sm text-gray-700">{category.product_count || 0}</span>
                     </td>
                     <td className="px-6 py-4">
                       <span className="text-sm text-gray-700">

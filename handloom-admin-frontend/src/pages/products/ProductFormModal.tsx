@@ -7,12 +7,7 @@ import { z } from 'zod';
 
 import { artisansApi, categoriesApi, getErrorMessage, productsApi } from '@/api';
 import { Button, ImageUpload, Input, Modal, Select } from '@/components/common';
-import type {
-  Category,
-  CategoryAttribute,
-  CreateProductRequest,
-  Product,
-} from '@/types';
+import type { Category, CategoryAttribute, CreateProductRequest, Product } from '@/types';
 
 const productSchema = z.object({
   name: z.string().min(1, 'Name is required').max(200, 'Name must be less than 200 characters'),
@@ -259,7 +254,9 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
       });
 
     if (missingRequired.length > 0) {
-      toast.error(`Please fill in required attributes: ${missingRequired.map((a) => a.label).join(', ')}`);
+      toast.error(
+        `Please fill in required attributes: ${missingRequired.map((a) => a.label).join(', ')}`
+      );
       return;
     }
 
@@ -399,10 +396,7 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
                   const selectedValues = (value as string[]) || [];
                   const isSelected = selectedValues.includes(opt.value);
                   return (
-                    <label
-                      key={opt.value}
-                      className="flex items-center gap-2 cursor-pointer"
-                    >
+                    <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
                       <input
                         type="checkbox"
                         checked={isSelected}

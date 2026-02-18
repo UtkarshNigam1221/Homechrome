@@ -23,11 +23,20 @@ import {
 import { useCursorPagination } from '@/hooks';
 import type { PricingRule } from '@/types';
 import { formatCurrency } from '@/utils/currency';
+
 import { PricingRuleFormModal } from './PricingRuleFormModal';
 
 export function PricingRulesPage() {
   const queryClient = useQueryClient();
-  const { limit, cursor, hasPrevious, goToNextPage, goToPreviousPage, resetPagination, changeLimit } = useCursorPagination(10);
+  const {
+    limit,
+    cursor,
+    hasPrevious,
+    goToNextPage,
+    goToPreviousPage,
+    resetPagination,
+    changeLimit,
+  } = useCursorPagination(10);
   const [searchQuery, setSearchQuery] = useState('');
   const [showFormModal, setShowFormModal] = useState(false);
   const [editingRule, setEditingRule] = useState<PricingRule | null>(null);

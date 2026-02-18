@@ -31,6 +31,7 @@ import type {
   UploadURLResponse,
   User,
 } from '@/types';
+
 import apiClient, { getErrorMessage } from './client';
 
 // Re-export
@@ -39,10 +40,7 @@ export { getErrorMessage };
 
 // Normalize backend list responses that may use different keys (e.g. 'products', 'orders')
 // into a consistent { items, pagination } shape.
-function normalizeListResponse<T>(
-  data: Record<string, unknown>,
-  key: string
-): ListResponse<T> {
+function normalizeListResponse<T>(data: Record<string, unknown>, key: string): ListResponse<T> {
   const items = (data[key] || data.items || data.data || []) as T[];
   const pagination = (data.pagination as ListResponse<T>['pagination']) || {
     limit: 10,
@@ -91,7 +89,9 @@ export const usersApi = {
 // Categories API
 // ============================================================================
 export const categoriesApi = {
-  list: async (params?: PaginationParams & { status?: string }): Promise<ListResponse<Category>> => {
+  list: async (
+    params?: PaginationParams & { status?: string }
+  ): Promise<ListResponse<Category>> => {
     const response = await apiClient.get('/admin/categories', { params });
     return normalizeListResponse<Category>(response.data as Record<string, unknown>, 'categories');
   },
@@ -241,7 +241,10 @@ export const inventoryApi = {
     const response = await apiClient.get('/admin/inventory/low-stock', {
       params,
     });
-    return normalizeListResponse<Inventory>(response.data as Record<string, unknown>, 'inventories');
+    return normalizeListResponse<Inventory>(
+      response.data as Record<string, unknown>,
+      'inventories'
+    );
   },
 
   addStock: async (productId: string, quantity: number, reason?: string) => {
@@ -316,7 +319,9 @@ export const ordersApi = {
 // Customers API
 // ============================================================================
 export const customersApi = {
-  list: async (params?: PaginationParams & { status?: string; search?: string }): Promise<ListResponse<Customer>> => {
+  list: async (
+    params?: PaginationParams & { status?: string; search?: string }
+  ): Promise<ListResponse<Customer>> => {
     const response = await apiClient.get('/admin/customers', { params });
     return normalizeListResponse<Customer>(response.data as Record<string, unknown>, 'customers');
   },
@@ -526,7 +531,10 @@ export const notificationsApi = {
     const response = await apiClient.get('/admin/notifications', {
       params,
     });
-    return normalizeListResponse<Notification>(response.data as Record<string, unknown>, 'notifications');
+    return normalizeListResponse<Notification>(
+      response.data as Record<string, unknown>,
+      'notifications'
+    );
   },
 
   getMy: async (params?: PaginationParams) => {
@@ -582,7 +590,9 @@ export const analyticsApi = {
   }): Promise<TopProduct[]> => {
     const response = await apiClient.get('/admin/analytics/top-products', { params });
     const data = response.data;
-    return Array.isArray(data) ? data : ((data as Record<string, unknown>).products as TopProduct[]) || [];
+    return Array.isArray(data)
+      ? data
+      : ((data as Record<string, unknown>).products as TopProduct[]) || [];
   },
 
   getTopCategories: async (params?: {
@@ -592,7 +602,9 @@ export const analyticsApi = {
   }): Promise<TopCategory[]> => {
     const response = await apiClient.get('/admin/analytics/top-categories', { params });
     const data = response.data;
-    return Array.isArray(data) ? data : ((data as Record<string, unknown>).categories as TopCategory[]) || [];
+    return Array.isArray(data)
+      ? data
+      : ((data as Record<string, unknown>).categories as TopCategory[]) || [];
   },
 
   getCustomerAnalytics: async (params?: { start_date?: string; end_date?: string }) => {
@@ -614,7 +626,10 @@ export const bulkApi = {
     params?: PaginationParams & { type?: string; entity_type?: string; status?: string }
   ): Promise<ListResponse<BulkOperation>> => {
     const response = await apiClient.get('/admin/bulk', { params });
-    return normalizeListResponse<BulkOperation>(response.data as Record<string, unknown>, 'operations');
+    return normalizeListResponse<BulkOperation>(
+      response.data as Record<string, unknown>,
+      'operations'
+    );
   },
 
   get: async (id: string) => {

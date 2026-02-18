@@ -24,11 +24,20 @@ import {
 } from '@/components/common';
 import { useCursorPagination, useDebounce } from '@/hooks';
 import type { Coupon } from '@/types';
+
 import { CouponFormModal } from './CouponFormModal';
 
 export function CouponsPage() {
   const queryClient = useQueryClient();
-  const { limit, cursor, hasPrevious, goToNextPage, goToPreviousPage, resetPagination, changeLimit } = useCursorPagination(10);
+  const {
+    limit,
+    cursor,
+    hasPrevious,
+    goToNextPage,
+    goToPreviousPage,
+    resetPagination,
+    changeLimit,
+  } = useCursorPagination(10);
   const [searchQuery, setSearchQuery] = useState('');
   const debouncedSearch = useDebounce(searchQuery, 300);
   const [showFormModal, setShowFormModal] = useState(false);

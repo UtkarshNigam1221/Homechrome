@@ -5,7 +5,7 @@ import { useAuthStore } from '@/stores/authStore';
 
 // In dev, Vite proxy handles /admin/* → API Gateway (same-origin, cookies work).
 // In production builds, VITE_API_URL points to the real API.
-const API_BASE_URL = import.meta.env.DEV ? '' : (import.meta.env.VITE_API_URL || '');
+const API_BASE_URL = import.meta.env.DEV ? '' : import.meta.env.VITE_API_URL || '';
 
 // Create axios instance
 const apiClient: AxiosInstance = axios.create({
