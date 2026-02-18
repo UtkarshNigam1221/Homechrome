@@ -168,13 +168,7 @@ function App() {
         position="top-right"
         toastOptions={{
           duration: 4000,
-          style: {
-            background: '#fff',
-            color: '#363636',
-            boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
-            borderRadius: '0.5rem',
-            padding: '12px 16px',
-          },
+          className: 'bg-white text-gray-800 shadow-lg rounded-lg px-4 py-3',
           success: {
             iconTheme: {
               primary: '#10b981',
