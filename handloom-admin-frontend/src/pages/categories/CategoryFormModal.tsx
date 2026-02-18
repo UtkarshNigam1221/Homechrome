@@ -188,9 +188,12 @@ export function CategoryFormModal({ isOpen, onClose, category }: CategoryFormMod
       size="lg"
     >
       {/* Tabs */}
-      <div className="flex border-b border-gray-200 mb-4">
+      <div className="flex border-b border-gray-200 mb-4" role="tablist">
         <button
           type="button"
+          role="tab"
+          aria-selected={activeTab === 'basic'}
+          aria-controls="tabpanel-basic"
           onClick={() => setActiveTab('basic')}
           className={`px-4 py-2 text-sm font-medium border-b-2 ${
             activeTab === 'basic'
@@ -202,6 +205,9 @@ export function CategoryFormModal({ isOpen, onClose, category }: CategoryFormMod
         </button>
         <button
           type="button"
+          role="tab"
+          aria-selected={activeTab === 'attributes'}
+          aria-controls="tabpanel-attributes"
           onClick={() => setActiveTab('attributes')}
           className={`px-4 py-2 text-sm font-medium border-b-2 ${
             activeTab === 'attributes'
@@ -220,7 +226,7 @@ export function CategoryFormModal({ isOpen, onClose, category }: CategoryFormMod
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
         {activeTab === 'basic' && (
-          <>
+          <div role="tabpanel" id="tabpanel-basic">
             <Input
               label="Name"
               placeholder="e.g., Bedsheets"
@@ -247,11 +253,11 @@ export function CategoryFormModal({ isOpen, onClose, category }: CategoryFormMod
               required
               {...register('status')}
             />
-          </>
+          </div>
         )}
 
         {activeTab === 'attributes' && (
-          <div className="space-y-4">
+          <div className="space-y-4" role="tabpanel" id="tabpanel-attributes">
             <div className="flex items-center justify-between">
               <p className="text-sm text-gray-600">
                 Define attributes for products in this category. Searchable attributes will be
