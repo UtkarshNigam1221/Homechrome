@@ -1,4 +1,5 @@
 import { zodResolver } from '@hookform/resolvers/zod';
+import { useMutation } from '@tanstack/react-query';
 import { Eye, EyeOff, LogIn } from 'lucide-react';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
@@ -22,7 +23,6 @@ export function LoginPage() {
   const location = useLocation();
   const { login } = useAuthStore();
   const [showPassword, setShowPassword] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
 
   const from = (location.state as { from?: { pathname: string } })?.from?.pathname || '/';
 
@@ -38,18 +38,20 @@ export function LoginPage() {
     },
   });
 
-  const onSubmit = async (data: LoginFormData) => {
-    setIsLoading(true);
-    try {
-      const response = await authApi.login(data);
+  const loginMutation = useMutation({
+    mutationFn: authApi.login,
+    onSuccess: (response) => {
       login(response.user);
       toast.success('Welcome back!');
       navigate(from, { replace: true });
-    } catch (error) {
+    },
+    onError: (error) => {
       toast.error(getErrorMessage(error));
-    } finally {
-      setIsLoading(false);
-    }
+    },
+  });
+
+  const onSubmit = (data: LoginFormData) => {
+    loginMutation.mutate(data);
   };
 
   return (
@@ -99,7 +101,7 @@ export function LoginPage() {
             <Button
               type="submit"
               className="w-full"
-              loading={isLoading}
+              loading={loginMutation.isPending}
               leftIcon={<LogIn className="w-4 h-4" />}
             >
               Sign In
