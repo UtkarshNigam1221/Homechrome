@@ -22,7 +22,7 @@ import {
   YAxis,
 } from 'recharts';
 
-import { analyticsApi, inventoryApi, ordersApi } from '../../api';
+import { analyticsApi, inventoryApi, ordersApi } from '@/api';
 import {
   Badge,
   Card,
@@ -30,7 +30,7 @@ import {
   DashboardSkeleton,
   getStatusBadgeVariant,
   StatCard,
-} from '../../components/common';
+} from '@/components/common';
 import { CHART_COLORS } from '@/utils/chartColors';
 import { formatCurrency } from '@/utils/currency';
 

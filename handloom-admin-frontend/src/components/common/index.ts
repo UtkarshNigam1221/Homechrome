@@ -1,4 +1,4 @@
-export { getStatusBadgeVariant } from '../../utils/badge';
+export { getStatusBadgeVariant } from '@/utils/badge';
 export { AttributeFilterSidebar } from './AttributeFilterSidebar';
 export { ErrorBoundary } from './ErrorBoundary';
 export type { BadgeProps } from './Badge';

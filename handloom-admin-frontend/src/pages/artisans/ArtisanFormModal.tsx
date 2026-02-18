@@ -5,9 +5,9 @@ import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
 import { z } from 'zod';
 
-import { artisansApi, getErrorMessage } from '../../api';
-import { Button, Input, Modal, Select } from '../../components/common';
-import type { Artisan, CreateArtisanRequest, UpdateArtisanRequest } from '../../types';
+import { artisansApi, getErrorMessage } from '@/api';
+import { Button, Input, Modal, Select } from '@/components/common';
+import type { Artisan, CreateArtisanRequest, UpdateArtisanRequest } from '@/types';
 
 const artisanSchema = z.object({
   name: z.string().min(1, 'Name is required').max(100, 'Name must be less than 100 characters'),

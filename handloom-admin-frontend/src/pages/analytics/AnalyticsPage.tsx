@@ -16,8 +16,8 @@ import {
   YAxis,
 } from 'recharts';
 
-import { analyticsApi } from '../../api';
-import { Card, CardHeader, PageLoading, StatCard } from '../../components/common';
+import { analyticsApi } from '@/api';
+import { Card, CardHeader, PageLoading, StatCard } from '@/components/common';
 import { CHART_COLORS, PIE_COLORS } from '@/utils/chartColors';
 import { formatCurrency } from '@/utils/currency';
 

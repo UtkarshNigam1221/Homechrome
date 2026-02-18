@@ -3,7 +3,7 @@ import { DollarSign, Edit, Plus, Search, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import toast from 'react-hot-toast';
 
-import { getErrorMessage, pricingApi } from '../../api';
+import { getErrorMessage, pricingApi } from '@/api';
 import {
   Badge,
   Button,
@@ -19,9 +19,9 @@ import {
   TableHeader,
   TableLoading,
   TableRow,
-} from '../../components/common';
-import { useCursorPagination } from '../../hooks';
-import type { PricingRule } from '../../types';
+} from '@/components/common';
+import { useCursorPagination } from '@/hooks';
+import type { PricingRule } from '@/types';
 import { formatCurrency } from '@/utils/currency';
 import { PricingRuleFormModal } from './PricingRuleFormModal';
 

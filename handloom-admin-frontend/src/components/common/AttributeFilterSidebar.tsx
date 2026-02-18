@@ -1,7 +1,7 @@
 import { ChevronDown, ChevronUp, X } from 'lucide-react';
 import { useState } from 'react';
 
-import type { CategoryAttribute } from '../../types';
+import type { CategoryAttribute } from '@/types';
 import { Button } from './Button';
 
 interface AttributeFilterSidebarProps {

@@ -3,7 +3,7 @@ import { Edit, MapPin, Phone, Plus, Search, Trash2, User } from 'lucide-react';
 import { useState } from 'react';
 import toast from 'react-hot-toast';
 
-import { artisansApi, getErrorMessage } from '../../api';
+import { artisansApi, getErrorMessage } from '@/api';
 import {
   Badge,
   Button,
@@ -20,9 +20,9 @@ import {
   TableHeader,
   TableLoading,
   TableRow,
-} from '../../components/common';
-import { useCursorPagination, useDebounce } from '../../hooks';
-import type { Artisan } from '../../types';
+} from '@/components/common';
+import { useCursorPagination, useDebounce } from '@/hooks';
+import type { Artisan } from '@/types';
 import { formatCurrency } from '@/utils/currency';
 import { ArtisanFormModal } from './ArtisanFormModal';
 

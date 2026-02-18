@@ -5,7 +5,7 @@ import { useState } from 'react';
 import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
 
-import { getErrorMessage, ordersApi } from '../../api';
+import { getErrorMessage, ordersApi } from '@/api';
 import {
   Badge,
   Button,
@@ -23,9 +23,9 @@ import {
   TableHeader,
   TableLoading,
   TableRow,
-} from '../../components/common';
-import { useCursorPagination, useDebounce } from '../../hooks';
-import type { Order, OrderStatus } from '../../types';
+} from '@/components/common';
+import { useCursorPagination, useDebounce } from '@/hooks';
+import type { Order, OrderStatus } from '@/types';
 import { formatCurrency } from '@/utils/currency';
 
 const ORDER_STATUSES: OrderStatus[] = [

@@ -4,9 +4,9 @@ import { Bell, LogOut, Menu as MenuIcon, Settings, User } from 'lucide-react';
 import { Fragment } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-import { authApi } from '../../api';
-import { useAuthStore } from '../../stores/authStore';
-import { useUIStore } from '../../stores/uiStore';
+import { authApi } from '@/api';
+import { useAuthStore } from '@/stores/authStore';
+import { useUIStore } from '@/stores/uiStore';
 
 export function Header() {
   const navigate = useNavigate();

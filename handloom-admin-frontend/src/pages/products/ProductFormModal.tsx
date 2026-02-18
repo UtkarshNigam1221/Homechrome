@@ -5,14 +5,14 @@ import { Controller, useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
 import { z } from 'zod';
 
-import { artisansApi, categoriesApi, getErrorMessage, productsApi } from '../../api';
-import { Button, ImageUpload, Input, Modal, Select } from '../../components/common';
+import { artisansApi, categoriesApi, getErrorMessage, productsApi } from '@/api';
+import { Button, ImageUpload, Input, Modal, Select } from '@/components/common';
 import type {
   Category,
   CategoryAttribute,
   CreateProductRequest,
   Product,
-} from '../../types';
+} from '@/types';
 
 const productSchema = z.object({
   name: z.string().min(1, 'Name is required').max(200, 'Name must be less than 200 characters'),

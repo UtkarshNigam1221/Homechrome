@@ -3,7 +3,7 @@ import { Edit, FolderTree, Plus, Search, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import toast from 'react-hot-toast';
 
-import { categoriesApi, getErrorMessage } from '../../api';
+import { categoriesApi, getErrorMessage } from '@/api';
 import {
   Badge,
   Button,
@@ -13,9 +13,9 @@ import {
   Input,
   PageLoading,
   Pagination,
-} from '../../components/common';
-import { useCursorPagination } from '../../hooks';
-import type { Category } from '../../types';
+} from '@/components/common';
+import { useCursorPagination } from '@/hooks';
+import type { Category } from '@/types';
 import { CategoryFormModal } from './CategoryFormModal';
 
 export function CategoriesPage() {

@@ -7,9 +7,9 @@ import toast from 'react-hot-toast';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { z } from 'zod';
 
-import { authApi, getErrorMessage } from '../../api';
-import { Button, Input } from '../../components/common';
-import { useAuthStore } from '../../stores/authStore';
+import { authApi, getErrorMessage } from '@/api';
+import { Button, Input } from '@/components/common';
+import { useAuthStore } from '@/stores/authStore';
 
 const loginSchema = z.object({
   email: z.string().email('Please enter a valid email address'),

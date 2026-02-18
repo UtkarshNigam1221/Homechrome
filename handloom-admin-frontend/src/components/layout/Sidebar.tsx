@@ -19,8 +19,8 @@ import {
 } from 'lucide-react';
 import { NavLink, useLocation } from 'react-router-dom';
 
-import { useAuthStore } from '../../stores/authStore';
-import { useUIStore } from '../../stores/uiStore';
+import { useAuthStore } from '@/stores/authStore';
+import { useUIStore } from '@/stores/uiStore';
 
 const navigation = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard },

@@ -5,9 +5,9 @@ import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
 import { z } from 'zod';
 
-import { couponsApi, getErrorMessage } from '../../api';
-import { Button, Input, Modal, Select } from '../../components/common';
-import type { Coupon, CreateCouponRequest } from '../../types';
+import { couponsApi, getErrorMessage } from '@/api';
+import { Button, Input, Modal, Select } from '@/components/common';
+import type { Coupon, CreateCouponRequest } from '@/types';
 
 const couponSchema = z.object({
   code: z

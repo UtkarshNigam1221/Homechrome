@@ -3,9 +3,9 @@ import { AlertCircle, CheckCircle, FileText, Upload, X } from 'lucide-react';
 import { useCallback, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 
-import { bulkApi, getErrorMessage } from '../../api';
-import apiClient from '../../api/client';
-import { Button, Modal } from '../../components/common';
+import { bulkApi, getErrorMessage } from '@/api';
+import apiClient from '@/api/client';
+import { Button, Modal } from '@/components/common';
 
 interface BulkImportModalProps {
   isOpen: boolean;

@@ -15,7 +15,7 @@ import { useState } from 'react';
 import toast from 'react-hot-toast';
 import { useNavigate, useParams } from 'react-router-dom';
 
-import { getErrorMessage, ordersApi } from '../../api';
+import { getErrorMessage, ordersApi } from '@/api';
 import {
   Badge,
   Button,
@@ -25,8 +25,8 @@ import {
   Input,
   Modal,
   Select,
-} from '../../components/common';
-import type { OrderStatus } from '../../types';
+} from '@/components/common';
+import type { OrderStatus } from '@/types';
 import { formatCurrency } from '@/utils/currency';
 
 const ORDER_STATUSES: OrderStatus[] = [

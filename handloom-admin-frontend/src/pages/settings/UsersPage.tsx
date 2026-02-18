@@ -4,7 +4,7 @@ import { Edit, Plus, Search, Shield, Trash2, User, UserCheck, UserX } from 'luci
 import { useState } from 'react';
 import toast from 'react-hot-toast';
 
-import { getErrorMessage, usersApi } from '../../api';
+import { getErrorMessage, usersApi } from '@/api';
 import {
   Badge,
   Button,
@@ -22,9 +22,9 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '../../components/common';
-import { useCursorPagination, useDebounce } from '../../hooks';
-import type { User as UserType, UserRole, UserStatus } from '../../types';
+} from '@/components/common';
+import { useCursorPagination, useDebounce } from '@/hooks';
+import type { User as UserType, UserRole, UserStatus } from '@/types';
 import { UserFormModal } from './UserFormModal';
 
 // Skeleton for Users table rows

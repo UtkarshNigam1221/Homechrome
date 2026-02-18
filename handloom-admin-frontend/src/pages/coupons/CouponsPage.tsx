@@ -4,7 +4,7 @@ import { Calendar, Edit, Percent, Plus, Search, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import toast from 'react-hot-toast';
 
-import { couponsApi, getErrorMessage } from '../../api';
+import { couponsApi, getErrorMessage } from '@/api';
 import {
   Badge,
   Button,
@@ -21,9 +21,9 @@ import {
   TableHeader,
   TableLoading,
   TableRow,
-} from '../../components/common';
-import { useCursorPagination, useDebounce } from '../../hooks';
-import type { Coupon } from '../../types';
+} from '@/components/common';
+import { useCursorPagination, useDebounce } from '@/hooks';
+import type { Coupon } from '@/types';
 import { CouponFormModal } from './CouponFormModal';
 
 export function CouponsPage() {

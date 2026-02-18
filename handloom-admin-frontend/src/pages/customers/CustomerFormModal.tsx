@@ -5,9 +5,9 @@ import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
 import { z } from 'zod';
 
-import { customersApi, getErrorMessage } from '../../api';
-import { Button, Input, Modal, Select } from '../../components/common';
-import type { CreateCustomerRequest, Customer, UpdateCustomerRequest } from '../../types';
+import { customersApi, getErrorMessage } from '@/api';
+import { Button, Input, Modal, Select } from '@/components/common';
+import type { CreateCustomerRequest, Customer, UpdateCustomerRequest } from '@/types';
 
 const customerSchema = z.object({
   name: z.string().min(1, 'Name is required').max(100, 'Name must be less than 100 characters'),

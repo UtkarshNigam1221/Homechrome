@@ -30,7 +30,7 @@ import type {
   TopProduct,
   UploadURLResponse,
   User,
-} from '../types';
+} from '@/types';
 import apiClient, { getErrorMessage } from './client';
 
 // Re-export

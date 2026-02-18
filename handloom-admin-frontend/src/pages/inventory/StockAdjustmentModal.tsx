@@ -5,9 +5,9 @@ import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
 import { z } from 'zod';
 
-import { getErrorMessage, inventoryApi } from '../../api';
-import { Button, Input, Modal, Select } from '../../components/common';
-import type { Product } from '../../types';
+import { getErrorMessage, inventoryApi } from '@/api';
+import { Button, Input, Modal, Select } from '@/components/common';
+import type { Product } from '@/types';
 
 const stockAdjustmentSchema = z.object({
   type: z.enum(['ADD', 'REMOVE', 'ADJUST']),

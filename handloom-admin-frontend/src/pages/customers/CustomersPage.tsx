@@ -4,7 +4,7 @@ import { Edit, Mail, MapPin, Phone, Plus, Search, ShoppingBag, Trash2 } from 'lu
 import { useState } from 'react';
 import toast from 'react-hot-toast';
 
-import { customersApi, getErrorMessage } from '../../api';
+import { customersApi, getErrorMessage } from '@/api';
 import {
   Badge,
   Button,
@@ -22,9 +22,9 @@ import {
   TableHeader,
   TableLoading,
   TableRow,
-} from '../../components/common';
-import { useCursorPagination, useDebounce } from '../../hooks';
-import type { Customer } from '../../types';
+} from '@/components/common';
+import { useCursorPagination, useDebounce } from '@/hooks';
+import type { Customer } from '@/types';
 import { formatCurrency } from '@/utils/currency';
 import { CustomerFormModal } from './CustomerFormModal';
 

@@ -5,9 +5,9 @@ import { AlertCircle, Bell, CheckCheck, Package, ShoppingCart, Tag } from 'lucid
 import { useState } from 'react';
 import toast from 'react-hot-toast';
 
-import { getErrorMessage, notificationsApi } from '../../api';
-import { Badge, Button, Card, PageLoading } from '../../components/common';
-import type { NotificationType } from '../../types';
+import { getErrorMessage, notificationsApi } from '@/api';
+import { Badge, Button, Card, PageLoading } from '@/components/common';
+import type { NotificationType } from '@/types';
 
 const getNotificationIcon = (type: NotificationType) => {
   switch (type) {

@@ -5,9 +5,9 @@ import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
 import { z } from 'zod';
 
-import { getErrorMessage, usersApi } from '../../api';
-import { Button, Input, Modal, Select } from '../../components/common';
-import type { CreateUserRequest, User } from '../../types';
+import { getErrorMessage, usersApi } from '@/api';
+import { Button, Input, Modal, Select } from '@/components/common';
+import type { CreateUserRequest, User } from '@/types';
 
 const userSchema = z.object({
   first_name: z

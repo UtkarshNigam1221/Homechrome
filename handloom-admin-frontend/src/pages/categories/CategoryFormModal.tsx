@@ -6,9 +6,9 @@ import { useFieldArray, useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
 import { z } from 'zod';
 
-import { categoriesApi, getErrorMessage } from '../../api';
-import { Button, Input, Modal, Select } from '../../components/common';
-import type { AttributeType, Category, CategoryAttribute, CreateCategoryRequest } from '../../types';
+import { categoriesApi, getErrorMessage } from '@/api';
+import { Button, Input, Modal, Select } from '@/components/common';
+import type { AttributeType, Category, CategoryAttribute, CreateCategoryRequest } from '@/types';
 
 const attributeOptionSchema = z.object({
   value: z.string().min(1, 'Value is required'),

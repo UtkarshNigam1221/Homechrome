@@ -4,7 +4,7 @@ import { CheckCircle, Clock, Download, FileText, Loader2, Plus, XCircle } from '
 import { useState } from 'react';
 import toast from 'react-hot-toast';
 
-import { getErrorMessage, reportsApi } from '../../api';
+import { getErrorMessage, reportsApi } from '@/api';
 import {
   Badge,
   Button,
@@ -22,9 +22,9 @@ import {
   TableHeader,
   TableLoading,
   TableRow,
-} from '../../components/common';
-import { useCursorPagination } from '../../hooks';
-import type { ReportFormat, ReportType } from '../../types';
+} from '@/components/common';
+import { useCursorPagination } from '@/hooks';
+import type { ReportFormat, ReportType } from '@/types';
 
 const REPORT_TYPES: { value: ReportType; label: string; description: string }[] = [
   { value: 'SALES', label: 'Sales Report', description: 'Revenue, orders, and sales trends' },

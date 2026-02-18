@@ -7,11 +7,11 @@ import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
 import { z } from 'zod';
 
-import { authApi, getErrorMessage, usersApi } from '../../api';
-import { Button, Card, CardHeader, Input } from '../../components/common';
-import { useAuthStore } from '../../stores/authStore';
-import { useUIStore } from '../../stores/uiStore';
-import type { User } from '../../types';
+import { authApi, getErrorMessage, usersApi } from '@/api';
+import { Button, Card, CardHeader, Input } from '@/components/common';
+import { useAuthStore } from '@/stores/authStore';
+import { useUIStore } from '@/stores/uiStore';
+import type { User } from '@/types';
 
 type SettingsTab = 'profile' | 'security' | 'notifications' | 'appearance';
 

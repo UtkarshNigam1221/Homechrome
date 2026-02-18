@@ -3,8 +3,8 @@ import { AlertCircle, Download } from 'lucide-react';
 import { useState } from 'react';
 import toast from 'react-hot-toast';
 
-import { bulkApi, getErrorMessage } from '../../api';
-import { Button, Modal, Select } from '../../components/common';
+import { bulkApi, getErrorMessage } from '@/api';
+import { Button, Modal, Select } from '@/components/common';
 
 interface BulkExportModalProps {
   isOpen: boolean;

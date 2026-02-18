@@ -3,7 +3,7 @@ import { format } from 'date-fns';
 import { CheckCircle, Clock, Download, FileText, Loader2, Upload, XCircle } from 'lucide-react';
 import { useState } from 'react';
 
-import { bulkApi } from '../../api';
+import { bulkApi } from '@/api';
 import {
   Badge,
   Button,
@@ -18,9 +18,9 @@ import {
   TableHeader,
   TableLoading,
   TableRow,
-} from '../../components/common';
-import { useCursorPagination } from '../../hooks';
-import type { BulkOperation } from '../../types';
+} from '@/components/common';
+import { useCursorPagination } from '@/hooks';
+import type { BulkOperation } from '@/types';
 import { BulkExportModal } from './BulkExportModal';
 import { BulkImportModal } from './BulkImportModal';
 

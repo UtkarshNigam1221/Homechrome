@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { AlertTriangle, ArrowDownCircle, ArrowUpCircle, Package, Search } from 'lucide-react';
 import { useState } from 'react';
 
-import { inventoryApi, productsApi } from '../../api';
+import { inventoryApi, productsApi } from '@/api';
 import {
   Badge,
   Button,
@@ -18,9 +18,9 @@ import {
   TableHeader,
   TableLoading,
   TableRow,
-} from '../../components/common';
-import { useCursorPagination, useDebounce } from '../../hooks';
-import type { Product } from '../../types';
+} from '@/components/common';
+import { useCursorPagination, useDebounce } from '@/hooks';
+import type { Product } from '@/types';
 import { StockAdjustmentModal } from './StockAdjustmentModal';
 
 export function InventoryPage() {

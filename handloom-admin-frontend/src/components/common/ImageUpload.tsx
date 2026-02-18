@@ -4,8 +4,8 @@ import { Film, Image as ImageIcon, Loader2, Upload, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 
-import { assetsApi } from '../../api';
-import type { AssetType } from '../../types';
+import { assetsApi } from '@/api';
+import type { AssetType } from '@/types';
 
 export interface UploadedImage {
   id?: string;

@@ -3,7 +3,7 @@ import { Edit, Eye, Filter, Package, Plus, Search, Trash2, X } from 'lucide-reac
 import { useState } from 'react';
 import toast from 'react-hot-toast';
 
-import { categoriesApi, getErrorMessage, productsApi } from '../../api';
+import { categoriesApi, getErrorMessage, productsApi } from '@/api';
 import {
   AttributeFilterSidebar,
   Badge,
@@ -22,9 +22,9 @@ import {
   TableHeader,
   TableLoading,
   TableRow,
-} from '../../components/common';
-import { useCursorPagination, useDebounce } from '../../hooks';
-import type { CategoryAttribute, Product } from '../../types';
+} from '@/components/common';
+import { useCursorPagination, useDebounce } from '@/hooks';
+import type { CategoryAttribute, Product } from '@/types';
 import { formatCurrency } from '@/utils/currency';
 import { ProductFormModal } from './ProductFormModal';
 
