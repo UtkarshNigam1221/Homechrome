@@ -8,6 +8,12 @@ describe('uiStore', () => {
       sidebarOpen: true,
       sidebarCollapsed: false,
       theme: 'light',
+      notificationPrefs: {
+        orderUpdates: true,
+        inventoryAlerts: true,
+        systemNotifications: true,
+        emailNotifications: false,
+      },
     });
   });
 
@@ -26,5 +32,10 @@ describe('uiStore', () => {
   it('sets theme', () => {
     useUIStore.getState().setTheme('dark');
     expect(useUIStore.getState().theme).toBe('dark');
+  });
+
+  it('sets notification preference', () => {
+    useUIStore.getState().setNotificationPref('emailNotifications', true);
+    expect(useUIStore.getState().notificationPrefs.emailNotifications).toBe(true);
   });
 });

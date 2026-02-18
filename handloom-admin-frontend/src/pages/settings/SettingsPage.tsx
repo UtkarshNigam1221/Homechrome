@@ -1,13 +1,16 @@
+import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation } from '@tanstack/react-query';
 import { clsx } from 'clsx';
 import { Bell, Lock, Palette, User as UserIcon } from 'lucide-react';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
+import { z } from 'zod';
 
 import { authApi, getErrorMessage, usersApi } from '../../api';
 import { Button, Card, CardHeader, Input } from '../../components/common';
 import { useAuthStore } from '../../stores/authStore';
+import { useUIStore } from '../../stores/uiStore';
 import type { User } from '../../types';
 
 type SettingsTab = 'profile' | 'security' | 'notifications' | 'appearance';
@@ -34,10 +37,13 @@ export function SettingsPage() {
         {/* Sidebar */}
         <div className="lg:w-64 flex-shrink-0">
           <Card padding="sm">
-            <nav className="space-y-1">
+            <nav role="tablist" className="space-y-1">
               {tabs.map((tab) => (
                 <button
                   key={tab.id}
+                  role="tab"
+                  aria-selected={activeTab === tab.id}
+                  aria-controls={`tabpanel-${tab.id}`}
                   onClick={() => setActiveTab(tab.id)}
                   className={clsx(
                     'flex items-center gap-3 w-full px-3 py-2 text-sm font-medium rounded-lg transition-colors',
@@ -55,7 +61,7 @@ export function SettingsPage() {
         </div>
 
         {/* Content */}
-        <div className="flex-1">
+        <div className="flex-1" role="tabpanel" id={`tabpanel-${activeTab}`}>
           {activeTab === 'profile' && <ProfileSettings user={user} />}
           {activeTab === 'security' && <SecuritySettings />}
           {activeTab === 'notifications' && <NotificationSettings />}
@@ -130,6 +136,17 @@ function ProfileSettings({ user }: { user: User | null }) {
   );
 }
 
+const passwordSchema = z.object({
+  current_password: z.string().min(1, 'Current password is required'),
+  new_password: z.string().min(8, 'Password must be at least 8 characters'),
+  confirm_password: z.string(),
+}).refine(data => data.new_password === data.confirm_password, {
+  message: 'Passwords do not match',
+  path: ['confirm_password'],
+});
+
+type PasswordFormData = z.infer<typeof passwordSchema>;
+
 function SecuritySettings() {
   const [isChangingPassword, setIsChangingPassword] = useState(false);
   const {
@@ -137,7 +154,8 @@ function SecuritySettings() {
     handleSubmit,
     reset,
     formState: { errors },
-  } = useForm({
+  } = useForm<PasswordFormData>({
+    resolver: zodResolver(passwordSchema),
     defaultValues: {
       current_password: '',
       new_password: '',
@@ -145,15 +163,7 @@ function SecuritySettings() {
     },
   });
 
-  const onSubmit = async (data: {
-    current_password: string;
-    new_password: string;
-    confirm_password: string;
-  }) => {
-    if (data.new_password !== data.confirm_password) {
-      toast.error('Passwords do not match');
-      return;
-    }
+  const onSubmit = async (data: PasswordFormData) => {
     setIsChangingPassword(true);
     try {
       await authApi.changePassword(data.current_password, data.new_password);
@@ -176,22 +186,19 @@ function SecuritySettings() {
         <Input
           label="Current Password"
           type="password"
-          {...register('current_password', { required: 'Current password is required' })}
+          {...register('current_password')}
           error={errors.current_password?.message}
         />
         <Input
           label="New Password"
           type="password"
-          {...register('new_password', {
-            required: 'New password is required',
-            minLength: { value: 8, message: 'Password must be at least 8 characters' },
-          })}
+          {...register('new_password')}
           error={errors.new_password?.message}
         />
         <Input
           label="Confirm New Password"
           type="password"
-          {...register('confirm_password', { required: 'Please confirm your password' })}
+          {...register('confirm_password')}
           error={errors.confirm_password?.message}
         />
         <div className="pt-4">
@@ -205,72 +212,48 @@ function SecuritySettings() {
 }
 
 function NotificationSettings() {
-  const [settings, setSettings] = useState({
-    email_orders: true,
-    email_inventory: true,
-    email_marketing: false,
-    push_orders: true,
-    push_inventory: false,
-  });
-
-  const handleToggle = (key: string) => {
-    setSettings((prev) => ({ ...prev, [key]: !prev[key as keyof typeof prev] }));
-  };
+  const { notificationPrefs, setNotificationPref } = useUIStore();
 
   return (
     <Card>
       <CardHeader title="Notification Preferences" subtitle="Choose how you want to be notified" />
       <div className="space-y-6">
         <div>
-          <h4 className="font-medium text-gray-900 mb-3">Email Notifications</h4>
+          <h4 className="font-medium text-gray-900 mb-3">Notifications</h4>
           <div className="space-y-3">
             <label className="flex items-center justify-between">
-              <span className="text-sm text-gray-600">New order notifications</span>
+              <span className="text-sm text-gray-600">Order updates</span>
               <input
                 type="checkbox"
-                checked={settings.email_orders}
-                onChange={() => handleToggle('email_orders')}
+                checked={notificationPrefs.orderUpdates}
+                onChange={() => setNotificationPref('orderUpdates', !notificationPrefs.orderUpdates)}
                 className="w-4 h-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
               />
             </label>
             <label className="flex items-center justify-between">
-              <span className="text-sm text-gray-600">Low inventory alerts</span>
+              <span className="text-sm text-gray-600">Inventory alerts</span>
               <input
                 type="checkbox"
-                checked={settings.email_inventory}
-                onChange={() => handleToggle('email_inventory')}
+                checked={notificationPrefs.inventoryAlerts}
+                onChange={() => setNotificationPref('inventoryAlerts', !notificationPrefs.inventoryAlerts)}
                 className="w-4 h-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
               />
             </label>
             <label className="flex items-center justify-between">
-              <span className="text-sm text-gray-600">Marketing and promotions</span>
+              <span className="text-sm text-gray-600">System notifications</span>
               <input
                 type="checkbox"
-                checked={settings.email_marketing}
-                onChange={() => handleToggle('email_marketing')}
-                className="w-4 h-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
-              />
-            </label>
-          </div>
-        </div>
-        <div>
-          <h4 className="font-medium text-gray-900 mb-3">Push Notifications</h4>
-          <div className="space-y-3">
-            <label className="flex items-center justify-between">
-              <span className="text-sm text-gray-600">New orders</span>
-              <input
-                type="checkbox"
-                checked={settings.push_orders}
-                onChange={() => handleToggle('push_orders')}
+                checked={notificationPrefs.systemNotifications}
+                onChange={() => setNotificationPref('systemNotifications', !notificationPrefs.systemNotifications)}
                 className="w-4 h-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
               />
             </label>
             <label className="flex items-center justify-between">
-              <span className="text-sm text-gray-600">Low inventory</span>
+              <span className="text-sm text-gray-600">Email notifications</span>
               <input
                 type="checkbox"
-                checked={settings.push_inventory}
-                onChange={() => handleToggle('push_inventory')}
+                checked={notificationPrefs.emailNotifications}
+                onChange={() => setNotificationPref('emailNotifications', !notificationPrefs.emailNotifications)}
                 className="w-4 h-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
               />
             </label>
@@ -282,7 +265,7 @@ function NotificationSettings() {
 }
 
 function AppearanceSettings() {
-  const [theme, setTheme] = useState<'light' | 'dark' | 'system'>('light');
+  const { theme, setTheme } = useUIStore();
 
   return (
     <Card>
@@ -290,8 +273,8 @@ function AppearanceSettings() {
       <div className="space-y-4">
         <div>
           <label className="label">Theme</label>
-          <div className="grid grid-cols-3 gap-3">
-            {(['light', 'dark', 'system'] as const).map((t) => (
+          <div className="grid grid-cols-2 gap-3">
+            {(['light', 'dark'] as const).map((t) => (
               <button
                 key={t}
                 onClick={() => setTheme(t)}
