@@ -332,7 +332,7 @@ export function OrderDetailPage() {
               <Button
                 variant="secondary"
                 size="sm"
-                onClick={() => navigate(`/customers/${order.customer_id}`)}
+                onClick={() => navigate('/customers')}
               >
                 View Customer
               </Button>

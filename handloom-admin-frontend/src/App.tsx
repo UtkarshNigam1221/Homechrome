@@ -1,4 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import type { ComponentType } from 'react';
 import { lazy, Suspense, useEffect } from 'react';
 import { Toaster } from 'react-hot-toast';
 import { BrowserRouter, Navigate, Outlet, Route, Routes } from 'react-router-dom';
@@ -10,49 +11,35 @@ import { MainLayout } from './components/layout';
 import { LoginPage } from './pages/auth/LoginPage';
 import { useAuthStore } from './stores/authStore';
 
+// Suspense wrapper to reduce repetitive <Suspense> in routes
+function withSuspense<P extends object>(LazyComponent: ComponentType<P>) {
+  return function SuspenseWrapper(props: P) {
+    return (
+      <Suspense fallback={<PageLoading message="Loading page..." />}>
+        <LazyComponent {...props} />
+      </Suspense>
+    );
+  };
+}
+
 // Lazy loaded pages - only loaded when navigating to that route
-const DashboardPage = lazy(() =>
-  import('./pages/dashboard/DashboardPage').then((m) => ({ default: m.DashboardPage }))
-);
-const CategoriesPage = lazy(() =>
-  import('./pages/categories').then((m) => ({ default: m.CategoriesPage }))
-);
-const ProductsPage = lazy(() =>
-  import('./pages/products').then((m) => ({ default: m.ProductsPage }))
-);
-const OrdersPage = lazy(() => import('./pages/orders').then((m) => ({ default: m.OrdersPage })));
-const OrderDetailPage = lazy(() =>
-  import('./pages/orders/OrderDetailPage').then((m) => ({ default: m.OrderDetailPage }))
-);
-const CustomersPage = lazy(() =>
-  import('./pages/customers').then((m) => ({ default: m.CustomersPage }))
-);
-const ArtisansPage = lazy(() =>
-  import('./pages/artisans').then((m) => ({ default: m.ArtisansPage }))
-);
-const PricingRulesPage = lazy(() =>
-  import('./pages/pricing').then((m) => ({ default: m.PricingRulesPage }))
-);
-const CouponsPage = lazy(() => import('./pages/coupons').then((m) => ({ default: m.CouponsPage })));
-const InventoryPage = lazy(() =>
-  import('./pages/inventory').then((m) => ({ default: m.InventoryPage }))
-);
-const AnalyticsPage = lazy(() =>
-  import('./pages/analytics').then((m) => ({ default: m.AnalyticsPage }))
-);
-const ReportsPage = lazy(() => import('./pages/reports').then((m) => ({ default: m.ReportsPage })));
-const NotificationsPage = lazy(() =>
-  import('./pages/notifications').then((m) => ({ default: m.NotificationsPage }))
-);
-const BulkOperationsPage = lazy(() =>
-  import('./pages/bulk').then((m) => ({ default: m.BulkOperationsPage }))
-);
-const UsersPage = lazy(() =>
-  import('./pages/settings/UsersPage').then((m) => ({ default: m.UsersPage }))
-);
-const SettingsPage = lazy(() =>
-  import('./pages/settings').then((m) => ({ default: m.SettingsPage }))
-);
+const Dashboard = withSuspense(lazy(() => import('./pages/dashboard/DashboardPage').then((m) => ({ default: m.DashboardPage }))));
+const Categories = withSuspense(lazy(() => import('./pages/categories').then((m) => ({ default: m.CategoriesPage }))));
+const Products = withSuspense(lazy(() => import('./pages/products').then((m) => ({ default: m.ProductsPage }))));
+const Orders = withSuspense(lazy(() => import('./pages/orders').then((m) => ({ default: m.OrdersPage }))));
+const OrderDetail = withSuspense(lazy(() => import('./pages/orders/OrderDetailPage').then((m) => ({ default: m.OrderDetailPage }))));
+const Customers = withSuspense(lazy(() => import('./pages/customers').then((m) => ({ default: m.CustomersPage }))));
+const Artisans = withSuspense(lazy(() => import('./pages/artisans').then((m) => ({ default: m.ArtisansPage }))));
+const PricingRules = withSuspense(lazy(() => import('./pages/pricing').then((m) => ({ default: m.PricingRulesPage }))));
+const Coupons = withSuspense(lazy(() => import('./pages/coupons').then((m) => ({ default: m.CouponsPage }))));
+const Inventory = withSuspense(lazy(() => import('./pages/inventory').then((m) => ({ default: m.InventoryPage }))));
+const Analytics = withSuspense(lazy(() => import('./pages/analytics').then((m) => ({ default: m.AnalyticsPage }))));
+const Reports = withSuspense(lazy(() => import('./pages/reports').then((m) => ({ default: m.ReportsPage }))));
+const Notifications = withSuspense(lazy(() => import('./pages/notifications').then((m) => ({ default: m.NotificationsPage }))));
+const BulkOperations = withSuspense(lazy(() => import('./pages/bulk').then((m) => ({ default: m.BulkOperationsPage }))));
+const Users = withSuspense(lazy(() => import('./pages/settings/UsersPage').then((m) => ({ default: m.UsersPage }))));
+const Settings = withSuspense(lazy(() => import('./pages/settings').then((m) => ({ default: m.SettingsPage }))));
+const NotFound = withSuspense(lazy(() => import('./pages/NotFoundPage').then((m) => ({ default: m.NotFoundPage }))));
 
 // Create a client
 const queryClient = new QueryClient({
@@ -106,11 +93,6 @@ function PublicRoute() {
   return <Outlet />;
 }
 
-// Suspense fallback for lazy-loaded pages
-function LazyPageFallback() {
-  return <PageLoading message="Loading page..." />;
-}
-
 function App() {
   // On mount, check if we have a valid session via HTTP-only cookie
   useEffect(() => {
@@ -139,171 +121,44 @@ function App() {
           <Route element={<ProtectedRoute />}>
             <Route element={<MainLayout />}>
               {/* Dashboard */}
-              <Route
-                path="/"
-                element={
-                  <Suspense fallback={<LazyPageFallback />}>
-                    <DashboardPage />
-                  </Suspense>
-                }
-              />
+              <Route path="/" element={<Dashboard />} />
 
               {/* Catalog */}
-              <Route
-                path="/categories"
-                element={
-                  <Suspense fallback={<LazyPageFallback />}>
-                    <CategoriesPage />
-                  </Suspense>
-                }
-              />
-              <Route
-                path="/products"
-                element={
-                  <Suspense fallback={<LazyPageFallback />}>
-                    <ProductsPage />
-                  </Suspense>
-                }
-              />
-              <Route
-                path="/products/:id"
-                element={
-                  <Suspense fallback={<LazyPageFallback />}>
-                    <ProductsPage />
-                  </Suspense>
-                }
-              />
-              <Route
-                path="/inventory"
-                element={
-                  <Suspense fallback={<LazyPageFallback />}>
-                    <InventoryPage />
-                  </Suspense>
-                }
-              />
+              <Route path="/categories" element={<Categories />} />
+              <Route path="/products" element={<Products />} />
+              <Route path="/inventory" element={<Inventory />} />
 
               {/* Sales */}
-              <Route
-                path="/orders"
-                element={
-                  <Suspense fallback={<LazyPageFallback />}>
-                    <OrdersPage />
-                  </Suspense>
-                }
-              />
-              <Route
-                path="/orders/:id"
-                element={
-                  <Suspense fallback={<LazyPageFallback />}>
-                    <OrderDetailPage />
-                  </Suspense>
-                }
-              />
-              <Route
-                path="/customers"
-                element={
-                  <Suspense fallback={<LazyPageFallback />}>
-                    <CustomersPage />
-                  </Suspense>
-                }
-              />
-              <Route
-                path="/artisans"
-                element={
-                  <Suspense fallback={<LazyPageFallback />}>
-                    <ArtisansPage />
-                  </Suspense>
-                }
-              />
+              <Route path="/orders" element={<Orders />} />
+              <Route path="/orders/:id" element={<OrderDetail />} />
+              <Route path="/customers" element={<Customers />} />
+              <Route path="/artisans" element={<Artisans />} />
 
               {/* Marketing */}
-              <Route
-                path="/pricing"
-                element={
-                  <Suspense fallback={<LazyPageFallback />}>
-                    <PricingRulesPage />
-                  </Suspense>
-                }
-              />
-              <Route
-                path="/coupons"
-                element={
-                  <Suspense fallback={<LazyPageFallback />}>
-                    <CouponsPage />
-                  </Suspense>
-                }
-              />
+              <Route path="/pricing" element={<PricingRules />} />
+              <Route path="/coupons" element={<Coupons />} />
 
               {/* Analytics & Reports */}
-              <Route
-                path="/analytics"
-                element={
-                  <Suspense fallback={<LazyPageFallback />}>
-                    <AnalyticsPage />
-                  </Suspense>
-                }
-              />
-              <Route
-                path="/reports"
-                element={
-                  <Suspense fallback={<LazyPageFallback />}>
-                    <ReportsPage />
-                  </Suspense>
-                }
-              />
+              <Route path="/analytics" element={<Analytics />} />
+              <Route path="/reports" element={<Reports />} />
 
               {/* Operations */}
-              <Route
-                path="/bulk"
-                element={
-                  <Suspense fallback={<LazyPageFallback />}>
-                    <BulkOperationsPage />
-                  </Suspense>
-                }
-              />
-              <Route
-                path="/notifications"
-                element={
-                  <Suspense fallback={<LazyPageFallback />}>
-                    <NotificationsPage />
-                  </Suspense>
-                }
-              />
+              <Route path="/bulk" element={<BulkOperations />} />
+              <Route path="/notifications" element={<Notifications />} />
 
               {/* Admin Only Routes */}
               <Route element={<AdminRoute />}>
-                <Route
-                  path="/users"
-                  element={
-                    <Suspense fallback={<LazyPageFallback />}>
-                      <UsersPage />
-                    </Suspense>
-                  }
-                />
+                <Route path="/users" element={<Users />} />
               </Route>
 
               {/* Settings */}
-              <Route
-                path="/settings"
-                element={
-                  <Suspense fallback={<LazyPageFallback />}>
-                    <SettingsPage />
-                  </Suspense>
-                }
-              />
-              <Route
-                path="/settings/*"
-                element={
-                  <Suspense fallback={<LazyPageFallback />}>
-                    <SettingsPage />
-                  </Suspense>
-                }
-              />
+              <Route path="/settings" element={<Settings />} />
+              <Route path="/settings/*" element={<Settings />} />
             </Route>
           </Route>
 
-          {/* Catch all - redirect to home */}
-          <Route path="*" element={<Navigate to="/" replace />} />
+          {/* 404 */}
+          <Route path="*" element={<NotFound />} />
         </Routes>
         </ErrorBoundary>
       </BrowserRouter>
