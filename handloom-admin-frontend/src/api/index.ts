@@ -37,33 +37,30 @@ import apiClient, { getErrorMessage } from './client';
 export { authApi } from './auth';
 export { getErrorMessage };
 
+// Normalize backend list responses that may use different keys (e.g. 'products', 'orders')
+// into a consistent { items, pagination } shape.
+function normalizeListResponse<T>(
+  data: Record<string, unknown>,
+  key: string
+): ListResponse<T> {
+  const items = (data[key] || data.items || data.data || []) as T[];
+  const pagination = (data.pagination as ListResponse<T>['pagination']) || {
+    limit: 10,
+    has_more: false,
+  };
+  return { items, pagination };
+}
+
 // ============================================================================
 // Users API
 // ============================================================================
-
-// Backend users response type (returns 'users' not 'items')
-interface UsersListResponse {
-  users: User[];
-  pagination: {
-    limit: number;
-    next_cursor?: string;
-    has_more: boolean;
-  };
-}
 
 export const usersApi = {
   list: async (
     params?: PaginationParams & { role?: string; status?: string; search?: string }
   ): Promise<ListResponse<User>> => {
-    const response = await apiClient.get<UsersListResponse>('/admin/users', { params });
-    const data = response.data;
-    return {
-      items: data.users || [],
-      pagination: data.pagination || {
-        limit: 10,
-        has_more: false,
-      },
-    };
+    const response = await apiClient.get('/admin/users', { params });
+    return normalizeListResponse<User>(response.data as Record<string, unknown>, 'users');
   },
 
   get: async (id: string): Promise<User> => {
@@ -94,9 +91,9 @@ export const usersApi = {
 // Categories API
 // ============================================================================
 export const categoriesApi = {
-  list: async (params?: PaginationParams & { status?: string }) => {
-    const response = await apiClient.get<ListResponse<Category>>('/admin/categories', { params });
-    return response.data;
+  list: async (params?: PaginationParams & { status?: string }): Promise<ListResponse<Category>> => {
+    const response = await apiClient.get('/admin/categories', { params });
+    return normalizeListResponse<Category>(response.data as Record<string, unknown>, 'categories');
   },
 
   get: async (id: string) => {
@@ -166,10 +163,10 @@ export const productsApi = {
     if (attribute_filters && Object.keys(attribute_filters).length > 0) {
       queryParams.attribute_filters = JSON.stringify(attribute_filters);
     }
-    const response = await apiClient.get<ListResponse<Product>>('/admin/products', {
+    const response = await apiClient.get('/admin/products', {
       params: queryParams,
     });
-    return response.data;
+    return normalizeListResponse<Product>(response.data as Record<string, unknown>, 'products');
   },
 
   get: async (id: string) => {
@@ -240,11 +237,11 @@ export const productsApi = {
 // Inventory API
 // ============================================================================
 export const inventoryApi = {
-  getLowStock: async (params?: PaginationParams) => {
-    const response = await apiClient.get<ListResponse<Inventory>>('/admin/inventory/low-stock', {
+  getLowStock: async (params?: PaginationParams): Promise<ListResponse<Inventory>> => {
+    const response = await apiClient.get('/admin/inventory/low-stock', {
       params,
     });
-    return response.data;
+    return normalizeListResponse<Inventory>(response.data as Record<string, unknown>, 'inventories');
   },
 
   addStock: async (productId: string, quantity: number, reason?: string) => {
@@ -276,9 +273,9 @@ export const ordersApi = {
       end_date?: string;
       search?: string;
     }
-  ) => {
-    const response = await apiClient.get<ListResponse<Order>>('/admin/orders', { params });
-    return response.data;
+  ): Promise<ListResponse<Order>> => {
+    const response = await apiClient.get('/admin/orders', { params });
+    return normalizeListResponse<Order>(response.data as Record<string, unknown>, 'orders');
   },
 
   get: async (id: string) => {
@@ -319,9 +316,9 @@ export const ordersApi = {
 // Customers API
 // ============================================================================
 export const customersApi = {
-  list: async (params?: PaginationParams & { status?: string; search?: string }) => {
-    const response = await apiClient.get<ListResponse<Customer>>('/admin/customers', { params });
-    return response.data;
+  list: async (params?: PaginationParams & { status?: string; search?: string }): Promise<ListResponse<Customer>> => {
+    const response = await apiClient.get('/admin/customers', { params });
+    return normalizeListResponse<Customer>(response.data as Record<string, unknown>, 'customers');
   },
 
   get: async (id: string) => {
@@ -369,9 +366,9 @@ export const artisansApi = {
       status?: string;
       search?: string;
     }
-  ) => {
-    const response = await apiClient.get<ListResponse<Artisan>>('/admin/artisans', { params });
-    return response.data;
+  ): Promise<ListResponse<Artisan>> => {
+    const response = await apiClient.get('/admin/artisans', { params });
+    return normalizeListResponse<Artisan>(response.data as Record<string, unknown>, 'artisans');
   },
 
   get: async (id: string) => {
@@ -416,9 +413,9 @@ export const couponsApi = {
       is_active?: boolean;
       search?: string;
     }
-  ) => {
-    const response = await apiClient.get<ListResponse<Coupon>>('/admin/coupons', { params });
-    return response.data;
+  ): Promise<ListResponse<Coupon>> => {
+    const response = await apiClient.get('/admin/coupons', { params });
+    return normalizeListResponse<Coupon>(response.data as Record<string, unknown>, 'coupons');
   },
 
   get: async (id: string) => {
@@ -472,11 +469,11 @@ export const pricingApi = {
       pricing_type?: string;
       is_active?: boolean;
     }
-  ) => {
-    const response = await apiClient.get<ListResponse<PricingRule>>('/admin/pricing/rules', {
+  ): Promise<ListResponse<PricingRule>> => {
+    const response = await apiClient.get('/admin/pricing/rules', {
       params,
     });
-    return response.data;
+    return normalizeListResponse<PricingRule>(response.data as Record<string, unknown>, 'rules');
   },
 
   getRule: async (id: string) => {
@@ -525,11 +522,11 @@ export const pricingApi = {
 export const notificationsApi = {
   list: async (
     params?: PaginationParams & { user_id?: string; type?: string; status?: string }
-  ) => {
-    const response = await apiClient.get<ListResponse<Notification>>('/admin/notifications', {
+  ): Promise<ListResponse<Notification>> => {
+    const response = await apiClient.get('/admin/notifications', {
       params,
     });
-    return response.data;
+    return normalizeListResponse<Notification>(response.data as Record<string, unknown>, 'notifications');
   },
 
   getMy: async (params?: PaginationParams) => {
@@ -583,12 +580,9 @@ export const analyticsApi = {
     start_date?: string;
     end_date?: string;
   }): Promise<TopProduct[]> => {
-    const response = await apiClient.get<{ products: TopProduct[] }>(
-      '/admin/analytics/top-products',
-      { params }
-    );
+    const response = await apiClient.get('/admin/analytics/top-products', { params });
     const data = response.data;
-    return data.products || (data as unknown as TopProduct[]);
+    return Array.isArray(data) ? data : ((data as Record<string, unknown>).products as TopProduct[]) || [];
   },
 
   getTopCategories: async (params?: {
@@ -596,12 +590,9 @@ export const analyticsApi = {
     start_date?: string;
     end_date?: string;
   }): Promise<TopCategory[]> => {
-    const response = await apiClient.get<{ categories: TopCategory[] }>(
-      '/admin/analytics/top-categories',
-      { params }
-    );
+    const response = await apiClient.get('/admin/analytics/top-categories', { params });
     const data = response.data;
-    return data.categories || (data as unknown as TopCategory[]);
+    return Array.isArray(data) ? data : ((data as Record<string, unknown>).categories as TopCategory[]) || [];
   },
 
   getCustomerAnalytics: async (params?: { start_date?: string; end_date?: string }) => {
@@ -621,9 +612,9 @@ export const analyticsApi = {
 export const bulkApi = {
   list: async (
     params?: PaginationParams & { type?: string; entity_type?: string; status?: string }
-  ) => {
-    const response = await apiClient.get<ListResponse<BulkOperation>>('/admin/bulk', { params });
-    return response.data;
+  ): Promise<ListResponse<BulkOperation>> => {
+    const response = await apiClient.get('/admin/bulk', { params });
+    return normalizeListResponse<BulkOperation>(response.data as Record<string, unknown>, 'operations');
   },
 
   get: async (id: string) => {
@@ -688,9 +679,9 @@ export const reportsApi = {
       start_date?: string;
       end_date?: string;
     }
-  ) => {
-    const response = await apiClient.get<ListResponse<Report>>('/admin/reports', { params });
-    return response.data;
+  ): Promise<ListResponse<Report>> => {
+    const response = await apiClient.get('/admin/reports', { params });
+    return normalizeListResponse<Report>(response.data as Record<string, unknown>, 'reports');
   },
 
   get: async (id: string) => {
@@ -783,9 +774,9 @@ export const auditApi = {
       entity_id?: string;
       user_id?: string;
     }
-  ) => {
-    const response = await apiClient.get<ListResponse<AuditLog>>('/admin/audit', { params });
-    return response.data;
+  ): Promise<ListResponse<AuditLog>> => {
+    const response = await apiClient.get('/admin/audit', { params });
+    return normalizeListResponse<AuditLog>(response.data as Record<string, unknown>, 'logs');
   },
 
   get: async (id: string) => {
