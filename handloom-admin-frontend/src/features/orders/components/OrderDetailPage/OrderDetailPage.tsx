@@ -3,7 +3,6 @@ import { format } from 'date-fns';
 import {
   ArrowLeft,
   Ban,
-  Clock,
   CreditCard,
   Edit,
   MapPin,
@@ -29,6 +28,9 @@ import {
 import { getStatusBadgeVariant } from '@/shared/utils/badge';
 import type { OrderStatus } from '../../types';
 import { formatCurrency } from '@/shared/utils/currency';
+
+import { OrderNotes } from './OrderNotes';
+import { OrderTimeline } from './OrderTimeline';
 
 const ORDER_STATUSES: OrderStatus[] = [
   'PENDING',
@@ -284,32 +286,7 @@ export function OrderDetailPage() {
 
           {/* Notes */}
           {order.notes && order.notes.length > 0 && (
-            <Card>
-              <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                <MessageSquare className="w-5 h-5" />
-                Order Notes
-              </h2>
-              <div className="space-y-3">
-                {order.notes.map((note, index) => (
-                  <div
-                    key={note.id || index}
-                    className={`p-3 rounded-lg ${note.is_internal ? 'bg-yellow-50 border border-yellow-200' : 'bg-gray-50'}`}
-                  >
-                    <p className="text-sm">{note.note}</p>
-                    <div className="flex items-center gap-2 mt-2 text-xs text-gray-500">
-                      <span>{note.created_by}</span>
-                      <span>•</span>
-                      <span>{format(new Date(note.created_at), 'MMM d, yyyy h:mm a')}</span>
-                      {note.is_internal && (
-                        <Badge variant="warning" size="sm">
-                          Internal
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </Card>
+            <OrderNotes notes={order.notes} />
           )}
         </div>
 
@@ -370,34 +347,7 @@ export function OrderDetailPage() {
           )}
 
           {/* Timeline */}
-          <Card>
-            <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-              <Clock className="w-5 h-5" />
-              Timeline
-            </h2>
-            <div className="space-y-3">
-              <div className="flex items-start gap-3">
-                <div className="w-2 h-2 bg-primary-600 rounded-full mt-2" />
-                <div>
-                  <p className="text-sm font-medium">Order Placed</p>
-                  <p className="text-xs text-gray-500">
-                    {format(new Date(order.created_at), 'MMM d, yyyy h:mm a')}
-                  </p>
-                </div>
-              </div>
-              {order.updated_at !== order.created_at && (
-                <div className="flex items-start gap-3">
-                  <div className="w-2 h-2 bg-gray-400 rounded-full mt-2" />
-                  <div>
-                    <p className="text-sm font-medium">Last Updated</p>
-                    <p className="text-xs text-gray-500">
-                      {format(new Date(order.updated_at), 'MMM d, yyyy h:mm a')}
-                    </p>
-                  </div>
-                </div>
-              )}
-            </div>
-          </Card>
+          <OrderTimeline createdAt={order.created_at} updatedAt={order.updated_at} />
         </div>
       </div>
 
