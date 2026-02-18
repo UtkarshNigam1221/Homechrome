@@ -34,5 +34,3 @@ export {
   TableLoading,
   TableRow,
 } from './Table';
-export type { TabItem, TabsProps } from './Tabs';
-export { Tabs } from './Tabs';

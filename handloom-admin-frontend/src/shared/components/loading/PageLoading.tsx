@@ -14,18 +14,3 @@ export function PageLoading({ message = 'Loading...' }: PageLoadingProps) {
     </div>
   );
 }
-
-// Full page data loading (for when data is fetching)
-export interface DataLoadingProps {
-  message?: string;
-  size?: 'sm' | 'md' | 'lg';
-}
-
-export function DataLoading({ message, size = 'md' }: DataLoadingProps) {
-  return (
-    <div className="flex flex-col items-center justify-center py-12">
-      <LoadingSpinner size={size} />
-      {message && <p className="mt-4 text-sm text-gray-500">{message}</p>}
-    </div>
-  );
-}
