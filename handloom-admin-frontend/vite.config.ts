@@ -101,6 +101,11 @@ export default defineConfig(({ mode }) => {
           changeOrigin: true,
           secure: true,
         },
+        '/api': {
+          target: env.VITE_API_URL || 'http://localhost:8080',
+          changeOrigin: true,
+          secure: true,
+        },
       },
     },
   };
