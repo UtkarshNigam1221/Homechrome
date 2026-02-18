@@ -4,7 +4,7 @@ import { Toaster } from 'react-hot-toast';
 import { BrowserRouter, Navigate, Outlet, Route, Routes } from 'react-router-dom';
 
 import { authApi } from './api';
-import { LoadingOverlay, PageLoading } from './components/common';
+import { ErrorBoundary, LoadingOverlay, PageLoading } from './components/common';
 import { MainLayout } from './components/layout';
 // Eagerly loaded pages (critical path)
 import { LoginPage } from './pages/auth/LoginPage';
@@ -128,6 +128,7 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
+        <ErrorBoundary>
         <Routes>
           {/* Public Routes */}
           <Route element={<PublicRoute />}>
@@ -304,6 +305,7 @@ function App() {
           {/* Catch all - redirect to home */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
+        </ErrorBoundary>
       </BrowserRouter>
 
       {/* Toast notifications */}
