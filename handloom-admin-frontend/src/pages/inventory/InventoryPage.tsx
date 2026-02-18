@@ -19,13 +19,14 @@ import {
   TableLoading,
   TableRow,
 } from '../../components/common';
-import { useCursorPagination } from '../../hooks';
+import { useCursorPagination, useDebounce } from '../../hooks';
 import type { Product } from '../../types';
 import { StockAdjustmentModal } from './StockAdjustmentModal';
 
 export function InventoryPage() {
   const { limit, cursor, hasPrevious, goToNextPage, goToPreviousPage, resetPagination, changeLimit } = useCursorPagination(10);
   const [searchQuery, setSearchQuery] = useState('');
+  const debouncedSearch = useDebounce(searchQuery, 300);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [adjustmentType, setAdjustmentType] = useState<'ADD' | 'REMOVE' | 'ADJUST'>('ADD');
   const [showAdjustmentModal, setShowAdjustmentModal] = useState(false);
@@ -36,8 +37,8 @@ export function InventoryPage() {
   });
 
   const { data: productsData, isLoading: productsLoading } = useQuery({
-    queryKey: ['products-inventory', { limit, cursor, search: searchQuery }],
-    queryFn: () => productsApi.list({ limit, cursor, search: searchQuery || undefined }),
+    queryKey: ['products-inventory', { limit, cursor, search: debouncedSearch }],
+    queryFn: () => productsApi.list({ limit, cursor, search: debouncedSearch || undefined }),
   });
 
   const lowStockItems = lowStockData?.items ?? [];

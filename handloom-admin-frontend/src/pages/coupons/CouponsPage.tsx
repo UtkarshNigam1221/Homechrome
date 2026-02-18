@@ -22,7 +22,7 @@ import {
   TableLoading,
   TableRow,
 } from '../../components/common';
-import { useCursorPagination } from '../../hooks';
+import { useCursorPagination, useDebounce } from '../../hooks';
 import type { Coupon } from '../../types';
 import { CouponFormModal } from './CouponFormModal';
 
@@ -30,13 +30,14 @@ export function CouponsPage() {
   const queryClient = useQueryClient();
   const { limit, cursor, hasPrevious, goToNextPage, goToPreviousPage, resetPagination, changeLimit } = useCursorPagination(10);
   const [searchQuery, setSearchQuery] = useState('');
+  const debouncedSearch = useDebounce(searchQuery, 300);
   const [showFormModal, setShowFormModal] = useState(false);
   const [editingCoupon, setEditingCoupon] = useState<Coupon | null>(null);
   const [deleteCoupon, setDeleteCoupon] = useState<Coupon | null>(null);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['coupons', { limit, cursor, search: searchQuery }],
-    queryFn: () => couponsApi.list({ limit, cursor, search: searchQuery || undefined }),
+    queryKey: ['coupons', { limit, cursor, search: debouncedSearch }],
+    queryFn: () => couponsApi.list({ limit, cursor, search: debouncedSearch || undefined }),
   });
 
   // Delete mutation

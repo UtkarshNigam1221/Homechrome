@@ -21,7 +21,7 @@ import {
   TableLoading,
   TableRow,
 } from '../../components/common';
-import { useCursorPagination } from '../../hooks';
+import { useCursorPagination, useDebounce } from '../../hooks';
 import type { Artisan } from '../../types';
 import { formatCurrency } from '@/utils/currency';
 import { ArtisanFormModal } from './ArtisanFormModal';
@@ -30,13 +30,14 @@ export function ArtisansPage() {
   const queryClient = useQueryClient();
   const { limit, cursor, hasPrevious, goToNextPage, goToPreviousPage, resetPagination, changeLimit } = useCursorPagination(10);
   const [searchQuery, setSearchQuery] = useState('');
+  const debouncedSearch = useDebounce(searchQuery, 300);
   const [showFormModal, setShowFormModal] = useState(false);
   const [editingArtisan, setEditingArtisan] = useState<Artisan | null>(null);
   const [deleteArtisan, setDeleteArtisan] = useState<Artisan | null>(null);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['artisans', { limit, cursor, search: searchQuery }],
-    queryFn: () => artisansApi.list({ limit, cursor, search: searchQuery || undefined }),
+    queryKey: ['artisans', { limit, cursor, search: debouncedSearch }],
+    queryFn: () => artisansApi.list({ limit, cursor, search: debouncedSearch || undefined }),
   });
 
   // Delete mutation

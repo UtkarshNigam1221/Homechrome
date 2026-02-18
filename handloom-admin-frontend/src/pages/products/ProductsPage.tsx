@@ -23,7 +23,7 @@ import {
   TableLoading,
   TableRow,
 } from '../../components/common';
-import { useCursorPagination } from '../../hooks';
+import { useCursorPagination, useDebounce } from '../../hooks';
 import type { CategoryAttribute, Product } from '../../types';
 import { formatCurrency } from '@/utils/currency';
 import { ProductFormModal } from './ProductFormModal';
@@ -32,6 +32,7 @@ export function ProductsPage() {
   const queryClient = useQueryClient();
   const { limit, cursor, hasPrevious, goToNextPage, goToPreviousPage, resetPagination, changeLimit } = useCursorPagination(10);
   const [searchQuery, setSearchQuery] = useState('');
+  const debouncedSearch = useDebounce(searchQuery, 300);
   const [statusFilter, setStatusFilter] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
   const [attributeFilters, setAttributeFilters] = useState<Record<string, string[]>>({});
@@ -48,7 +49,7 @@ export function ProductsPage() {
       {
         limit,
         cursor,
-        search: searchQuery,
+        search: debouncedSearch,
         status: statusFilter,
         category_id: categoryFilter,
         attribute_filters: attributeFilters,
@@ -58,7 +59,7 @@ export function ProductsPage() {
       productsApi.list({
         limit,
         cursor,
-        search: searchQuery || undefined,
+        search: debouncedSearch || undefined,
         status: statusFilter || undefined,
         category_id: categoryFilter || undefined,
         attribute_filters: Object.keys(attributeFilters).length > 0 ? attributeFilters : undefined,

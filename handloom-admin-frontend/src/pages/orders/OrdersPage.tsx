@@ -24,7 +24,7 @@ import {
   TableLoading,
   TableRow,
 } from '../../components/common';
-import { useCursorPagination } from '../../hooks';
+import { useCursorPagination, useDebounce } from '../../hooks';
 import type { Order, OrderStatus } from '../../types';
 import { formatCurrency } from '@/utils/currency';
 
@@ -43,6 +43,7 @@ export function OrdersPage() {
   const queryClient = useQueryClient();
   const { limit, cursor, hasPrevious, goToNextPage, goToPreviousPage, resetPagination, changeLimit } = useCursorPagination(10);
   const [searchQuery, setSearchQuery] = useState('');
+  const debouncedSearch = useDebounce(searchQuery, 300);
   const [statusFilter, setStatusFilter] = useState('');
   const [paymentFilter, setPaymentFilter] = useState('');
   const [showFilters, setShowFilters] = useState(false);
@@ -56,7 +57,7 @@ export function OrdersPage() {
       {
         limit,
         cursor,
-        search: searchQuery,
+        search: debouncedSearch,
         status: statusFilter,
         payment_status: paymentFilter,
       },
@@ -65,7 +66,7 @@ export function OrdersPage() {
       ordersApi.list({
         limit,
         cursor,
-        search: searchQuery || undefined,
+        search: debouncedSearch || undefined,
         status: statusFilter || undefined,
         payment_status: paymentFilter || undefined,
       }),

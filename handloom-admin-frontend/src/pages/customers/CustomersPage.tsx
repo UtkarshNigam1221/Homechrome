@@ -23,7 +23,7 @@ import {
   TableLoading,
   TableRow,
 } from '../../components/common';
-import { useCursorPagination } from '../../hooks';
+import { useCursorPagination, useDebounce } from '../../hooks';
 import type { Customer } from '../../types';
 import { formatCurrency } from '@/utils/currency';
 import { CustomerFormModal } from './CustomerFormModal';
@@ -32,6 +32,7 @@ export function CustomersPage() {
   const queryClient = useQueryClient();
   const { limit, cursor, hasPrevious, goToNextPage, goToPreviousPage, resetPagination, changeLimit } = useCursorPagination(10);
   const [searchQuery, setSearchQuery] = useState('');
+  const debouncedSearch = useDebounce(searchQuery, 300);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [deleteCustomer, setDeleteCustomer] = useState<Customer | null>(null);
   const [showFormModal, setShowFormModal] = useState(false);
@@ -39,12 +40,12 @@ export function CustomersPage() {
 
   // Fetch customers
   const { data: customersData, isLoading } = useQuery({
-    queryKey: ['customers', { limit, cursor, search: searchQuery }],
+    queryKey: ['customers', { limit, cursor, search: debouncedSearch }],
     queryFn: () =>
       customersApi.list({
         limit,
         cursor,
-        search: searchQuery || undefined,
+        search: debouncedSearch || undefined,
       }),
   });
 
