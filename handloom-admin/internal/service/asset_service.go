@@ -15,11 +15,36 @@ import (
 	"github.com/handloom/admin/pkg/logger"
 )
 
+const (
+	presignExpiry   = 15 * time.Minute
+	maxImageSize    = 50 << 20  // 50 MB
+	maxVideoSize    = 100 << 20 // 100 MB
+	maxDocumentSize = 10 << 20  // 10 MB
+	tmpPrefix       = "tmp/"
+	assetsPrefix    = "assets/"
+)
+
+var validDocumentTypes = map[string]bool{
+	"application/pdf":   true,
+	"application/msword": true,
+	"application/vnd.openxmlformats-officedocument.wordprocessingml.document": true,
+	"application/vnd.ms-excel": true,
+	"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": true,
+	"text/csv": true,
+}
+
+// s3Ops abstracts the S3 operations needed by AssetService so it can be mocked in tests.
+type s3Ops interface {
+	GeneratePresignedPutURL(ctx context.Context, bucket, key, contentType string, expiry time.Duration) (string, error)
+	CopyObject(ctx context.Context, bucket, srcKey, dstKey string) error
+	DeleteObject(ctx context.Context, bucket, key string) error
+}
+
 // AssetService handles file uploads via S3.
 // Files are uploaded to a tmp/ prefix first, then moved to assets/ on finalize.
 // S3 lifecycle auto-deletes tmp/ objects after 24h — no DB scan needed.
 type AssetService struct {
-	s3Client *s3client.S3Client
+	s3Client s3Ops
 	logger   *logger.Logger
 	bucket   string
 }
@@ -37,6 +62,11 @@ func NewAssetService(
 	}
 }
 
+// s3URL builds a public S3 URL for the given key.
+func (s *AssetService) s3URL(key string) string {
+	return fmt.Sprintf("https://%s.s3.amazonaws.com/%s", s.bucket, key)
+}
+
 // GetUploadURL generates a presigned PUT URL for a temporary upload.
 // The file is placed under tmp/{TYPE}/{uuid}.{ext}.
 func (s *AssetService) GetUploadURL(ctx context.Context, req domain.UploadAssetRequest) (*domain.UploadURLResponse, error) {
@@ -52,22 +82,19 @@ func (s *AssetService) GetUploadURL(ctx context.Context, req domain.UploadAssetR
 	// Generate a unique key under tmp/
 	id := uuid.New().String()
 	ext := filepath.Ext(req.FileName)
-	tmpKey := fmt.Sprintf("tmp/%s/%s%s", req.Type, id, ext)
+	tmpKey := fmt.Sprintf("%s%s/%s%s", tmpPrefix, req.Type, id, ext)
 
-	// Presigned PUT URL (15 min expiry)
-	uploadURL, err := s.s3Client.GeneratePresignedPutURL(ctx, s.bucket, tmpKey, req.ContentType, 15*time.Minute)
+	// Presigned PUT URL
+	uploadURL, err := s.s3Client.GeneratePresignedPutURL(ctx, s.bucket, tmpKey, req.ContentType, presignExpiry)
 	if err != nil {
 		return nil, errors.Wrap(err, "Failed to generate presigned URL")
 	}
 
-	// Temporary URL for preview (public-read won't work on tmp/, but frontend can use the local blob)
-	tmpURL := fmt.Sprintf("https://%s.s3.amazonaws.com/%s", s.bucket, tmpKey)
-
 	return &domain.UploadURLResponse{
 		UploadURL: uploadURL,
 		TmpKey:    tmpKey,
-		TmpURL:    tmpURL,
-		ExpiresAt: time.Now().Add(15 * time.Minute),
+		TmpURL:    s.s3URL(tmpKey),
+		ExpiresAt: time.Now().Add(presignExpiry),
 	}, nil
 }
 
@@ -75,7 +102,7 @@ func (s *AssetService) GetUploadURL(ctx context.Context, req domain.UploadAssetR
 // Called when a product/category/entity is saved.
 func (s *AssetService) FinalizeUpload(ctx context.Context, tmpKey string) (string, error) {
 	// Validate the key starts with tmp/
-	if !strings.HasPrefix(tmpKey, "tmp/") {
+	if !strings.HasPrefix(tmpKey, tmpPrefix) {
 		return "", errors.BadRequest("Invalid tmp key")
 	}
 
@@ -84,11 +111,11 @@ func (s *AssetService) FinalizeUpload(ctx context.Context, tmpKey string) (strin
 	if len(parts) != 3 {
 		return "", errors.BadRequest("Invalid tmp key format")
 	}
-	assetType := parts[1]  // IMAGE, VIDEO, DOCUMENT
-	fileName := parts[2]   // uuid.ext
+	assetType := parts[1] // IMAGE, VIDEO, DOCUMENT
+	fileName := parts[2]  // uuid.ext
 
 	// Build final key: assets/{TYPE}/{date}/{filename}
-	finalKey := fmt.Sprintf("assets/%s/%s/%s", assetType, time.Now().Format("2006/01/02"), fileName)
+	finalKey := fmt.Sprintf("%s%s/%s/%s", assetsPrefix, assetType, time.Now().Format("2006/01/02"), fileName)
 
 	// Copy tmp → assets
 	if err := s.s3Client.CopyObject(ctx, s.bucket, tmpKey, finalKey); err != nil {
@@ -100,7 +127,7 @@ func (s *AssetService) FinalizeUpload(ctx context.Context, tmpKey string) (strin
 		s.logger.WithContext(ctx).Errorf("Failed to delete tmp object %s: %v", tmpKey, err)
 	}
 
-	finalURL := fmt.Sprintf("https://%s.s3.amazonaws.com/%s", s.bucket, finalKey)
+	finalURL := s.s3URL(finalKey)
 	s.logger.WithContext(ctx).Infof("Finalized asset: %s → %s", tmpKey, finalKey)
 	return finalURL, nil
 }
@@ -108,7 +135,7 @@ func (s *AssetService) FinalizeUpload(ctx context.Context, tmpKey string) (strin
 // FinalizeIfTemp finalizes a tmp/ key into a permanent assets/ URL.
 // If value starts with "tmp/", calls FinalizeUpload. Otherwise returns as-is.
 func (s *AssetService) FinalizeIfTemp(ctx context.Context, value string) (string, error) {
-	if strings.HasPrefix(value, "tmp/") {
+	if strings.HasPrefix(value, tmpPrefix) {
 		return s.FinalizeUpload(ctx, value)
 	}
 	return value, nil
@@ -120,13 +147,13 @@ var _ domain.AssetFinalizer = (*AssetService)(nil)
 // DeleteAsset deletes a file from the assets/ prefix by its public URL.
 func (s *AssetService) DeleteAsset(ctx context.Context, assetURL string) error {
 	// Parse key from URL: https://{bucket}.s3.amazonaws.com/{key}
-	prefix := fmt.Sprintf("https://%s.s3.amazonaws.com/", s.bucket)
+	prefix := s.s3URL("")
 	if !strings.HasPrefix(assetURL, prefix) {
 		return errors.BadRequest("Invalid asset URL")
 	}
 
 	key := strings.TrimPrefix(assetURL, prefix)
-	if !strings.HasPrefix(key, "assets/") {
+	if !strings.HasPrefix(key, assetsPrefix) {
 		return errors.BadRequest("Can only delete files in assets/ prefix")
 	}
 
@@ -147,20 +174,7 @@ func isValidContentType(contentType string, assetType domain.AssetType) bool {
 	case domain.AssetTypeVideo:
 		return strings.HasPrefix(contentType, "video/")
 	case domain.AssetTypeDocument:
-		validTypes := []string{
-			"application/pdf",
-			"application/msword",
-			"application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-			"application/vnd.ms-excel",
-			"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-			"text/csv",
-		}
-		for _, t := range validTypes {
-			if contentType == t {
-				return true
-			}
-		}
-		return false
+		return validDocumentTypes[contentType]
 	}
 	return false
 }
@@ -168,11 +182,11 @@ func isValidContentType(contentType string, assetType domain.AssetType) bool {
 func getMaxSize(assetType domain.AssetType) int64 {
 	switch assetType {
 	case domain.AssetTypeImage:
-		return 50 * 1024 * 1024 // 50MB
+		return maxImageSize
 	case domain.AssetTypeVideo:
-		return 100 * 1024 * 1024 // 100MB
+		return maxVideoSize
 	case domain.AssetTypeDocument:
-		return 10 * 1024 * 1024 // 10MB
+		return maxDocumentSize
 	}
-	return 10 * 1024 * 1024
+	return maxDocumentSize
 }
