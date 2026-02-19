@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  # LocalStack — unified AWS emulator (DynamoDB, S3, Lambda, API Gateway, IAM)
+  localstack:
+    image: localstack/localstack:latest
+    container_name: handloom-localstack
+    ports:
+      - "4566:4566"           # LocalStack gateway
+    environment:
+      SERVICES: dynamodb,s3,lambda,apigateway,iam
+      DEFAULT_REGION: ap-south-1
+      LAMBDA_EXECUTOR: docker
+      DOCKER_HOST: unix:///var/run/docker.sock
+      DEBUG: 0
+    volumes:
+      - localstack-data:/var/lib/localstack
+      - /var/run/docker.sock:/var/run/docker.sock
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:4566/_localstack/health | grep -q '\"dynamodb\": \"running\"' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # DynamoDB Admin UI (optional — browse tables in browser)
+  dynamodb-admin:
+    image: aaronshaf/dynamodb-admin
+    container_name: handloom-dynamodb-admin
+    ports:
+      - "8001:8001"
+    environment:
+      DYNAMO_ENDPOINT: http://localstack:4566
+      AWS_REGION: ap-south-1
+      AWS_ACCESS_KEY_ID: local
+      AWS_SECRET_ACCESS_KEY: local
+    depends_on:
+      localstack:
+        condition: service_healthy
+
+volumes:
+  localstack-data:
