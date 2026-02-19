@@ -63,6 +63,20 @@ func createEnvironmentStacks(app awscdk.App, environment string, env *awscdk.Env
 		Environment: environment,
 	})
 
+	// Compute custom domain config from CDK context
+	certArn := getCertArn(app)
+	var domainName, frontendOrigin string
+	if certArn != "" {
+		switch environment {
+		case "prod":
+			domainName = "api.homechrome.lldlab.com"
+			frontendOrigin = "https://admin.homechrome.lldlab.com"
+		default:
+			domainName = "dev-api.homechrome.lldlab.com"
+			frontendOrigin = "https://dev.homechrome.lldlab.com"
+		}
+	}
+
 	// API stack (depends on database and storage)
 	stacks.NewAPIStack(app, "HandloomAPIStack-"+environment, &stacks.APIStackProps{
 		StackProps: awscdk.StackProps{
@@ -74,9 +88,12 @@ func createEnvironmentStacks(app awscdk.App, environment string, env *awscdk.Env
 				"ManagedBy":   jsii.String("cdk"),
 			},
 		},
-		Environment:   environment,
-		DatabaseStack: databaseStack,
-		StorageStack:  storageStack,
+		Environment:    environment,
+		DatabaseStack:  databaseStack,
+		StorageStack:   storageStack,
+		DomainName:     domainName,
+		FrontendOrigin: frontendOrigin,
+		CertArn:        certArn,
 	})
 }
 
@@ -108,6 +125,16 @@ func getEnvironment(app constructs.Construct) string {
 
 	// Default to dev
 	return "dev"
+}
+
+func getCertArn(app constructs.Construct) string {
+	if arn := app.Node().TryGetContext(jsii.String("certArn")); arn != nil {
+		return arn.(string)
+	}
+	if arn := os.Getenv("ACM_CERT_ARN"); arn != "" {
+		return arn
+	}
+	return ""
 }
 
 func getAWSEnv() *awscdk.Environment {

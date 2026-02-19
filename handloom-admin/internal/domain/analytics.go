@@ -1,0 +1,197 @@
+package domain
+
+import (
+	"context"
+	"time"
+)
+
+// ==================== ANALYTICS ENTITIES ====================
+
+// DashboardStats contains overall dashboard statistics
+type DashboardStats struct {
+	// Today's metrics
+	TodayOrders    int     `json:"today_orders"`
+	TodayRevenue   int64   `json:"today_revenue"`
+	TodayVisitors  int     `json:"today_visitors"`
+
+	// This week
+	WeekOrders     int     `json:"week_orders"`
+	WeekRevenue    int64   `json:"week_revenue"`
+
+	// This month
+	MonthOrders    int     `json:"month_orders"`
+	MonthRevenue   int64   `json:"month_revenue"`
+
+	// All time
+	TotalOrders    int     `json:"total_orders"`
+	TotalRevenue   float64 `json:"total_revenue"`
+	TotalCustomers int     `json:"total_customers"`
+	TotalProducts  int     `json:"total_products"`
+
+	// Growth metrics
+	RevenueGrowth     float64 `json:"revenue_growth"`
+	OrdersGrowth      float64 `json:"orders_growth"`
+	CustomersGrowth   float64 `json:"customers_growth"`
+	AverageOrderValue float64 `json:"average_order_value"`
+
+	// Inventory
+	LowStockCount  int     `json:"low_stock_count"`
+	OutOfStockCount int    `json:"out_of_stock_count"`
+
+	// Orders by status
+	PendingOrders    int `json:"pending_orders"`
+	ProcessingOrders int `json:"processing_orders"`
+	ShippedOrders    int `json:"shipped_orders"`
+}
+
+// SalesAnalytics contains sales analytics data
+type SalesAnalytics struct {
+	Period           string           `json:"period"` // daily, weekly, monthly
+	StartDate        time.Time        `json:"start_date"`
+	EndDate          time.Time        `json:"end_date"`
+	TotalSales       float64          `json:"total_sales"`
+	TotalOrders      int              `json:"total_orders"`
+	AverageOrderValue float64         `json:"average_order_value"`
+	DataPoints       []SalesDataPoint `json:"data_points"`
+	SalesByDay       []DailySales     `json:"sales_by_day,omitempty"`
+	TopSellingItems  []TopProduct     `json:"top_selling_items,omitempty"`
+}
+
+// SalesDataPoint represents a single data point in sales analytics
+type SalesDataPoint struct {
+	Date     string `json:"date"`
+	Sales    int64  `json:"sales"`
+	Orders   int    `json:"orders"`
+}
+
+// TopProduct represents a top-selling product
+type TopProduct struct {
+	ProductID    string `json:"product_id"`
+	ProductName  string `json:"product_name"`
+	SKU          string `json:"sku"`
+	UnitsSold    int    `json:"units_sold"`
+	Revenue      int64  `json:"revenue"`
+}
+
+// TopCategory represents a top-performing category
+type TopCategory struct {
+	CategoryID   string `json:"category_id"`
+	CategoryName string `json:"category_name"`
+	UnitsSold    int    `json:"units_sold"`
+	Revenue      int64  `json:"revenue"`
+}
+
+// CustomerAnalytics contains customer analytics data
+type CustomerAnalytics struct {
+	TotalCustomers          int           `json:"total_customers"`
+	NewCustomers            int           `json:"new_customers"`
+	ReturningCustomers      int           `json:"returning_customers"`
+	AverageOrdersPerCustomer float64      `json:"average_orders_per_customer"`
+	TopCustomers            []TopCustomer `json:"top_customers,omitempty"`
+}
+
+// TopCustomer represents a top customer
+type TopCustomer struct {
+	CustomerID   string `json:"customer_id"`
+	CustomerName string `json:"customer_name"`
+	OrderCount   int    `json:"order_count"`
+	TotalSpent   int64  `json:"total_spent"`
+}
+
+// InventoryAnalytics contains inventory analytics data
+type InventoryAnalytics struct {
+	TotalProducts       int          `json:"total_products"`
+	TotalInventoryValue float64      `json:"total_inventory_value"`
+	LowStockCount       int          `json:"low_stock_count"`
+	OutOfStockCount     int          `json:"out_of_stock_count"`
+	LowStockItems       []*Inventory `json:"low_stock_items,omitempty"`
+	OutOfStockItems     []*Inventory `json:"out_of_stock_items,omitempty"`
+	TopMovingItems      []MovingItem `json:"top_moving_items,omitempty"`
+	SlowMovingItems     []MovingItem `json:"slow_moving_items,omitempty"`
+}
+
+// MovingItem represents a product's movement stats
+type MovingItem struct {
+	ProductID   string `json:"product_id"`
+	ProductName string `json:"product_name"`
+	SKU         string `json:"sku"`
+	UnitsSold   int    `json:"units_sold"`
+	DaysInStock int    `json:"days_in_stock"`
+}
+
+// ==================== ANALYTICS REPOSITORY ====================
+
+// AnalyticsRepository defines the interface for analytics data access
+type AnalyticsRepository interface {
+	// GetDashboardStats retrieves overall dashboard statistics
+	GetDashboardStats(ctx context.Context) (*DashboardStats, error)
+
+	// GetSalesAnalytics retrieves sales analytics for a period
+	GetSalesAnalytics(ctx context.Context, period string, startDate, endDate time.Time) (*SalesAnalytics, error)
+
+	// GetTopProducts retrieves top selling products
+	GetTopProducts(ctx context.Context, limit int, startDate, endDate time.Time) ([]TopProduct, error)
+
+	// GetTopCategories retrieves top performing categories
+	GetTopCategories(ctx context.Context, limit int, startDate, endDate time.Time) ([]TopCategory, error)
+
+	// GetCustomerAnalytics retrieves customer analytics
+	GetCustomerAnalytics(ctx context.Context, startDate, endDate time.Time) (*CustomerAnalytics, error)
+
+	// GetInventoryAnalytics retrieves inventory analytics
+	GetInventoryAnalytics(ctx context.Context) (*InventoryAnalytics, error)
+
+	// RecordPageView records a page view for analytics
+	RecordPageView(ctx context.Context, page string, userID string) error
+
+	// RecordEvent records a custom event
+	RecordEvent(ctx context.Context, eventType string, data map[string]interface{}) error
+}
+
+// ==================== ANALYTICS SERVICE ====================
+
+// AnalyticsService defines the interface for analytics operations
+type AnalyticsService interface {
+	// GetDashboardStats retrieves overall dashboard statistics
+	GetDashboardStats(ctx context.Context) (*DashboardStats, error)
+
+	// GetSalesAnalytics retrieves sales analytics for a period
+	GetSalesAnalytics(ctx context.Context, req SalesAnalyticsRequest) (*SalesAnalytics, error)
+
+	// GetTopProducts retrieves top selling products
+	GetTopProducts(ctx context.Context, limit int, startDate, endDate time.Time) ([]TopProduct, error)
+
+	// GetTopCategories retrieves top performing categories
+	GetTopCategories(ctx context.Context, limit int, startDate, endDate time.Time) ([]TopCategory, error)
+
+	// GetCustomerAnalytics retrieves customer analytics
+	GetCustomerAnalytics(ctx context.Context, startDate, endDate time.Time) (*CustomerAnalytics, error)
+
+	// GetInventoryAnalytics retrieves inventory analytics
+	GetInventoryAnalytics(ctx context.Context) (*InventoryAnalytics, error)
+}
+
+// SalesAnalyticsRequest contains parameters for sales analytics
+type SalesAnalyticsRequest struct {
+	Period    string    `json:"period"` // daily, weekly, monthly
+	StartDate time.Time `json:"start_date"`
+	EndDate   time.Time `json:"end_date"`
+}
+
+// DailySales represents daily sales data
+type DailySales struct {
+	Date   string `json:"date"`
+	Sales  int64  `json:"sales"`
+	Orders int    `json:"orders"`
+}
+
+// DailyStats represents daily statistics snapshot
+type DailyStats struct {
+	ID         string    `json:"id"`
+	Date       string    `json:"date"`
+	Orders     int       `json:"orders"`
+	Revenue    int64     `json:"revenue"`
+	Customers  int       `json:"customers"`
+	Products   int       `json:"products"`
+	CreatedAt  time.Time `json:"created_at"`
+}

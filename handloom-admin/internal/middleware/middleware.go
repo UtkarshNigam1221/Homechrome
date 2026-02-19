@@ -104,20 +104,23 @@ func NewAuth(authService domain.AuthService, logger *logger.Logger) *Auth {
 // Authenticate validates JWT token and sets user in context
 func (a *Auth) Authenticate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Get token from Authorization header
-		authHeader := r.Header.Get("Authorization")
-		if authHeader == "" {
-			response.Unauthorized(w, "Authorization header required")
-			return
+		// Try cookie first, then fall back to Authorization header
+		var token string
+		if cookie, err := r.Cookie("access_token"); err == nil && cookie.Value != "" {
+			token = cookie.Value
+		} else {
+			authHeader := r.Header.Get("Authorization")
+			if authHeader == "" {
+				response.Unauthorized(w, "Authentication required")
+				return
+			}
+			parts := strings.SplitN(authHeader, " ", 2)
+			if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
+				response.Unauthorized(w, "Invalid authorization header format")
+				return
+			}
+			token = parts[1]
 		}
-
-		parts := strings.SplitN(authHeader, " ", 2)
-		if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
-			response.Unauthorized(w, "Invalid authorization header format")
-			return
-		}
-
-		token := parts[1]
 
 		// Validate token
 		claims, err := a.authService.ValidateToken(r.Context(), token)

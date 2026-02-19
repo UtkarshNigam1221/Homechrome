@@ -2,8 +2,7 @@ package stacks
 
 import (
 	"github.com/aws/aws-cdk-go/awscdk/v2"
-	"github.com/aws/aws-cdk-go/awscdk/v2/awscloudfront"
-	"github.com/aws/aws-cdk-go/awscdk/v2/awscloudfrontorigins"
+	"github.com/aws/aws-cdk-go/awscdk/v2/awsiam"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awss3"
 	"github.com/aws/constructs-go/constructs/v10"
 	"github.com/aws/jsii-runtime-go"
@@ -15,12 +14,11 @@ type StorageStackProps struct {
 	Environment string
 }
 
-// StorageStack contains the S3 buckets and CloudFront distribution
+// StorageStack contains the S3 buckets
 type StorageStack struct {
 	awscdk.Stack
-	AssetsBucket    awss3.Bucket
-	UploadsBucket   awss3.Bucket
-	CDNDistribution awscloudfront.Distribution
+	AssetsBucket  awss3.Bucket
+	UploadsBucket awss3.Bucket
 }
 
 // NewStorageStack creates a new storage stack
@@ -44,13 +42,19 @@ func NewStorageStack(scope constructs.Construct, id string, props *StorageStackP
 
 	// Assets bucket - for product images, etc.
 	// Optimized for Free Tier: 5GB storage limit
+	// Public reads allowed via bucket policy for assets/* prefix; writes stay IAM-protected
 	assetsBucket := awss3.NewBucket(stack, jsii.String("AssetsBucket"), &awss3.BucketProps{
 		BucketName:        jsii.String("handloom-assets-" + props.Environment),
 		RemovalPolicy:     removalPolicy,
 		AutoDeleteObjects: autoDeleteObjects,
 		Versioned:         jsii.Bool(false), // Disable versioning to save storage (free tier: 5GB)
 		Encryption:        awss3.BucketEncryption_S3_MANAGED,
-		BlockPublicAccess: awss3.BlockPublicAccess_BLOCK_ALL(),
+		BlockPublicAccess: awss3.NewBlockPublicAccess(&awss3.BlockPublicAccessOptions{
+			BlockPublicAcls:       jsii.Bool(true),
+			IgnorePublicAcls:      jsii.Bool(true),
+			BlockPublicPolicy:     jsii.Bool(false), // Allow bucket policy for public read
+			RestrictPublicBuckets: jsii.Bool(false), // Allow public access via policy
+		}),
 		Cors: &[]*awss3.CorsRule{
 			{
 				AllowedMethods: &[]awss3.HttpMethods{
@@ -66,10 +70,24 @@ func NewStorageStack(scope constructs.Construct, id string, props *StorageStackP
 		LifecycleRules: &[]*awss3.LifecycleRule{
 			{
 				Id:                          jsii.String("CleanupIncompleteUploads"),
-				AbortIncompleteMultipartUploadAfter: awscdk.Duration_Days(jsii.Number(1)), // Cleanup faster to save storage
+				AbortIncompleteMultipartUploadAfter: awscdk.Duration_Days(jsii.Number(1)),
+			},
+			{
+				Id:         jsii.String("CleanupTmpUploads"),
+				Prefix:     jsii.String("tmp/"),
+				Expiration: awscdk.Duration_Days(jsii.Number(1)), // Auto-delete tmp/ objects after 24h
 			},
 		},
 	})
+
+	// Add bucket policy for public read on assets/* prefix
+	assetsBucket.AddToResourcePolicy(awsiam.NewPolicyStatement(&awsiam.PolicyStatementProps{
+		Sid:        jsii.String("PublicReadAssets"),
+		Effect:     awsiam.Effect_ALLOW,
+		Principals: &[]awsiam.IPrincipal{awsiam.NewAnyPrincipal()},
+		Actions:    jsii.Strings("s3:GetObject"),
+		Resources:  jsii.Strings(*assetsBucket.ArnForObjects(jsii.String("assets/*"))),
+	}))
 
 	// Uploads bucket - for temporary uploads
 	uploadsBucket := awss3.NewBucket(stack, jsii.String("UploadsBucket"), &awss3.BucketProps{
@@ -98,31 +116,6 @@ func NewStorageStack(scope constructs.Construct, id string, props *StorageStackP
 		},
 	})
 
-	// CloudFront distribution for assets
-	oai := awscloudfront.NewOriginAccessIdentity(stack, jsii.String("OAI"), &awscloudfront.OriginAccessIdentityProps{
-		Comment: jsii.String("OAI for handloom assets"),
-	})
-	assetsBucket.GrantRead(oai, nil)
-
-	// CloudFront distribution - optimized for Free Tier
-	// Free tier (first 12 months): 1TB data transfer out, 10M HTTP/HTTPS requests
-	cdn := awscloudfront.NewDistribution(stack, jsii.String("CDN"), &awscloudfront.DistributionProps{
-		Comment: jsii.String("Handloom Assets CDN - " + props.Environment),
-		DefaultBehavior: &awscloudfront.BehaviorOptions{
-			Origin: awscloudfrontorigins.NewS3Origin(assetsBucket, &awscloudfrontorigins.S3OriginProps{
-				OriginAccessIdentity: oai,
-			}),
-			ViewerProtocolPolicy: awscloudfront.ViewerProtocolPolicy_REDIRECT_TO_HTTPS,
-			CachePolicy:          awscloudfront.CachePolicy_CACHING_OPTIMIZED(), // Maximize caching to reduce origin requests
-			AllowedMethods:       awscloudfront.AllowedMethods_ALLOW_GET_HEAD(),  // Minimal methods to reduce complexity
-		},
-		PriceClass:        awscloudfront.PriceClass_PRICE_CLASS_100, // Cheapest price class (US, Canada, Europe only)
-		HttpVersion:       awscloudfront.HttpVersion_HTTP2,          // HTTP/2 only (HTTP/3 adds cost)
-		EnableIpv6:        jsii.Bool(true),
-		MinimumProtocolVersion: awscloudfront.SecurityPolicyProtocol_TLS_V1_2_2021,
-		Enabled:           jsii.Bool(true),
-	})
-
 	// Outputs
 	awscdk.NewCfnOutput(stack, jsii.String("AssetsBucketName"), &awscdk.CfnOutputProps{
 		Value:       assetsBucket.BucketName(),
@@ -136,16 +129,9 @@ func NewStorageStack(scope constructs.Construct, id string, props *StorageStackP
 		ExportName:  jsii.String("handloom-uploads-bucket-" + props.Environment),
 	})
 
-	awscdk.NewCfnOutput(stack, jsii.String("CDNDomain"), &awscdk.CfnOutputProps{
-		Value:       cdn.DistributionDomainName(),
-		Description: jsii.String("CloudFront distribution domain"),
-		ExportName:  jsii.String("handloom-cdn-domain-" + props.Environment),
-	})
-
 	return &StorageStack{
-		Stack:           stack,
-		AssetsBucket:    assetsBucket,
-		UploadsBucket:   uploadsBucket,
-		CDNDistribution: cdn,
+		Stack:         stack,
+		AssetsBucket:  assetsBucket,
+		UploadsBucket: uploadsBucket,
 	}
 }

@@ -2,6 +2,8 @@
 package router
 
 import (
+	"net/http"
+	"os"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -27,22 +29,29 @@ func NewBaseRouter(cfg Config, log *logger.Logger, addHealthCheck bool) *chi.Mux
 	r.Use(middleware.Logger(log))
 	r.Use(middleware.Recoverer(log))
 	r.Use(chimiddleware.RealIP)
-	r.Use(chimiddleware.Compress(5))
 
-	// CORS
-	origins := cfg.AllowedOrigins
-	if len(origins) == 0 {
-		origins = []string{"*"}
+	// Skip compression in Lambda — the gzipped body corrupts in the
+	// APIGatewayProxyResponse string field. API Gateway handles compression.
+	if os.Getenv("AWS_LAMBDA_FUNCTION_NAME") == "" {
+		r.Use(chimiddleware.Compress(5))
 	}
 
-	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   origins,
+	// CORS — AllowCredentials requires a specific origin, not "*".
+	// When explicit origins are configured, use them; otherwise allow all by
+	// reflecting the request Origin back (AllowOriginFunc).
+	corsOpts := cors.Options{
 		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-Request-ID"},
 		ExposedHeaders:   []string{"X-Request-ID"},
 		AllowCredentials: true,
 		MaxAge:           300,
-	}))
+	}
+	if len(cfg.AllowedOrigins) > 0 && cfg.AllowedOrigins[0] != "*" {
+		corsOpts.AllowedOrigins = cfg.AllowedOrigins
+	} else {
+		corsOpts.AllowOriginFunc = func(r *http.Request, origin string) bool { return true }
+	}
+	r.Use(cors.Handler(corsOpts))
 
 	// Health check for Lambda warm-up (only for unauthenticated routers)
 	if addHealthCheck {

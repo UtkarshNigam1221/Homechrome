@@ -75,8 +75,8 @@ func Load() *Config {
 			AccessKeyID:     getEnv("AWS_ACCESS_KEY_ID", ""),
 			SecretAccessKey: getEnv("AWS_SECRET_ACCESS_KEY", ""),
 			Endpoint:        getEnv("AWS_ENDPOINT", ""), // Empty for production
-			S3Bucket:        getEnv("AWS_S3_BUCKET", "handloom-assets"),
-			CDNUrl:          getEnv("AWS_CDN_URL", ""),
+			S3Bucket:        getEnvAny([]string{"S3_ASSETS_BUCKET", "AWS_S3_BUCKET"}, "handloom-assets"),
+			CDNUrl:          getEnvAny([]string{"CDN_DOMAIN", "AWS_CDN_URL"}, ""),
 		},
 		DynamoDB: DynamoDBConfig{
 			CoreTable:      getEnv("DYNAMODB_CORE_TABLE", "handloom-core"),
@@ -116,6 +116,16 @@ func (c *Config) IsLocal() bool {
 func getEnv(key, defaultValue string) string {
 	if value := os.Getenv(key); value != "" {
 		return value
+	}
+	return defaultValue
+}
+
+// getEnvAny tries multiple env var keys in order, returning the first non-empty value
+func getEnvAny(keys []string, defaultValue string) string {
+	for _, key := range keys {
+		if value := os.Getenv(key); value != "" {
+			return value
+		}
 	}
 	return defaultValue
 }

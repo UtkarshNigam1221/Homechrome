@@ -8,6 +8,10 @@ set -e
 ENDPOINT="${DYNAMODB_LOCAL_ENDPOINT:-http://localhost:4566}"
 REGION="${AWS_REGION:-ap-south-1}"
 
+# Set dummy AWS credentials for LocalStack (bypasses SSO)
+export AWS_ACCESS_KEY_ID="${AWS_ACCESS_KEY_ID:-local}"
+export AWS_SECRET_ACCESS_KEY="${AWS_SECRET_ACCESS_KEY:-local}"
+
 echo "Creating DynamoDB tables at $ENDPOINT..."
 
 # Core Table (Users, Categories, Designs, Products, Inventory, Pricing Rules, Price Quotes, Assets, etc.)

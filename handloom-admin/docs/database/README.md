@@ -36,8 +36,8 @@ AWS_REGION=ap-south-1
 AWS_ACCESS_KEY_ID=<your-access-key>
 AWS_SECRET_ACCESS_KEY=<your-secret-key>
 
-# Local Development (DynamoDB Local)
-AWS_ENDPOINT=http://localhost:8000
+# Local Development (LocalStack)
+AWS_ENDPOINT=http://localhost:4566
 ```
 
 ## Key Design Patterns
@@ -159,19 +159,22 @@ UUIDs in **standard format**:
 
 ## Local Development
 
-### Using DynamoDB Local
+### Using LocalStack
 
 ```bash
-# Start DynamoDB Local with Docker
-docker run -p 8000:8000 amazon/dynamodb-local
+# Start LocalStack (DynamoDB, S3, Lambda, API Gateway, IAM)
+make docker-up
+
+# Create tables and seed data
+make setup-local
 
 # Set environment variable
-export AWS_ENDPOINT=http://localhost:8000
+export AWS_ENDPOINT=http://localhost:4566
 ```
 
 ### Creating Tables Locally
 
-See [scripts/create-tables.sh](../../scripts/create-tables.sh) for table creation scripts.
+See [scripts/init-local-db.sh](../../scripts/init-local-db.sh) for table creation scripts.
 
 ## Monitoring & Operations
 

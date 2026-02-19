@@ -1,14 +1,12 @@
 package handler
 
 import (
-	"encoding/json"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/internal/middleware"
 	"github.com/handloom/admin/internal/service"
-	"github.com/handloom/admin/pkg/errors"
 	"github.com/handloom/admin/pkg/response"
 )
 
@@ -31,7 +29,7 @@ func (h *AssetHandler) Routes() chi.Router {
 	r := chi.NewRouter()
 
 	r.With(middleware.ValidateJSONTyped[domain.UploadAssetRequest](h.validation)).Post("/upload-url", h.GetUploadURL)
-	r.Delete("/", h.DeleteAsset)
+	r.With(middleware.ValidateJSONTyped[domain.DeleteAssetRequest](h.validation)).Delete("/", h.DeleteAsset)
 
 	return r
 }
@@ -53,15 +51,7 @@ func (h *AssetHandler) GetUploadURL(w http.ResponseWriter, r *http.Request) {
 // DeleteAsset deletes a file from assets/ by its public URL
 // DELETE /admin/assets
 func (h *AssetHandler) DeleteAsset(w http.ResponseWriter, r *http.Request) {
-	var req domain.DeleteAssetRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		response.Error(w, errors.BadRequest("Invalid request body"))
-		return
-	}
-	if req.URL == "" {
-		response.Error(w, errors.BadRequest("url is required"))
-		return
-	}
+	req := middleware.MustGetValidatedBody[domain.DeleteAssetRequest](r.Context())
 
 	if err := h.assetService.DeleteAsset(r.Context(), req.URL); err != nil {
 		response.Error(w, err)

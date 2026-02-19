@@ -6,91 +6,31 @@ import (
 	"os"
 
 	"github.com/handloom/admin/internal/config"
-	"github.com/handloom/admin/internal/handler"
-	"github.com/handloom/admin/internal/middleware"
-	"github.com/handloom/admin/internal/repository/dynamodb"
 	"github.com/handloom/admin/internal/router"
-	"github.com/handloom/admin/internal/s3client"
-	"github.com/handloom/admin/internal/service"
-	"github.com/handloom/admin/internal/validator"
+	"github.com/handloom/admin/internal/wire"
 	"github.com/handloom/admin/pkg/logger"
 )
 
 func main() {
-	// Load configuration
 	cfg := config.Load()
-
-	// Initialize logger
 	log := logger.New(cfg.App.Debug)
 	log.Info("Starting Catalog Lambda")
 
-	// Initialize context
 	ctx := context.Background()
 
-	// Initialize DynamoDB client
-	dbClient, err := dynamodb.NewClient(ctx, cfg)
+	deps, err := wire.InitializeCatalogDeps(ctx, cfg)
 	if err != nil {
-		log.Fatalf("Failed to initialize DynamoDB client: %v", err)
+		log.Fatalf("Failed to initialize dependencies: %v", err)
 	}
 
-	// Initialize S3 client
-	s3c, err := s3client.New(ctx, cfg.AWS.Region)
-	if err != nil {
-		log.Fatalf("Failed to initialize S3 client: %v", err)
-	}
-
-	// Initialize repositories
-	userRepo := dynamodb.NewUserRepository(dbClient)
-	tokenStore := dynamodb.NewTokenStore(dbClient)
-	categoryRepo := dynamodb.NewCategoryRepository(dbClient)
-	productRepo := dynamodb.NewProductRepository(dbClient)
-	inventoryRepo := dynamodb.NewInventoryRepository(dbClient)
-
-	// Initialize services
-	authService := service.NewAuthService(
-		userRepo,
-		tokenStore,
-		log,
-		cfg.JWT.SecretKey,
-		cfg.JWT.AccessTokenDuration,
-		cfg.JWT.RefreshTokenDuration,
-		cfg.JWT.Issuer,
+	r := router.NewAuthenticatedRouter(
+		router.Config{AllowedOrigins: getAllowedOrigins(), Debug: cfg.App.Debug},
+		deps.Logger,
+		deps.AuthMiddleware,
 	)
-	assetService := service.NewAssetService(log, s3c, cfg.AWS.S3Bucket)
-	categoryService := service.NewCategoryService(categoryRepo, productRepo, assetService, log)
-	inventoryService := service.NewInventoryService(inventoryRepo, productRepo, log)
-	productService := service.NewProductService(
-		productRepo,
-		categoryRepo,
-		inventoryRepo,
-		assetService,
-		log,
-	)
+	router.NewCatalogRouter(r, deps.CategoryHandler, deps.ProductHandler)
 
-	// Initialize validation middleware
-	v := validator.New()
-	validation := middleware.NewValidation(v, middleware.ValidationConfig{})
-
-	// Initialize handlers
-	categoryHandler := handler.NewCategoryHandler(categoryService, log, validation)
-	productHandler := handler.NewProductHandler(productService, inventoryService, log, validation)
-
-	// Initialize auth middleware
-	authMiddleware := middleware.NewAuth(authService, log)
-
-	// Create authenticated router
-	routerCfg := router.Config{
-		AllowedOrigins: getAllowedOrigins(),
-		Debug:          cfg.App.Debug,
-	}
-	r := router.NewAuthenticatedRouter(routerCfg, log, authMiddleware)
-
-	// Register routes
-	router.NewCatalogRouter(r, categoryHandler, productHandler)
-
-	// Start Lambda
-	adapter := router.NewLambdaAdapter(r)
-	adapter.Start()
+	router.NewLambdaAdapter(r).Start()
 }
 
 func getAllowedOrigins() []string {

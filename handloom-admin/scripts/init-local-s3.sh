@@ -30,6 +30,24 @@ aws s3 mb "s3://handloom-uploads" \
 
 echo "Created handloom-uploads bucket"
 
+# Configure CORS on assets bucket (allows presigned URL PUT from frontend)
+echo "Configuring CORS on handloom-assets..."
+aws s3api put-bucket-cors \
+    --endpoint-url "$ENDPOINT" \
+    --region "$REGION" \
+    --bucket handloom-assets \
+    --cors-configuration '{
+        "CORSRules": [
+            {
+                "AllowedOrigins": ["*"],
+                "AllowedMethods": ["GET", "PUT", "HEAD"],
+                "AllowedHeaders": ["*"],
+                "ExposeHeaders": ["ETag"],
+                "MaxAgeSeconds": 3600
+            }
+        ]
+    }'
+
 echo ""
 echo "S3 buckets created successfully!"
 echo ""

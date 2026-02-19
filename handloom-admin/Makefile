@@ -41,17 +41,18 @@ run:
 	@echo "  Starting Handloom Admin API"
 	@echo "=============================================="
 	@echo ""
-	@echo "  API Server:     http://localhost:8080"
+	@echo "  API Server:     http://localhost:8081"
 	@echo "  LocalStack:     http://localhost:4566"
 	@echo "  DynamoDB Admin: http://localhost:8001"
 	@echo ""
-	@echo "  Health Check:   curl http://localhost:8080/health"
+	@echo "  Health Check:   curl http://localhost:8081/health"
 	@echo ""
 	@echo "  Default Admin:  admin@handloom.com / Admin@123!"
 	@echo ""
 	@echo "=============================================="
 	APP_ENV=development \
 	APP_DEBUG=true \
+	SERVER_PORT=8081 \
 	AWS_ENDPOINT=http://localhost:4566 \
 	AWS_REGION=ap-south-1 \
 	AWS_ACCESS_KEY_ID=local \
@@ -65,6 +66,7 @@ run-watch:
 	@which air > /dev/null 2>&1 || (echo "Installing air..." && $(GOCMD) install github.com/cosmtrek/air@latest)
 	APP_ENV=development \
 	APP_DEBUG=true \
+	SERVER_PORT=8081 \
 	AWS_ENDPOINT=http://localhost:4566 \
 	AWS_REGION=ap-south-1 \
 	AWS_ACCESS_KEY_ID=local \
@@ -213,10 +215,10 @@ health:
 ## Reset local database (drop all tables and recreate)
 reset-db: docker-up
 	@echo "Resetting local database..."
-	@aws dynamodb delete-table --table-name handloom-core --endpoint-url http://localhost:4566 --region ap-south-1 2>/dev/null || true
-	@aws dynamodb delete-table --table-name handloom-orders --endpoint-url http://localhost:4566 --region ap-south-1 2>/dev/null || true
-	@aws dynamodb delete-table --table-name handloom-audit --endpoint-url http://localhost:4566 --region ap-south-1 2>/dev/null || true
-	@aws dynamodb delete-table --table-name handloom-analytics --endpoint-url http://localhost:4566 --region ap-south-1 2>/dev/null || true
+	@AWS_ACCESS_KEY_ID=local AWS_SECRET_ACCESS_KEY=local aws dynamodb delete-table --table-name handloom-core --endpoint-url http://localhost:4566 --region ap-south-1 2>/dev/null || true
+	@AWS_ACCESS_KEY_ID=local AWS_SECRET_ACCESS_KEY=local aws dynamodb delete-table --table-name handloom-orders --endpoint-url http://localhost:4566 --region ap-south-1 2>/dev/null || true
+	@AWS_ACCESS_KEY_ID=local AWS_SECRET_ACCESS_KEY=local aws dynamodb delete-table --table-name handloom-audit --endpoint-url http://localhost:4566 --region ap-south-1 2>/dev/null || true
+	@AWS_ACCESS_KEY_ID=local AWS_SECRET_ACCESS_KEY=local aws dynamodb delete-table --table-name handloom-analytics --endpoint-url http://localhost:4566 --region ap-south-1 2>/dev/null || true
 	@sleep 2
 	@$(MAKE) create-tables
 	@$(MAKE) seed-data
@@ -224,7 +226,7 @@ reset-db: docker-up
 
 ## View DynamoDB tables
 list-tables:
-	@aws dynamodb list-tables --endpoint-url http://localhost:4566 --region ap-south-1
+	@AWS_ACCESS_KEY_ID=local AWS_SECRET_ACCESS_KEY=local aws dynamodb list-tables --endpoint-url http://localhost:4566 --region ap-south-1
 
 ## Generate password hash for development
 gen-password:
@@ -234,7 +236,7 @@ gen-password:
 ## Login test - get JWT token
 test-login:
 	@echo "Testing login with default admin credentials..."
-	@curl -s -X POST http://localhost:8080/admin/auth/login \
+	@curl -s -X POST http://localhost:8081/admin/auth/login \
 		-H "Content-Type: application/json" \
 		-d '{"email":"admin@handloom.com","password":"Admin@123!"}' | jq .
 
@@ -243,13 +245,13 @@ test-api:
 	@echo "Testing API endpoints..."
 	@echo ""
 	@echo "Health check:"
-	@curl -s http://localhost:8080/health | jq .
+	@curl -s http://localhost:8081/health | jq .
 	@echo ""
 	@echo "Categories (requires auth):"
-	@TOKEN=$$(curl -s -X POST http://localhost:8080/admin/auth/login \
+	@TOKEN=$$(curl -s -X POST http://localhost:8081/admin/auth/login \
 		-H "Content-Type: application/json" \
 		-d '{"email":"admin@handloom.com","password":"Admin@123!"}' | jq -r '.access_token'); \
-	curl -s http://localhost:8080/admin/categories \
+	curl -s http://localhost:8081/admin/categories \
 		-H "Authorization: Bearer $$TOKEN" | jq .
 
 ## Build all Lambda functions

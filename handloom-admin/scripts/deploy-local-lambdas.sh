@@ -277,3 +277,12 @@ echo ""
 # Save the API ID for redeploy reference
 echo "$API_ID" > /tmp/handloom-local-api-id
 echo "$INVOKE_URL" > /tmp/handloom-local-api-url
+
+# Auto-update frontend .env.local-lambda if it exists
+FRONTEND_ENV="../handloom-admin-frontend/.env.local-lambda"
+if [ -f "$FRONTEND_ENV" ]; then
+    sed -i.bak "s|^VITE_API_URL=.*|VITE_API_URL=$INVOKE_URL|" "$FRONTEND_ENV"
+    rm -f "${FRONTEND_ENV}.bak"
+    echo "  Updated $FRONTEND_ENV with API Gateway URL"
+    echo ""
+fi
