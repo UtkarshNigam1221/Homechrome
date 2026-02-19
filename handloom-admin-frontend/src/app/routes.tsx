@@ -58,9 +58,6 @@ const Reports = withSuspense(
 const Notifications = withSuspense(
   lazy(() => import('@/features/notifications').then((m) => ({ default: m.NotificationsPage })))
 );
-const BulkOperations = withSuspense(
-  lazy(() => import('@/features/bulk').then((m) => ({ default: m.BulkOperationsPage })))
-);
 const Users = withSuspense(
   lazy(() => import('@/features/settings').then((m) => ({ default: m.UsersPage })))
 );
@@ -146,7 +143,6 @@ export function AppRoutes() {
           <Route path="/reports" element={<Reports />} />
 
           {/* Operations */}
-          <Route path="/bulk" element={<BulkOperations />} />
           <Route path="/notifications" element={<Notifications />} />
 
           {/* Admin Only Routes */}

@@ -110,11 +110,6 @@ func ProvideArtisanRepository(client *dynamodb.Client) domain.ArtisanRepository 
 	return dynamodb.NewArtisanRepository(client)
 }
 
-// ProvideBulkOperationRepository creates a new BulkOperationRepository
-func ProvideBulkOperationRepository(client *dynamodb.Client) domain.BulkOperationRepository {
-	return dynamodb.NewBulkOperationRepository(client)
-}
-
 // ProvideReportRepository creates a new ReportRepository
 func ProvideReportRepository(client *dynamodb.Client) domain.ReportRepository {
 	return dynamodb.NewReportRepository(client)
@@ -140,7 +135,6 @@ var RepositorySet = wire.NewSet(
 	ProvideNotificationRepository,
 	ProvideCouponRepository,
 	ProvideArtisanRepository,
-	ProvideBulkOperationRepository,
 	ProvideReportRepository,
 	ProvideAuditRepository,
 )
@@ -283,16 +277,6 @@ func ProvideArtisanService(
 	return service.NewArtisanService(artisanRepo, log)
 }
 
-// ProvideBulkService creates a new BulkService
-func ProvideBulkService(
-	bulkRepo domain.BulkOperationRepository,
-	productService *service.ProductService,
-	inventoryService *service.InventoryService,
-	log *logger.Logger,
-) *service.BulkService {
-	return service.NewBulkService(bulkRepo, productService, inventoryService, log)
-}
-
 // ProvideAssetService creates a new AssetService
 func ProvideAssetService(
 	log *logger.Logger,
@@ -337,7 +321,6 @@ var ServiceSet = wire.NewSet(
 	ProvideNotificationService,
 	ProvideCouponService,
 	ProvideArtisanService,
-	ProvideBulkService,
 	ProvideAssetService,
 	ProvideReportService,
 	ProvideAuditService,
@@ -451,14 +434,6 @@ func ProvideArtisanHandler(
 	return handler.NewArtisanHandler(artisanService, validation)
 }
 
-// ProvideBulkHandler creates a new BulkHandler
-func ProvideBulkHandler(
-	bulkService *service.BulkService,
-	validation *middleware.Validation,
-) *handler.BulkHandler {
-	return handler.NewBulkHandler(bulkService, validation)
-}
-
 // ProvideAssetHandler creates a new AssetHandler
 func ProvideAssetHandler(
 	assetService *service.AssetService,
@@ -496,7 +471,6 @@ var HandlerSet = wire.NewSet(
 	ProvideNotificationHandler,
 	ProvideCouponHandler,
 	ProvideArtisanHandler,
-	ProvideBulkHandler,
 	ProvideAssetHandler,
 	ProvideReportHandler,
 	ProvideAuditHandler,

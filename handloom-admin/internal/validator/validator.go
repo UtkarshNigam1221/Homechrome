@@ -161,9 +161,6 @@ func (s *Service) registerCustomValidations() {
 	// Register custom validation for coupon type
 	_ = s.validate.RegisterValidation("valid_coupon_type", validateCouponType)
 
-	// Register custom validation for bulk operation type
-	_ = s.validate.RegisterValidation("valid_bulk_operation_type", validateBulkOperationType)
-
 	// Register custom validation for entity type
 	_ = s.validate.RegisterValidation("valid_entity_type", validateEntityType)
 }

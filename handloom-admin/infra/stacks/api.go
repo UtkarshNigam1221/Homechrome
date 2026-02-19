@@ -5,6 +5,7 @@ import (
 
 	"github.com/aws/aws-cdk-go/awscdk/v2"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awsapigateway"
+	"github.com/aws/aws-cdk-go/awscdk/v2/awscertificatemanager"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awsiam"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awslambda"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awslogs"
@@ -17,9 +18,12 @@ import (
 // APIStackProps holds properties for the API stack
 type APIStackProps struct {
 	awscdk.StackProps
-	Environment   string
-	DatabaseStack *DatabaseStack
-	StorageStack  *StorageStack
+	Environment    string
+	DatabaseStack  *DatabaseStack
+	StorageStack   *StorageStack
+	DomainName     string // Optional: custom domain for API Gateway (e.g. dev-api.lldlab.com)
+	FrontendOrigin string // Optional: frontend origin for CORS (e.g. https://dev.lldlab.com)
+	CertArn        string // Optional: ACM certificate ARN (us-east-1) for custom domain
 }
 
 // ServiceLambda represents a Lambda function for a service
@@ -72,6 +76,14 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 		"QUOTE_VALIDITY_HRS":         jsii.String("24"),
 	}
 
+	// Add custom domain env vars when configured
+	if props.FrontendOrigin != "" {
+		commonEnv["ALLOWED_ORIGINS"] = jsii.String(props.FrontendOrigin)
+	}
+	if props.DomainName != "" {
+		commonEnv["COOKIE_DOMAIN"] = jsii.String(".homechrome.lldlab.com")
+	}
+
 	// Memory sizes - optimized for AWS Free Tier
 	// Free tier: 1M requests/month, 400,000 GB-seconds compute time
 	// 128MB = ~3.2M seconds/month free (plenty for development)
@@ -101,7 +113,6 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 		// "notification",
 		// "coupon",
 		// "artisan",
-		// "bulk",
 		// "report",
 		// "audit",
 	}
@@ -127,7 +138,7 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 	// Free tier: 1M API calls/month for first 12 months
 	api := awsapigateway.NewRestApi(stack, jsii.String("API"), &awsapigateway.RestApiProps{
 		RestApiName: jsii.String("handloom-api-" + props.Environment),
-		Description: jsii.String("Handloom Admin API"),
+		Description: jsii.String("Handloom Admin API - CORS via Lambda"),
 		DeployOptions: &awsapigateway.StageOptions{
 			StageName:            jsii.String(props.Environment),
 			ThrottlingRateLimit:  jsii.Number(50),                      // Lower throttle for cost control
@@ -136,17 +147,39 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 			MetricsEnabled:       jsii.Bool(false),                     // Disable detailed metrics to save costs
 			TracingEnabled:       jsii.Bool(false),                     // Disable X-Ray tracing (not free)
 		},
-		DefaultCorsPreflightOptions: &awsapigateway.CorsOptions{
-			AllowOrigins:     awsapigateway.Cors_ALL_ORIGINS(),
-			AllowMethods:     awsapigateway.Cors_ALL_METHODS(),
-			AllowHeaders:     jsii.Strings("Content-Type", "Authorization", "X-Request-ID"),
-			AllowCredentials: jsii.Bool(true),
-		},
+		// CORS preflight is handled by each Lambda's chi middleware (origin-reflecting),
+		// so we do NOT set DefaultCorsPreflightOptions here. API Gateway mock OPTIONS
+		// cannot reflect the request Origin, which breaks credentialed (withCredentials)
+		// requests from cross-origin frontends.
 		CloudWatchRole: jsii.Bool(false), // Disable CloudWatch role to reduce costs
 	})
 
 	// Create integrations and routes
 	setupAPIRoutes(api, lambdas)
+
+	// Custom domain for API Gateway (edge-optimized)
+	if props.CertArn != "" && props.DomainName != "" {
+		cert := awscertificatemanager.Certificate_FromCertificateArn(stack, jsii.String("ApiCertificate"), jsii.String(props.CertArn))
+
+		customDomain := awsapigateway.NewDomainName(stack, jsii.String("ApiCustomDomain"), &awsapigateway.DomainNameProps{
+			DomainName:  jsii.String(props.DomainName),
+			Certificate: cert,
+			EndpointType: awsapigateway.EndpointType_EDGE,
+			SecurityPolicy: awsapigateway.SecurityPolicy_TLS_1_2,
+		})
+
+		// Map the custom domain root to the API deployment stage
+		awsapigateway.NewBasePathMapping(stack, jsii.String("ApiBasePathMapping"), &awsapigateway.BasePathMappingProps{
+			DomainName: customDomain,
+			RestApi:    api,
+			Stage:      api.DeploymentStage(),
+		})
+
+		awscdk.NewCfnOutput(stack, jsii.String("ApiCustomDomainTarget"), &awscdk.CfnOutputProps{
+			Value:       customDomain.DomainNameAliasDomainName(),
+			Description: jsii.String("CNAME target for API custom domain (add to Cloudflare DNS)"),
+		})
+	}
 
 	// Outputs
 	awscdk.NewCfnOutput(stack, jsii.String("APIEndpoint"), &awscdk.CfnOutputProps{
@@ -203,39 +236,58 @@ func createServiceLambda(
 func setupAPIRoutes(api awsapigateway.RestApi, lambdas map[string]*ServiceLambda) {
 	// Health check - use proxy integration to pass full path
 	health := api.Root().AddResource(jsii.String("health"), nil)
-	health.AddMethod(jsii.String("GET"), awsapigateway.NewLambdaIntegration(lambdas["auth"].Function, &awsapigateway.LambdaIntegrationOptions{
+	health.AddMethod(jsii.String("ANY"), awsapigateway.NewLambdaIntegration(lambdas["auth"].Function, &awsapigateway.LambdaIntegrationOptions{
 		Proxy: jsii.Bool(true),
 	}), nil)
 
 	// Admin routes
 	admin := api.Root().AddResource(jsii.String("admin"), nil)
 
-	// Auth routes (no auth required) - use proxy integration
-	authIntegration := awsapigateway.NewLambdaIntegration(lambdas["auth"].Function, &awsapigateway.LambdaIntegrationOptions{
+	// Auth routes — use ANY on each resource so OPTIONS preflight reaches Lambda for CORS.
+	// Cannot use {proxy+} alongside named child resources in API Gateway.
+	authLambda := lambdas["auth"].Function
+	authLambda.AddPermission(jsii.String("AuthApiInvoke"), &awslambda.Permission{
+		Principal: awsiam.NewServicePrincipal(jsii.String("apigateway.amazonaws.com"), nil),
+		Action:    jsii.String("lambda:InvokeFunction"),
+		SourceArn: jsii.String(fmt.Sprintf("arn:aws:execute-api:%s:%s:%s/*",
+			*awscdk.Aws_REGION(),
+			*awscdk.Aws_ACCOUNT_ID(),
+			*api.RestApiId(),
+		)),
+	})
+	authIntegration := awsapigateway.NewLambdaIntegration(authLambda, &awsapigateway.LambdaIntegrationOptions{
 		Proxy: jsii.Bool(true),
 	})
 	auth := admin.AddResource(jsii.String("auth"), nil)
-	auth.AddResource(jsii.String("login"), nil).AddMethod(jsii.String("POST"), authIntegration, nil)
-	auth.AddResource(jsii.String("refresh"), nil).AddMethod(jsii.String("POST"), authIntegration, nil)
-	auth.AddResource(jsii.String("logout"), nil).AddMethod(jsii.String("POST"), authIntegration, nil)
-	auth.AddResource(jsii.String("me"), nil).AddMethod(jsii.String("GET"), authIntegration, nil)
+	auth.AddResource(jsii.String("login"), nil).AddMethod(jsii.String("ANY"), authIntegration, nil)
+	auth.AddResource(jsii.String("refresh"), nil).AddMethod(jsii.String("ANY"), authIntegration, nil)
+	auth.AddResource(jsii.String("logout"), nil).AddMethod(jsii.String("ANY"), authIntegration, nil)
+	auth.AddResource(jsii.String("me"), nil).AddMethod(jsii.String("ANY"), authIntegration, nil)
 	password := auth.AddResource(jsii.String("password"), nil)
-	password.AddResource(jsii.String("change"), nil).AddMethod(jsii.String("POST"), authIntegration, nil)
-	password.AddResource(jsii.String("reset-request"), nil).AddMethod(jsii.String("POST"), authIntegration, nil)
-	password.AddResource(jsii.String("reset"), nil).AddMethod(jsii.String("POST"), authIntegration, nil)
+	password.AddResource(jsii.String("change"), nil).AddMethod(jsii.String("ANY"), authIntegration, nil)
+	password.AddResource(jsii.String("reset-request"), nil).AddMethod(jsii.String("ANY"), authIntegration, nil)
+	password.AddResource(jsii.String("reset"), nil).AddMethod(jsii.String("ANY"), authIntegration, nil)
 
-	// User routes - use proxy integration
-	userIntegration := awsapigateway.NewLambdaIntegration(lambdas["user"].Function, &awsapigateway.LambdaIntegrationOptions{
+	// User routes — use ANY on each resource so OPTIONS preflight reaches Lambda for CORS.
+	// Cannot use {proxy+} because {id} already occupies the variable path slot.
+	userLambda := lambdas["user"].Function
+	userLambda.AddPermission(jsii.String("UserApiInvoke"), &awslambda.Permission{
+		Principal: awsiam.NewServicePrincipal(jsii.String("apigateway.amazonaws.com"), nil),
+		Action:    jsii.String("lambda:InvokeFunction"),
+		SourceArn: jsii.String(fmt.Sprintf("arn:aws:execute-api:%s:%s:%s/*",
+			*awscdk.Aws_REGION(),
+			*awscdk.Aws_ACCOUNT_ID(),
+			*api.RestApiId(),
+		)),
+	})
+	userIntegration := awsapigateway.NewLambdaIntegration(userLambda, &awsapigateway.LambdaIntegrationOptions{
 		Proxy: jsii.Bool(true),
 	})
 	users := admin.AddResource(jsii.String("users"), nil)
-	users.AddMethod(jsii.String("GET"), userIntegration, nil)
-	users.AddMethod(jsii.String("POST"), userIntegration, nil)
+	users.AddMethod(jsii.String("ANY"), userIntegration, nil)
 	userId := users.AddResource(jsii.String("{id}"), nil)
-	userId.AddMethod(jsii.String("GET"), userIntegration, nil)
-	userId.AddMethod(jsii.String("PATCH"), userIntegration, nil)
-	userId.AddMethod(jsii.String("DELETE"), userIntegration, nil)
-	userId.AddResource(jsii.String("status"), nil).AddMethod(jsii.String("PATCH"), userIntegration, nil)
+	userId.AddMethod(jsii.String("ANY"), userIntegration, nil)
+	userId.AddResource(jsii.String("status"), nil).AddMethod(jsii.String("ANY"), userIntegration, nil)
 
 	// Catalog routes (categories, products) - use proxy integration with single wildcard permission
 	// This avoids the Lambda resource policy size limit (20KB) by using a single permission
@@ -350,10 +402,6 @@ func setupAPIRoutes(api awsapigateway.RestApi, lambdas map[string]*ServiceLambda
 		// Artisan routes
 		artisanIntegration := awsapigateway.NewLambdaIntegration(lambdas["artisan"].Function, nil)
 		addResourceRoutes(admin.AddResource(jsii.String("artisans"), nil), artisanIntegration)
-
-		// Bulk operation routes
-		bulkIntegration := awsapigateway.NewLambdaIntegration(lambdas["bulk"].Function, nil)
-		addResourceRoutes(admin.AddResource(jsii.String("bulk"), nil), bulkIntegration)
 
 		// Asset routes
 		assetIntegration := awsapigateway.NewLambdaIntegration(lambdas["asset"].Function, nil)

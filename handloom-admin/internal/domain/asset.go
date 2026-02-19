@@ -20,87 +20,6 @@ const (
 	AssetTypeVideo    AssetType = "VIDEO"
 )
 
-// ==================== BULK JOB ENTITY ====================
-
-// BulkJobType defines the type of bulk job
-type BulkJobType string
-
-const (
-	BulkJobTypeProductImport   BulkJobType = "PRODUCT_IMPORT"
-	BulkJobTypeProductExport   BulkJobType = "PRODUCT_EXPORT"
-	BulkJobTypeInventoryUpdate BulkJobType = "INVENTORY_UPDATE"
-	BulkJobTypePriceUpdate     BulkJobType = "PRICE_UPDATE"
-	BulkJobTypeOrderExport     BulkJobType = "ORDER_EXPORT"
-)
-
-// BulkJobStatus defines the status of a bulk job
-type BulkJobStatus string
-
-const (
-	BulkJobStatusPending    BulkJobStatus = "PENDING"
-	BulkJobStatusProcessing BulkJobStatus = "PROCESSING"
-	BulkJobStatusCompleted  BulkJobStatus = "COMPLETED"
-	BulkJobStatusFailed     BulkJobStatus = "FAILED"
-	BulkJobStatusPartial    BulkJobStatus = "PARTIAL_SUCCESS"
-)
-
-// BulkJob represents a bulk operation job
-type BulkJob struct {
-	ID             string        `json:"id" dynamodbav:"id"`
-	PK             string        `json:"-" dynamodbav:"PK"`
-	SK             string        `json:"-" dynamodbav:"SK"`
-	GSI1PK         string        `json:"-" dynamodbav:"GSI1PK"`
-	GSI1SK         string        `json:"-" dynamodbav:"GSI1SK"`
-	EntityType     string        `json:"-" dynamodbav:"entity_type"`
-
-	Type           BulkJobType   `json:"type" dynamodbav:"type"`
-	Status         BulkJobStatus `json:"status" dynamodbav:"status"`
-
-	// File Info
-	FileName       string        `json:"file_name" dynamodbav:"file_name"`
-	FileURL        string        `json:"file_url" dynamodbav:"file_url"`
-	FileSize       int64         `json:"file_size" dynamodbav:"file_size"`
-
-	// Progress
-	TotalRows      int           `json:"total_rows" dynamodbav:"total_rows"`
-	ProcessedRows  int           `json:"processed_rows" dynamodbav:"processed_rows"`
-	SuccessCount   int           `json:"success_count" dynamodbav:"success_count"`
-	ErrorCount     int           `json:"error_count" dynamodbav:"error_count"`
-
-	// Errors
-	Errors         []BulkJobError `json:"errors,omitempty" dynamodbav:"errors,omitempty"`
-
-	// Result
-	ResultFileURL  string        `json:"result_file_url,omitempty" dynamodbav:"result_file_url,omitempty"`
-
-	StartedAt      *time.Time    `json:"started_at,omitempty" dynamodbav:"started_at,omitempty"`
-	CompletedAt    *time.Time    `json:"completed_at,omitempty" dynamodbav:"completed_at,omitempty"`
-
-	BaseEntity
-}
-
-// TableName returns the DynamoDB table name for BulkJob
-func (b *BulkJob) TableName() string {
-	return "handloom-core"
-}
-
-// SetKeys sets the DynamoDB keys for BulkJob
-func (b *BulkJob) SetKeys() {
-	b.PK = "BULK_JOB#" + b.ID
-	b.SK = "METADATA"
-	b.GSI1PK = "USER#" + b.CreatedBy
-	b.GSI1SK = "BULK_JOB#" + b.ID
-	b.EntityType = "BULK_JOB"
-}
-
-// BulkJobError represents an error in a bulk job
-type BulkJobError struct {
-	Row     int    `json:"row" dynamodbav:"row"`
-	Field   string `json:"field" dynamodbav:"field"`
-	Message string `json:"message" dynamodbav:"message"`
-	Value   string `json:"value,omitempty" dynamodbav:"value,omitempty"`
-}
-
 // ==================== REPORT ENTITY ====================
 
 // ReportType defines the type of report
@@ -184,15 +103,6 @@ func (r *Report) SetKeys() {
 // ==================== REPOSITORY INTERFACES ====================
 
 
-// BulkJobRepository defines bulk job data access methods
-type BulkJobRepository interface {
-	Create(ctx context.Context, job *BulkJob) error
-	GetByID(ctx context.Context, id string) (*BulkJob, error)
-	Update(ctx context.Context, job *BulkJob) error
-	List(ctx context.Context, req ListBulkJobsRequest) (*ListBulkJobsResponse, error)
-	GetByUser(ctx context.Context, userID string, pagination PaginationRequest) (*ListBulkJobsResponse, error)
-}
-
 // ReportRepository defines report data access methods
 type ReportRepository interface {
 	Create(ctx context.Context, report *Report) error
@@ -224,21 +134,6 @@ type UploadURLResponse struct {
 // DeleteAssetRequest represents a request to delete an asset by its public URL
 type DeleteAssetRequest struct {
 	URL string `json:"url" validate:"required"`
-}
-
-// ListBulkJobsRequest represents a request to list bulk jobs
-type ListBulkJobsRequest struct {
-	Type       BulkJobType       `json:"type,omitempty"`
-	Status     BulkJobStatus     `json:"status,omitempty"`
-	StartDate  time.Time         `json:"start_date,omitempty"`
-	EndDate    time.Time         `json:"end_date,omitempty"`
-	Pagination PaginationRequest `json:"pagination"`
-}
-
-// ListBulkJobsResponse represents the response for listing bulk jobs
-type ListBulkJobsResponse struct {
-	Jobs       []*BulkJob         `json:"jobs"`
-	Pagination PaginationResponse `json:"pagination"`
 }
 
 // GenerateReportRequest represents a request to generate a report

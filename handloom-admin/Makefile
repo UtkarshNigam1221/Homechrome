@@ -1,8 +1,11 @@
 .PHONY: all build run test clean docker-up docker-down create-tables seed-data generate-mocks lint \
 	build-lambdas build-lambda-auth build-lambda-user build-lambda-catalog build-lambda-order \
 	build-lambda-pricing build-lambda-inventory build-lambda-analytics build-lambda-notification \
-	build-lambda-coupon build-lambda-artisan build-lambda-bulk build-lambda-asset \
+	build-lambda-coupon build-lambda-artisan build-lambda-asset \
 	build-lambda-report build-lambda-audit cdk-synth cdk-deploy-dev cdk-deploy-prod cdk-destroy
+
+# ACM certificate ARN for custom domain (*.lldlab.com) - must be in us-east-1
+CERT_ARN ?= arn:aws:acm:us-east-1:163053486005:certificate/a8dca48d-5992-4e6e-94c9-fffc7f3ac447
 
 # Go parameters
 GOCMD=go
@@ -16,7 +19,7 @@ BINARY_PATH=./bin/$(BINARY_NAME)
 # Lambda build parameters
 LAMBDA_BUILD_FLAGS=CGO_ENABLED=0 GOOS=linux GOARCH=arm64
 LAMBDA_OUT_DIR=./bin/lambda
-LAMBDA_SERVICES=auth user catalog order pricing inventory analytics notification coupon artisan bulk asset report audit
+LAMBDA_SERVICES=auth user catalog order pricing inventory analytics notification coupon artisan asset report audit
 
 # Active services for deployment
 LAMBDA_SERVICES_ACTIVE=auth user catalog asset
@@ -290,11 +293,6 @@ build-lambda-artisan:
 	@mkdir -p $(LAMBDA_OUT_DIR)/artisan
 	$(LAMBDA_BUILD_FLAGS) $(GOBUILD) -ldflags="-s -w" -o $(LAMBDA_OUT_DIR)/artisan/bootstrap ./cmd/lambda/artisan
 
-build-lambda-bulk:
-	@echo "Building bulk Lambda..."
-	@mkdir -p $(LAMBDA_OUT_DIR)/bulk
-	$(LAMBDA_BUILD_FLAGS) $(GOBUILD) -ldflags="-s -w" -o $(LAMBDA_OUT_DIR)/bulk/bootstrap ./cmd/lambda/bulk
-
 build-lambda-asset:
 	@echo "Building asset Lambda..."
 	@mkdir -p $(LAMBDA_OUT_DIR)/asset
@@ -317,27 +315,27 @@ cdk-synth:
 
 cdk-synth-dev:
 	@echo "Synthesizing CDK stacks for dev..."
-	cd infra && cdk synth -c environment=dev
+	cd infra && cdk synth -c environment=dev -c certArn=$(CERT_ARN)
 
 cdk-synth-prod:
 	@echo "Synthesizing CDK stacks for prod..."
-	cd infra && cdk synth -c environment=prod
+	cd infra && cdk synth -c environment=prod -c certArn=$(CERT_ARN)
 
 cdk-synth-all:
 	@echo "Synthesizing CDK stacks for all environments..."
-	cd infra && cdk synth -c deployMode=all
+	cd infra && cdk synth -c deployMode=all -c certArn=$(CERT_ARN)
 
 cdk-deploy-dev: build-lambdas-active
 	@echo "Deploying to development environment..."
-	cd infra && cdk deploy --all --require-approval never -c environment=dev
+	cd infra && cdk deploy --all --require-approval never -c environment=dev -c certArn=$(CERT_ARN)
 
 cdk-deploy-prod: build-lambdas-active
 	@echo "Deploying to production environment..."
-	cd infra && cdk deploy --all --require-approval broadening -c environment=prod
+	cd infra && cdk deploy --all --require-approval broadening -c environment=prod -c certArn=$(CERT_ARN)
 
 cdk-deploy-all: build-lambdas-active
 	@echo "Deploying to all environments..."
-	cd infra && cdk deploy --all --require-approval broadening -c deployMode=all
+	cd infra && cdk deploy --all --require-approval broadening -c deployMode=all -c certArn=$(CERT_ARN)
 
 cdk-destroy-dev:
 	@echo "Destroying dev CDK stacks..."
@@ -357,11 +355,11 @@ cdk-diff:
 
 cdk-diff-dev:
 	@echo "Showing CDK diff for dev..."
-	cd infra && cdk diff -c environment=dev
+	cd infra && cdk diff -c environment=dev -c certArn=$(CERT_ARN)
 
 cdk-diff-prod:
 	@echo "Showing CDK diff for prod..."
-	cd infra && cdk diff -c environment=prod
+	cd infra && cdk diff -c environment=prod -c certArn=$(CERT_ARN)
 
 cdk-bootstrap:
 	@echo "Bootstrapping CDK (required once per account/region)..."

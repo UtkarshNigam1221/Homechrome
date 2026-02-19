@@ -100,14 +100,6 @@ type ArtisanDeps struct {
 	AuthMiddleware *middleware.Auth
 }
 
-// BulkDeps holds dependencies for the Bulk Lambda
-type BulkDeps struct {
-	Config         *config.Config
-	Logger         *logger.Logger
-	Handler        *handler.BulkHandler
-	AuthMiddleware *middleware.Auth
-}
-
 // AssetDeps holds dependencies for the Asset Lambda
 type AssetDeps struct {
 	Config         *config.Config
@@ -304,29 +296,6 @@ func InitializeArtisanDeps(ctx context.Context, cfg *config.Config) (*ArtisanDep
 		ProvideArtisanHandler,
 		ProvideAuthMiddleware,
 		wire.Struct(new(ArtisanDeps), "*"),
-	)
-	return nil, nil
-}
-
-// InitializeBulkDeps creates Bulk Lambda dependencies
-func InitializeBulkDeps(ctx context.Context, cfg *config.Config) (*BulkDeps, error) {
-	wire.Build(
-		CoreSet,
-		ProvideUserRepository,
-		ProvideTokenStore,
-		ProvideBulkOperationRepository,
-		ProvideProductRepository,
-		ProvideCategoryRepository,
-		ProvideInventoryRepository,
-		ProvideS3Client,
-		ProvideAuthService,
-		ProvideAssetService,
-		ProvideProductService,
-		ProvideInventoryService,
-		ProvideBulkService,
-		ProvideBulkHandler,
-		ProvideAuthMiddleware,
-		wire.Struct(new(BulkDeps), "*"),
 	)
 	return nil, nil
 }

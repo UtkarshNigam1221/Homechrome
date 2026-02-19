@@ -12,7 +12,6 @@ import {
   Settings,
   ShoppingCart,
   Tag,
-  Upload,
   UserCircle,
   Users,
   Warehouse,
@@ -34,7 +33,6 @@ const navigation = [
   { name: 'Coupons', href: '/coupons', icon: Percent },
   { name: 'Analytics', href: '/analytics', icon: BarChart3 },
   { name: 'Reports', href: '/reports', icon: FileText },
-  { name: 'Bulk Operations', href: '/bulk', icon: Upload },
   { name: 'Notifications', href: '/notifications', icon: Bell },
   { name: 'Settings', href: '/settings', icon: Settings },
 ];

@@ -1,0 +1,78 @@
+package handler
+
+import "github.com/handloom/admin/internal/domain"
+
+// Auth request types
+
+// RefreshTokenRequest is the request body for token refresh
+type RefreshTokenRequest struct {
+	RefreshToken string `json:"refresh_token" validate:"required"`
+}
+
+// PasswordResetEmailRequest is the request body for requesting a password reset
+type PasswordResetEmailRequest struct {
+	Email string `json:"email" validate:"required,email"`
+}
+
+// User request types
+
+// UpdateUserStatusRequest is the request body for updating a user's status
+type UpdateUserStatusRequest struct {
+	Status domain.UserStatus `json:"status" validate:"required"`
+}
+
+// Order request types
+
+// UpdateOrderStatusRequest is the request body for updating order status
+type UpdateOrderStatusRequest struct {
+	Status domain.OrderStatus `json:"status" validate:"required"`
+}
+
+// AddOrderNoteRequest is the request body for adding a note to an order
+type AddOrderNoteRequest struct {
+	Note       string `json:"note" validate:"required"`
+	IsInternal bool   `json:"is_internal"`
+}
+
+// UpdateTrackingRequest is the request body for updating tracking info
+type UpdateTrackingRequest struct {
+	TrackingNumber string `json:"tracking_number" validate:"required"`
+	Carrier        string `json:"carrier"`
+}
+
+// CancelOrderRequest is the request body for cancelling an order
+type CancelOrderRequest struct {
+	Reason string `json:"reason" validate:"required"`
+}
+
+// RefundOrderRequest is the request body for refunding an order
+type RefundOrderRequest struct {
+	Amount int64  `json:"amount" validate:"required,gt=0"`
+	Reason string `json:"reason" validate:"required"`
+}
+
+// Coupon request types
+
+// ValidateCouponRequest is the request body for validating a coupon
+type ValidateCouponRequest struct {
+	Code       string   `json:"code" validate:"required"`
+	OrderTotal int64    `json:"order_total"`
+	CustomerID string   `json:"customer_id"`
+	ProductIDs []string `json:"product_ids"`
+}
+
+// ApplyCouponRequest is the request body for applying a coupon
+type ApplyCouponRequest struct {
+	CouponID   string `json:"coupon_id" validate:"required"`
+	OrderID    string `json:"order_id" validate:"required"`
+	CustomerID string `json:"customer_id" validate:"required"`
+	Discount   int64  `json:"discount" validate:"required,gt=0"`
+}
+
+// Artisan request types
+
+// UpdateArtisanStatusRequest is the request body for updating artisan status
+type UpdateArtisanStatusRequest struct {
+	Status domain.ArtisanStatus `json:"status" validate:"required"`
+}
+

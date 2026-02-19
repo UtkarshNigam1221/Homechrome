@@ -66,7 +66,6 @@ func main() {
 	couponRepo := dynamodb.NewCouponRepository(dbClient)
 	artisanRepo := dynamodb.NewArtisanRepository(dbClient)
 	analyticsRepo := dynamodb.NewAnalyticsRepository(dbClient)
-	bulkRepo := dynamodb.NewBulkOperationRepository(dbClient)
 	reportRepo := dynamodb.NewReportRepository(dbClient)
 
 	// Initialize services
@@ -114,7 +113,6 @@ func main() {
 	couponService := service.NewCouponService(couponRepo, log)
 	artisanService := service.NewArtisanService(artisanRepo, log)
 	analyticsService := service.NewAnalyticsService(analyticsRepo, orderRepo, productRepo, inventoryRepo, log)
-	bulkService := service.NewBulkService(bulkRepo, productService, inventoryService, log)
 	reportService := service.NewReportService(reportRepo, orderService, productService, customerService, inventoryService, analyticsService, log)
 
 	// Initialize validation middleware
@@ -135,7 +133,6 @@ func main() {
 	couponHandler := handler.NewCouponHandler(couponService, validation)
 	artisanHandler := handler.NewArtisanHandler(artisanService, validation)
 	analyticsHandler := handler.NewAnalyticsHandler(analyticsService)
-	bulkHandler := handler.NewBulkHandler(bulkService, validation)
 	assetHandler := handler.NewAssetHandler(assetService, validation)
 	reportHandler := handler.NewReportHandler(reportService, validation)
 
@@ -147,7 +144,7 @@ func main() {
 		authHandler, userHandler, categoryHandler,
 		productHandler, inventoryHandler, pricingHandler, orderHandler,
 		customerHandler, auditHandler, notificationHandler, couponHandler,
-		artisanHandler, analyticsHandler, bulkHandler, assetHandler, reportHandler)
+		artisanHandler, analyticsHandler, assetHandler, reportHandler)
 
 	// Create server
 	server := &http.Server{
@@ -200,7 +197,6 @@ func createRouter(
 	couponHandler *handler.CouponHandler,
 	artisanHandler *handler.ArtisanHandler,
 	analyticsHandler *handler.AnalyticsHandler,
-	bulkHandler *handler.BulkHandler,
 	assetHandler *handler.AssetHandler,
 	reportHandler *handler.ReportHandler,
 ) *chi.Mux {
@@ -294,9 +290,6 @@ func createRouter(
 
 			// Analytics/Dashboard
 			r.Mount("/analytics", analyticsRoutes(analyticsHandler))
-
-			// Bulk Operations
-			r.Mount("/bulk", bulkHandler.Routes())
 
 			// Assets/Media
 			r.Mount("/assets", assetHandler.Routes())

@@ -78,18 +78,6 @@ func validateCouponType(fl validator.FieldLevel) bool {
 	return validCouponTypes[couponType]
 }
 
-// Bulk operation type constants
-var validBulkOperationTypes = map[string]bool{
-	"IMPORT": true,
-	"EXPORT": true,
-}
-
-// validateBulkOperationType validates that the field contains a valid bulk operation type.
-func validateBulkOperationType(fl validator.FieldLevel) bool {
-	opType := fl.Field().String()
-	return validBulkOperationTypes[opType]
-}
-
 // Entity type constants
 var validEntityTypes = map[string]bool{
 	"PRODUCT":   true,
