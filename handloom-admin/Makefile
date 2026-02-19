@@ -2,7 +2,8 @@
 	build-lambdas build-lambda-auth build-lambda-user build-lambda-catalog build-lambda-order \
 	build-lambda-pricing build-lambda-inventory build-lambda-analytics build-lambda-notification \
 	build-lambda-coupon build-lambda-artisan build-lambda-asset \
-	build-lambda-report build-lambda-audit cdk-synth cdk-deploy-dev cdk-deploy-prod cdk-destroy
+	build-lambda-report build-lambda-audit cdk-synth cdk-deploy-dev cdk-deploy-prod cdk-destroy \
+	init-s3 deploy-local redeploy-local teardown-local
 
 # ACM certificate ARN for custom domain (*.lldlab.com) - must be in us-east-1
 CERT_ARN ?= arn:aws:acm:us-east-1:163053486005:certificate/a8dca48d-5992-4e6e-94c9-fffc7f3ac447
@@ -41,7 +42,7 @@ run:
 	@echo "=============================================="
 	@echo ""
 	@echo "  API Server:     http://localhost:8080"
-	@echo "  DynamoDB Local: http://localhost:8000"
+	@echo "  LocalStack:     http://localhost:4566"
 	@echo "  DynamoDB Admin: http://localhost:8001"
 	@echo ""
 	@echo "  Health Check:   curl http://localhost:8080/health"
@@ -51,7 +52,7 @@ run:
 	@echo "=============================================="
 	APP_ENV=development \
 	APP_DEBUG=true \
-	AWS_ENDPOINT=http://localhost:8000 \
+	AWS_ENDPOINT=http://localhost:4566 \
 	AWS_REGION=ap-south-1 \
 	AWS_ACCESS_KEY_ID=local \
 	AWS_SECRET_ACCESS_KEY=local \
@@ -64,7 +65,7 @@ run-watch:
 	@which air > /dev/null 2>&1 || (echo "Installing air..." && $(GOCMD) install github.com/cosmtrek/air@latest)
 	APP_ENV=development \
 	APP_DEBUG=true \
-	AWS_ENDPOINT=http://localhost:8000 \
+	AWS_ENDPOINT=http://localhost:4566 \
 	AWS_REGION=ap-south-1 \
 	AWS_ACCESS_KEY_ID=local \
 	AWS_SECRET_ACCESS_KEY=local \
@@ -117,12 +118,17 @@ fmt:
 	@echo "Formatting code..."
 	$(GOCMD) fmt ./...
 
-## Start Docker services (DynamoDB Local)
+## Start Docker services (LocalStack)
 docker-up:
-	@echo "Starting Docker services..."
-	docker-compose up -d dynamodb-local dynamodb-admin
-	@echo "Waiting for DynamoDB to be ready..."
-	@sleep 3
+	@echo "Starting LocalStack..."
+	docker-compose up -d localstack dynamodb-admin
+	@echo "Waiting for LocalStack to be ready..."
+	@for i in 1 2 3 4 5 6 7 8 9 10; do \
+		curl -sf http://localhost:4566/_localstack/health > /dev/null 2>&1 && break; \
+		echo "  waiting... ($$i)"; \
+		sleep 3; \
+	done
+	@echo "LocalStack is ready!"
 
 ## Stop Docker services
 docker-down:
@@ -140,6 +146,12 @@ create-tables:
 	chmod +x scripts/init-local-db.sh
 	./scripts/init-local-db.sh
 
+## Create S3 buckets in LocalStack
+init-s3:
+	@echo "Creating S3 buckets..."
+	chmod +x scripts/init-local-s3.sh
+	./scripts/init-local-s3.sh
+
 ## Run unit tests only (no DynamoDB required)
 test-unit:
 	@echo "Running unit tests..."
@@ -148,7 +160,7 @@ test-unit:
 ## Run integration tests (requires DynamoDB Local)
 test-integration:
 	@echo "Running integration tests..."
-	DYNAMODB_LOCAL_ENDPOINT=http://localhost:8000 $(GOTEST) -v -race ./internal/repository/...
+	DYNAMODB_LOCAL_ENDPOINT=http://localhost:4566 $(GOTEST) -v -race ./internal/repository/...
 
 ## Seed test data
 seed-data:
@@ -156,15 +168,33 @@ seed-data:
 	chmod +x scripts/seed-data.sh
 	./scripts/seed-data.sh
 
-## Setup local development (start services, create tables, seed data)
-setup-local: docker-up create-tables seed-data
+## Setup local development (start services, create tables, init S3, seed data)
+setup-local: docker-up create-tables init-s3 seed-data
 	@echo "Local development environment ready!"
 	@echo ""
 	@echo "Services:"
-	@echo "  - DynamoDB Local: http://localhost:8000"
+	@echo "  - LocalStack:    http://localhost:4566"
 	@echo "  - DynamoDB Admin: http://localhost:8001"
 	@echo ""
-	@echo "Run 'make run' to start the API server"
+	@echo "Run 'make run' to start the API server (monolith mode)"
+	@echo "Run 'make deploy-local' to deploy Lambda functions"
+
+## Deploy Lambda functions to LocalStack
+deploy-local: build-lambdas-active
+	@echo "Deploying Lambda functions to LocalStack..."
+	chmod +x scripts/deploy-local-lambdas.sh
+	./scripts/deploy-local-lambdas.sh
+
+## Redeploy Lambda code only (skip API Gateway recreation)
+redeploy-local: build-lambdas-active
+	@echo "Redeploying Lambda code to LocalStack..."
+	REDEPLOY_ONLY=true ./scripts/deploy-local-lambdas.sh
+
+## Tear down all local services
+teardown-local:
+	@echo "Tearing down local environment..."
+	docker-compose down -v
+	@echo "Local environment torn down."
 
 ## Install development tools
 install-tools:
@@ -183,10 +213,10 @@ health:
 ## Reset local database (drop all tables and recreate)
 reset-db: docker-up
 	@echo "Resetting local database..."
-	@aws dynamodb delete-table --table-name handloom-core --endpoint-url http://localhost:8000 --region ap-south-1 2>/dev/null || true
-	@aws dynamodb delete-table --table-name handloom-orders --endpoint-url http://localhost:8000 --region ap-south-1 2>/dev/null || true
-	@aws dynamodb delete-table --table-name handloom-audit --endpoint-url http://localhost:8000 --region ap-south-1 2>/dev/null || true
-	@aws dynamodb delete-table --table-name handloom-analytics --endpoint-url http://localhost:8000 --region ap-south-1 2>/dev/null || true
+	@aws dynamodb delete-table --table-name handloom-core --endpoint-url http://localhost:4566 --region ap-south-1 2>/dev/null || true
+	@aws dynamodb delete-table --table-name handloom-orders --endpoint-url http://localhost:4566 --region ap-south-1 2>/dev/null || true
+	@aws dynamodb delete-table --table-name handloom-audit --endpoint-url http://localhost:4566 --region ap-south-1 2>/dev/null || true
+	@aws dynamodb delete-table --table-name handloom-analytics --endpoint-url http://localhost:4566 --region ap-south-1 2>/dev/null || true
 	@sleep 2
 	@$(MAKE) create-tables
 	@$(MAKE) seed-data
@@ -194,7 +224,7 @@ reset-db: docker-up
 
 ## View DynamoDB tables
 list-tables:
-	@aws dynamodb list-tables --endpoint-url http://localhost:8000 --region ap-south-1
+	@aws dynamodb list-tables --endpoint-url http://localhost:4566 --region ap-south-1
 
 ## Generate password hash for development
 gen-password:
@@ -389,9 +419,15 @@ help:
 	@echo "  make docker-up          - Start DynamoDB Local"
 	@echo "  make docker-down        - Stop Docker services"
 	@echo "  make create-tables      - Create DynamoDB tables"
+	@echo "  make init-s3            - Create S3 buckets in LocalStack"
 	@echo "  make seed-data          - Seed test data"
 	@echo "  make reset-db           - Drop and recreate all tables"
 	@echo "  make list-tables        - List DynamoDB tables"
+	@echo ""
+	@echo "Local Lambda:"
+	@echo "  make deploy-local       - Deploy Lambdas to LocalStack"
+	@echo "  make redeploy-local     - Redeploy Lambda code only"
+	@echo "  make teardown-local     - Tear down all Docker services"
 	@echo ""
 	@echo "Testing & Debug:"
 	@echo "  make health             - Check health of local services"
