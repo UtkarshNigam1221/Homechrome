@@ -61,7 +61,7 @@ func NewAssetService(
 		s3Client: s3Client,
 		logger:   logger,
 		bucket:   bucket,
-		endpoint: endpoint,
+		endpoint: strings.TrimRight(endpoint, "/"),
 	}
 }
 
