@@ -41,6 +41,20 @@ func createEnvironmentStack(app awscdk.App, environment string, env *awscdk.Envi
 	// Check if CDN should be used (default: false for dev, true for prod)
 	useCDN := getUseCDN(app, environment)
 
+	// Custom domain config from CDK context
+	certArn := getCertArn(app)
+	var domainName string
+	if certArn != "" {
+		// Custom domain requires CloudFront
+		useCDN = true
+		switch environment {
+		case "prod":
+			domainName = "admin.homechrome.lldlab.com"
+		default:
+			domainName = "dev.homechrome.lldlab.com"
+		}
+	}
+
 	stacks.NewFrontendStack(app, "HandloomFrontendStack-"+environment, &stacks.FrontendStackProps{
 		StackProps: awscdk.StackProps{
 			Env:         env,
@@ -54,6 +68,8 @@ func createEnvironmentStack(app awscdk.App, environment string, env *awscdk.Envi
 		Environment: environment,
 		APIURL:      apiURL,
 		UseCDN:      useCDN,
+		DomainName:  domainName,
+		CertArn:     certArn,
 	})
 }
 
@@ -116,6 +132,16 @@ func getUseCDN(app constructs.Construct, environment string) bool {
 	// Dev uses S3 static hosting (FREE, but HTTP only)
 	// Prod always uses CloudFront (HTTPS required)
 	return environment == "prod"
+}
+
+func getCertArn(app constructs.Construct) string {
+	if arn := app.Node().TryGetContext(jsii.String("certArn")); arn != nil {
+		return arn.(string)
+	}
+	if arn := os.Getenv("ACM_CERT_ARN"); arn != "" {
+		return arn
+	}
+	return ""
 }
 
 func getAWSEnv() *awscdk.Environment {

@@ -1,73 +1,90 @@
-# React + TypeScript + Vite
+# Handloom Admin Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React admin dashboard for the Homechrome handloom e-commerce platform.
 
-Currently, two official plugins are available:
+## Tech Stack
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- React 19, TypeScript, Vite 7
+- Tailwind CSS 4, Headless UI, Lucide icons
+- Zustand (auth/UI state), React Query (server state)
+- react-hook-form + zod (form validation)
+- Recharts (analytics)
+- Axios (API client)
 
-## React Compiler
+## Quick Start
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm install
+npm run dev:local    # Requires backend running on localhost:8080
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+See the [root README](../README.md) for full setup instructions including the backend.
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+## Dev Modes
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+| Script | Target | Env File | Use Case |
+|--------|--------|----------|----------|
+| `npm run dev:local` | `localhost:8080` | `.env.local-backend` | Daily dev against monolith backend |
+| `npm run dev:lambda` | `localhost:4566` | `.env.local-lambda` | Test against local Lambda/LocalStack |
+| `npm run dev` | AWS dev API | `.env.development` | Test against deployed AWS |
+
+## Commands
+
+```bash
+# Development
+npm run dev:local         # Vite on :5173 -> localhost:8080
+npm run dev:lambda        # Vite on :5173 -> localhost:4566
+npm run dev               # Vite on :5173 -> AWS dev API
+
+# Quality
+npm run check             # typecheck + lint + format:check
+npm run typecheck         # tsc --noEmit
+npm run lint              # ESLint
+npm run lint:fix          # ESLint with auto-fix
+npm run format            # Prettier write
+
+# Testing
+npm run test              # Vitest run
+npm run test:watch        # Vitest watch mode
+
+# Build
+npm run build             # TypeScript check + Vite production build
+npm run build:dev         # Build for dev environment
+npm run build:prod        # Build for prod environment
+
+# Deploy
+npm run cdk:deploy:dev    # Build + CDK deploy to dev
+npm run cdk:deploy:prod   # Build + CDK deploy to prod
 ```
+
+## Project Structure
+
+```
+src/
+├── app/                    # App.tsx (all routes + auth guards), providers
+├── api/                    # Axios client, API functions
+├── features/               # Feature modules (settings, etc.)
+├── pages/                  # Page components by domain
+│   └── <domain>/           # List page, form modal, barrel index.ts
+└── shared/
+    ├── components/
+    │   ├── common/         # Button, Modal, Table, Input, etc.
+    │   └── layout/         # MainLayout, Sidebar, Header
+    ├── stores/             # Zustand (authStore, uiStore)
+    ├── hooks/              # Custom hooks (useDebounce, etc.)
+    └── utils/              # Utilities (currency, etc.)
+```
+
+## Conventions
+
+- **Path alias**: `@/` maps to `src/` (configured in `vite.config.ts` and `tsconfig.app.json`)
+- **Imports**: `eslint-plugin-simple-import-sort` enforces ordering
+- **Env vars**: prefixed with `VITE_`
+- **Lint-staged**: on commit, `.ts/.tsx` files get eslint --fix + prettier; `.css/.json/.md` get prettier
+- **Dev proxy**: Vite proxies `/admin/*` and `/api/*` to backend so cookies work same-origin
+
+## Infrastructure
+
+CDK stacks in `infra/` (written in Go):
+- **Dev**: S3 static website hosting (HTTP, free tier)
+- **Prod**: CloudFront + S3 (HTTPS, custom domain via ACM cert)

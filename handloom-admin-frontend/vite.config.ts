@@ -97,14 +97,26 @@ export default defineConfig(({ mode }) => {
       open: true,
       proxy: {
         '/admin': {
-          target: env.VITE_API_URL || 'http://localhost:8080',
+          target: env.VITE_API_URL || 'http://localhost:8081',
           changeOrigin: true,
-          secure: true,
+          secure: false,
+          cookieDomainRewrite: { '*': '' },
+          configure: (proxy) => {
+            // Strip Secure flag + fix SameSite so cookies work on http://localhost
+            proxy.on('proxyRes', (proxyRes) => {
+              const sc = proxyRes.headers['set-cookie'];
+              if (sc) {
+                proxyRes.headers['set-cookie'] = sc.map((c) =>
+                  c.replace(/;\s*Secure/gi, '').replace(/;\s*SameSite=None/gi, '; SameSite=Lax')
+                );
+              }
+            });
+          },
         },
         '/api': {
-          target: env.VITE_API_URL || 'http://localhost:8080',
+          target: env.VITE_API_URL || 'http://localhost:8081',
           changeOrigin: true,
-          secure: true,
+          secure: false,
         },
       },
     },

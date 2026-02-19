@@ -7,6 +7,7 @@ import toast from 'react-hot-toast';
 import type { User as UserType, UserRole, UserStatus } from '@/features/auth/types';
 import { usersApi } from '@/features/settings/api';
 import { getErrorMessage } from '@/shared/api/client';
+import { Skeleton } from '@/shared/components/loading';
 import {
   Badge,
   Button,
@@ -15,7 +16,6 @@ import {
   Input,
   Pagination,
   Select,
-  Skeleton,
   Table,
   TableBody,
   TableCell,
