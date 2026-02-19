@@ -239,7 +239,7 @@ export function ImageUpload({
     }
 
     // Best-effort delete from S3 — only for permanent URLs (already in assets/)
-    if (val && isPermanentUrl(val) && val.includes('.s3.amazonaws.com/assets/')) {
+    if (val && isPermanentUrl(val) && val.includes('/assets/')) {
       assetsApi.delete(val).catch(() => {
         // Silently ignore — file stays in S3 but costs are minimal
       });
