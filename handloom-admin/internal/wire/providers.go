@@ -32,7 +32,7 @@ func ProvideDynamoDBClient(ctx context.Context, cfg *config.Config) (*dynamodb.C
 
 // ProvideS3Client creates a new S3 client
 func ProvideS3Client(ctx context.Context, cfg *config.Config) (*s3client.S3Client, error) {
-	return s3client.New(ctx, cfg.AWS.Region)
+	return s3client.New(ctx, cfg.AWS.Region, cfg.AWS.Endpoint)
 }
 
 // CoreSet contains core providers used by all services
@@ -283,7 +283,7 @@ func ProvideAssetService(
 	s3Client *s3client.S3Client,
 	cfg *config.Config,
 ) *service.AssetService {
-	return service.NewAssetService(log, s3Client, cfg.AWS.S3Bucket)
+	return service.NewAssetService(log, s3Client, cfg.AWS.S3Bucket, cfg.AWS.Endpoint)
 }
 
 // ProvideReportService creates a new ReportService

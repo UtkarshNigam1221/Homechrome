@@ -47,6 +47,7 @@ type AssetService struct {
 	s3Client s3Ops
 	logger   *logger.Logger
 	bucket   string
+	endpoint string
 }
 
 // NewAssetService creates a new AssetService
@@ -54,16 +55,22 @@ func NewAssetService(
 	logger *logger.Logger,
 	s3Client *s3client.S3Client,
 	bucket string,
+	endpoint string,
 ) *AssetService {
 	return &AssetService{
 		s3Client: s3Client,
 		logger:   logger,
 		bucket:   bucket,
+		endpoint: endpoint,
 	}
 }
 
 // s3URL builds a public S3 URL for the given key.
+// When endpoint is set (local dev), it uses path-style URLs pointing at LocalStack.
 func (s *AssetService) s3URL(key string) string {
+	if s.endpoint != "" {
+		return fmt.Sprintf("%s/%s/%s", s.endpoint, s.bucket, key)
+	}
 	return fmt.Sprintf("https://%s.s3.amazonaws.com/%s", s.bucket, key)
 }
 

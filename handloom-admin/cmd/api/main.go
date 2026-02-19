@@ -45,7 +45,7 @@ func main() {
 	log.Info("DynamoDB client initialized")
 
 	// Initialize S3 client
-	s3c, err := s3client.New(ctx, cfg.AWS.Region)
+	s3c, err := s3client.New(ctx, cfg.AWS.Region, cfg.AWS.Endpoint)
 	if err != nil {
 		log.Fatalf("Failed to initialize S3 client: %v", err)
 	}
@@ -80,7 +80,7 @@ func main() {
 	)
 
 	userService := service.NewUserService(userRepo, tokenStore, log)
-	assetService := service.NewAssetService(log, s3c, cfg.AWS.S3Bucket)
+	assetService := service.NewAssetService(log, s3c, cfg.AWS.S3Bucket, cfg.AWS.Endpoint)
 	categoryService := service.NewCategoryService(categoryRepo, productRepo, assetService, log)
 	inventoryService := service.NewInventoryService(inventoryRepo, productRepo, log)
 	productService := service.NewProductService(

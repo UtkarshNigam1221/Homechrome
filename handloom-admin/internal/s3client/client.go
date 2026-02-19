@@ -7,6 +7,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
@@ -16,14 +17,38 @@ type S3Client struct {
 	presignClient *s3.PresignClient
 }
 
-// New creates a new S3Client using the default AWS config for the given region
-func New(ctx context.Context, region string) (*S3Client, error) {
-	cfg, err := awsconfig.LoadDefaultConfig(ctx, awsconfig.WithRegion(region))
+// New creates a new S3Client using the default AWS config for the given region.
+// When endpoint is non-empty (local dev), it uses static credentials and path-style addressing.
+func New(ctx context.Context, region string, endpoint string) (*S3Client, error) {
+	var cfg aws.Config
+	var err error
+
+	if endpoint != "" {
+		cfg, err = awsconfig.LoadDefaultConfig(ctx,
+			awsconfig.WithRegion(region),
+			awsconfig.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(
+				"local", "local", "",
+			)),
+		)
+	} else {
+		cfg, err = awsconfig.LoadDefaultConfig(ctx,
+			awsconfig.WithRegion(region),
+		)
+	}
 	if err != nil {
 		return nil, err
 	}
 
-	client := s3.NewFromConfig(cfg)
+	var client *s3.Client
+	if endpoint != "" {
+		client = s3.NewFromConfig(cfg, func(o *s3.Options) {
+			o.BaseEndpoint = aws.String(endpoint)
+			o.UsePathStyle = true
+		})
+	} else {
+		client = s3.NewFromConfig(cfg)
+	}
+
 	return &S3Client{
 		client:        client,
 		presignClient: s3.NewPresignClient(client),
