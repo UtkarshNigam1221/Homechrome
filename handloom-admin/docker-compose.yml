@@ -9,15 +9,12 @@ services:
       - "4566:4566"           # LocalStack gateway
     environment:
       SERVICES: dynamodb,s3,lambda,apigateway,iam
-      DEFAULT_REGION: ap-south-1
-      LAMBDA_EXECUTOR: docker
-      DOCKER_HOST: unix:///var/run/docker.sock
       DEBUG: 0
     volumes:
       - localstack-data:/var/lib/localstack
       - /var/run/docker.sock:/var/run/docker.sock
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:4566/_localstack/health | grep -q '\"dynamodb\": \"running\"' || exit 1"]
+      test: ["CMD-SHELL", "curl -sf http://localhost:4566/_localstack/health | grep -q '\"dynamodb\": \"available\"' || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 10
