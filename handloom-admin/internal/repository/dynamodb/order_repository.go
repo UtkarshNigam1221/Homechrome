@@ -3,11 +3,11 @@ package dynamodb
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
-	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/expression"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"github.com/handloom/admin/internal/domain"
@@ -48,6 +48,24 @@ func (r *OrderRepository) Create(ctx context.Context, order *domain.Order) error
 		return errors.Wrap(err, "Failed to create order")
 	}
 
+	// Write order number index for lookup
+	if order.OrderNumber != "" {
+		idx := &domain.OrderNumberIndex{OrderID: order.ID}
+		idx.SetKeys(order.OrderNumber)
+		idxAV, err := attributevalue.MarshalMap(idx)
+		if err != nil {
+			return errors.Internal("Failed to marshal order number index")
+		}
+		_, err = r.client.db.PutItem(ctx, &dynamodb.PutItemInput{
+			TableName:           aws.String(r.client.ordersTable),
+			Item:                idxAV,
+			ConditionExpression: aws.String("attribute_not_exists(PK)"),
+		})
+		if err != nil && !isConditionalCheckFailed(err) {
+			return errors.Wrap(err, "Failed to write order number index")
+		}
+	}
+
 	return nil
 }
 
@@ -78,30 +96,27 @@ func (r *OrderRepository) GetByID(ctx context.Context, id string) (*domain.Order
 
 // GetByOrderNumber retrieves an order by order number
 func (r *OrderRepository) GetByOrderNumber(ctx context.Context, orderNumber string) (*domain.Order, error) {
-	result, err := r.client.db.Query(ctx, &dynamodb.QueryInput{
-		TableName:              aws.String(r.client.ordersTable),
-		IndexName:              aws.String("GSI1"),
-		KeyConditionExpression: aws.String("GSI1PK = :pk AND GSI1SK = :sk"),
-		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":pk": &types.AttributeValueMemberS{Value: "ORDER_NUMBER"},
-			":sk": &types.AttributeValueMemberS{Value: orderNumber},
+	// Lookup order ID from index item
+	result, err := r.client.db.GetItem(ctx, &dynamodb.GetItemInput{
+		TableName: aws.String(r.client.ordersTable),
+		Key: map[string]types.AttributeValue{
+			"PK": &types.AttributeValueMemberS{Value: "ORDER_NUMBER#" + orderNumber},
+			"SK": &types.AttributeValueMemberS{Value: "METADATA"},
 		},
-		Limit: aws.Int32(1),
 	})
 	if err != nil {
-		return nil, errors.Wrap(err, "Failed to query order by number")
+		return nil, errors.Wrap(err, "Failed to lookup order number")
 	}
-
-	if len(result.Items) == 0 {
+	if result.Item == nil {
 		return nil, errors.NotFound("Order not found")
 	}
 
-	var order domain.Order
-	if err := attributevalue.UnmarshalMap(result.Items[0], &order); err != nil {
-		return nil, errors.Internal("Failed to unmarshal order")
+	var index domain.OrderNumberIndex
+	if err := attributevalue.UnmarshalMap(result.Item, &index); err != nil {
+		return nil, errors.Internal("Failed to unmarshal order number index")
 	}
 
-	return &order, nil
+	return r.GetByID(ctx, index.OrderID)
 }
 
 // Update updates an existing order
@@ -131,37 +146,50 @@ func (r *OrderRepository) Update(ctx context.Context, order *domain.Order) error
 
 // List retrieves orders with filters
 func (r *OrderRepository) List(ctx context.Context, req domain.ListOrdersRequest) (*domain.ListOrdersResponse, error) {
-	filterBuilder := expression.Name("entity_type").Equal(expression.Value("ORDER"))
+	input := &dynamodb.QueryInput{
+		TableName:              aws.String(r.client.ordersTable),
+		IndexName:              aws.String("GSI2"),
+		KeyConditionExpression: aws.String("GSI2PK = :pk"),
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":pk": &types.AttributeValueMemberS{Value: "ORDER#ALL"},
+		},
+		ScanIndexForward: aws.Bool(false), // newest first
+	}
+
+	// Build filter expressions
+	var filters []string
+	exprAttrNames := map[string]string{}
 
 	if req.Status != nil {
-		filterBuilder = filterBuilder.And(expression.Name("status").Equal(expression.Value(*req.Status)))
+		filters = append(filters, "#status = :status")
+		input.ExpressionAttributeValues[":status"] = &types.AttributeValueMemberS{Value: string(*req.Status)}
+		exprAttrNames["#status"] = "status"
 	}
 
 	if req.PaymentStatus != nil {
-		filterBuilder = filterBuilder.And(expression.Name("payment_status").Equal(expression.Value(*req.PaymentStatus)))
+		filters = append(filters, "payment_status = :paymentStatus")
+		input.ExpressionAttributeValues[":paymentStatus"] = &types.AttributeValueMemberS{Value: string(*req.PaymentStatus)}
 	}
 
 	if req.CustomerID != nil {
-		filterBuilder = filterBuilder.And(expression.Name("customer_id").Equal(expression.Value(*req.CustomerID)))
+		filters = append(filters, "customer_id = :custID")
+		input.ExpressionAttributeValues[":custID"] = &types.AttributeValueMemberS{Value: *req.CustomerID}
 	}
 
 	if req.Search != "" {
-		searchFilter := expression.Name("order_number").Contains(req.Search).
-			Or(expression.Name("customer_name").Contains(req.Search))
-		filterBuilder = filterBuilder.And(searchFilter)
+		filters = append(filters, "(contains(order_number, :search) OR contains(customer_name, :search))")
+		input.ExpressionAttributeValues[":search"] = &types.AttributeValueMemberS{Value: req.Search}
 	}
 
-	expr, err := expression.NewBuilder().WithFilter(filterBuilder).Build()
-	if err != nil {
-		return nil, errors.Internal("Failed to build query expression")
+	if len(filters) > 0 {
+		filterExpr := strings.Join(filters, " AND ")
+		input.FilterExpression = aws.String(filterExpr)
+	}
+	if len(exprAttrNames) > 0 {
+		input.ExpressionAttributeNames = exprAttrNames
 	}
 
-	result, err := r.client.db.Scan(ctx, &dynamodb.ScanInput{
-		TableName:                 aws.String(r.client.ordersTable),
-		FilterExpression:          expr.Filter(),
-		ExpressionAttributeNames:  expr.Names(),
-		ExpressionAttributeValues: expr.Values(),
-	})
+	result, err := r.client.db.Query(ctx, input)
 	if err != nil {
 		return nil, errors.Wrap(err, "Failed to list orders")
 	}
@@ -184,12 +212,12 @@ func (r *OrderRepository) List(ctx context.Context, req domain.ListOrdersRequest
 func (r *OrderRepository) GetByCustomer(ctx context.Context, customerID string, pagination domain.PaginationRequest) (*domain.ListOrdersResponse, error) {
 	result, err := r.client.db.Query(ctx, &dynamodb.QueryInput{
 		TableName:              aws.String(r.client.ordersTable),
-		IndexName:              aws.String("GSI2"),
-		KeyConditionExpression: aws.String("GSI2PK = :pk"),
+		IndexName:              aws.String("GSI1"),
+		KeyConditionExpression: aws.String("GSI1PK = :pk"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
 			":pk": &types.AttributeValueMemberS{Value: "CUSTOMER#" + customerID},
 		},
-		ScanIndexForward: aws.Bool(false), // Newest first
+		ScanIndexForward: aws.Bool(false),
 	})
 	if err != nil {
 		return nil, errors.Wrap(err, "Failed to query orders by customer")
@@ -200,7 +228,6 @@ func (r *OrderRepository) GetByCustomer(ctx context.Context, customerID string, 
 		return nil, errors.Internal("Failed to unmarshal orders")
 	}
 
-	// TODO: migrate to real DynamoDB cursor-based pagination
 	paged, pg := InMemoryPaginate(orders, pagination)
 
 	return &domain.ListOrdersResponse{
@@ -335,6 +362,24 @@ func (r *CustomerRepository) Create(ctx context.Context, customer *domain.Custom
 		return errors.Wrap(err, "Failed to create customer")
 	}
 
+	// Write phone index for lookup
+	if customer.Phone != "" {
+		idx := &domain.CustomerPhoneIndex{CustomerID: customer.ID}
+		idx.SetKeys(customer.Phone)
+		idxAV, err := attributevalue.MarshalMap(idx)
+		if err != nil {
+			return errors.Internal("Failed to marshal phone index")
+		}
+		_, err = r.client.db.PutItem(ctx, &dynamodb.PutItemInput{
+			TableName:           aws.String(r.client.ordersTable),
+			Item:                idxAV,
+			ConditionExpression: aws.String("attribute_not_exists(PK)"),
+		})
+		if err != nil && !isConditionalCheckFailed(err) {
+			return errors.Wrap(err, "Failed to write phone index")
+		}
+	}
+
 	return nil
 }
 
@@ -391,6 +436,28 @@ func (r *CustomerRepository) GetByEmail(ctx context.Context, email string) (*dom
 	return &customer, nil
 }
 
+// GetByPhone retrieves a customer by phone number using the phone index
+func (r *CustomerRepository) GetByPhone(ctx context.Context, phone string) (*domain.Customer, error) {
+	result, err := r.client.db.GetItem(ctx, &dynamodb.GetItemInput{
+		TableName: aws.String(r.client.ordersTable),
+		Key: map[string]types.AttributeValue{
+			"PK": &types.AttributeValueMemberS{Value: "CUSTOMER_PHONE#" + phone},
+			"SK": &types.AttributeValueMemberS{Value: "METADATA"},
+		},
+	})
+	if err != nil {
+		return nil, errors.Wrap(err, "Failed to lookup customer by phone")
+	}
+	if result.Item == nil {
+		return nil, errors.NotFound("Customer not found")
+	}
+	var index domain.CustomerPhoneIndex
+	if err := attributevalue.UnmarshalMap(result.Item, &index); err != nil {
+		return nil, errors.Internal("Failed to unmarshal phone index")
+	}
+	return r.GetByID(ctx, index.CustomerID)
+}
+
 // Update updates an existing customer
 func (r *CustomerRepository) Update(ctx context.Context, customer *domain.Customer) error {
 	customer.UpdatedAt = time.Now()
@@ -418,27 +485,22 @@ func (r *CustomerRepository) Update(ctx context.Context, customer *domain.Custom
 
 // List retrieves customers with filters
 func (r *CustomerRepository) List(ctx context.Context, req domain.ListCustomersRequest) (*domain.ListCustomersResponse, error) {
-	filterBuilder := expression.Name("entity_type").Equal(expression.Value("CUSTOMER"))
+	input := &dynamodb.QueryInput{
+		TableName:              aws.String(r.client.ordersTable),
+		IndexName:              aws.String("GSI2"),
+		KeyConditionExpression: aws.String("GSI2PK = :pk"),
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":pk": &types.AttributeValueMemberS{Value: "CUSTOMER#ALL"},
+		},
+		ScanIndexForward: aws.Bool(false),
+	}
 
 	if req.Search != "" {
-		searchFilter := expression.Name("email").Contains(req.Search).
-			Or(expression.Name("first_name").Contains(req.Search)).
-			Or(expression.Name("last_name").Contains(req.Search)).
-			Or(expression.Name("phone").Contains(req.Search))
-		filterBuilder = filterBuilder.And(searchFilter)
+		input.FilterExpression = aws.String("contains(email, :search) OR contains(first_name, :search) OR contains(last_name, :search) OR contains(phone, :search)")
+		input.ExpressionAttributeValues[":search"] = &types.AttributeValueMemberS{Value: req.Search}
 	}
 
-	expr, err := expression.NewBuilder().WithFilter(filterBuilder).Build()
-	if err != nil {
-		return nil, errors.Internal("Failed to build query expression")
-	}
-
-	result, err := r.client.db.Scan(ctx, &dynamodb.ScanInput{
-		TableName:                 aws.String(r.client.ordersTable),
-		FilterExpression:          expr.Filter(),
-		ExpressionAttributeNames:  expr.Names(),
-		ExpressionAttributeValues: expr.Values(),
-	})
+	result, err := r.client.db.Query(ctx, input)
 	if err != nil {
 		return nil, errors.Wrap(err, "Failed to list customers")
 	}
@@ -448,7 +510,6 @@ func (r *CustomerRepository) List(ctx context.Context, req domain.ListCustomersR
 		return nil, errors.Internal("Failed to unmarshal customers")
 	}
 
-	// TODO: migrate to real DynamoDB cursor-based pagination
 	paged, pg := InMemoryPaginate(customers, req.Pagination)
 
 	return &domain.ListCustomersResponse{
