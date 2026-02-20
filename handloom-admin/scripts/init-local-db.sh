@@ -94,6 +94,8 @@ aws dynamodb create-table \
         AttributeName=SK,AttributeType=S \
         AttributeName=GSI1PK,AttributeType=S \
         AttributeName=GSI1SK,AttributeType=S \
+        AttributeName=GSI2PK,AttributeType=S \
+        AttributeName=GSI2SK,AttributeType=S \
     --key-schema \
         AttributeName=PK,KeyType=HASH \
         AttributeName=SK,KeyType=RANGE \
@@ -102,6 +104,12 @@ aws dynamodb create-table \
             {
                 \"IndexName\": \"GSI1\",
                 \"KeySchema\": [{\"AttributeName\":\"GSI1PK\",\"KeyType\":\"HASH\"},{\"AttributeName\":\"GSI1SK\",\"KeyType\":\"RANGE\"}],
+                \"Projection\": {\"ProjectionType\":\"ALL\"},
+                \"ProvisionedThroughput\": {\"ReadCapacityUnits\": 5, \"WriteCapacityUnits\": 5}
+            },
+            {
+                \"IndexName\": \"GSI2\",
+                \"KeySchema\": [{\"AttributeName\":\"GSI2PK\",\"KeyType\":\"HASH\"},{\"AttributeName\":\"GSI2SK\",\"KeyType\":\"RANGE\"}],
                 \"Projection\": {\"ProjectionType\":\"ALL\"},
                 \"ProvisionedThroughput\": {\"ReadCapacityUnits\": 5, \"WriteCapacityUnits\": 5}
             }
@@ -137,6 +145,26 @@ aws dynamodb create-table \
     2>/dev/null || echo "Table handloom-analytics already exists"
 
 echo "Created handloom-analytics table"
+
+# Enable TTL on core table (for OTP and refresh token expiry)
+aws dynamodb update-time-to-live \
+    --table-name handloom-core \
+    --time-to-live-specification "Enabled=true, AttributeName=ttl" \
+    --endpoint-url $ENDPOINT \
+    --region $REGION \
+    2>/dev/null || echo "TTL already enabled on handloom-core"
+
+echo "Enabled TTL on handloom-core table"
+
+# Enable TTL on orders table (for PriceQuote and Cart expiry)
+aws dynamodb update-time-to-live \
+    --table-name handloom-orders \
+    --time-to-live-specification "Enabled=true, AttributeName=ttl" \
+    --endpoint-url $ENDPOINT \
+    --region $REGION \
+    2>/dev/null || echo "TTL already enabled on handloom-orders"
+
+echo "Enabled TTL on handloom-orders table"
 
 echo ""
 echo "All DynamoDB tables created successfully!"

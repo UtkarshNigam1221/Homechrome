@@ -59,7 +59,8 @@ func NewDatabaseStack(scope constructs.Construct, id string, props *DatabaseStac
 			Name: jsii.String("SK"),
 			Type: awsdynamodb.AttributeType_STRING,
 		},
-		PointInTimeRecovery: jsii.Bool(false), // Disable PITR in dev to save costs (not free)
+		PointInTimeRecovery:  jsii.Bool(false), // Disable PITR in dev to save costs (not free)
+		TimeToLiveAttribute: jsii.String("ttl"), // TTL for OTP and refresh token expiry
 	})
 
 	// GSI1 - General purpose index
@@ -103,7 +104,8 @@ func NewDatabaseStack(scope constructs.Construct, id string, props *DatabaseStac
 			Name: jsii.String("SK"),
 			Type: awsdynamodb.AttributeType_STRING,
 		},
-		PointInTimeRecovery: jsii.Bool(false), // Disable PITR in dev to save costs
+		PointInTimeRecovery:  jsii.Bool(false), // Disable PITR in dev to save costs
+		TimeToLiveAttribute: jsii.String("ttl"), // TTL for PriceQuote and Cart expiry
 	})
 
 	ordersTable.AddGlobalSecondaryIndex(&awsdynamodb.GlobalSecondaryIndexProps{
@@ -114,6 +116,20 @@ func NewDatabaseStack(scope constructs.Construct, id string, props *DatabaseStac
 		},
 		SortKey: &awsdynamodb.Attribute{
 			Name: jsii.String("GSI1SK"),
+			Type: awsdynamodb.AttributeType_STRING,
+		},
+		ProjectionType: awsdynamodb.ProjectionType_ALL,
+	})
+
+	// GSI2 - Secondary index for orders (e.g., customer lookups, price quote expiry)
+	ordersTable.AddGlobalSecondaryIndex(&awsdynamodb.GlobalSecondaryIndexProps{
+		IndexName: jsii.String("GSI2"),
+		PartitionKey: &awsdynamodb.Attribute{
+			Name: jsii.String("GSI2PK"),
+			Type: awsdynamodb.AttributeType_STRING,
+		},
+		SortKey: &awsdynamodb.Attribute{
+			Name: jsii.String("GSI2SK"),
 			Type: awsdynamodb.AttributeType_STRING,
 		},
 		ProjectionType: awsdynamodb.ProjectionType_ALL,
@@ -149,6 +165,20 @@ func NewDatabaseStack(scope constructs.Construct, id string, props *DatabaseStac
 		ProjectionType: awsdynamodb.ProjectionType_ALL,
 	})
 
+	// GSI2 - Secondary index for audit
+	auditTable.AddGlobalSecondaryIndex(&awsdynamodb.GlobalSecondaryIndexProps{
+		IndexName: jsii.String("GSI2"),
+		PartitionKey: &awsdynamodb.Attribute{
+			Name: jsii.String("GSI2PK"),
+			Type: awsdynamodb.AttributeType_STRING,
+		},
+		SortKey: &awsdynamodb.Attribute{
+			Name: jsii.String("GSI2SK"),
+			Type: awsdynamodb.AttributeType_STRING,
+		},
+		ProjectionType: awsdynamodb.ProjectionType_ALL,
+	})
+
 	// Analytics Table - analytics data
 	analyticsTable := awsdynamodb.NewTable(stack, jsii.String("AnalyticsTable"), &awsdynamodb.TableProps{
 		TableName:     jsii.String("handloom-analytics-" + props.Environment),
@@ -163,6 +193,20 @@ func NewDatabaseStack(scope constructs.Construct, id string, props *DatabaseStac
 			Type: awsdynamodb.AttributeType_STRING,
 		},
 		TimeToLiveAttribute: jsii.String("ttl"),
+	})
+
+	// GSI1 - General purpose index for analytics
+	analyticsTable.AddGlobalSecondaryIndex(&awsdynamodb.GlobalSecondaryIndexProps{
+		IndexName: jsii.String("GSI1"),
+		PartitionKey: &awsdynamodb.Attribute{
+			Name: jsii.String("GSI1PK"),
+			Type: awsdynamodb.AttributeType_STRING,
+		},
+		SortKey: &awsdynamodb.Attribute{
+			Name: jsii.String("GSI1SK"),
+			Type: awsdynamodb.AttributeType_STRING,
+		},
+		ProjectionType: awsdynamodb.ProjectionType_ALL,
 	})
 
 	// Outputs
