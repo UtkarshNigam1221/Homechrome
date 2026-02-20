@@ -1,0 +1,75 @@
+'use client';
+
+import Link from 'next/link';
+
+import Button from '@/components/common/Button';
+import { formatPrice } from '@/lib/utils';
+
+interface CartSummaryProps {
+  subtotal: number;
+  itemCount: number;
+}
+
+const FREE_SHIPPING_THRESHOLD = 99900; // 999 INR in paise
+
+export default function CartSummary({ subtotal, itemCount }: CartSummaryProps) {
+  const shippingEstimate = subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : 7900; // 79 INR flat rate
+  const total = subtotal + shippingEstimate;
+  const amountToFreeShipping = FREE_SHIPPING_THRESHOLD - subtotal;
+
+  return (
+    <div className="rounded-xl bg-white p-6 shadow-sm">
+      <h2 className="text-lg font-semibold text-foreground">Order Summary</h2>
+
+      <dl className="mt-4 space-y-3">
+        <div className="flex justify-between text-sm">
+          <dt className="text-muted">
+            Subtotal ({itemCount} {itemCount === 1 ? 'item' : 'items'})
+          </dt>
+          <dd className="font-medium text-foreground">{formatPrice(subtotal)}</dd>
+        </div>
+
+        <div className="flex justify-between text-sm">
+          <dt className="text-muted">Shipping estimate</dt>
+          <dd className="font-medium text-foreground">
+            {shippingEstimate === 0 ? (
+              <span className="text-green-600">Free</span>
+            ) : (
+              formatPrice(shippingEstimate)
+            )}
+          </dd>
+        </div>
+
+        <div className="border-t border-border pt-3">
+          <div className="flex justify-between">
+            <dt className="text-base font-semibold text-foreground">Total</dt>
+            <dd className="text-base font-bold text-foreground">{formatPrice(total)}</dd>
+          </div>
+        </div>
+      </dl>
+
+      {subtotal > 0 && amountToFreeShipping > 0 && (
+        <p className="mt-4 text-xs text-muted">
+          Add {formatPrice(amountToFreeShipping)} more for free shipping!
+        </p>
+      )}
+
+      <div className="mt-6">
+        <Link href="/checkout">
+          <Button variant="primary" size="lg" className="w-full" disabled={itemCount === 0}>
+            Proceed to Checkout
+          </Button>
+        </Link>
+      </div>
+
+      <div className="mt-4 text-center">
+        <Link
+          href="/products"
+          className="text-sm text-primary transition-colors hover:text-primary-dark"
+        >
+          Continue Shopping
+        </Link>
+      </div>
+    </div>
+  );
+}
