@@ -16,7 +16,11 @@ import (
 	"github.com/go-chi/httprate"
 	"github.com/handloom/admin/internal/config"
 	"github.com/handloom/admin/internal/domain"
+	"github.com/handloom/admin/internal/gateway/phonepe"
+	"github.com/handloom/admin/internal/gateway/shiprocket"
+	"github.com/handloom/admin/internal/gateway/sms"
 	"github.com/handloom/admin/internal/handler"
+	"github.com/handloom/admin/internal/handler/store"
 	"github.com/handloom/admin/internal/middleware"
 	"github.com/handloom/admin/internal/repository/dynamodb"
 	"github.com/handloom/admin/internal/s3client"
@@ -68,6 +72,13 @@ func main() {
 	analyticsRepo := dynamodb.NewAnalyticsRepository(dbClient)
 	reportRepo := dynamodb.NewReportRepository(dbClient)
 
+	// B2C repositories
+	otpRepo := dynamodb.NewOTPRepository(dbClient)
+	customerTokenStore := dynamodb.NewCustomerTokenStore(dbClient)
+	cartRepo := dynamodb.NewCartRepository(dbClient)
+	paymentRepo := dynamodb.NewPaymentRepository(dbClient)
+	shipmentRepo := dynamodb.NewShipmentRepository(dbClient)
+
 	// Initialize services
 	authService := service.NewAuthService(
 		userRepo,
@@ -115,6 +126,47 @@ func main() {
 	analyticsService := service.NewAnalyticsService(analyticsRepo, orderRepo, productRepo, inventoryRepo, log)
 	reportService := service.NewReportService(reportRepo, orderService, productService, customerService, inventoryService, analyticsService, log)
 
+	// Gateway clients
+	smsGateway := sms.NewClient(sms.Config{
+		AuthKey:       cfg.Store.MSG91AuthKey,
+		OTPTemplateID: cfg.Store.MSG91OTPTemplateID,
+		BaseURL:       cfg.Store.MSG91BaseURL,
+	})
+
+	phonePeClient := phonepe.NewClient(phonepe.Config{
+		MerchantID:  cfg.Store.PhonePeMerchantID,
+		SaltKey:     cfg.Store.PhonePeSaltKey,
+		SaltIndex:   cfg.Store.PhonePeSaltIndex,
+		BaseURL:     cfg.Store.PhonePeBaseURL,
+		CallbackURL: cfg.Store.PhonePeCallbackURL,
+		RedirectURL: cfg.Store.PhonePeRedirectURL,
+	})
+
+	shiprocketClient := shiprocket.NewClient(shiprocket.Config{
+		Email:         cfg.Store.ShiprocketEmail,
+		Password:      cfg.Store.ShiprocketPassword,
+		BaseURL:       cfg.Store.ShiprocketBaseURL,
+		PickupPincode: cfg.Store.ShiprocketPickupPincode,
+	})
+
+	// B2C services
+	customerAuthService := service.NewCustomerAuthService(
+		otpRepo,
+		customerRepo,
+		customerTokenStore,
+		smsGateway,
+		log,
+		cfg.Store.CustomerJWTSecret,
+		cfg.Store.CustomerAccessTokenTTL,
+		cfg.Store.CustomerRefreshTokenTTL,
+		"handloom-store",
+	)
+
+	cartService := service.NewCartService(cartRepo, productRepo, inventoryRepo, log)
+	paymentService := service.NewPaymentService(paymentRepo, orderRepo, inventoryRepo, phonePeClient, log)
+	shippingService := service.NewShippingService(shipmentRepo, orderRepo, shiprocketClient, cfg.Store.ShiprocketPickupPincode, log)
+	checkoutService := service.NewCheckoutService(cartService, orderRepo, paymentService, shippingService, inventoryRepo, customerRepo, log)
+
 	// Initialize validation middleware
 	v := validator.New()
 	validation := middleware.NewValidation(v, middleware.ValidationConfig{})
@@ -139,12 +191,30 @@ func main() {
 	// Initialize auth middleware
 	authMiddleware := middleware.NewAuth(authService, log)
 
+	// B2C handlers
+	storeAuthHandler := store.NewAuthHandler(customerAuthService, validation)
+	storeCatalogHandler := store.NewCatalogHandler(productService, categoryService, inventoryService, log)
+	storeCartHandler := store.NewCartHandler(cartService, validation, log)
+	storeCheckoutHandler := store.NewCheckoutHandler(checkoutService, validation, log)
+	storeOrderHandler := store.NewOrderHandler(orderService, orderRepo, log)
+	storeTrackingHandler := store.NewTrackingHandler(orderRepo, shipmentRepo, log)
+	storeProfileHandler := store.NewProfileHandler(customerRepo, validation, log)
+	storeWebhookHandler := store.NewWebhookHandler(paymentService, log)
+
+	// Customer auth middleware
+	customerAuthMiddleware := middleware.NewCustomerAuth(customerAuthService, customerRepo, log)
+
 	// Create router
 	r := createRouter(cfg, log, authMiddleware,
 		authHandler, userHandler, categoryHandler,
 		productHandler, inventoryHandler, pricingHandler, orderHandler,
 		customerHandler, auditHandler, notificationHandler, couponHandler,
-		artisanHandler, analyticsHandler, assetHandler, reportHandler)
+		artisanHandler, analyticsHandler, assetHandler, reportHandler,
+		// B2C store handlers
+		storeAuthHandler, storeCatalogHandler, storeCartHandler,
+		storeCheckoutHandler, storeOrderHandler, storeTrackingHandler,
+		storeProfileHandler, storeWebhookHandler, customerAuthMiddleware,
+	)
 
 	// Create server
 	server := &http.Server{
@@ -199,6 +269,16 @@ func createRouter(
 	analyticsHandler *handler.AnalyticsHandler,
 	assetHandler *handler.AssetHandler,
 	reportHandler *handler.ReportHandler,
+	// B2C store handlers
+	storeAuthHandler *store.AuthHandler,
+	storeCatalogHandler *store.CatalogHandler,
+	storeCartHandler *store.CartHandler,
+	storeCheckoutHandler *store.CheckoutHandler,
+	storeOrderHandler *store.OrderHandler,
+	storeTrackingHandler *store.TrackingHandler,
+	storeProfileHandler *store.ProfileHandler,
+	storeWebhookHandler *store.WebhookHandler,
+	customerAuthMiddleware *middleware.CustomerAuth,
 ) *chi.Mux {
 	r := chi.NewRouter()
 
@@ -234,6 +314,29 @@ func createRouter(
 
 			// Pricing calculation (public/B2C)
 			r.Mount("/pricing", pricingHandler.PublicRoutes())
+		})
+	})
+
+	// B2C Store routes
+	r.Route("/api/v1/store", func(r chi.Router) {
+		// Public routes
+		r.Group(func(r chi.Router) {
+			r.Use(httprate.LimitByIP(30, time.Minute))
+			r.Mount("/auth", storeAuthHandler.Routes(customerAuthMiddleware.Authenticate))
+		})
+		r.Mount("/catalog", storeCatalogHandler.Routes())
+		r.Mount("/track", storeTrackingHandler.Routes())
+
+		// Webhook routes (signature-verified, not customer auth)
+		r.Mount("/webhooks", storeWebhookHandler.Routes())
+
+		// Customer-authenticated routes
+		r.Group(func(r chi.Router) {
+			r.Use(customerAuthMiddleware.Authenticate)
+			r.Mount("/me", storeProfileHandler.Routes())
+			r.Mount("/cart", storeCartHandler.Routes())
+			r.Mount("/checkout", storeCheckoutHandler.Routes())
+			r.Mount("/orders", storeOrderHandler.Routes())
 		})
 	})
 

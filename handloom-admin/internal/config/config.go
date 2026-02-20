@@ -18,6 +18,34 @@ type Config struct {
 	DynamoDB DynamoDBConfig
 	JWT      JWTConfig
 	App      AppConfig
+	Store    StoreConfig
+}
+
+// StoreConfig holds B2C storefront configuration
+type StoreConfig struct {
+	// PhonePe
+	PhonePeMerchantID  string
+	PhonePeSaltKey     string
+	PhonePeSaltIndex   string
+	PhonePeBaseURL     string
+	PhonePeCallbackURL string
+	PhonePeRedirectURL string
+
+	// Shiprocket
+	ShiprocketEmail         string
+	ShiprocketPassword      string
+	ShiprocketBaseURL       string
+	ShiprocketPickupPincode string
+
+	// MSG91
+	MSG91AuthKey       string
+	MSG91OTPTemplateID string
+	MSG91BaseURL       string
+
+	// Customer Auth
+	CustomerJWTSecret       string
+	CustomerAccessTokenTTL  time.Duration
+	CustomerRefreshTokenTTL time.Duration
 }
 
 // ServerConfig holds server configuration
@@ -94,6 +122,27 @@ func Load() *Config {
 			Environment:      getEnv("APP_ENV", "development"),
 			Debug:            getBoolEnv("APP_DEBUG", true),
 			QuoteValidityHrs: getIntEnv("QUOTE_VALIDITY_HRS", 24),
+		},
+		Store: StoreConfig{
+			PhonePeMerchantID:  getEnv("PHONEPE_MERCHANT_ID", ""),
+			PhonePeSaltKey:     getEnv("PHONEPE_SALT_KEY", ""),
+			PhonePeSaltIndex:   getEnv("PHONEPE_SALT_INDEX", "1"),
+			PhonePeBaseURL:     getEnv("PHONEPE_BASE_URL", "https://api-preprod.phonepe.com/apis/pg-sandbox"),
+			PhonePeCallbackURL: getEnv("PHONEPE_CALLBACK_URL", ""),
+			PhonePeRedirectURL: getEnv("PHONEPE_REDIRECT_URL", ""),
+
+			ShiprocketEmail:         getEnv("SHIPROCKET_EMAIL", ""),
+			ShiprocketPassword:      getEnv("SHIPROCKET_PASSWORD", ""),
+			ShiprocketBaseURL:       getEnv("SHIPROCKET_BASE_URL", "https://apiv2.shiprocket.in/v1/external"),
+			ShiprocketPickupPincode: getEnv("SHIPROCKET_PICKUP_PINCODE", "560001"),
+
+			MSG91AuthKey:       getEnv("MSG91_AUTH_KEY", ""),
+			MSG91OTPTemplateID: getEnv("MSG91_OTP_TEMPLATE_ID", ""),
+			MSG91BaseURL:       getEnv("MSG91_BASE_URL", "https://control.msg91.com"),
+
+			CustomerJWTSecret:       getEnv("CUSTOMER_JWT_SECRET", "customer-secret-change-in-production"),
+			CustomerAccessTokenTTL:  getDurationEnv("CUSTOMER_ACCESS_TOKEN_TTL", 15*time.Minute),
+			CustomerRefreshTokenTTL: getDurationEnv("CUSTOMER_REFRESH_TOKEN_TTL", 30*24*time.Hour),
 		},
 	}
 }
