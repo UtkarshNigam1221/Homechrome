@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/handloom/admin/internal/config"
+	"github.com/handloom/admin/internal/event"
 	"github.com/handloom/admin/internal/handler"
 	"github.com/handloom/admin/internal/middleware"
 	"github.com/handloom/admin/internal/repository/dynamodb"
@@ -37,6 +38,9 @@ func main() {
 	inventoryRepo := dynamodb.NewInventoryRepository(dbClient)
 	productRepo := dynamodb.NewProductRepository(dbClient)
 
+	// Initialize event publisher (noop for inventory Lambda)
+	publisher := event.NewNoopPublisher()
+
 	// Initialize services
 	authService := service.NewAuthService(
 		userRepo,
@@ -47,7 +51,7 @@ func main() {
 		cfg.JWT.RefreshTokenDuration,
 		cfg.JWT.Issuer,
 	)
-	inventoryService := service.NewInventoryService(inventoryRepo, productRepo, log)
+	inventoryService := service.NewInventoryService(inventoryRepo, productRepo, publisher, log)
 
 	// Initialize handler
 	inventoryHandler := handler.NewInventoryHandler(inventoryService, log)

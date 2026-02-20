@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/handloom/admin/internal/domain"
+	"github.com/handloom/admin/internal/event"
 	"github.com/handloom/admin/pkg/errors"
 	"github.com/handloom/admin/pkg/logger"
 )
@@ -19,6 +20,7 @@ type ProductService struct {
 	categoryRepo   domain.CategoryRepository
 	inventoryRepo  domain.InventoryRepository
 	assetFinalizer domain.AssetFinalizer
+	publisher      event.EventPublisher
 	logger         *logger.Logger
 }
 
@@ -28,6 +30,7 @@ func NewProductService(
 	categoryRepo domain.CategoryRepository,
 	inventoryRepo domain.InventoryRepository,
 	assetFinalizer domain.AssetFinalizer,
+	publisher event.EventPublisher,
 	logger *logger.Logger,
 ) *ProductService {
 	return &ProductService{
@@ -35,6 +38,7 @@ func NewProductService(
 		categoryRepo:   categoryRepo,
 		inventoryRepo:  inventoryRepo,
 		assetFinalizer: assetFinalizer,
+		publisher:      publisher,
 		logger:         logger,
 	}
 }
@@ -93,6 +97,10 @@ func (s *ProductService) Create(ctx context.Context, req domain.CreateProductReq
 	// Increment category product count
 	if err := s.categoryRepo.IncrementProductCount(ctx, category.ID, 1); err != nil {
 		return nil, errors.Wrap(err, "failed to increment category product count")
+	}
+
+	if pubErr := s.publisher.Publish(ctx, event.New(event.ProductCreated, product)); pubErr != nil {
+		s.logger.WithContext(ctx).WithError(pubErr).Error("failed to publish product.created event")
 	}
 
 	s.logger.WithContext(ctx).Infof("Created product: %s", product.ID)
@@ -183,6 +191,10 @@ func (s *ProductService) Update(ctx context.Context, id string, req domain.Updat
 		}
 	}
 
+	if pubErr := s.publisher.Publish(ctx, event.New(event.ProductUpdated, product)); pubErr != nil {
+		s.logger.WithContext(ctx).WithError(pubErr).Error("failed to publish product.updated event")
+	}
+
 	s.logger.WithContext(ctx).Infof("Updated product: %s", id)
 	return product, nil
 }
@@ -219,6 +231,12 @@ func (s *ProductService) Delete(ctx context.Context, id string) error {
 	// Decrement category count
 	if err := s.categoryRepo.IncrementProductCount(ctx, product.CategoryID, -1); err != nil {
 		return errors.Wrap(err, "failed to decrement category product count")
+	}
+
+	if pubErr := s.publisher.Publish(ctx, event.New(event.ProductDeleted, map[string]interface{}{
+		"product_id": id,
+	})); pubErr != nil {
+		s.logger.WithContext(ctx).WithError(pubErr).Error("failed to publish product.deleted event")
 	}
 
 	s.logger.WithContext(ctx).Infof("Deleted product: %s", id)

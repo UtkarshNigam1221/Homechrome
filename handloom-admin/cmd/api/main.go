@@ -16,6 +16,7 @@ import (
 	"github.com/go-chi/httprate"
 	"github.com/handloom/admin/internal/config"
 	"github.com/handloom/admin/internal/domain"
+	"github.com/handloom/admin/internal/event"
 	"github.com/handloom/admin/internal/gateway/phonepe"
 	"github.com/handloom/admin/internal/gateway/shiprocket"
 	"github.com/handloom/admin/internal/gateway/sms"
@@ -79,6 +80,9 @@ func main() {
 	paymentRepo := dynamodb.NewPaymentRepository(dbClient)
 	shipmentRepo := dynamodb.NewShipmentRepository(dbClient)
 
+	// Initialize event publisher (LocalPublisher for monolith dev mode)
+	publisher := event.NewLocalPublisher(log)
+
 	// Initialize services
 	authService := service.NewAuthService(
 		userRepo,
@@ -93,12 +97,13 @@ func main() {
 	userService := service.NewUserService(userRepo, tokenStore, log)
 	assetService := service.NewAssetService(log, s3c, cfg.AWS.S3Bucket, cfg.AWS.Endpoint)
 	categoryService := service.NewCategoryService(categoryRepo, productRepo, assetService, log)
-	inventoryService := service.NewInventoryService(inventoryRepo, productRepo, log)
+	inventoryService := service.NewInventoryService(inventoryRepo, productRepo, publisher, log)
 	productService := service.NewProductService(
 		productRepo,
 		categoryRepo,
 		inventoryRepo,
 		assetService,
+		publisher,
 		log,
 	)
 	pricingService := service.NewPricingService(
@@ -127,27 +132,47 @@ func main() {
 	reportService := service.NewReportService(reportRepo, orderService, productService, customerService, inventoryService, analyticsService, log)
 
 	// Gateway clients
-	smsGateway := sms.NewClient(sms.Config{
-		AuthKey:       cfg.Store.MSG91AuthKey,
-		OTPTemplateID: cfg.Store.MSG91OTPTemplateID,
-		BaseURL:       cfg.Store.MSG91BaseURL,
-	})
+	var smsGateway interface {
+		SendOTP(ctx context.Context, phone, code string) error
+	}
+	if cfg.IsDevelopment() {
+		smsGateway = sms.NewDevClient()
+		log.Info("Using dev SMS gateway (OTPs printed to console)")
+	} else {
+		smsGateway = sms.NewClient(sms.Config{
+			AuthKey:       cfg.Store.MSG91AuthKey,
+			OTPTemplateID: cfg.Store.MSG91OTPTemplateID,
+			BaseURL:       cfg.Store.MSG91BaseURL,
+		})
+	}
 
-	phonePeClient := phonepe.NewClient(phonepe.Config{
-		MerchantID:  cfg.Store.PhonePeMerchantID,
-		SaltKey:     cfg.Store.PhonePeSaltKey,
-		SaltIndex:   cfg.Store.PhonePeSaltIndex,
-		BaseURL:     cfg.Store.PhonePeBaseURL,
-		CallbackURL: cfg.Store.PhonePeCallbackURL,
-		RedirectURL: cfg.Store.PhonePeRedirectURL,
-	})
+	var phonePeClient phonepe.Gateway
+	if cfg.IsDevelopment() {
+		phonePeClient = phonepe.NewDevClient(cfg.Store.PhonePeRedirectURL)
+		log.Info("Using dev PhonePe gateway (mock payments)")
+	} else {
+		phonePeClient = phonepe.NewClient(phonepe.Config{
+			MerchantID:  cfg.Store.PhonePeMerchantID,
+			SaltKey:     cfg.Store.PhonePeSaltKey,
+			SaltIndex:   cfg.Store.PhonePeSaltIndex,
+			BaseURL:     cfg.Store.PhonePeBaseURL,
+			CallbackURL: cfg.Store.PhonePeCallbackURL,
+			RedirectURL: cfg.Store.PhonePeRedirectURL,
+		})
+	}
 
-	shiprocketClient := shiprocket.NewClient(shiprocket.Config{
-		Email:         cfg.Store.ShiprocketEmail,
-		Password:      cfg.Store.ShiprocketPassword,
-		BaseURL:       cfg.Store.ShiprocketBaseURL,
-		PickupPincode: cfg.Store.ShiprocketPickupPincode,
-	})
+	var shiprocketClient shiprocket.Gateway
+	if cfg.IsDevelopment() {
+		shiprocketClient = shiprocket.NewDevClient()
+		log.Info("Using dev Shiprocket gateway (mock courier data)")
+	} else {
+		shiprocketClient = shiprocket.NewClient(shiprocket.Config{
+			Email:         cfg.Store.ShiprocketEmail,
+			Password:      cfg.Store.ShiprocketPassword,
+			BaseURL:       cfg.Store.ShiprocketBaseURL,
+			PickupPincode: cfg.Store.ShiprocketPickupPincode,
+		})
+	}
 
 	// B2C services
 	customerAuthService := service.NewCustomerAuthService(
@@ -155,17 +180,20 @@ func main() {
 		customerRepo,
 		customerTokenStore,
 		smsGateway,
+		publisher,
 		log,
-		cfg.Store.CustomerJWTSecret,
-		cfg.Store.CustomerAccessTokenTTL,
-		cfg.Store.CustomerRefreshTokenTTL,
-		"handloom-store",
+		service.CustomerAuthConfig{
+			JWTSecret:            cfg.Store.CustomerJWTSecret,
+			AccessTokenDuration:  cfg.Store.CustomerAccessTokenTTL,
+			RefreshTokenDuration: cfg.Store.CustomerRefreshTokenTTL,
+			Issuer:               "handloom-store",
+		},
 	)
 
 	cartService := service.NewCartService(cartRepo, productRepo, inventoryRepo, log)
-	paymentService := service.NewPaymentService(paymentRepo, orderRepo, inventoryRepo, phonePeClient, log)
+	paymentService := service.NewPaymentService(paymentRepo, orderRepo, inventoryRepo, phonePeClient, publisher, log)
 	shippingService := service.NewShippingService(shipmentRepo, orderRepo, shiprocketClient, cfg.Store.ShiprocketPickupPincode, log)
-	checkoutService := service.NewCheckoutService(cartService, orderRepo, paymentService, shippingService, inventoryRepo, customerRepo, log)
+	checkoutService := service.NewCheckoutService(cartService, orderRepo, paymentService, shippingService, inventoryRepo, customerRepo, publisher, log)
 
 	// Initialize validation middleware
 	v := validator.New()
@@ -202,7 +230,7 @@ func main() {
 	storeWebhookHandler := store.NewWebhookHandler(paymentService, log)
 
 	// Customer auth middleware
-	customerAuthMiddleware := middleware.NewCustomerAuth(customerAuthService, customerRepo, log)
+	customerAuthMiddleware := middleware.NewCustomerAuth(customerAuthService, log)
 
 	// Create router
 	r := createRouter(cfg, log, authMiddleware,

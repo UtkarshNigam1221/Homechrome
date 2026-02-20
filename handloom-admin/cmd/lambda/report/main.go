@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/handloom/admin/internal/config"
+	"github.com/handloom/admin/internal/event"
 	"github.com/handloom/admin/internal/handler"
 	"github.com/handloom/admin/internal/middleware"
 	"github.com/handloom/admin/internal/repository/dynamodb"
@@ -52,6 +53,9 @@ func main() {
 		log.Fatalf("Failed to initialize S3 client: %v", err)
 	}
 
+	// Initialize event publisher (noop for report Lambda)
+	publisher := event.NewNoopPublisher()
+
 	// Initialize services
 	authService := service.NewAuthService(
 		userRepo,
@@ -63,12 +67,13 @@ func main() {
 		cfg.JWT.Issuer,
 	)
 	assetService := service.NewAssetService(log, s3c, cfg.AWS.S3Bucket, cfg.AWS.Endpoint)
-	inventoryService := service.NewInventoryService(inventoryRepo, productRepo, log)
+	inventoryService := service.NewInventoryService(inventoryRepo, productRepo, publisher, log)
 	productService := service.NewProductService(
 		productRepo,
 		categoryRepo,
 		inventoryRepo,
 		assetService,
+		publisher,
 		log,
 	)
 	pricingService := service.NewPricingService(

@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/handloom/admin/internal/domain"
+	"github.com/handloom/admin/internal/event"
 	"github.com/handloom/admin/internal/gateway/phonepe"
 	"github.com/handloom/admin/pkg/errors"
 	"github.com/handloom/admin/pkg/logger"
@@ -19,7 +20,8 @@ type PaymentService struct {
 	paymentRepo   domain.PaymentRepository
 	orderRepo     domain.OrderRepository
 	inventoryRepo domain.InventoryRepository
-	phonePe       *phonepe.Client
+	phonePe       phonepe.Gateway
+	publisher     event.EventPublisher
 	logger        *logger.Logger
 }
 
@@ -28,7 +30,8 @@ func NewPaymentService(
 	paymentRepo domain.PaymentRepository,
 	orderRepo domain.OrderRepository,
 	inventoryRepo domain.InventoryRepository,
-	phonePe *phonepe.Client,
+	phonePe phonepe.Gateway,
+	publisher event.EventPublisher,
 	logger *logger.Logger,
 ) *PaymentService {
 	return &PaymentService{
@@ -36,6 +39,7 @@ func NewPaymentService(
 		orderRepo:     orderRepo,
 		inventoryRepo: inventoryRepo,
 		phonePe:       phonePe,
+		publisher:     publisher,
 		logger:        logger,
 	}
 }
@@ -156,6 +160,14 @@ func (s *PaymentService) handlePaymentSuccess(ctx context.Context, payment *doma
 		// Non-fatal: payment is already recorded as success
 	}
 
+	if pubErr := s.publisher.Publish(ctx, event.New(event.PaymentReceived, map[string]interface{}{
+		"payment_id": payment.ID,
+		"order_id":   payment.OrderID,
+		"amount":     payment.Amount,
+	})); pubErr != nil {
+		s.logger.WithContext(ctx).WithError(pubErr).Error("failed to publish payment.received event")
+	}
+
 	s.logger.WithContext(ctx).Infof("Payment %s completed successfully for order %s", payment.ID, payment.OrderID)
 	return nil
 }
@@ -174,6 +186,14 @@ func (s *PaymentService) handlePaymentFailure(ctx context.Context, payment *doma
 
 	// Release reserved inventory for the order
 	s.releaseOrderInventory(ctx, payment.OrderID)
+
+	if pubErr := s.publisher.Publish(ctx, event.New(event.PaymentFailed, map[string]interface{}{
+		"payment_id": payment.ID,
+		"order_id":   payment.OrderID,
+		"amount":     payment.Amount,
+	})); pubErr != nil {
+		s.logger.WithContext(ctx).WithError(pubErr).Error("failed to publish payment.failed event")
+	}
 
 	s.logger.WithContext(ctx).Infof("Payment %s failed for order %s", payment.ID, payment.OrderID)
 	return nil

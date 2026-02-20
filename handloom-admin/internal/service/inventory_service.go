@@ -5,6 +5,7 @@ import (
 	"context"
 
 	"github.com/handloom/admin/internal/domain"
+	"github.com/handloom/admin/internal/event"
 	"github.com/handloom/admin/pkg/logger"
 )
 
@@ -12,6 +13,7 @@ import (
 type InventoryService struct {
 	inventoryRepo domain.InventoryRepository
 	productRepo   domain.ProductRepository
+	publisher     event.EventPublisher
 	logger        *logger.Logger
 }
 
@@ -19,11 +21,13 @@ type InventoryService struct {
 func NewInventoryService(
 	inventoryRepo domain.InventoryRepository,
 	productRepo domain.ProductRepository,
+	publisher event.EventPublisher,
 	logger *logger.Logger,
 ) *InventoryService {
 	return &InventoryService{
 		inventoryRepo: inventoryRepo,
 		productRepo:   productRepo,
+		publisher:     publisher,
 		logger:        logger,
 	}
 }
@@ -44,6 +48,14 @@ func (s *InventoryService) AddStock(ctx context.Context, productID string, req d
 	inventory, _ := s.inventoryRepo.GetByProductID(ctx, productID)
 	if inventory != nil {
 		_ = s.productRepo.UpdateInventory(ctx, productID, inventory.Quantity, inventory.ReservedQty, inventory.AvailableQty)
+	}
+
+	if pubErr := s.publisher.Publish(ctx, event.New(event.InventoryRestocked, map[string]interface{}{
+		"product_id":   productID,
+		"quantity":     req.Quantity,
+		"new_quantity": txn.NewQty,
+	})); pubErr != nil {
+		s.logger.WithContext(ctx).WithError(pubErr).Error("failed to publish inventory.restocked event")
 	}
 
 	s.logger.WithContext(ctx).Infof("Added stock to product %s: +%d", productID, req.Quantity)
@@ -69,6 +81,26 @@ func (s *InventoryService) RemoveStock(ctx context.Context, productID string, re
 	inventory, _ := s.inventoryRepo.GetByProductID(ctx, productID)
 	if inventory != nil {
 		_ = s.productRepo.UpdateInventory(ctx, productID, inventory.Quantity, inventory.ReservedQty, inventory.AvailableQty)
+	}
+
+	// Check stock levels and emit appropriate events
+	if inventory != nil {
+		if inventory.AvailableQty <= 0 {
+			if pubErr := s.publisher.Publish(ctx, event.New(event.InventoryOutOfStock, map[string]interface{}{
+				"product_id":    productID,
+				"available_qty": inventory.AvailableQty,
+			})); pubErr != nil {
+				s.logger.WithContext(ctx).WithError(pubErr).Error("failed to publish inventory.out_of_stock event")
+			}
+		} else if inventory.AvailableQty <= inventory.LowStockThreshold {
+			if pubErr := s.publisher.Publish(ctx, event.New(event.InventoryLowStock, map[string]interface{}{
+				"product_id":          productID,
+				"available_qty":       inventory.AvailableQty,
+				"low_stock_threshold": inventory.LowStockThreshold,
+			})); pubErr != nil {
+				s.logger.WithContext(ctx).WithError(pubErr).Error("failed to publish inventory.low_stock event")
+			}
+		}
 	}
 
 	s.logger.WithContext(ctx).Infof("Removed stock from product %s: -%d", productID, req.Quantity)

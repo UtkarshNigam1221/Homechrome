@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/handloom/admin/internal/domain"
+	"github.com/handloom/admin/internal/event"
 	"github.com/handloom/admin/internal/mocks"
 	"github.com/handloom/admin/pkg/errors"
 	"github.com/handloom/admin/pkg/logger"
@@ -20,7 +21,7 @@ func TestInventoryService_GetByProductID(t *testing.T) {
 	mockInventoryRepo := mocks.NewMockInventoryRepository(ctrl)
 	mockProductRepo := mocks.NewMockProductRepository(ctrl)
 	log := logger.NewNoop()
-	service := NewInventoryService(mockInventoryRepo, mockProductRepo, log)
+	service := NewInventoryService(mockInventoryRepo, mockProductRepo, event.NewNoopPublisher(), log)
 	ctx := context.Background()
 
 	t.Run("successful get inventory", func(t *testing.T) {
@@ -64,7 +65,7 @@ func TestInventoryService_AddStock(t *testing.T) {
 	mockInventoryRepo := mocks.NewMockInventoryRepository(ctrl)
 	mockProductRepo := mocks.NewMockProductRepository(ctrl)
 	log := logger.NewNoop()
-	service := NewInventoryService(mockInventoryRepo, mockProductRepo, log)
+	service := NewInventoryService(mockInventoryRepo, mockProductRepo, event.NewNoopPublisher(), log)
 	ctx := context.Background()
 
 	t.Run("successful add stock", func(t *testing.T) {
@@ -136,7 +137,7 @@ func TestInventoryService_RemoveStock(t *testing.T) {
 	mockInventoryRepo := mocks.NewMockInventoryRepository(ctrl)
 	mockProductRepo := mocks.NewMockProductRepository(ctrl)
 	log := logger.NewNoop()
-	service := NewInventoryService(mockInventoryRepo, mockProductRepo, log)
+	service := NewInventoryService(mockInventoryRepo, mockProductRepo, event.NewNoopPublisher(), log)
 	ctx := context.Background()
 
 	t.Run("successful remove stock", func(t *testing.T) {
@@ -209,7 +210,7 @@ func TestInventoryService_AdjustStock(t *testing.T) {
 	mockInventoryRepo := mocks.NewMockInventoryRepository(ctrl)
 	mockProductRepo := mocks.NewMockProductRepository(ctrl)
 	log := logger.NewNoop()
-	service := NewInventoryService(mockInventoryRepo, mockProductRepo, log)
+	service := NewInventoryService(mockInventoryRepo, mockProductRepo, event.NewNoopPublisher(), log)
 	ctx := context.Background()
 
 	t.Run("successful adjust stock up", func(t *testing.T) {
@@ -306,7 +307,7 @@ func TestInventoryService_GetTransactions(t *testing.T) {
 	mockInventoryRepo := mocks.NewMockInventoryRepository(ctrl)
 	mockProductRepo := mocks.NewMockProductRepository(ctrl)
 	log := logger.NewNoop()
-	service := NewInventoryService(mockInventoryRepo, mockProductRepo, log)
+	service := NewInventoryService(mockInventoryRepo, mockProductRepo, event.NewNoopPublisher(), log)
 	ctx := context.Background()
 
 	t.Run("successful get transactions", func(t *testing.T) {
@@ -344,7 +345,7 @@ func TestInventoryService_GetLowStockProducts(t *testing.T) {
 	mockInventoryRepo := mocks.NewMockInventoryRepository(ctrl)
 	mockProductRepo := mocks.NewMockProductRepository(ctrl)
 	log := logger.NewNoop()
-	service := NewInventoryService(mockInventoryRepo, mockProductRepo, log)
+	service := NewInventoryService(mockInventoryRepo, mockProductRepo, event.NewNoopPublisher(), log)
 	ctx := context.Background()
 
 	t.Run("successful get low stock products", func(t *testing.T) {

@@ -47,11 +47,6 @@ func TestNotificationService_Send(t *testing.T) {
 				return nil
 			})
 
-		// processNotification runs in a goroutine - use AnyTimes for async Update
-		mockNotifRepo.EXPECT().
-			Update(gomock.Any(), gomock.Any()).
-			AnyTimes()
-
 		notif, err := service.Send(ctx, req, "admin_123")
 
 		require.NoError(t, err)
@@ -109,11 +104,6 @@ func TestNotificationService_SendBulk(t *testing.T) {
 			}).
 			Times(2)
 
-		// processNotification runs in goroutine for the successful send
-		mockNotifRepo.EXPECT().
-			Update(gomock.Any(), gomock.Any()).
-			AnyTimes()
-
 		response, err := service.SendBulk(ctx, req, "admin_123")
 
 		require.NoError(t, err)
@@ -137,10 +127,6 @@ func TestNotificationService_SendBulk(t *testing.T) {
 			Create(ctx, gomock.Any()).
 			Return(nil).
 			Times(2)
-
-		mockNotifRepo.EXPECT().
-			Update(gomock.Any(), gomock.Any()).
-			AnyTimes()
 
 		response, err := service.SendBulk(ctx, req, "admin_123")
 
@@ -412,11 +398,6 @@ func TestNotificationService_SendOrderNotification(t *testing.T) {
 					assert.NotNil(t, notif.TemplateData)
 					return nil
 				})
-
-			// processNotification runs in goroutine
-			mockNotifRepo.EXPECT().
-				Update(gomock.Any(), gomock.Any()).
-				AnyTimes()
 
 			err := service.SendOrderNotification(ctx, order, tt.trigger, "admin_123")
 

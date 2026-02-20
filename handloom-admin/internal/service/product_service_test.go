@@ -9,6 +9,7 @@ import (
 	"go.uber.org/mock/gomock"
 
 	"github.com/handloom/admin/internal/domain"
+	"github.com/handloom/admin/internal/event"
 	"github.com/handloom/admin/internal/mocks"
 	"github.com/handloom/admin/pkg/errors"
 	"github.com/handloom/admin/pkg/logger"
@@ -31,7 +32,8 @@ func setupProductTest(t *testing.T) (
 	mockFinalizer := mocks.NewMockAssetFinalizer(ctrl)
 	log := logger.NewNoop()
 
-	svc := NewProductService(mockProdRepo, mockCatRepo, mockInvRepo, mockFinalizer, log)
+	publisher := event.NewNoopPublisher()
+	svc := NewProductService(mockProdRepo, mockCatRepo, mockInvRepo, mockFinalizer, publisher, log)
 	return svc, mockProdRepo, mockCatRepo, mockInvRepo, mockFinalizer, context.Background()
 }
 

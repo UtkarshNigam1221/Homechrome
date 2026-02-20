@@ -191,18 +191,20 @@ func ProvideProductService(
 	categoryRepo domain.CategoryRepository,
 	inventoryRepo domain.InventoryRepository,
 	assetService *service.AssetService,
+	publisher event.EventPublisher,
 	log *logger.Logger,
 ) *service.ProductService {
-	return service.NewProductService(productRepo, categoryRepo, inventoryRepo, assetService, log)
+	return service.NewProductService(productRepo, categoryRepo, inventoryRepo, assetService, publisher, log)
 }
 
 // ProvideInventoryService creates a new InventoryService
 func ProvideInventoryService(
 	inventoryRepo domain.InventoryRepository,
 	productRepo domain.ProductRepository,
+	publisher event.EventPublisher,
 	log *logger.Logger,
 ) *service.InventoryService {
-	return service.NewInventoryService(inventoryRepo, productRepo, log)
+	return service.NewInventoryService(inventoryRepo, productRepo, publisher, log)
 }
 
 // ProvidePricingService creates a new PricingService
@@ -559,6 +561,7 @@ func ProvideCustomerAuthService(
 	otpRepo domain.OTPRepository,
 	customerRepo domain.CustomerRepository,
 	tokenStore domain.CustomerTokenStore,
+	publisher event.EventPublisher,
 	log *logger.Logger,
 	cfg *config.Config,
 ) *service.CustomerAuthService {
@@ -573,7 +576,7 @@ func ProvideCustomerAuthService(
 		})
 	}
 	return service.NewCustomerAuthService(
-		otpRepo, customerRepo, tokenStore, smsGateway, log,
+		otpRepo, customerRepo, tokenStore, smsGateway, publisher, log,
 		service.CustomerAuthConfig{
 			JWTSecret:            cfg.Store.CustomerJWTSecret,
 			AccessTokenDuration:  cfg.Store.CustomerAccessTokenTTL,
@@ -598,6 +601,7 @@ func ProvidePaymentService(
 	paymentRepo domain.PaymentRepository,
 	orderRepo domain.OrderRepository,
 	inventoryRepo domain.InventoryRepository,
+	publisher event.EventPublisher,
 	log *logger.Logger,
 	cfg *config.Config,
 ) *service.PaymentService {
@@ -614,7 +618,7 @@ func ProvidePaymentService(
 			RedirectURL: cfg.Store.PhonePeRedirectURL,
 		})
 	}
-	return service.NewPaymentService(paymentRepo, orderRepo, inventoryRepo, phonePeClient, log)
+	return service.NewPaymentService(paymentRepo, orderRepo, inventoryRepo, phonePeClient, publisher, log)
 }
 
 // ProvideShippingService creates a new ShippingService with Shiprocket gateway
@@ -646,9 +650,10 @@ func ProvideCheckoutService(
 	shippingService *service.ShippingService,
 	inventoryRepo domain.InventoryRepository,
 	customerRepo domain.CustomerRepository,
+	publisher event.EventPublisher,
 	log *logger.Logger,
 ) *service.CheckoutService {
-	return service.NewCheckoutService(cartService, orderRepo, paymentService, shippingService, inventoryRepo, customerRepo, log)
+	return service.NewCheckoutService(cartService, orderRepo, paymentService, shippingService, inventoryRepo, customerRepo, publisher, log)
 }
 
 // ============================================================================

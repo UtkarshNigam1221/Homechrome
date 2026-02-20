@@ -54,10 +54,6 @@ func (s *NotificationService) Send(ctx context.Context, req domain.SendNotificat
 		return nil, err
 	}
 
-	// TODO: In production, this would be pushed to a queue (SQS) for async processing
-	// For now, we'll attempt to send synchronously
-	go s.processNotification(context.Background(), notification)
-
 	s.logger.WithContext(ctx).Infof("Created notification: %s", notification.ID)
 	return notification, nil
 }

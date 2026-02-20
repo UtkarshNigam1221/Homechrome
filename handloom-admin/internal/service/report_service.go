@@ -75,11 +75,6 @@ func (s *ReportService) Generate(ctx context.Context, req domain.GenerateReportR
 		return nil, err
 	}
 
-	// TODO: In production, push to SQS for async processing
-	// For now, we'll just create the report record
-	// The actual generation would be handled by a worker service
-	go s.processReport(context.Background(), report)
-
 	s.logger.WithContext(ctx).Infof("Created report: %s", report.ID)
 	return report, nil
 }

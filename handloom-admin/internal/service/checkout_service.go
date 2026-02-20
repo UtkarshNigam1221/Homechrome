@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/handloom/admin/internal/domain"
+	"github.com/handloom/admin/internal/event"
 	"github.com/handloom/admin/pkg/errors"
 	"github.com/handloom/admin/pkg/logger"
 )
@@ -26,6 +27,7 @@ type CheckoutService struct {
 	shippingService domain.ShippingService
 	inventoryRepo   domain.InventoryRepository
 	customerRepo    domain.CustomerRepository
+	publisher       event.EventPublisher
 	pickupPincode   string
 	logger          *logger.Logger
 }
@@ -38,6 +40,7 @@ func NewCheckoutService(
 	shippingService domain.ShippingService,
 	inventoryRepo domain.InventoryRepository,
 	customerRepo domain.CustomerRepository,
+	publisher event.EventPublisher,
 	logger *logger.Logger,
 ) *CheckoutService {
 	return &CheckoutService{
@@ -47,6 +50,7 @@ func NewCheckoutService(
 		shippingService: shippingService,
 		inventoryRepo:   inventoryRepo,
 		customerRepo:    customerRepo,
+		publisher:       publisher,
 		pickupPincode:   defaultPickupPincode,
 		logger:          logger,
 	}
@@ -219,6 +223,11 @@ func (s *CheckoutService) Initiate(ctx context.Context, customerID string, req d
 	if err := s.cartService.ClearCart(ctx, customerID); err != nil {
 		// Log but don't fail the checkout - order and payment are already created
 		s.logger.WithContext(ctx).WithError(err).Error("Failed to clear cart after checkout")
+	}
+
+	// 13. Publish order.created event
+	if pubErr := s.publisher.Publish(ctx, event.New(event.OrderCreated, order)); pubErr != nil {
+		s.logger.WithContext(ctx).WithError(pubErr).Error("failed to publish order.created event")
 	}
 
 	s.logger.WithContext(ctx).Infof("Checkout completed: order %s for customer %s", order.OrderNumber, customerID)
