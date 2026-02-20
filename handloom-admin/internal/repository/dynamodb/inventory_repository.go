@@ -7,7 +7,6 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
-	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/expression"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"github.com/google/uuid"
@@ -176,6 +175,34 @@ func (r *InventoryRepository) modifyStock(ctx context.Context, productID string,
 		return nil, errors.Wrap(err, "Failed to update inventory")
 	}
 
+	// Maintain sparse GSI2 for low-stock detection
+	newAvailableQty := newQty - inventory.ReservedQty
+	if newAvailableQty <= inventory.LowStockThreshold {
+		// Set GSI2 keys to make this item appear in LOW_STOCK index
+		_, _ = r.client.db.UpdateItem(ctx, &dynamodb.UpdateItemInput{
+			TableName: aws.String(r.client.coreTable),
+			Key: map[string]types.AttributeValue{
+				"PK": &types.AttributeValueMemberS{Value: "INVENTORY#" + productID},
+				"SK": &types.AttributeValueMemberS{Value: "METADATA"},
+			},
+			UpdateExpression: aws.String("SET GSI2PK = :gsi2pk, GSI2SK = :gsi2sk"),
+			ExpressionAttributeValues: map[string]types.AttributeValue{
+				":gsi2pk": &types.AttributeValueMemberS{Value: "LOW_STOCK"},
+				":gsi2sk": &types.AttributeValueMemberS{Value: "INVENTORY#" + productID},
+			},
+		})
+	} else {
+		// Remove GSI2 keys so item disappears from LOW_STOCK index
+		_, _ = r.client.db.UpdateItem(ctx, &dynamodb.UpdateItemInput{
+			TableName: aws.String(r.client.coreTable),
+			Key: map[string]types.AttributeValue{
+				"PK": &types.AttributeValueMemberS{Value: "INVENTORY#" + productID},
+				"SK": &types.AttributeValueMemberS{Value: "METADATA"},
+			},
+			UpdateExpression: aws.String("REMOVE GSI2PK, GSI2SK"),
+		})
+	}
+
 	// Create transaction record
 	txn := &domain.InventoryTransaction{
 		ID:            "inv_txn_" + uuid.New().String()[:8],
@@ -238,6 +265,31 @@ func (r *InventoryRepository) modifyReserved(ctx context.Context, productID stri
 	})
 	if err != nil {
 		return nil, errors.Wrap(err, "Failed to update inventory")
+	}
+
+	// Maintain sparse GSI2 for low-stock detection
+	if availableQty <= inventory.LowStockThreshold {
+		_, _ = r.client.db.UpdateItem(ctx, &dynamodb.UpdateItemInput{
+			TableName: aws.String(r.client.coreTable),
+			Key: map[string]types.AttributeValue{
+				"PK": &types.AttributeValueMemberS{Value: "INVENTORY#" + productID},
+				"SK": &types.AttributeValueMemberS{Value: "METADATA"},
+			},
+			UpdateExpression: aws.String("SET GSI2PK = :gsi2pk, GSI2SK = :gsi2sk"),
+			ExpressionAttributeValues: map[string]types.AttributeValue{
+				":gsi2pk": &types.AttributeValueMemberS{Value: "LOW_STOCK"},
+				":gsi2sk": &types.AttributeValueMemberS{Value: "INVENTORY#" + productID},
+			},
+		})
+	} else {
+		_, _ = r.client.db.UpdateItem(ctx, &dynamodb.UpdateItemInput{
+			TableName: aws.String(r.client.coreTable),
+			Key: map[string]types.AttributeValue{
+				"PK": &types.AttributeValueMemberS{Value: "INVENTORY#" + productID},
+				"SK": &types.AttributeValueMemberS{Value: "METADATA"},
+			},
+			UpdateExpression: aws.String("REMOVE GSI2PK, GSI2SK"),
+		})
 	}
 
 	// Create transaction record
@@ -309,38 +361,26 @@ func (r *InventoryRepository) GetTransactions(ctx context.Context, productID str
 
 // GetLowStockProducts retrieves products with low stock
 func (r *InventoryRepository) GetLowStockProducts(ctx context.Context, pagination domain.PaginationRequest) (*domain.ListInventoryResponse, error) {
-	filterExpr := expression.Name("entity_type").Equal(expression.Value("INVENTORY"))
-
-	expr, err := expression.NewBuilder().WithFilter(filterExpr).Build()
-	if err != nil {
-		return nil, errors.Internal("Failed to build query expression")
-	}
-
-	result, err := r.client.db.Scan(ctx, &dynamodb.ScanInput{
-		TableName:                 aws.String(r.client.coreTable),
-		FilterExpression:          expr.Filter(),
-		ExpressionAttributeNames:  expr.Names(),
-		ExpressionAttributeValues: expr.Values(),
+	result, err := r.client.db.Query(ctx, &dynamodb.QueryInput{
+		TableName:              aws.String(r.client.coreTable),
+		IndexName:              aws.String("GSI2"),
+		KeyConditionExpression: aws.String("GSI2PK = :pk"),
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":pk": &types.AttributeValueMemberS{Value: "LOW_STOCK"},
+		},
+		ScanIndexForward: aws.Bool(true),
 	})
 	if err != nil {
-		return nil, errors.Wrap(err, "Failed to list inventory")
+		return nil, errors.Wrap(err, "Failed to query low stock inventory")
 	}
 
-	var allInventories []*domain.Inventory
-	if err := attributevalue.UnmarshalListOfMaps(result.Items, &allInventories); err != nil {
+	var inventories []*domain.Inventory
+	if err := attributevalue.UnmarshalListOfMaps(result.Items, &inventories); err != nil {
 		return nil, errors.Internal("Failed to unmarshal inventory")
 	}
 
-	// Filter for low stock
-	var lowStockInventories []*domain.Inventory
-	for _, inv := range allInventories {
-		if inv.AvailableQty <= inv.LowStockThreshold {
-			lowStockInventories = append(lowStockInventories, inv)
-		}
-	}
-
 	// TODO: migrate to real DynamoDB cursor-based pagination
-	paged, pg := InMemoryPaginate(lowStockInventories, pagination)
+	paged, pg := InMemoryPaginate(inventories, pagination)
 
 	return &domain.ListInventoryResponse{
 		Inventories: paged,

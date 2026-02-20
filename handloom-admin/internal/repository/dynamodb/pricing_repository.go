@@ -3,6 +3,7 @@ package dynamodb
 import (
 	"context"
 	stderrors "errors"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -150,41 +151,46 @@ func (r *PricingRuleRepository) Delete(ctx context.Context, id string) error {
 func (r *PricingRuleRepository) List(ctx context.Context, req domain.ListPricingRulesRequest) (*domain.ListPricingRulesResponse, error) {
 	req.Limit = DefaultLimit(req.Limit)
 
-	var conditions []expression.ConditionBuilder
-	conditions = append(conditions, expression.Name("entity_type").Equal(expression.Value("PRICING_RULE")))
+	input := &dynamodb.QueryInput{
+		TableName:              aws.String(r.client.coreTable),
+		IndexName:              aws.String("GSI2"),
+		KeyConditionExpression: aws.String("GSI2PK = :pk"),
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":pk": &types.AttributeValueMemberS{Value: "PRICING_RULE#ALL"},
+		},
+		ScanIndexForward: aws.Bool(true),
+	}
+
+	// Build filter expressions
+	var filters []string
+	exprAttrNames := map[string]string{}
 
 	if req.ScopeType != nil {
-		conditions = append(conditions, expression.Name("scope_type").Equal(expression.Value(string(*req.ScopeType))))
+		filters = append(filters, "scope_type = :scopeType")
+		input.ExpressionAttributeValues[":scopeType"] = &types.AttributeValueMemberS{Value: string(*req.ScopeType)}
 	}
-
 	if req.CategoryID != nil {
-		conditions = append(conditions, expression.Name("category_id").Equal(expression.Value(*req.CategoryID)))
+		filters = append(filters, "category_id = :catID")
+		input.ExpressionAttributeValues[":catID"] = &types.AttributeValueMemberS{Value: *req.CategoryID}
 	}
-
 	if req.PricingType != nil {
-		conditions = append(conditions, expression.Name("pricing_type").Equal(expression.Value(string(*req.PricingType))))
+		filters = append(filters, "pricing_type = :pricingType")
+		input.ExpressionAttributeValues[":pricingType"] = &types.AttributeValueMemberS{Value: string(*req.PricingType)}
 	}
-
 	if req.IsActive != nil {
-		conditions = append(conditions, expression.Name("is_active").Equal(expression.Value(*req.IsActive)))
+		filters = append(filters, "is_active = :isActive")
+		input.ExpressionAttributeValues[":isActive"] = &types.AttributeValueMemberBOOL{Value: *req.IsActive}
 	}
 
-	filter := conditions[0]
-	for _, cond := range conditions[1:] {
-		filter = filter.And(cond)
+	if len(filters) > 0 {
+		filterExpr := strings.Join(filters, " AND ")
+		input.FilterExpression = aws.String(filterExpr)
+	}
+	if len(exprAttrNames) > 0 {
+		input.ExpressionAttributeNames = exprAttrNames
 	}
 
-	expr, err := expression.NewBuilder().WithFilter(filter).Build()
-	if err != nil {
-		return nil, errors.Internal(err)
-	}
-
-	result, err := r.client.db.Scan(ctx, &dynamodb.ScanInput{
-		TableName:                 aws.String(r.client.coreTable),
-		FilterExpression:          expr.Filter(),
-		ExpressionAttributeNames:  expr.Names(),
-		ExpressionAttributeValues: expr.Values(),
-	})
+	result, err := r.client.db.Query(ctx, input)
 	if err != nil {
 		return nil, errors.Internal(err)
 	}
