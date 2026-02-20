@@ -2,7 +2,14 @@
 	build-lambdas build-lambda-auth build-lambda-user build-lambda-catalog build-lambda-order \
 	build-lambda-pricing build-lambda-inventory build-lambda-analytics build-lambda-notification \
 	build-lambda-coupon build-lambda-artisan build-lambda-asset \
-	build-lambda-report build-lambda-audit cdk-synth cdk-deploy-dev cdk-deploy-prod cdk-destroy \
+	build-lambda-report build-lambda-audit \
+	build-lambda-store-auth build-lambda-store-catalog build-lambda-store-cart \
+	build-lambda-store-checkout build-lambda-store-orders build-lambda-store-tracking \
+	build-lambda-store-profile build-lambda-store-webhooks \
+	build-workers build-lambda-worker-notification build-lambda-worker-report \
+	build-lambda-worker-analytics build-lambda-worker-audit \
+	create-events \
+	cdk-synth cdk-deploy-dev cdk-deploy-prod cdk-destroy \
 	init-s3 deploy-local redeploy-local teardown-local
 
 # ACM certificate ARN for custom domain (*.lldlab.com) - must be in us-east-1
@@ -20,7 +27,9 @@ BINARY_PATH=./bin/$(BINARY_NAME)
 # Lambda build parameters
 LAMBDA_BUILD_FLAGS=CGO_ENABLED=0 GOOS=linux GOARCH=arm64
 LAMBDA_OUT_DIR=./bin/lambda
-LAMBDA_SERVICES=auth user catalog order pricing inventory analytics notification coupon artisan asset report audit
+LAMBDA_SERVICES=auth user catalog order pricing inventory analytics notification coupon artisan asset report audit \
+	store-auth store-catalog store-cart store-checkout store-orders store-tracking store-profile store-webhooks \
+	worker-notification worker-report worker-analytics worker-audit
 
 # Active services for deployment
 LAMBDA_SERVICES_ACTIVE=auth user catalog asset
@@ -170,8 +179,8 @@ seed-data:
 	chmod +x scripts/seed-data.sh
 	./scripts/seed-data.sh
 
-## Setup local development (start services, create tables, init S3, seed data)
-setup-local: docker-up create-tables init-s3 seed-data
+## Setup local development (start services, create tables, init S3, create events infra, seed data)
+setup-local: docker-up create-tables init-s3 create-events seed-data
 	@echo "Local development environment ready!"
 	@echo ""
 	@echo "Services:"
@@ -219,6 +228,7 @@ reset-db: docker-up
 	@AWS_ACCESS_KEY_ID=local AWS_SECRET_ACCESS_KEY=local aws dynamodb delete-table --table-name handloom-orders --endpoint-url http://localhost:4566 --region ap-south-1 2>/dev/null || true
 	@AWS_ACCESS_KEY_ID=local AWS_SECRET_ACCESS_KEY=local aws dynamodb delete-table --table-name handloom-audit --endpoint-url http://localhost:4566 --region ap-south-1 2>/dev/null || true
 	@AWS_ACCESS_KEY_ID=local AWS_SECRET_ACCESS_KEY=local aws dynamodb delete-table --table-name handloom-analytics --endpoint-url http://localhost:4566 --region ap-south-1 2>/dev/null || true
+	@AWS_ACCESS_KEY_ID=local AWS_SECRET_ACCESS_KEY=local aws dynamodb delete-table --table-name handloom-sessions --endpoint-url http://localhost:4566 --region ap-south-1 2>/dev/null || true
 	@sleep 2
 	@$(MAKE) create-tables
 	@$(MAKE) seed-data
@@ -264,9 +274,9 @@ build-lambdas:
 	done
 	@echo "All Lambda functions built successfully!"
 
-## Build only active Lambda functions (auth & user)
+## Build only active Lambda functions (auth, user, catalog, asset)
 build-lambdas-active:
-	@echo "Building active Lambda functions (auth & user)..."
+	@echo "Building active Lambda functions (auth, user, catalog, asset)..."
 	@mkdir -p $(LAMBDA_OUT_DIR)
 	@for service in $(LAMBDA_SERVICES_ACTIVE); do \
 		echo "Building $$service Lambda..."; \
@@ -339,6 +349,76 @@ build-lambda-audit:
 	@echo "Building audit Lambda..."
 	@mkdir -p $(LAMBDA_OUT_DIR)/audit
 	$(LAMBDA_BUILD_FLAGS) $(GOBUILD) -ldflags="-s -w" -o $(LAMBDA_OUT_DIR)/audit/bootstrap ./cmd/lambda/audit
+
+## Build individual Store Lambda functions
+build-lambda-store-auth:
+	@echo "Building store-auth Lambda..."
+	@mkdir -p $(LAMBDA_OUT_DIR)/store-auth
+	$(LAMBDA_BUILD_FLAGS) $(GOBUILD) -ldflags="-s -w" -o $(LAMBDA_OUT_DIR)/store-auth/bootstrap ./cmd/lambda/store-auth
+
+build-lambda-store-catalog:
+	@echo "Building store-catalog Lambda..."
+	@mkdir -p $(LAMBDA_OUT_DIR)/store-catalog
+	$(LAMBDA_BUILD_FLAGS) $(GOBUILD) -ldflags="-s -w" -o $(LAMBDA_OUT_DIR)/store-catalog/bootstrap ./cmd/lambda/store-catalog
+
+build-lambda-store-cart:
+	@echo "Building store-cart Lambda..."
+	@mkdir -p $(LAMBDA_OUT_DIR)/store-cart
+	$(LAMBDA_BUILD_FLAGS) $(GOBUILD) -ldflags="-s -w" -o $(LAMBDA_OUT_DIR)/store-cart/bootstrap ./cmd/lambda/store-cart
+
+build-lambda-store-checkout:
+	@echo "Building store-checkout Lambda..."
+	@mkdir -p $(LAMBDA_OUT_DIR)/store-checkout
+	$(LAMBDA_BUILD_FLAGS) $(GOBUILD) -ldflags="-s -w" -o $(LAMBDA_OUT_DIR)/store-checkout/bootstrap ./cmd/lambda/store-checkout
+
+build-lambda-store-orders:
+	@echo "Building store-orders Lambda..."
+	@mkdir -p $(LAMBDA_OUT_DIR)/store-orders
+	$(LAMBDA_BUILD_FLAGS) $(GOBUILD) -ldflags="-s -w" -o $(LAMBDA_OUT_DIR)/store-orders/bootstrap ./cmd/lambda/store-orders
+
+build-lambda-store-tracking:
+	@echo "Building store-tracking Lambda..."
+	@mkdir -p $(LAMBDA_OUT_DIR)/store-tracking
+	$(LAMBDA_BUILD_FLAGS) $(GOBUILD) -ldflags="-s -w" -o $(LAMBDA_OUT_DIR)/store-tracking/bootstrap ./cmd/lambda/store-tracking
+
+build-lambda-store-profile:
+	@echo "Building store-profile Lambda..."
+	@mkdir -p $(LAMBDA_OUT_DIR)/store-profile
+	$(LAMBDA_BUILD_FLAGS) $(GOBUILD) -ldflags="-s -w" -o $(LAMBDA_OUT_DIR)/store-profile/bootstrap ./cmd/lambda/store-profile
+
+build-lambda-store-webhooks:
+	@echo "Building store-webhooks Lambda..."
+	@mkdir -p $(LAMBDA_OUT_DIR)/store-webhooks
+	$(LAMBDA_BUILD_FLAGS) $(GOBUILD) -ldflags="-s -w" -o $(LAMBDA_OUT_DIR)/store-webhooks/bootstrap ./cmd/lambda/store-webhooks
+
+## Build all worker Lambda binaries
+build-workers: build-lambda-worker-notification build-lambda-worker-report build-lambda-worker-analytics build-lambda-worker-audit
+	@echo "All worker lambdas built successfully"
+
+build-lambda-worker-notification:
+	@echo "Building worker-notification Lambda..."
+	@mkdir -p $(LAMBDA_OUT_DIR)/worker-notification
+	$(LAMBDA_BUILD_FLAGS) $(GOBUILD) -ldflags="-s -w" -o $(LAMBDA_OUT_DIR)/worker-notification/bootstrap ./cmd/lambda/worker-notification
+
+build-lambda-worker-report:
+	@echo "Building worker-report Lambda..."
+	@mkdir -p $(LAMBDA_OUT_DIR)/worker-report
+	$(LAMBDA_BUILD_FLAGS) $(GOBUILD) -ldflags="-s -w" -o $(LAMBDA_OUT_DIR)/worker-report/bootstrap ./cmd/lambda/worker-report
+
+build-lambda-worker-analytics:
+	@echo "Building worker-analytics Lambda..."
+	@mkdir -p $(LAMBDA_OUT_DIR)/worker-analytics
+	$(LAMBDA_BUILD_FLAGS) $(GOBUILD) -ldflags="-s -w" -o $(LAMBDA_OUT_DIR)/worker-analytics/bootstrap ./cmd/lambda/worker-analytics
+
+build-lambda-worker-audit:
+	@echo "Building worker-audit Lambda..."
+	@mkdir -p $(LAMBDA_OUT_DIR)/worker-audit
+	$(LAMBDA_BUILD_FLAGS) $(GOBUILD) -ldflags="-s -w" -o $(LAMBDA_OUT_DIR)/worker-audit/bootstrap ./cmd/lambda/worker-audit
+
+## Create SNS topic and SQS queues in LocalStack
+create-events:
+	@echo "Creating SNS topic and SQS queues..."
+	@bash scripts/create-events.sh
 
 ## CDK commands
 cdk-synth:
@@ -447,7 +527,7 @@ help:
 	@echo ""
 	@echo "Lambda & Deployment:"
 	@echo "  make build-lambdas        - Build all Lambda functions"
-	@echo "  make build-lambdas-active - Build active Lambdas only (auth, user)"
+	@echo "  make build-lambdas-active - Build active Lambdas only (auth, user, catalog, asset)"
 	@echo "  make build-lambda-<svc>   - Build specific Lambda (auth, user, etc.)"
 	@echo ""
 	@echo "  make cdk-bootstrap        - Bootstrap CDK (once per account/region)"
