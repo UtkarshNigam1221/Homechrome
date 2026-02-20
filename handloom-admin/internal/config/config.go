@@ -19,6 +19,7 @@ type Config struct {
 	JWT      JWTConfig
 	App      AppConfig
 	Store    StoreConfig
+	Event    EventConfig
 }
 
 // StoreConfig holds B2C storefront configuration
@@ -48,6 +49,12 @@ type StoreConfig struct {
 	CustomerRefreshTokenTTL time.Duration
 }
 
+// EventConfig holds event bus configuration
+type EventConfig struct {
+	SNSTopicARN string
+	Enabled     bool
+}
+
 // ServerConfig holds server configuration
 type ServerConfig struct {
 	Port         string
@@ -70,6 +77,7 @@ type AWSConfig struct {
 type DynamoDBConfig struct {
 	CoreTable      string
 	OrdersTable    string
+	SessionsTable  string
 	AuditTable     string
 	AnalyticsTable string
 }
@@ -109,6 +117,7 @@ func Load() *Config {
 		DynamoDB: DynamoDBConfig{
 			CoreTable:      getEnv("DYNAMODB_CORE_TABLE", "handloom-core"),
 			OrdersTable:    getEnv("DYNAMODB_ORDERS_TABLE", "handloom-orders"),
+			SessionsTable:  getEnv("DYNAMODB_SESSIONS_TABLE", "handloom-sessions"),
 			AuditTable:     getEnv("DYNAMODB_AUDIT_TABLE", "handloom-audit"),
 			AnalyticsTable: getEnv("DYNAMODB_ANALYTICS_TABLE", "handloom-analytics"),
 		},
@@ -122,6 +131,10 @@ func Load() *Config {
 			Environment:      getEnv("APP_ENV", "development"),
 			Debug:            getBoolEnv("APP_DEBUG", true),
 			QuoteValidityHrs: getIntEnv("QUOTE_VALIDITY_HRS", 24),
+		},
+		Event: EventConfig{
+			SNSTopicARN: getEnv("SNS_TOPIC_ARN", ""),
+			Enabled:     getBoolEnv("EVENT_PUBLISHING_ENABLED", false),
 		},
 		Store: StoreConfig{
 			PhonePeMerchantID:  getEnv("PHONEPE_MERCHANT_ID", ""),
