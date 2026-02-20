@@ -1,6 +1,43 @@
 import Link from 'next/link';
 
-export default function Home() {
+import CategoryCard from '@/components/catalog/CategoryCard';
+import ProductCard from '@/components/catalog/ProductCard';
+import { Category, Product } from '@/types';
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+
+async function getCategories(): Promise<Category[]> {
+  try {
+    const res = await fetch(`${API_BASE}/api/v1/store/catalog/categories`, {
+      next: { revalidate: 300 },
+    });
+    if (!res.ok) return [];
+    const json = await res.json();
+    return json.data || [];
+  } catch {
+    return [];
+  }
+}
+
+async function getFeaturedProducts(): Promise<Product[]> {
+  try {
+    const res = await fetch(`${API_BASE}/api/v1/store/catalog/products?limit=8`, {
+      next: { revalidate: 300 },
+    });
+    if (!res.ok) return [];
+    const json = await res.json();
+    return json.data || [];
+  } catch {
+    return [];
+  }
+}
+
+export default async function HomePage() {
+  const [categories, products] = await Promise.all([
+    getCategories(),
+    getFeaturedProducts(),
+  ]);
+
   return (
     <div>
       {/* Hero Section */}
@@ -114,6 +151,54 @@ export default function Home() {
           </div>
         </div>
       </section>
+
+      {/* Featured Categories */}
+      {categories.length > 0 && (
+        <section className="py-16">
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <div className="flex items-center justify-between">
+              <h2 className="text-2xl font-bold text-foreground sm:text-3xl">
+                Shop by Category
+              </h2>
+              <Link
+                href="/categories"
+                className="text-sm font-medium text-primary transition-colors hover:text-primary-dark"
+              >
+                View All
+              </Link>
+            </div>
+            <div className="mt-8 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+              {categories.slice(0, 8).map((category) => (
+                <CategoryCard key={category.id} category={category} />
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* Featured Products / New Arrivals */}
+      {products.length > 0 && (
+        <section className="bg-white py-16">
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <div className="flex items-center justify-between">
+              <h2 className="text-2xl font-bold text-foreground sm:text-3xl">
+                New Arrivals
+              </h2>
+              <Link
+                href="/products"
+                className="text-sm font-medium text-primary transition-colors hover:text-primary-dark"
+              >
+                View All
+              </Link>
+            </div>
+            <div className="mt-8 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+              {products.map((product) => (
+                <ProductCard key={product.id} product={product} />
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
     </div>
   );
 }
