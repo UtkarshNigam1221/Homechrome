@@ -5,6 +5,7 @@ import ProductDetailView from './ProductDetailView';
 import { Product } from '@/types';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://homechrome.lldlab.com';
 
 interface PageProps {
   params: Promise<{ slug: string }>;
@@ -29,10 +30,54 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   if (!product) {
     return { title: 'Product Not Found | Homechrome' };
   }
+
+  const ogImages = product.images?.[0]?.url ? [{ url: product.images[0].url }] : [];
+
   return {
     title: `${product.name} | Homechrome`,
     description: product.description || `Shop ${product.name} at Homechrome.`,
+    openGraph: {
+      title: `${product.name} | Homechrome`,
+      description: product.description || `Shop ${product.name} at Homechrome.`,
+      url: `${SITE_URL}/p/${slug}`,
+      images: ogImages,
+      type: 'website',
+    },
   };
+}
+
+function ProductJsonLd({ product }: { product: Product }) {
+  const priceInRupees = (product.selling_price / 100).toFixed(2);
+  const imageUrls = product.images?.map((img) => img.url) || [];
+
+  const jsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'Product',
+    name: product.name,
+    description: product.description,
+    image: imageUrls,
+    sku: product.sku,
+    brand: {
+      '@type': 'Brand',
+      name: 'Homechrome',
+    },
+    offers: {
+      '@type': 'Offer',
+      url: `${SITE_URL}/p/${product.slug}`,
+      priceCurrency: 'INR',
+      price: priceInRupees,
+      availability: product.in_stock
+        ? 'https://schema.org/InStock'
+        : 'https://schema.org/OutOfStock',
+    },
+  };
+
+  return (
+    <script
+      type="application/ld+json"
+      dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+    />
+  );
 }
 
 export default async function ProductPage({ params }: PageProps) {
@@ -48,5 +93,10 @@ export default async function ProductPage({ params }: PageProps) {
     );
   }
 
-  return <ProductDetailView product={product} />;
+  return (
+    <>
+      <ProductJsonLd product={product} />
+      <ProductDetailView product={product} />
+    </>
+  );
 }

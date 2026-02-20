@@ -5,6 +5,7 @@ import CategoryProductsView from './CategoryProductsView';
 import { Category, Product } from '@/types';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://homechrome.lldlab.com';
 
 interface PageProps {
   params: Promise<{ slug: string }>;
@@ -46,7 +47,48 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   return {
     title: `${category.name} | Homechrome`,
     description: category.description || `Browse ${category.name} handloom textiles at Homechrome.`,
+    openGraph: {
+      title: `${category.name} | Homechrome`,
+      description:
+        category.description || `Browse ${category.name} handloom textiles at Homechrome.`,
+      url: `${SITE_URL}/c/${slug}`,
+      type: 'website',
+    },
   };
+}
+
+function BreadcrumbJsonLd({ category }: { category: Category }) {
+  const jsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: [
+      {
+        '@type': 'ListItem',
+        position: 1,
+        name: 'Home',
+        item: SITE_URL,
+      },
+      {
+        '@type': 'ListItem',
+        position: 2,
+        name: 'Categories',
+        item: `${SITE_URL}/categories`,
+      },
+      {
+        '@type': 'ListItem',
+        position: 3,
+        name: category.name,
+        item: `${SITE_URL}/c/${category.slug}`,
+      },
+    ],
+  };
+
+  return (
+    <script
+      type="application/ld+json"
+      dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+    />
+  );
 }
 
 export default async function CategoryPage({ params }: PageProps) {
@@ -64,5 +106,10 @@ export default async function CategoryPage({ params }: PageProps) {
 
   const products = await getCategoryProducts(category.id);
 
-  return <CategoryProductsView category={category} products={products} />;
+  return (
+    <>
+      <BreadcrumbJsonLd category={category} />
+      <CategoryProductsView category={category} products={products} />
+    </>
+  );
 }
