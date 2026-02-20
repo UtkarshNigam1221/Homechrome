@@ -1,5 +1,0 @@
-id,sku,name,description,category_id,design_id,base_price,selling_price,cost_price,currency,quantity,available_qty,reserved_qty,low_stock_threshold,material,color,weave_type,origin,craft_type,weight,status,tags,created_at,updated_at
-bulk_a59b3437,,,,,,0,0,0,,0,0,0,0,,,,,,0,PENDING,,2026-02-06T00:09:42+04:00,2026-02-06T00:09:42+04:00
-bulk_0824982f,,,,,,0,0,0,,0,0,0,0,,,,,,0,PENDING,,2026-02-06T00:01:42+04:00,2026-02-06T00:01:42+04:00
-prod_ac853d88,UTKARSH-CQRT,Utkarsh,,cat_pillow_covers,design_4db54526,2000,9000,1000,INR,20,20,0,5,Cotton,Blue,Plain,Hapur,Zardozi,500,DRAFT,,2026-02-05T23:30:13+04:00,2026-02-05T23:35:28+04:00
-bulk_c1eea3f3,,,,,,0,0,0,,0,0,0,0,,,,,,0,PROCESSING,,2026-02-06T00:12:18+04:00,2026-02-06T00:12:18+04:00
