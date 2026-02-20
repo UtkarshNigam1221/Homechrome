@@ -64,6 +64,9 @@ type CustomerRepository interface {
 	// GetByEmail retrieves a customer by email
 	GetByEmail(ctx context.Context, email string) (*Customer, error)
 
+	// GetByPhone retrieves a customer by phone number
+	GetByPhone(ctx context.Context, phone string) (*Customer, error)
+
 	// Update updates an existing customer
 	Update(ctx context.Context, customer *Customer) error
 

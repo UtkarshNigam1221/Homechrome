@@ -53,6 +53,12 @@ const (
 
 	// PaginationKey stores parsed pagination parameters
 	PaginationKey ContextKey = "pagination"
+
+	// CustomerIDKey stores the authenticated customer ID
+	CustomerIDKey ContextKey = "customer_id"
+
+	// CustomerKey stores the authenticated customer object
+	CustomerKey ContextKey = "customer"
 )
 
 // ValidationError represents a validation error with field details
