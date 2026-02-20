@@ -1,0 +1,277 @@
+package service
+
+import (
+	"context"
+	"fmt"
+	"time"
+
+	"github.com/google/uuid"
+
+	"github.com/handloom/admin/internal/domain"
+	"github.com/handloom/admin/pkg/errors"
+	"github.com/handloom/admin/pkg/logger"
+)
+
+// defaultPickupPincode is the warehouse/pickup location pincode
+const defaultPickupPincode = "560001"
+
+// defaultWeightGrams is the default parcel weight used for serviceability checks
+const defaultWeightGrams = 500
+
+// CheckoutService implements domain.CheckoutService
+type CheckoutService struct {
+	cartService     domain.CartService
+	orderRepo       domain.OrderRepository
+	paymentService  domain.PaymentService
+	shippingService domain.ShippingService
+	inventoryRepo   domain.InventoryRepository
+	customerRepo    domain.CustomerRepository
+	pickupPincode   string
+	logger          *logger.Logger
+}
+
+// NewCheckoutService creates a new CheckoutService
+func NewCheckoutService(
+	cartService domain.CartService,
+	orderRepo domain.OrderRepository,
+	paymentService domain.PaymentService,
+	shippingService domain.ShippingService,
+	inventoryRepo domain.InventoryRepository,
+	customerRepo domain.CustomerRepository,
+	logger *logger.Logger,
+) *CheckoutService {
+	return &CheckoutService{
+		cartService:     cartService,
+		orderRepo:       orderRepo,
+		paymentService:  paymentService,
+		shippingService: shippingService,
+		inventoryRepo:   inventoryRepo,
+		customerRepo:    customerRepo,
+		pickupPincode:   defaultPickupPincode,
+		logger:          logger,
+	}
+}
+
+// CheckServiceability checks whether delivery is available for a given pincode
+func (s *CheckoutService) CheckServiceability(ctx context.Context, customerID, pincode string) (*domain.ServiceabilityResult, error) {
+	// Verify the customer exists
+	_, err := s.customerRepo.GetByID(ctx, customerID)
+	if err != nil {
+		s.logger.WithContext(ctx).WithError(err).Error("Failed to get customer for serviceability check")
+		return nil, err
+	}
+
+	result, err := s.shippingService.CheckServiceability(ctx, s.pickupPincode, pincode, defaultWeightGrams)
+	if err != nil {
+		s.logger.WithContext(ctx).WithError(err).Error("Failed to check serviceability")
+		return nil, errors.Wrap(err, "Failed to check serviceability")
+	}
+
+	return result, nil
+}
+
+// Initiate orchestrates the full checkout flow: reserve inventory, create order,
+// initiate payment, and clear the cart.
+func (s *CheckoutService) Initiate(ctx context.Context, customerID string, req domain.CheckoutRequest) (*domain.CheckoutResult, error) {
+	// 1. Get customer
+	customer, err := s.customerRepo.GetByID(ctx, customerID)
+	if err != nil {
+		s.logger.WithContext(ctx).WithError(err).Error("Failed to get customer during checkout")
+		return nil, err
+	}
+
+	// 2. Find shipping address by ID
+	var shippingAddr domain.Address
+	addressFound := false
+	for _, addr := range customer.Addresses {
+		if addr.ID == req.ShippingAddressID {
+			shippingAddr = addr
+			addressFound = true
+			break
+		}
+	}
+	if !addressFound {
+		return nil, errors.NotFound("Shipping address")
+	}
+
+	// 3. Get cart
+	cart, err := s.cartService.GetCart(ctx, customerID)
+	if err != nil {
+		s.logger.WithContext(ctx).WithError(err).Error("Failed to get cart during checkout")
+		return nil, err
+	}
+
+	// 4. Validate cart is not empty
+	if len(cart.Items) == 0 {
+		return nil, errors.BadRequest("Cart is empty")
+	}
+
+	// 5. Reserve inventory for each item
+	reservedItems := make([]domain.CartItem, 0, len(cart.Items))
+	for _, item := range cart.Items {
+		_, err := s.inventoryRepo.ReserveStock(ctx, item.ProductID, item.Quantity, "checkout")
+		if err != nil {
+			// Rollback: release all previously reserved items
+			s.releaseReservedItems(ctx, reservedItems)
+			s.logger.WithContext(ctx).WithError(err).Errorf("Failed to reserve stock for product %s", item.ProductID)
+			return nil, errors.Wrap(err, fmt.Sprintf("Failed to reserve stock for product %s", item.ProductID))
+		}
+		reservedItems = append(reservedItems, item)
+	}
+
+	// 6. Build order items from cart items
+	orderItems := make([]domain.OrderItem, 0, len(cart.Items))
+	for _, item := range cart.Items {
+		orderItems = append(orderItems, domain.OrderItem{
+			ID:           uuid.New().String(),
+			ProductID:    item.ProductID,
+			ProductName:  item.ProductName,
+			ProductSKU:   item.ProductSKU,
+			ProductImage: item.ProductImage,
+			IsCustomSize: item.IsCustomSize,
+			Dimensions:   item.Dimensions,
+			QuoteID:      item.QuoteID,
+			UnitPrice:    item.UnitPrice,
+			Quantity:     item.Quantity,
+			TotalPrice:   item.TotalPrice,
+		})
+	}
+
+	// 7. Calculate totals
+	subtotal := cart.Cart.Subtotal
+	var discountAmount int64
+	var taxAmount int64
+	var shippingAmount int64
+
+	// Check serviceability for shipping cost
+	serviceResult, err := s.shippingService.CheckServiceability(ctx, s.pickupPincode, shippingAddr.PostalCode, defaultWeightGrams)
+	if err != nil {
+		s.logger.WithContext(ctx).WithError(err).Error("Failed to check serviceability for shipping cost")
+		// Proceed with zero shipping if serviceability check fails
+	} else if serviceResult.Serviceable && len(serviceResult.Couriers) > 0 {
+		// Use selected courier or default to first available
+		if req.CourierID != nil {
+			for _, c := range serviceResult.Couriers {
+				if c.ID == *req.CourierID {
+					shippingAmount = c.Rate
+					break
+				}
+			}
+		}
+		if shippingAmount == 0 {
+			shippingAmount = serviceResult.Couriers[0].Rate
+		}
+	}
+
+	totalAmount := subtotal - discountAmount + taxAmount + shippingAmount
+
+	// 8. Generate order number
+	orderNumber := generateOrderNumber()
+
+	// 9. Create order
+	now := time.Now()
+	order := &domain.Order{
+		ID:              uuid.New().String(),
+		OrderNumber:     orderNumber,
+		CustomerID:      customer.ID,
+		CustomerName:    customer.FirstName + " " + customer.LastName,
+		CustomerEmail:   customer.Email,
+		CustomerPhone:   customer.Phone,
+		Items:           orderItems,
+		ItemCount:       len(orderItems),
+		Subtotal:        subtotal,
+		DiscountAmount:  discountAmount,
+		TaxAmount:       taxAmount,
+		ShippingAmount:  shippingAmount,
+		TotalAmount:     totalAmount,
+		Currency:        "INR",
+		Status:          domain.OrderStatusPending,
+		PaymentStatus:   domain.PaymentStatusPending,
+		ShippingAddress: &shippingAddr,
+		BaseEntity: domain.BaseEntity{
+			CreatedAt: now,
+			UpdatedAt: now,
+		},
+	}
+	order.SetKeys()
+
+	// 10. Save order (repository also writes the order number index)
+	if err := s.orderRepo.Create(ctx, order); err != nil {
+		s.releaseReservedItems(ctx, reservedItems)
+		s.logger.WithContext(ctx).WithError(err).Error("Failed to create order")
+		return nil, errors.Wrap(err, "Failed to create order")
+	}
+
+	// 11. Initiate payment
+	paymentResp, err := s.paymentService.InitiatePayment(ctx, domain.InitiatePaymentRequest{
+		OrderID:    order.ID,
+		CustomerID: customer.ID,
+		Amount:     order.TotalAmount,
+		Phone:      customer.Phone,
+	})
+	if err != nil {
+		s.releaseReservedItems(ctx, reservedItems)
+		s.logger.WithContext(ctx).WithError(err).Error("Failed to initiate payment")
+		return nil, errors.Wrap(err, "Failed to initiate payment")
+	}
+
+	// 12. Clear cart
+	if err := s.cartService.ClearCart(ctx, customerID); err != nil {
+		// Log but don't fail the checkout - order and payment are already created
+		s.logger.WithContext(ctx).WithError(err).Error("Failed to clear cart after checkout")
+	}
+
+	s.logger.WithContext(ctx).Infof("Checkout completed: order %s for customer %s", order.OrderNumber, customerID)
+
+	return &domain.CheckoutResult{
+		Order:         order,
+		RedirectURL:   paymentResp.RedirectURL,
+		MerchantTxnID: paymentResp.MerchantTxnID,
+	}, nil
+}
+
+// GetPaymentStatus retrieves the current payment status for an order
+func (s *CheckoutService) GetPaymentStatus(ctx context.Context, customerID, orderID string) (*domain.PaymentStatusResult, error) {
+	// Get the order
+	order, err := s.orderRepo.GetByID(ctx, orderID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Validate the order belongs to the customer
+	if order.CustomerID != customerID {
+		return nil, errors.NotFound("Order")
+	}
+
+	// Get payment by order ID
+	payment, err := s.paymentService.GetByOrderID(ctx, orderID)
+	if err != nil {
+		// If no payment found, return the order's payment status
+		if errors.IsNotFound(err) {
+			return &domain.PaymentStatusResult{
+				PaymentStatus: order.PaymentStatus,
+				Order:         order,
+			}, nil
+		}
+		return nil, err
+	}
+
+	return &domain.PaymentStatusResult{
+		PaymentStatus: payment.Status,
+		Order:         order,
+	}, nil
+}
+
+// releaseReservedItems releases inventory for items that were previously reserved
+func (s *CheckoutService) releaseReservedItems(ctx context.Context, items []domain.CartItem) {
+	for _, item := range items {
+		_, err := s.inventoryRepo.ReleaseStock(ctx, item.ProductID, item.Quantity, "checkout")
+		if err != nil {
+			s.logger.WithContext(ctx).WithError(err).Errorf("Failed to release reserved stock for product %s", item.ProductID)
+			// Continue releasing other items even if one fails
+		}
+	}
+}
+
+// Ensure interface compliance
+var _ domain.CheckoutService = (*CheckoutService)(nil)
