@@ -13,6 +13,8 @@ type Order struct {
 	SK              string                 `json:"-" dynamodbav:"SK"`
 	GSI1PK          string                 `json:"-" dynamodbav:"GSI1PK"`
 	GSI1SK          string                 `json:"-" dynamodbav:"GSI1SK"`
+	GSI2PK          string                 `json:"-" dynamodbav:"GSI2PK"`
+	GSI2SK          string                 `json:"-" dynamodbav:"GSI2SK"`
 	EntityType      string                 `json:"-" dynamodbav:"entity_type"`
 
 	OrderNumber     string                 `json:"order_number" dynamodbav:"order_number"`
@@ -73,6 +75,8 @@ func (o *Order) SetKeys() {
 	o.SK = "METADATA"
 	o.GSI1PK = "CUSTOMER#" + o.CustomerID
 	o.GSI1SK = o.CreatedAt.Format("2006-01-02T15:04:05Z")
+	o.GSI2PK = "ORDER#ALL"
+	o.GSI2SK = o.CreatedAt.Format("2006-01-02T15:04:05Z")
 	o.EntityType = "ORDER"
 }
 
@@ -162,12 +166,15 @@ type Customer struct {
 	SK           string         `json:"-" dynamodbav:"SK"`
 	GSI1PK       string         `json:"-" dynamodbav:"GSI1PK"`
 	GSI1SK       string         `json:"-" dynamodbav:"GSI1SK"`
+	GSI2PK       string         `json:"-" dynamodbav:"GSI2PK"`
+	GSI2SK       string         `json:"-" dynamodbav:"GSI2SK"`
 	EntityType   string         `json:"-" dynamodbav:"entity_type"`
 
 	Email        string         `json:"email" dynamodbav:"email"`
 	FirstName    string         `json:"first_name" dynamodbav:"first_name"`
 	LastName     string         `json:"last_name" dynamodbav:"last_name"`
 	Phone        string         `json:"phone" dynamodbav:"phone"`
+	PhoneVerified bool          `json:"phone_verified" dynamodbav:"phone_verified"`
 	Status       CustomerStatus `json:"status" dynamodbav:"status"`
 
 	// Stats
@@ -192,6 +199,40 @@ func (c *Customer) SetKeys() {
 	c.SK = "METADATA"
 	c.GSI1PK = "CUSTOMER_EMAIL"
 	c.GSI1SK = c.Email
+	c.GSI2PK = "CUSTOMER#ALL"
+	c.GSI2SK = c.CreatedAt.Format("2006-01-02T15:04:05Z")
 	c.EntityType = "CUSTOMER"
+}
+
+// ==================== ORDER/CUSTOMER INDEX ENTITIES ====================
+
+// OrderNumberIndex is a lookup item for finding orders by order number
+type OrderNumberIndex struct {
+	PK         string `json:"-" dynamodbav:"PK"`
+	SK         string `json:"-" dynamodbav:"SK"`
+	EntityType string `json:"-" dynamodbav:"entity_type"`
+	OrderID    string `json:"order_id" dynamodbav:"order_id"`
+}
+
+// SetKeys sets the DynamoDB keys for OrderNumberIndex
+func (o *OrderNumberIndex) SetKeys(orderNumber string) {
+	o.PK = "ORDER_NUMBER#" + orderNumber
+	o.SK = "METADATA"
+	o.EntityType = "ORDER_NUMBER_INDEX"
+}
+
+// CustomerPhoneIndex is a lookup item for finding customers by phone (uniqueness guard)
+type CustomerPhoneIndex struct {
+	PK         string `json:"-" dynamodbav:"PK"`
+	SK         string `json:"-" dynamodbav:"SK"`
+	EntityType string `json:"-" dynamodbav:"entity_type"`
+	CustomerID string `json:"customer_id" dynamodbav:"customer_id"`
+}
+
+// SetKeys sets the DynamoDB keys for CustomerPhoneIndex
+func (c *CustomerPhoneIndex) SetKeys(phone string) {
+	c.PK = "CUSTOMER_PHONE#" + phone
+	c.SK = "METADATA"
+	c.EntityType = "CUSTOMER_PHONE_INDEX"
 }
 

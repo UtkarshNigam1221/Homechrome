@@ -112,10 +112,12 @@ const (
 type PaymentStatus string
 
 const (
-	PaymentStatusPending  PaymentStatus = "PENDING"
-	PaymentStatusPaid     PaymentStatus = "PAID"
-	PaymentStatusFailed   PaymentStatus = "FAILED"
-	PaymentStatusRefunded PaymentStatus = "REFUNDED"
+	PaymentStatusPending   PaymentStatus = "PENDING"
+	PaymentStatusPaid      PaymentStatus = "PAID"
+	PaymentStatusFailed    PaymentStatus = "FAILED"
+	PaymentStatusRefunded  PaymentStatus = "REFUNDED"
+	PaymentStatusInitiated PaymentStatus = "INITIATED"
+	PaymentStatusSuccess   PaymentStatus = "SUCCESS"
 )
 
 // InventoryTransactionType defines the type of inventory transaction
@@ -513,6 +515,8 @@ type PricingRule struct {
 	SK         string `json:"-" dynamodbav:"SK"`
 	GSI1PK     string `json:"-" dynamodbav:"GSI1PK"`
 	GSI1SK     string `json:"-" dynamodbav:"GSI1SK"`
+	GSI2PK     string `json:"-" dynamodbav:"GSI2PK"`
+	GSI2SK     string `json:"-" dynamodbav:"GSI2SK"`
 	EntityType string `json:"-" dynamodbav:"entity_type"`
 
 	Name        string `json:"name" dynamodbav:"name"`
@@ -573,6 +577,8 @@ func (p *PricingRule) SetKeys() {
 	} else {
 		p.GSI1SK = "GLOBAL"
 	}
+	p.GSI2PK = "PRICING_RULE#ALL"
+	p.GSI2SK = "PRICING_RULE#" + p.ID
 	p.EntityType = "PRICING_RULE"
 }
 
@@ -657,6 +663,8 @@ type Inventory struct {
 	ID         string `json:"id" dynamodbav:"id"`
 	PK         string `json:"-" dynamodbav:"PK"`
 	SK         string `json:"-" dynamodbav:"SK"`
+	GSI2PK     string `json:"-" dynamodbav:"GSI2PK,omitempty"`
+	GSI2SK     string `json:"-" dynamodbav:"GSI2SK,omitempty"`
 	EntityType string `json:"-" dynamodbav:"entity_type"`
 
 	ProductID   string `json:"product_id" dynamodbav:"product_id"`
@@ -717,4 +725,41 @@ func (t *InventoryTransaction) SetKeys() {
 	t.PK = "INVENTORY#" + t.ProductID
 	t.SK = "TXN#" + t.CreatedAt.Format("2006-01-02T15:04:05.000Z") + "#" + t.ID
 	t.EntityType = "INVENTORY_TRANSACTION"
+}
+
+// ==================== OTP ENTITY ====================
+
+// OTP represents a one-time password for customer authentication
+type OTP struct {
+	PK         string    `json:"-" dynamodbav:"PK"`
+	SK         string    `json:"-" dynamodbav:"SK"`
+	EntityType string    `json:"-" dynamodbav:"entity_type"`
+	Phone      string    `json:"phone" dynamodbav:"phone"`
+	CodeHash   string    `json:"-" dynamodbav:"code_hash"`
+	Attempts   int       `json:"attempts" dynamodbav:"attempts"`
+	CreatedAt  time.Time `json:"created_at" dynamodbav:"created_at"`
+	TTL        int64     `json:"-" dynamodbav:"ttl"`
+}
+
+// TableName returns the DynamoDB table name for OTP
+func (o *OTP) TableName() string {
+	return "handloom-core"
+}
+
+// SetKeys sets the DynamoDB keys for OTP
+func (o *OTP) SetKeys() {
+	o.PK = "OTP#" + o.Phone
+	o.SK = "METADATA"
+	o.EntityType = "OTP"
+}
+
+// SendOTPRequest contains data for sending an OTP
+type SendOTPRequest struct {
+	Phone string `json:"phone" validate:"required,e164"`
+}
+
+// VerifyOTPRequest contains data for verifying an OTP
+type VerifyOTPRequest struct {
+	Phone string `json:"phone" validate:"required,e164"`
+	Code  string `json:"code" validate:"required,len=6"`
 }
