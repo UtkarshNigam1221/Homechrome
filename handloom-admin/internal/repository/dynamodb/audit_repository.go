@@ -2,11 +2,11 @@ package dynamodb
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
-	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/expression"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"github.com/handloom/admin/internal/domain"
@@ -74,46 +74,83 @@ func (r *AuditRepository) GetByID(ctx context.Context, id string) (*domain.Audit
 
 // List retrieves audit logs with filters
 func (r *AuditRepository) List(ctx context.Context, req domain.ListAuditLogsRequest) (*domain.ListAuditLogsResponse, error) {
-	filterBuilder := expression.Name("entity_type").Equal(expression.Value("AUDIT_LOG"))
+	// Default date range: last 7 days
+	endDate := time.Now()
+	startDate := endDate.AddDate(0, 0, -7)
 
-	if req.Action != nil {
-		filterBuilder = filterBuilder.And(expression.Name("action").Equal(expression.Value(*req.Action)))
+	if req.StartDate != nil {
+		parsed, err := time.Parse("2006-01-02", *req.StartDate)
+		if err != nil {
+			return nil, errors.BadRequest("Invalid start_date format, expected YYYY-MM-DD")
+		}
+		startDate = parsed
+	}
+	if req.EndDate != nil {
+		parsed, err := time.Parse("2006-01-02", *req.EndDate)
+		if err != nil {
+			return nil, errors.BadRequest("Invalid end_date format, expected YYYY-MM-DD")
+		}
+		endDate = parsed
 	}
 
-	if req.EntityType != nil {
-		filterBuilder = filterBuilder.And(expression.Name("target_entity_type").Equal(expression.Value(*req.EntityType)))
-	}
+	var allLogs []*domain.AuditLog
 
-	if req.EntityID != nil {
-		filterBuilder = filterBuilder.And(expression.Name("target_entity_id").Equal(expression.Value(*req.EntityID)))
-	}
+	// Query each day partition
+	for d := endDate; !d.Before(startDate); d = d.AddDate(0, 0, -1) {
+		dateStr := d.Format("2006-01-02")
+		input := &dynamodb.QueryInput{
+			TableName:              aws.String(r.client.auditTable),
+			KeyConditionExpression: aws.String("PK = :pk"),
+			ExpressionAttributeValues: map[string]types.AttributeValue{
+				":pk": &types.AttributeValueMemberS{Value: "AUDIT#" + dateStr},
+			},
+			ScanIndexForward: aws.Bool(false),
+		}
 
-	if req.UserID != nil {
-		filterBuilder = filterBuilder.And(expression.Name("user_id").Equal(expression.Value(*req.UserID)))
-	}
+		// Build filter expressions
+		var filters []string
+		exprAttrNames := map[string]string{}
 
-	expr, err := expression.NewBuilder().WithFilter(filterBuilder).Build()
-	if err != nil {
-		return nil, errors.Internal("Failed to build query expression")
-	}
+		if req.Action != nil {
+			filters = append(filters, "#action = :action")
+			input.ExpressionAttributeValues[":action"] = &types.AttributeValueMemberS{Value: string(*req.Action)}
+			exprAttrNames["#action"] = "action"
+		}
+		if req.EntityType != nil {
+			filters = append(filters, "entity_type_audit = :entityType")
+			input.ExpressionAttributeValues[":entityType"] = &types.AttributeValueMemberS{Value: *req.EntityType}
+		}
+		if req.EntityID != nil {
+			filters = append(filters, "entity_id = :entityID")
+			input.ExpressionAttributeValues[":entityID"] = &types.AttributeValueMemberS{Value: *req.EntityID}
+		}
+		if req.UserID != nil {
+			filters = append(filters, "user_id = :userID")
+			input.ExpressionAttributeValues[":userID"] = &types.AttributeValueMemberS{Value: *req.UserID}
+		}
 
-	result, err := r.client.db.Scan(ctx, &dynamodb.ScanInput{
-		TableName:                 aws.String(r.client.auditTable),
-		FilterExpression:          expr.Filter(),
-		ExpressionAttributeNames:  expr.Names(),
-		ExpressionAttributeValues: expr.Values(),
-	})
-	if err != nil {
-		return nil, errors.Wrap(err, "Failed to list audit logs")
-	}
+		if len(filters) > 0 {
+			input.FilterExpression = aws.String(strings.Join(filters, " AND "))
+		}
+		if len(exprAttrNames) > 0 {
+			input.ExpressionAttributeNames = exprAttrNames
+		}
 
-	var logs []*domain.AuditLog
-	if err := attributevalue.UnmarshalListOfMaps(result.Items, &logs); err != nil {
-		return nil, errors.Internal("Failed to unmarshal audit logs")
+		result, err := r.client.db.Query(ctx, input)
+		if err != nil {
+			return nil, errors.Wrap(err, "Failed to query audit logs for date "+dateStr)
+		}
+
+		var logs []*domain.AuditLog
+		if err := attributevalue.UnmarshalListOfMaps(result.Items, &logs); err != nil {
+			return nil, errors.Internal("Failed to unmarshal audit logs")
+		}
+
+		allLogs = append(allLogs, logs...)
 	}
 
 	// TODO: migrate to real DynamoDB cursor-based pagination
-	paged, pg := InMemoryPaginate(logs, req.PaginationRequest)
+	paged, pg := InMemoryPaginate(allLogs, req.PaginationRequest)
 
 	return &domain.ListAuditLogsResponse{
 		Logs:       paged,

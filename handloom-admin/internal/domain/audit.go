@@ -24,6 +24,8 @@ type AuditLog struct {
 	SK           string                 `json:"-" dynamodbav:"SK"`
 	GSI1PK       string                 `json:"-" dynamodbav:"GSI1PK"`
 	GSI1SK       string                 `json:"-" dynamodbav:"GSI1SK"`
+	GSI2PK       string                 `json:"-" dynamodbav:"GSI2PK"`
+	GSI2SK       string                 `json:"-" dynamodbav:"GSI2SK"`
 	EntityType   string                 `json:"-" dynamodbav:"entity_type"`
 	TTL          int64                  `json:"-" dynamodbav:"ttl"` // 90 days
 
@@ -59,10 +61,11 @@ func (a *AuditLog) TableName() string {
 func (a *AuditLog) SetKeys() {
 	a.PK = "AUDIT#" + a.CreatedAt.Format("2006-01-02")
 	a.SK = a.CreatedAt.Format("15:04:05.000Z") + "#" + a.ID
-	a.GSI1PK = "USER#" + a.UserID
+	a.GSI1PK = a.EntityTypeAudit + "#" + a.EntityID
 	a.GSI1SK = a.CreatedAt.Format("2006-01-02T15:04:05Z")
+	a.GSI2PK = "USER#" + a.UserID
+	a.GSI2SK = a.CreatedAt.Format("2006-01-02T15:04:05Z")
 	a.EntityType = "AUDIT_LOG"
-	// TTL: 90 days from creation
 	a.TTL = a.CreatedAt.Add(90 * 24 * time.Hour).Unix()
 }
 
