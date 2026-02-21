@@ -1,7 +1,7 @@
 # Event-Driven Async Layer Design
 
 **Date:** 2026-02-21
-**Status:** Approved
+**Status:** Implemented
 **Scope:** SNS fan-out + SQS + Worker Lambdas for async processing
 
 ## Problem
