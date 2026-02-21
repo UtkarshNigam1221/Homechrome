@@ -17,6 +17,7 @@ import (
 	"github.com/handloom/admin/internal/config"
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/internal/event"
+	eventhandlers "github.com/handloom/admin/internal/event/handlers"
 	"github.com/handloom/admin/internal/gateway/phonepe"
 	"github.com/handloom/admin/internal/gateway/shiprocket"
 	"github.com/handloom/admin/internal/gateway/sms"
@@ -80,8 +81,12 @@ func main() {
 	paymentRepo := dynamodb.NewPaymentRepository(dbClient)
 	shipmentRepo := dynamodb.NewShipmentRepository(dbClient)
 
-	// Initialize event publisher (LocalPublisher for monolith dev mode)
-	publisher := event.NewLocalPublisher(log)
+	// Initialize event handlers and publisher (LocalPublisher for monolith dev mode)
+	notifEventHandler := eventhandlers.NewNotificationHandler(log)
+	reportEventHandler := eventhandlers.NewReportHandler(log)
+	analyticsEventHandler := eventhandlers.NewAnalyticsHandler(log)
+	auditEventHandler := eventhandlers.NewAuditHandler(log)
+	publisher := event.NewLocalPublisher(log, notifEventHandler, reportEventHandler, analyticsEventHandler, auditEventHandler)
 
 	// Initialize services
 	authService := service.NewAuthService(

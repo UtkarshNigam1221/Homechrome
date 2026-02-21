@@ -10,20 +10,22 @@ import (
 	"github.com/google/wire"
 	"github.com/handloom/admin/internal/config"
 	"github.com/handloom/admin/internal/handler"
+	"github.com/handloom/admin/internal/handler/store"
 	"github.com/handloom/admin/internal/middleware"
 	"github.com/handloom/admin/internal/repository/dynamodb"
 	"github.com/handloom/admin/pkg/logger"
 )
 
 // ============================================================================
-// SERVICE-SPECIFIC DEPENDENCY CONTAINERS
+// ADMIN SERVICE DEPENDENCY CONTAINERS
 // ============================================================================
 
 // AuthDeps holds dependencies for the Auth Lambda
 type AuthDeps struct {
-	Config  *config.Config
-	Logger  *logger.Logger
-	Handler *handler.AuthHandler
+	Config         *config.Config
+	Logger         *logger.Logger
+	Handler        *handler.AuthHandler
+	AuthMiddleware *middleware.Auth
 }
 
 // UserDeps holds dependencies for the User Lambda
@@ -124,18 +126,59 @@ type AuditDeps struct {
 	AuthMiddleware *middleware.Auth
 }
 
+// ApiDeps holds all dependencies for the main API server
+type ApiDeps struct {
+	Config              *config.Config
+	Logger              *logger.Logger
+	DynamoDBClient      *dynamodb.Client
+	AuthHandler         *handler.AuthHandler
+	UserHandler         *handler.UserHandler
+	CategoryHandler     *handler.CategoryHandler
+	ProductHandler      *handler.ProductHandler
+	InventoryHandler    *handler.InventoryHandler
+	PricingHandler      *handler.PricingHandler
+	OrderHandler        *handler.OrderHandler
+	CustomerHandler     *handler.CustomerHandler
+	AuditHandler        *handler.AuditHandler
+	NotificationHandler *handler.NotificationHandler
+	CouponHandler       *handler.CouponHandler
+	ArtisanHandler      *handler.ArtisanHandler
+	AnalyticsHandler    *handler.AnalyticsHandler
+	AssetHandler        *handler.AssetHandler
+	ReportHandler       *handler.ReportHandler
+	AuthMiddleware      *middleware.Auth
+}
+
 // ============================================================================
-// INJECTOR FUNCTIONS
+// ADMIN INJECTOR FUNCTIONS
 // ============================================================================
+
+// InitializeApiDeps creates all dependencies for the main API server
+func InitializeApiDeps(ctx context.Context, cfg *config.Config) (*ApiDeps, error) {
+	wire.Build(
+		CoreSet,
+		ProvideS3Client,
+		RepositorySet,
+		ServiceSet,
+		HandlerSet,
+		MiddlewareSet,
+		wire.Struct(new(ApiDeps), "*"),
+	)
+	return nil, nil
+}
 
 // InitializeAuthDeps creates Auth Lambda dependencies
 func InitializeAuthDeps(ctx context.Context, cfg *config.Config) (*AuthDeps, error) {
 	wire.Build(
 		CoreSet,
+		ProvideValidator,
+		ProvideValidation,
 		ProvideUserRepository,
 		ProvideTokenStore,
 		ProvideAuthService,
+		ProvideUserService,
 		ProvideAuthHandler,
+		ProvideAuthMiddleware,
 		wire.Struct(new(AuthDeps), "*"),
 	)
 	return nil, nil
@@ -145,6 +188,8 @@ func InitializeAuthDeps(ctx context.Context, cfg *config.Config) (*AuthDeps, err
 func InitializeUserDeps(ctx context.Context, cfg *config.Config) (*UserDeps, error) {
 	wire.Build(
 		CoreSet,
+		ProvideValidator,
+		ProvideValidation,
 		ProvideUserRepository,
 		ProvideTokenStore,
 		ProvideAuthService,
@@ -160,12 +205,15 @@ func InitializeUserDeps(ctx context.Context, cfg *config.Config) (*UserDeps, err
 func InitializeCatalogDeps(ctx context.Context, cfg *config.Config) (*CatalogDeps, error) {
 	wire.Build(
 		CoreSet,
+		ProvideValidator,
+		ProvideValidation,
+		ProvideS3Client,
 		ProvideUserRepository,
 		ProvideTokenStore,
 		ProvideCategoryRepository,
 		ProvideProductRepository,
 		ProvideInventoryRepository,
-		ProvideS3Client,
+		ProvideEventPublisher,
 		ProvideAuthService,
 		ProvideAssetService,
 		ProvideCategoryService,
@@ -183,13 +231,19 @@ func InitializeCatalogDeps(ctx context.Context, cfg *config.Config) (*CatalogDep
 func InitializeOrderDeps(ctx context.Context, cfg *config.Config) (*OrderDeps, error) {
 	wire.Build(
 		CoreSet,
+		ProvideValidator,
+		ProvideValidation,
 		ProvideUserRepository,
 		ProvideTokenStore,
 		ProvideOrderRepository,
 		ProvideCustomerRepository,
 		ProvideProductRepository,
 		ProvideInventoryRepository,
+		ProvidePriceQuoteRepository,
+		ProvidePricingRuleRepository,
+		ProvideCategoryRepository,
 		ProvideAuthService,
+		ProvidePricingService,
 		ProvideOrderService,
 		ProvideCustomerService,
 		ProvideOrderHandler,
@@ -204,6 +258,8 @@ func InitializeOrderDeps(ctx context.Context, cfg *config.Config) (*OrderDeps, e
 func InitializePricingDeps(ctx context.Context, cfg *config.Config) (*PricingDeps, error) {
 	wire.Build(
 		CoreSet,
+		ProvideValidator,
+		ProvideValidation,
 		ProvideUserRepository,
 		ProvideTokenStore,
 		ProvidePricingRuleRepository,
@@ -227,6 +283,7 @@ func InitializeInventoryDeps(ctx context.Context, cfg *config.Config) (*Inventor
 		ProvideTokenStore,
 		ProvideInventoryRepository,
 		ProvideProductRepository,
+		ProvideEventPublisher,
 		ProvideAuthService,
 		ProvideInventoryService,
 		ProvideInventoryHandler,
@@ -243,6 +300,9 @@ func InitializeAnalyticsDeps(ctx context.Context, cfg *config.Config) (*Analytic
 		ProvideUserRepository,
 		ProvideTokenStore,
 		ProvideAnalyticsRepository,
+		ProvideOrderRepository,
+		ProvideProductRepository,
+		ProvideInventoryRepository,
 		ProvideAuthService,
 		ProvideAnalyticsService,
 		ProvideAnalyticsHandler,
@@ -256,6 +316,8 @@ func InitializeAnalyticsDeps(ctx context.Context, cfg *config.Config) (*Analytic
 func InitializeNotificationDeps(ctx context.Context, cfg *config.Config) (*NotificationDeps, error) {
 	wire.Build(
 		CoreSet,
+		ProvideValidator,
+		ProvideValidation,
 		ProvideUserRepository,
 		ProvideTokenStore,
 		ProvideNotificationRepository,
@@ -272,6 +334,8 @@ func InitializeNotificationDeps(ctx context.Context, cfg *config.Config) (*Notif
 func InitializeCouponDeps(ctx context.Context, cfg *config.Config) (*CouponDeps, error) {
 	wire.Build(
 		CoreSet,
+		ProvideValidator,
+		ProvideValidation,
 		ProvideUserRepository,
 		ProvideTokenStore,
 		ProvideCouponRepository,
@@ -288,6 +352,8 @@ func InitializeCouponDeps(ctx context.Context, cfg *config.Config) (*CouponDeps,
 func InitializeArtisanDeps(ctx context.Context, cfg *config.Config) (*ArtisanDeps, error) {
 	wire.Build(
 		CoreSet,
+		ProvideValidator,
+		ProvideValidation,
 		ProvideUserRepository,
 		ProvideTokenStore,
 		ProvideArtisanRepository,
@@ -304,9 +370,11 @@ func InitializeArtisanDeps(ctx context.Context, cfg *config.Config) (*ArtisanDep
 func InitializeAssetDeps(ctx context.Context, cfg *config.Config) (*AssetDeps, error) {
 	wire.Build(
 		CoreSet,
+		ProvideValidator,
+		ProvideValidation,
+		ProvideS3Client,
 		ProvideUserRepository,
 		ProvideTokenStore,
-		ProvideS3Client,
 		ProvideAuthService,
 		ProvideAssetService,
 		ProvideAssetHandler,
@@ -320,26 +388,28 @@ func InitializeAssetDeps(ctx context.Context, cfg *config.Config) (*AssetDeps, e
 func InitializeReportDeps(ctx context.Context, cfg *config.Config) (*ReportDeps, error) {
 	wire.Build(
 		CoreSet,
+		ProvideValidator,
+		ProvideValidation,
+		ProvideS3Client,
 		ProvideUserRepository,
 		ProvideTokenStore,
 		ProvideReportRepository,
 		ProvideOrderRepository,
-		ProvideProductRepository,
-		ProvideCategoryRepository,
-		ProvideInventoryRepository,
 		ProvideCustomerRepository,
-		ProvidePricingRuleRepository,
+		ProvideProductRepository,
+		ProvideInventoryRepository,
 		ProvidePriceQuoteRepository,
+		ProvidePricingRuleRepository,
+		ProvideCategoryRepository,
 		ProvideAnalyticsRepository,
-		ProvideS3Client,
+		ProvideEventPublisher,
 		ProvideAuthService,
 		ProvideAssetService,
-		ProvideProductService,
-		ProvideInventoryService,
-		ProvideCategoryService,
-		ProvideCustomerService,
 		ProvidePricingService,
 		ProvideOrderService,
+		ProvideProductService,
+		ProvideCustomerService,
+		ProvideInventoryService,
 		ProvideAnalyticsService,
 		ProvideReportService,
 		ProvideReportHandler,
@@ -361,6 +431,231 @@ func InitializeAuditDeps(ctx context.Context, cfg *config.Config) (*AuditDeps, e
 		ProvideAuditHandler,
 		ProvideAuthMiddleware,
 		wire.Struct(new(AuditDeps), "*"),
+	)
+	return nil, nil
+}
+
+// ============================================================================
+// B2C STORE SERVICE DEPENDENCY CONTAINERS
+// ============================================================================
+
+// StoreAuthDeps holds dependencies for the Store Auth Lambda
+type StoreAuthDeps struct {
+	Config                 *config.Config
+	Logger                 *logger.Logger
+	Handler                *store.AuthHandler
+	CustomerAuthMiddleware *middleware.CustomerAuth
+}
+
+// StoreCatalogDeps holds dependencies for the Store Catalog Lambda
+type StoreCatalogDeps struct {
+	Config  *config.Config
+	Logger  *logger.Logger
+	Handler *store.CatalogHandler
+}
+
+// StoreCartDeps holds dependencies for the Store Cart Lambda
+type StoreCartDeps struct {
+	Config                 *config.Config
+	Logger                 *logger.Logger
+	Handler                *store.CartHandler
+	CustomerAuthMiddleware *middleware.CustomerAuth
+}
+
+// StoreCheckoutDeps holds dependencies for the Store Checkout Lambda
+type StoreCheckoutDeps struct {
+	Config                 *config.Config
+	Logger                 *logger.Logger
+	Handler                *store.CheckoutHandler
+	CustomerAuthMiddleware *middleware.CustomerAuth
+}
+
+// StoreOrdersDeps holds dependencies for the Store Orders Lambda
+type StoreOrdersDeps struct {
+	Config                 *config.Config
+	Logger                 *logger.Logger
+	Handler                *store.OrderHandler
+	CustomerAuthMiddleware *middleware.CustomerAuth
+}
+
+// StoreTrackingDeps holds dependencies for the Store Tracking Lambda
+type StoreTrackingDeps struct {
+	Config  *config.Config
+	Logger  *logger.Logger
+	Handler *store.TrackingHandler
+}
+
+// StoreProfileDeps holds dependencies for the Store Profile Lambda
+type StoreProfileDeps struct {
+	Config                 *config.Config
+	Logger                 *logger.Logger
+	Handler                *store.ProfileHandler
+	CustomerAuthMiddleware *middleware.CustomerAuth
+}
+
+// StoreWebhooksDeps holds dependencies for the Store Webhooks Lambda
+type StoreWebhooksDeps struct {
+	Config  *config.Config
+	Logger  *logger.Logger
+	Handler *store.WebhookHandler
+}
+
+// ============================================================================
+// B2C STORE INJECTOR FUNCTIONS
+// ============================================================================
+
+// InitializeStoreAuthDeps creates Store Auth Lambda dependencies
+func InitializeStoreAuthDeps(ctx context.Context, cfg *config.Config) (*StoreAuthDeps, error) {
+	wire.Build(
+		CoreSet,
+		ProvideValidator,
+		ProvideValidation,
+		ProvideOTPRepository,
+		ProvideCustomerRepository,
+		ProvideCustomerTokenStore,
+		ProvideEventPublisher,
+		ProvideCustomerAuthService,
+		ProvideStoreAuthHandler,
+		ProvideCustomerAuthMiddleware,
+		wire.Struct(new(StoreAuthDeps), "*"),
+	)
+	return nil, nil
+}
+
+// InitializeStoreCatalogDeps creates Store Catalog Lambda dependencies
+func InitializeStoreCatalogDeps(ctx context.Context, cfg *config.Config) (*StoreCatalogDeps, error) {
+	wire.Build(
+		CoreSet,
+		ProvideCategoryRepository,
+		ProvideProductRepository,
+		ProvideInventoryRepository,
+		ProvideS3Client,
+		ProvideEventPublisher,
+		ProvideAssetService,
+		ProvideCategoryService,
+		ProvideProductService,
+		ProvideInventoryService,
+		ProvideStoreCatalogHandler,
+		wire.Struct(new(StoreCatalogDeps), "*"),
+	)
+	return nil, nil
+}
+
+// InitializeStoreCartDeps creates Store Cart Lambda dependencies
+func InitializeStoreCartDeps(ctx context.Context, cfg *config.Config) (*StoreCartDeps, error) {
+	wire.Build(
+		CoreSet,
+		ProvideValidator,
+		ProvideValidation,
+		ProvideCartRepository,
+		ProvideProductRepository,
+		ProvideInventoryRepository,
+		ProvideOTPRepository,
+		ProvideCustomerRepository,
+		ProvideCustomerTokenStore,
+		ProvideEventPublisher,
+		ProvideCustomerAuthService,
+		ProvideCartService,
+		ProvideStoreCartHandler,
+		ProvideCustomerAuthMiddleware,
+		wire.Struct(new(StoreCartDeps), "*"),
+	)
+	return nil, nil
+}
+
+// InitializeStoreCheckoutDeps creates Store Checkout Lambda dependencies
+func InitializeStoreCheckoutDeps(ctx context.Context, cfg *config.Config) (*StoreCheckoutDeps, error) {
+	wire.Build(
+		CoreSet,
+		ProvideValidator,
+		ProvideValidation,
+		ProvideCartRepository,
+		ProvideProductRepository,
+		ProvideInventoryRepository,
+		ProvideOrderRepository,
+		ProvideCustomerRepository,
+		ProvidePaymentRepository,
+		ProvideShipmentRepository,
+		ProvideOTPRepository,
+		ProvideCustomerTokenStore,
+		ProvideEventPublisher,
+		ProvideCustomerAuthService,
+		ProvideCartService,
+		ProvidePaymentService,
+		ProvideShippingService,
+		ProvideCheckoutService,
+		ProvideStoreCheckoutHandler,
+		ProvideCustomerAuthMiddleware,
+		wire.Struct(new(StoreCheckoutDeps), "*"),
+	)
+	return nil, nil
+}
+
+// InitializeStoreOrdersDeps creates Store Orders Lambda dependencies
+func InitializeStoreOrdersDeps(ctx context.Context, cfg *config.Config) (*StoreOrdersDeps, error) {
+	wire.Build(
+		CoreSet,
+		ProvideOrderRepository,
+		ProvideCustomerRepository,
+		ProvideProductRepository,
+		ProvideInventoryRepository,
+		ProvidePricingRuleRepository,
+		ProvidePriceQuoteRepository,
+		ProvideCategoryRepository,
+		ProvideOTPRepository,
+		ProvideCustomerTokenStore,
+		ProvideEventPublisher,
+		ProvideCustomerAuthService,
+		ProvidePricingService,
+		ProvideOrderService,
+		ProvideStoreOrderHandler,
+		ProvideCustomerAuthMiddleware,
+		wire.Struct(new(StoreOrdersDeps), "*"),
+	)
+	return nil, nil
+}
+
+// InitializeStoreTrackingDeps creates Store Tracking Lambda dependencies
+func InitializeStoreTrackingDeps(ctx context.Context, cfg *config.Config) (*StoreTrackingDeps, error) {
+	wire.Build(
+		CoreSet,
+		ProvideOrderRepository,
+		ProvideShipmentRepository,
+		ProvideStoreTrackingHandler,
+		wire.Struct(new(StoreTrackingDeps), "*"),
+	)
+	return nil, nil
+}
+
+// InitializeStoreProfileDeps creates Store Profile Lambda dependencies
+func InitializeStoreProfileDeps(ctx context.Context, cfg *config.Config) (*StoreProfileDeps, error) {
+	wire.Build(
+		CoreSet,
+		ProvideValidator,
+		ProvideValidation,
+		ProvideCustomerRepository,
+		ProvideOTPRepository,
+		ProvideCustomerTokenStore,
+		ProvideEventPublisher,
+		ProvideCustomerAuthService,
+		ProvideStoreProfileHandler,
+		ProvideCustomerAuthMiddleware,
+		wire.Struct(new(StoreProfileDeps), "*"),
+	)
+	return nil, nil
+}
+
+// InitializeStoreWebhooksDeps creates Store Webhooks Lambda dependencies
+func InitializeStoreWebhooksDeps(ctx context.Context, cfg *config.Config) (*StoreWebhooksDeps, error) {
+	wire.Build(
+		CoreSet,
+		ProvidePaymentRepository,
+		ProvideOrderRepository,
+		ProvideInventoryRepository,
+		ProvideEventPublisher,
+		ProvidePaymentService,
+		ProvideStoreWebhookHandler,
+		wire.Struct(new(StoreWebhooksDeps), "*"),
 	)
 	return nil, nil
 }
