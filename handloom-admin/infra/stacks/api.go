@@ -21,9 +21,10 @@ type APIStackProps struct {
 	Environment    string
 	DatabaseStack  *DatabaseStack
 	StorageStack   *StorageStack
-	DomainName     string // Optional: custom domain for API Gateway (e.g. dev-api.lldlab.com)
-	FrontendOrigin string // Optional: frontend origin for CORS (e.g. https://dev.lldlab.com)
-	CertArn        string // Optional: ACM certificate ARN (us-east-1) for custom domain
+	EventStack     *EventStack // Optional: event-driven async infrastructure
+	DomainName     string      // Optional: custom domain for API Gateway (e.g. dev-api.lldlab.com)
+	FrontendOrigin string      // Optional: frontend origin for CORS (e.g. https://dev.lldlab.com)
+	CertArn        string      // Optional: ACM certificate ARN (us-east-1) for custom domain
 }
 
 // ServiceLambda represents a Lambda function for a service
@@ -66,6 +67,7 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 		"APP_DEBUG":                  jsii.String(fmt.Sprintf("%t", !isProd)),
 		"DYNAMODB_CORE_TABLE":        props.DatabaseStack.CoreTable.TableName(),
 		"DYNAMODB_ORDERS_TABLE":      props.DatabaseStack.OrdersTable.TableName(),
+		"DYNAMODB_SESSIONS_TABLE":    props.DatabaseStack.SessionsTable.TableName(),
 		"DYNAMODB_AUDIT_TABLE":       props.DatabaseStack.AuditTable.TableName(),
 		"DYNAMODB_ANALYTICS_TABLE":   props.DatabaseStack.AnalyticsTable.TableName(),
 		"S3_ASSETS_BUCKET":           assetsBucket.BucketName(),
@@ -82,6 +84,12 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 	}
 	if props.DomainName != "" {
 		commonEnv["COOKIE_DOMAIN"] = jsii.String(".homechrome.lldlab.com")
+	}
+
+	// Add event publishing env vars when EventStack is available
+	if props.EventStack != nil {
+		commonEnv["SNS_TOPIC_ARN"] = props.EventStack.TopicARN
+		commonEnv["EVENT_PUBLISHING_ENABLED"] = jsii.String("true")
 	}
 
 	// Memory sizes - optimized for AWS Free Tier
@@ -128,10 +136,16 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 		// Grant permissions
 		props.DatabaseStack.CoreTable.GrantReadWriteData(lambdaFn)
 		props.DatabaseStack.OrdersTable.GrantReadWriteData(lambdaFn)
+		props.DatabaseStack.SessionsTable.GrantReadWriteData(lambdaFn)
 		props.DatabaseStack.AuditTable.GrantReadWriteData(lambdaFn)
 		props.DatabaseStack.AnalyticsTable.GrantReadWriteData(lambdaFn)
 		assetsBucket.GrantReadWrite(lambdaFn, nil)
 		jwtSecret.GrantRead(lambdaFn)
+
+		// Grant SNS publish permission when EventStack is available
+		if props.EventStack != nil {
+			props.EventStack.Topic.GrantPublish(lambdaFn)
+		}
 	}
 
 	// Create API Gateway - optimized for AWS Free Tier

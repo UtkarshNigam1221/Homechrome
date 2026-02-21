@@ -18,6 +18,7 @@ type DatabaseStack struct {
 	awscdk.Stack
 	CoreTable      awsdynamodb.Table
 	OrdersTable    awsdynamodb.Table
+	SessionsTable  awsdynamodb.Table
 	AuditTable     awsdynamodb.Table
 	AnalyticsTable awsdynamodb.Table
 }
@@ -60,7 +61,7 @@ func NewDatabaseStack(scope constructs.Construct, id string, props *DatabaseStac
 			Type: awsdynamodb.AttributeType_STRING,
 		},
 		PointInTimeRecovery:  jsii.Bool(false), // Disable PITR in dev to save costs (not free)
-		TimeToLiveAttribute: jsii.String("ttl"), // TTL for OTP and refresh token expiry
+		TimeToLiveAttribute: jsii.String("ttl"), // TTL for pricing/coupon expiry
 	})
 
 	// GSI1 - General purpose index
@@ -89,6 +90,24 @@ func NewDatabaseStack(scope constructs.Construct, id string, props *DatabaseStac
 			Type: awsdynamodb.AttributeType_STRING,
 		},
 		ProjectionType: awsdynamodb.ProjectionType_ALL,
+	})
+
+	// Sessions Table - OTP, admin refresh tokens, customer refresh tokens
+	// Isolated from core table to separate TTL churn from catalog data
+	sessionsTable := awsdynamodb.NewTable(stack, jsii.String("SessionsTable"), &awsdynamodb.TableProps{
+		TableName:     jsii.String("handloom-sessions-" + props.Environment),
+		BillingMode:   billingMode,
+		RemovalPolicy: removalPolicy,
+		PartitionKey: &awsdynamodb.Attribute{
+			Name: jsii.String("PK"),
+			Type: awsdynamodb.AttributeType_STRING,
+		},
+		SortKey: &awsdynamodb.Attribute{
+			Name: jsii.String("SK"),
+			Type: awsdynamodb.AttributeType_STRING,
+		},
+		PointInTimeRecovery:  jsii.Bool(false),
+		TimeToLiveAttribute: jsii.String("ttl"),
 	})
 
 	// Orders Table - orders and customers
@@ -222,10 +241,17 @@ func NewDatabaseStack(scope constructs.Construct, id string, props *DatabaseStac
 		ExportName:  jsii.String("handloom-orders-table-" + props.Environment),
 	})
 
+	awscdk.NewCfnOutput(stack, jsii.String("SessionsTableName"), &awscdk.CfnOutputProps{
+		Value:       sessionsTable.TableName(),
+		Description: jsii.String("Sessions DynamoDB table name"),
+		ExportName:  jsii.String("handloom-sessions-table-" + props.Environment),
+	})
+
 	return &DatabaseStack{
 		Stack:          stack,
 		CoreTable:      coreTable,
 		OrdersTable:    ordersTable,
+		SessionsTable:  sessionsTable,
 		AuditTable:     auditTable,
 		AnalyticsTable: analyticsTable,
 	}
