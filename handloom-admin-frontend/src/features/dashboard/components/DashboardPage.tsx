@@ -245,11 +245,9 @@ export function DashboardPage() {
                     </div>
                     <div className="text-right">
                       <p className="text-sm font-medium text-gray-900">
-                        {formatCurrency(order.total_price)}
+                        {formatCurrency(order.total_amount)}
                       </p>
-                      <Badge variant={getStatusBadgeVariant(order.order_status)}>
-                        {order.order_status}
-                      </Badge>
+                      <Badge variant={getStatusBadgeVariant(order.status)}>{order.status}</Badge>
                     </div>
                   </div>
                 </div>

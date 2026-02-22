@@ -42,7 +42,7 @@ const attributeSchema = z.object({
 const categorySchema = z.object({
   name: z.string().min(1, 'Name is required').max(100, 'Name must be less than 100 characters'),
   description: z.string().optional(),
-  image_url: z.string().optional().default(''),
+  image_url: z.string(),
   status: z.enum(['ACTIVE', 'INACTIVE']),
   own_attributes: z.array(attributeSchema).optional(),
 });
@@ -276,7 +276,9 @@ export function CategoryFormModal({ isOpen, onClose, category }: CategoryFormMod
                 <ImageUpload
                   label="Category Image"
                   value={field.value || ''}
-                  onChange={(value) => field.onChange(Array.isArray(value) ? value[0] || '' : value)}
+                  onChange={(value) =>
+                    field.onChange(Array.isArray(value) ? value[0] || '' : value)
+                  }
                   hint="Upload a category image (optional)"
                 />
               )}

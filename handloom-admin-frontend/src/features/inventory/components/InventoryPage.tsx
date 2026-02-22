@@ -4,6 +4,7 @@ import { useState } from 'react';
 
 import { inventoryApi } from '@/features/inventory/api';
 import { productsApi } from '@/features/products/api';
+import type { Product } from '@/features/products/types';
 import {
   Badge,
   Button,
@@ -22,7 +23,6 @@ import {
 } from '@/shared/components/ui';
 import { useCursorPagination, useDebounce } from '@/shared/hooks';
 
-import type { Product } from '../types';
 import { StockAdjustmentModal } from './StockAdjustmentModal';
 
 export function InventoryPage() {

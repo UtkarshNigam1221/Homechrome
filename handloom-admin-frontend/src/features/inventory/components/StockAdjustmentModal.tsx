@@ -6,10 +6,9 @@ import toast from 'react-hot-toast';
 import { z } from 'zod';
 
 import { inventoryApi } from '@/features/inventory/api';
+import type { Product } from '@/features/products/types';
 import { getErrorMessage } from '@/shared/api/client';
 import { Button, Input, Modal, Select } from '@/shared/components/ui';
-
-import type { Product } from '../types';
 
 const stockAdjustmentSchema = z.object({
   type: z.enum(['ADD', 'REMOVE', 'ADJUST']),

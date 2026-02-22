@@ -14,7 +14,7 @@ export interface OrderItem {
   id: string;
   product_id: string;
   product_name: string;
-  sku: string;
+  product_sku: string;
   quantity: number;
   unit_price: number;
   total_price: number;
@@ -25,7 +25,7 @@ export interface OrderItem {
 export interface OrderNote {
   id: string;
   note: string;
-  is_internal: boolean;
+  is_internal?: boolean;
   created_by: string;
   created_at: string;
 }
@@ -38,18 +38,18 @@ export interface Order {
   customer_email: string;
   items: OrderItem[];
   subtotal: number;
-  discount: number;
-  tax: number;
-  shipping_cost: number;
-  total_price: number;
+  discount_amount: number;
+  tax_amount: number;
+  shipping_amount: number;
+  total_amount: number;
   currency: string;
   payment_status: PaymentStatus;
-  order_status: OrderStatus;
+  status: OrderStatus;
   shipping_address: Address;
   billing_address?: Address;
   tracking_number?: string;
-  carrier?: string;
-  notes?: OrderNote[];
+  shipping_carrier?: string;
+  internal_notes?: OrderNote[];
   coupon_code?: string;
   created_at: string;
   updated_at: string;

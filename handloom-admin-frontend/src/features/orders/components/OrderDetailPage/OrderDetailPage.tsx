@@ -137,7 +137,7 @@ export function OrderDetailPage() {
     );
   }
 
-  const canCancel = ['PENDING', 'CONFIRMED'].includes(order.order_status);
+  const canCancel = ['PENDING', 'CONFIRMED'].includes(order.status);
 
   return (
     <div className="space-y-6">
@@ -157,7 +157,7 @@ export function OrderDetailPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Badge variant={getStatusBadgeVariant(order.order_status)}>{order.order_status}</Badge>
+          <Badge variant={getStatusBadgeVariant(order.status)}>{order.status}</Badge>
           <Badge variant={getStatusBadgeVariant(order.payment_status)}>
             {order.payment_status}
           </Badge>
@@ -170,7 +170,7 @@ export function OrderDetailPage() {
           variant="secondary"
           leftIcon={<Edit className="w-4 h-4" />}
           onClick={() => {
-            setNewStatus(order.order_status);
+            setNewStatus(order.status);
             setShowStatusModal(true);
           }}
         >
@@ -181,7 +181,7 @@ export function OrderDetailPage() {
           leftIcon={<Truck className="w-4 h-4" />}
           onClick={() => {
             setTrackingNumber(order.tracking_number || '');
-            setCarrier(order.carrier || '');
+            setCarrier(order.shipping_carrier || '');
             setShowTrackingModal(true);
           }}
         >
@@ -223,7 +223,7 @@ export function OrderDetailPage() {
                     </div>
                     <div>
                       <p className="font-medium">{item.product_name}</p>
-                      <p className="text-sm text-gray-500">SKU: {item.sku}</p>
+                      <p className="text-sm text-gray-500">SKU: {item.product_sku}</p>
                       <p className="text-sm text-gray-500">Qty: {item.quantity}</p>
                       {item.custom_dimensions && (
                         <p className="text-sm text-gray-500">
@@ -253,31 +253,33 @@ export function OrderDetailPage() {
                 <span className="text-gray-600">Subtotal</span>
                 <span>{formatCurrency(order.subtotal)}</span>
               </div>
-              {order.discount > 0 && (
+              {order.discount_amount > 0 && (
                 <div className="flex justify-between text-green-600">
                   <span>Discount {order.coupon_code && `(${order.coupon_code})`}</span>
-                  <span>-{formatCurrency(order.discount)}</span>
+                  <span>-{formatCurrency(order.discount_amount)}</span>
                 </div>
               )}
               <div className="flex justify-between">
                 <span className="text-gray-600">Shipping</span>
-                <span>{formatCurrency(order.shipping_cost)}</span>
+                <span>{formatCurrency(order.shipping_amount)}</span>
               </div>
-              {order.tax > 0 && (
+              {order.tax_amount > 0 && (
                 <div className="flex justify-between">
                   <span className="text-gray-600">Tax</span>
-                  <span>{formatCurrency(order.tax)}</span>
+                  <span>{formatCurrency(order.tax_amount)}</span>
                 </div>
               )}
               <div className="border-t pt-2 flex justify-between font-semibold text-lg">
                 <span>Total</span>
-                <span>{formatCurrency(order.total_price)}</span>
+                <span>{formatCurrency(order.total_amount)}</span>
               </div>
             </div>
           </Card>
 
           {/* Notes */}
-          {order.notes && order.notes.length > 0 && <OrderNotes notes={order.notes} />}
+          {order.internal_notes && order.internal_notes.length > 0 && (
+            <OrderNotes notes={order.internal_notes} />
+          )}
         </div>
 
         {/* Sidebar */}
@@ -326,7 +328,7 @@ export function OrderDetailPage() {
               <div className="space-y-2">
                 <div>
                   <p className="text-sm text-gray-500">Carrier</p>
-                  <p className="font-medium">{order.carrier || 'N/A'}</p>
+                  <p className="font-medium">{order.shipping_carrier || 'N/A'}</p>
                 </div>
                 <div>
                   <p className="text-sm text-gray-500">Tracking Number</p>
@@ -362,7 +364,7 @@ export function OrderDetailPage() {
             <Button
               onClick={() => updateStatusMutation.mutate({ id: order.id, status: newStatus })}
               loading={updateStatusMutation.isPending}
-              disabled={!newStatus || newStatus === order.order_status}
+              disabled={!newStatus || newStatus === order.status}
             >
               Update Status
             </Button>

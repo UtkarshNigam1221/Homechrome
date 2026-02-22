@@ -244,7 +244,7 @@ export function OrdersPage() {
                     <span className="text-gray-600">{order.items?.length || 0} items</span>
                   </TableCell>
                   <TableCell>
-                    <span className="font-medium">{formatCurrency(order.total_price)}</span>
+                    <span className="font-medium">{formatCurrency(order.total_amount)}</span>
                   </TableCell>
                   <TableCell>
                     <Badge variant={getStatusBadgeVariant(order.payment_status)}>
@@ -252,9 +252,7 @@ export function OrdersPage() {
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    <Badge variant={getStatusBadgeVariant(order.order_status)}>
-                      {order.order_status}
-                    </Badge>
+                    <Badge variant={getStatusBadgeVariant(order.status)}>{order.status}</Badge>
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-1 text-sm text-gray-500">
@@ -280,7 +278,7 @@ export function OrdersPage() {
                         onClick={(e) => {
                           e.stopPropagation();
                           setSelectedOrder(order);
-                          setNewStatus(order.order_status);
+                          setNewStatus(order.status);
                         }}
                       >
                         Update
@@ -328,8 +326,8 @@ export function OrdersPage() {
             </p>
             <p className="text-sm text-gray-600">
               Current Status:{' '}
-              <Badge variant={getStatusBadgeVariant(selectedOrder?.order_status || '')}>
-                {selectedOrder?.order_status}
+              <Badge variant={getStatusBadgeVariant(selectedOrder?.status || '')}>
+                {selectedOrder?.status}
               </Badge>
             </p>
           </div>
@@ -346,7 +344,7 @@ export function OrdersPage() {
             <Button
               onClick={handleUpdateStatus}
               loading={updateStatusMutation.isPending}
-              disabled={!newStatus || newStatus === selectedOrder?.order_status}
+              disabled={!newStatus || newStatus === selectedOrder?.status}
             >
               Update Status
             </Button>
