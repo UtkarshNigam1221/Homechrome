@@ -94,6 +94,45 @@ func TestProductService_Create(t *testing.T) {
 		assert.Equal(t, "Banarasi Silk Saree", product.Name)
 	})
 
+	t.Run("creation with explicit status", func(t *testing.T) {
+		svc, mockProdRepo, mockCatRepo, _, _, ctx := setupProductTest(t)
+
+		category := &domain.Category{
+			ID:   "cat_123",
+			Name: "Silk Sarees",
+		}
+
+		activeStatus := domain.ProductStatusActive
+		req := domain.CreateProductRequest{
+			Name:         "Active Product",
+			SKU:          "ACT-001",
+			CategoryID:   "cat_123",
+			BasePrice:    100000,
+			SellingPrice: 90000,
+			Status:       &activeStatus,
+		}
+
+		mockCatRepo.EXPECT().
+			GetByID(ctx, "cat_123").
+			Return(category, nil)
+
+		mockProdRepo.EXPECT().
+			CreateWithAttributeIndexes(ctx, gomock.Any(), gomock.Any(), gomock.Any()).
+			DoAndReturn(func(ctx context.Context, product *domain.Product, attrs map[string][]string, inv *domain.Inventory) error {
+				assert.Equal(t, domain.ProductStatusActive, product.Status)
+				return nil
+			})
+
+		mockCatRepo.EXPECT().
+			IncrementProductCount(ctx, "cat_123", 1).
+			Return(nil)
+
+		product, err := svc.Create(ctx, req, "admin_1")
+
+		require.NoError(t, err)
+		assert.Equal(t, domain.ProductStatusActive, product.Status)
+	})
+
 	t.Run("category not found", func(t *testing.T) {
 		svc, _, mockCatRepo, _, _, ctx := setupProductTest(t)
 

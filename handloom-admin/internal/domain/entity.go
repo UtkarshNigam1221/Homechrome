@@ -380,10 +380,18 @@ func NewProduct(req CreateProductRequest, id, slug, createdBy string) *Product {
 		Quantity:              req.InitialStock,
 		AvailableQty:          req.InitialStock,
 		LowStockThreshold:     req.LowStockThreshold,
-		Status:                ProductStatusDraft,
+		Status:                productStatusOrDefault(req.Status),
 	}
 	p.CreatedBy = createdBy
 	return p
+}
+
+// productStatusOrDefault returns the given status or DRAFT if nil.
+func productStatusOrDefault(s *ProductStatus) ProductStatus {
+	if s != nil {
+		return *s
+	}
+	return ProductStatusDraft
 }
 
 // ApplyUpdate applies non-nil fields from an UpdateProductRequest to the product.

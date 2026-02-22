@@ -226,6 +226,7 @@ type CreateProductRequest struct {
 	Tags                  []string               `json:"tags,omitempty"`
 	InitialStock          int                    `json:"initial_stock"`
 	LowStockThreshold     int                    `json:"low_stock_threshold"`
+	Status                *ProductStatus         `json:"status,omitempty" validate:"omitempty,oneof=ACTIVE INACTIVE DRAFT"`
 }
 
 // UpdateProductRequest contains data for updating a product
