@@ -137,6 +137,12 @@ type ProductRepository interface {
 	// BatchGetByIDs retrieves multiple products by IDs
 	BatchGetByIDs(ctx context.Context, ids []string) ([]*Product, error)
 
+	// BatchUpdateSortOrder updates sort_order and GSI1SK for multiple products in a transaction
+	BatchUpdateSortOrder(ctx context.Context, products []*Product) error
+
+	// GetByCategoryAll retrieves all products in a category (unpaginated, for reordering)
+	GetByCategoryAll(ctx context.Context, categoryID string) ([]*Product, error)
+
 	// AddAttributeValues adds values to the stored distinct value sets for a category's searchable attributes
 	AddAttributeValues(ctx context.Context, categoryID string, attrValues map[string][]string) error
 

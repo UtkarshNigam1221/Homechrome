@@ -3,6 +3,7 @@ package dynamodb
 import (
 	"context"
 	stderrors "errors"
+	"fmt"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -835,6 +836,96 @@ func (r *ProductRepository) GetAttributeValues(ctx context.Context, categoryID s
 	}
 
 	return out, nil
+}
+
+// BatchUpdateSortOrder updates sort_order and GSI1SK for multiple products.
+// DynamoDB transactions are limited to 100 items, so this batches into
+// multiple transactions if needed.
+func (r *ProductRepository) BatchUpdateSortOrder(ctx context.Context, products []*domain.Product) error {
+	const maxBatchSize = 100
+
+	for i := 0; i < len(products); i += maxBatchSize {
+		end := i + maxBatchSize
+		if end > len(products) {
+			end = len(products)
+		}
+
+		batch := products[i:end]
+		var transactItems []types.TransactWriteItem
+
+		for _, p := range batch {
+			p.SetKeys()
+			p.UpdatedAt = time.Now()
+
+			transactItems = append(transactItems, types.TransactWriteItem{
+				Update: &types.Update{
+					TableName: aws.String(r.client.catalogTable),
+					Key: map[string]types.AttributeValue{
+						"PK": &types.AttributeValueMemberS{Value: p.PK},
+						"SK": &types.AttributeValueMemberS{Value: p.SK},
+					},
+					UpdateExpression: aws.String("SET sort_order = :so, GSI1SK = :gsi1sk, updated_at = :ua"),
+					ExpressionAttributeValues: map[string]types.AttributeValue{
+						":so":     &types.AttributeValueMemberN{Value: fmt.Sprintf("%d", p.SortOrder)},
+						":gsi1sk": &types.AttributeValueMemberS{Value: p.GSI1SK},
+						":ua":     &types.AttributeValueMemberS{Value: p.UpdatedAt.Format(time.RFC3339Nano)},
+					},
+				},
+			})
+		}
+
+		_, err := r.client.db.TransactWriteItems(ctx, &dynamodb.TransactWriteItemsInput{
+			TransactItems: transactItems,
+		})
+		if err != nil {
+			return errors.Internal(err)
+		}
+	}
+
+	return nil
+}
+
+// GetByCategoryAll retrieves all products in a category (unpaginated, for reordering).
+func (r *ProductRepository) GetByCategoryAll(ctx context.Context, categoryID string) ([]*domain.Product, error) {
+	keyExpr := expression.Key("GSI1PK").Equal(expression.Value("CATEGORY#" + categoryID)).
+		And(expression.Key("GSI1SK").BeginsWith("RANK#"))
+
+	expr, err := expression.NewBuilder().WithKeyCondition(keyExpr).Build()
+	if err != nil {
+		return nil, errors.Internal(err)
+	}
+
+	var allProducts []*domain.Product
+	var lastKey map[string]types.AttributeValue
+
+	for {
+		input := &dynamodb.QueryInput{
+			TableName:                 aws.String(r.client.catalogTable),
+			IndexName:                 aws.String("GSI1"),
+			KeyConditionExpression:    expr.KeyCondition(),
+			ExpressionAttributeNames:  expr.Names(),
+			ExpressionAttributeValues: expr.Values(),
+			ExclusiveStartKey:         lastKey,
+		}
+
+		result, err := r.client.db.Query(ctx, input)
+		if err != nil {
+			return nil, errors.Internal(err)
+		}
+
+		var batch []*domain.Product
+		if err := attributevalue.UnmarshalListOfMaps(result.Items, &batch); err != nil {
+			return nil, errors.Internal(err)
+		}
+		allProducts = append(allProducts, batch...)
+
+		if result.LastEvaluatedKey == nil {
+			break
+		}
+		lastKey = result.LastEvaluatedKey
+	}
+
+	return allProducts, nil
 }
 
 // Ensure interface compliance

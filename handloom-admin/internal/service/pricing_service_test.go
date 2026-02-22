@@ -228,6 +228,19 @@ func (m *MockProductRepository) GetAttributeValues(ctx context.Context, category
 	return args.Get(0).(map[string][]string), args.Error(1)
 }
 
+func (m *MockProductRepository) BatchUpdateSortOrder(ctx context.Context, products []*domain.Product) error {
+	args := m.Called(ctx, products)
+	return args.Error(0)
+}
+
+func (m *MockProductRepository) GetByCategoryAll(ctx context.Context, categoryID string) ([]*domain.Product, error) {
+	args := m.Called(ctx, categoryID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]*domain.Product), args.Error(1)
+}
+
 func TestPricingService_CalculatePrice_AreaBased(t *testing.T) {
 	ctx := context.Background()
 	log := logger.New(true)

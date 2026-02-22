@@ -200,6 +200,9 @@ type ProductService interface {
 
 	// GetAttributeFilterOptions returns distinct values for all searchable attributes in a category
 	GetAttributeFilterOptions(ctx context.Context, categoryID string) (map[string][]string, error)
+
+	// ReorderProducts sets the sort order for products in a category
+	ReorderProducts(ctx context.Context, categoryID string, productIDs []string) (int, error)
 }
 
 // CreateProductRequest contains data for creating a product
@@ -251,6 +254,11 @@ type UpdateProductRequest struct {
 	Tags                  []string               `json:"tags,omitempty"`
 	LowStockThreshold     *int                   `json:"low_stock_threshold,omitempty"`
 	Status                *ProductStatus         `json:"status,omitempty"`
+}
+
+// ReorderProductsRequest contains data for reordering products within a category
+type ReorderProductsRequest struct {
+	ProductIDs []string `json:"product_ids" validate:"required,min=1"`
 }
 
 // ProductWithRelations contains a product with related entities

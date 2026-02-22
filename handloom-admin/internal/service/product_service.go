@@ -389,5 +389,69 @@ func validateRequiredAttributes(productAttrs map[string]interface{}, categoryAtt
 	return nil
 }
 
+// ReorderProducts sets the display order for products in a category.
+// productIDs is the desired order — position 0 gets SortOrder=1, etc.
+func (s *ProductService) ReorderProducts(ctx context.Context, categoryID string, productIDs []string) (int, error) {
+	// Validate category exists
+	if _, err := s.categoryRepo.GetByID(ctx, categoryID); err != nil {
+		return 0, errors.New(errors.ErrCodeNotFound, "Category not found")
+	}
+
+	// Fetch all products in the category to validate ownership
+	existing, err := s.productRepo.GetByCategoryAll(ctx, categoryID)
+	if err != nil {
+		return 0, err
+	}
+
+	existingMap := make(map[string]*domain.Product, len(existing))
+	for _, p := range existing {
+		existingMap[p.ID] = p
+	}
+
+	// Check for duplicate IDs in the request
+	seen := make(map[string]bool, len(productIDs))
+	for _, id := range productIDs {
+		if seen[id] {
+			return 0, errors.New(errors.ErrCodeValidation, "Duplicate product ID: "+id)
+		}
+		seen[id] = true
+	}
+
+	// Validate all requested IDs belong to this category
+	for _, id := range productIDs {
+		if _, ok := existingMap[id]; !ok {
+			return 0, errors.New(errors.ErrCodeValidation, "Product "+id+" does not belong to category "+categoryID)
+		}
+	}
+
+	// Build updates: requested IDs get sequential sort_order starting at 1
+	var toUpdate []*domain.Product
+	assigned := make(map[string]bool)
+
+	for i, id := range productIDs {
+		p := existingMap[id]
+		p.SortOrder = i + 1
+		toUpdate = append(toUpdate, p)
+		assigned[id] = true
+	}
+
+	// Any products not in the request list get sort_order after the ranked ones
+	nextOrder := len(productIDs) + 1
+	for _, p := range existing {
+		if !assigned[p.ID] {
+			p.SortOrder = nextOrder
+			toUpdate = append(toUpdate, p)
+			nextOrder++
+		}
+	}
+
+	if err := s.productRepo.BatchUpdateSortOrder(ctx, toUpdate); err != nil {
+		return 0, err
+	}
+
+	s.logger.WithContext(ctx).Infof("Reordered %d products in category %s", len(toUpdate), categoryID)
+	return len(toUpdate), nil
+}
+
 // Ensure interface compliance
 var _ domain.ProductService = (*ProductService)(nil)
