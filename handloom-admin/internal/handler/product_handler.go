@@ -46,6 +46,7 @@ func (h *ProductHandler) Routes() chi.Router {
 	r.Get("/{id}", h.GetByID)
 	r.With(middleware.ValidateJSONTyped[domain.UpdateProductRequest](h.validation)).Patch("/{id}", h.Update)
 	r.Delete("/{id}", h.Delete)
+	r.With(middleware.ValidateJSONTyped[domain.ReorderProductsRequest](h.validation)).Put("/categories/{categoryId}/reorder", h.Reorder)
 
 	// Inventory routes
 	r.Get("/{id}/inventory", h.GetInventory)
@@ -187,6 +188,26 @@ func (h *ProductHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response.JSON(w, http.StatusOK, map[string]string{"message": "Product deleted successfully"})
+}
+
+// Reorder handles PUT /admin/products/categories/{categoryId}/reorder
+func (h *ProductHandler) Reorder(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	categoryID := chi.URLParam(r, "categoryId")
+	if categoryID == "" {
+		response.BadRequest(w, "Category ID is required")
+		return
+	}
+
+	req := middleware.MustGetValidatedBody[domain.ReorderProductsRequest](ctx)
+
+	count, err := h.productService.ReorderProducts(ctx, categoryID, req.ProductIDs)
+	if err != nil {
+		response.Error(w, err)
+		return
+	}
+
+	response.JSON(w, http.StatusOK, map[string]int{"reordered": count})
 }
 
 // GetInventory handles getting inventory for a product
