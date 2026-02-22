@@ -708,6 +708,69 @@ func TestNormalizeToStringSlice(t *testing.T) {
 	}
 }
 
+func TestProductService_ReorderProducts(t *testing.T) {
+	t.Run("successful reorder", func(t *testing.T) {
+		svc, mockProdRepo, mockCatRepo, _, _, ctx := setupProductTest(t)
+
+		category := &domain.Category{ID: "cat_123", Name: "Test"}
+
+		existingProducts := []*domain.Product{
+			{ID: "prod_a", CategoryID: "cat_123", SortOrder: 0},
+			{ID: "prod_b", CategoryID: "cat_123", SortOrder: 0},
+			{ID: "prod_c", CategoryID: "cat_123", SortOrder: 0},
+		}
+
+		mockCatRepo.EXPECT().GetByID(ctx, "cat_123").Return(category, nil)
+		mockProdRepo.EXPECT().GetByCategoryAll(ctx, "cat_123").Return(existingProducts, nil)
+		mockProdRepo.EXPECT().
+			BatchUpdateSortOrder(ctx, gomock.Any()).
+			DoAndReturn(func(ctx context.Context, products []*domain.Product) error {
+				assert.Len(t, products, 3)
+				// Requested order: c, a, b
+				for _, p := range products {
+					switch p.ID {
+					case "prod_c":
+						assert.Equal(t, 1, p.SortOrder)
+					case "prod_a":
+						assert.Equal(t, 2, p.SortOrder)
+					case "prod_b":
+						assert.Equal(t, 3, p.SortOrder)
+					}
+				}
+				return nil
+			})
+
+		count, err := svc.ReorderProducts(ctx, "cat_123", []string{"prod_c", "prod_a", "prod_b"})
+		require.NoError(t, err)
+		assert.Equal(t, 3, count)
+	})
+
+	t.Run("product not in category", func(t *testing.T) {
+		svc, mockProdRepo, mockCatRepo, _, _, ctx := setupProductTest(t)
+
+		category := &domain.Category{ID: "cat_123", Name: "Test"}
+		existingProducts := []*domain.Product{
+			{ID: "prod_a", CategoryID: "cat_123"},
+		}
+
+		mockCatRepo.EXPECT().GetByID(ctx, "cat_123").Return(category, nil)
+		mockProdRepo.EXPECT().GetByCategoryAll(ctx, "cat_123").Return(existingProducts, nil)
+
+		_, err := svc.ReorderProducts(ctx, "cat_123", []string{"prod_a", "prod_unknown"})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "does not belong to category")
+	})
+
+	t.Run("category not found", func(t *testing.T) {
+		svc, _, mockCatRepo, _, _, ctx := setupProductTest(t)
+
+		mockCatRepo.EXPECT().GetByID(ctx, "cat_999").Return(nil, errors.NotFound("Category"))
+
+		_, err := svc.ReorderProducts(ctx, "cat_999", []string{"prod_a"})
+		require.Error(t, err)
+	})
+}
+
 func TestValidateRequiredAttributes(t *testing.T) {
 	categoryAttrs := []domain.CategoryAttribute{
 		{Name: "weave_pattern", Label: "Weave Pattern", Searchable: true, Required: true},
