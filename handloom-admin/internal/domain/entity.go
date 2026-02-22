@@ -2,6 +2,7 @@
 package domain
 
 import (
+	"fmt"
 	"time"
 )
 
@@ -330,7 +331,8 @@ type Product struct {
 	AvailableQty      int `json:"available_qty" dynamodbav:"available_qty"`
 	LowStockThreshold int `json:"low_stock_threshold" dynamodbav:"low_stock_threshold"`
 
-	Status ProductStatus `json:"status" dynamodbav:"status"`
+	Status    ProductStatus `json:"status" dynamodbav:"status"`
+	SortOrder int           `json:"sort_order" dynamodbav:"sort_order"`
 
 	BaseEntity
 }
@@ -345,7 +347,7 @@ func (p *Product) SetKeys() {
 	p.PK = "PRODUCT#" + p.ID
 	p.SK = "METADATA"
 	p.GSI1PK = "CATEGORY#" + p.CategoryID
-	p.GSI1SK = "PRODUCT#" + p.ID
+	p.GSI1SK = fmt.Sprintf("RANK#%06d#%s", p.SortOrder, p.ID)
 	p.GSI2PK = "PRODUCT#ALL"
 	p.GSI2SK = "PRODUCT#" + p.ID
 	p.EntityType = "PRODUCT"

@@ -27,7 +27,7 @@ func NewProductRepository(client *Client) *ProductRepository {
 // GetByID retrieves a product by ID
 func (r *ProductRepository) GetByID(ctx context.Context, id string) (*domain.Product, error) {
 	result, err := r.client.db.GetItem(ctx, &dynamodb.GetItemInput{
-		TableName: aws.String(r.client.coreTable),
+		TableName: aws.String(r.client.catalogTable),
 		Key: map[string]types.AttributeValue{
 			"PK": &types.AttributeValueMemberS{Value: "PRODUCT#" + id},
 			"SK": &types.AttributeValueMemberS{Value: "METADATA"},
@@ -52,7 +52,7 @@ func (r *ProductRepository) GetByID(ctx context.Context, id string) (*domain.Pro
 // GetBySKU retrieves a product by SKU using the SKU uniqueness item.
 func (r *ProductRepository) GetBySKU(ctx context.Context, sku string) (*domain.Product, error) {
 	result, err := r.client.db.GetItem(ctx, &dynamodb.GetItemInput{
-		TableName: aws.String(r.client.coreTable),
+		TableName: aws.String(r.client.catalogTable),
 		Key: map[string]types.AttributeValue{
 			"PK": &types.AttributeValueMemberS{Value: "SKU#" + sku},
 			"SK": &types.AttributeValueMemberS{Value: "METADATA"},
@@ -83,7 +83,7 @@ func (r *ProductRepository) GetBySKU(ctx context.Context, sku string) (*domain.P
 // Delete deletes a product by ID
 func (r *ProductRepository) Delete(ctx context.Context, id string) error {
 	_, err := r.client.db.DeleteItem(ctx, &dynamodb.DeleteItemInput{
-		TableName: aws.String(r.client.coreTable),
+		TableName: aws.String(r.client.catalogTable),
 		Key: map[string]types.AttributeValue{
 			"PK": &types.AttributeValueMemberS{Value: "PRODUCT#" + id},
 			"SK": &types.AttributeValueMemberS{Value: "METADATA"},
@@ -120,7 +120,7 @@ func (r *ProductRepository) GetByCategory(ctx context.Context, categoryID string
 // listByCategory queries products for a single category using GSI1 with cursor pagination.
 func (r *ProductRepository) listByCategory(ctx context.Context, categoryID string, limit int, cursor string, req domain.ListProductsRequest) (*domain.ListProductsResponse, error) {
 	keyExpr := expression.Key("GSI1PK").Equal(expression.Value("CATEGORY#" + categoryID)).
-		And(expression.Key("GSI1SK").BeginsWith("PRODUCT#"))
+		And(expression.Key("GSI1SK").BeginsWith("RANK#"))
 
 	return r.queryProducts(ctx, "GSI1", keyExpr, func(p *domain.Product) map[string]types.AttributeValue {
 		return map[string]types.AttributeValue{
@@ -188,7 +188,7 @@ func (r *ProductRepository) queryProducts(
 
 	for {
 		queryInput := &dynamodb.QueryInput{
-			TableName:                 aws.String(r.client.coreTable),
+			TableName:                 aws.String(r.client.catalogTable),
 			IndexName:                 aws.String(indexName),
 			KeyConditionExpression:    expr.KeyCondition(),
 			ExpressionAttributeNames:  expr.Names(),
@@ -292,7 +292,7 @@ func (r *ProductRepository) UpdateInventory(ctx context.Context, id string, quan
 	}
 
 	_, err = r.client.db.UpdateItem(ctx, &dynamodb.UpdateItemInput{
-		TableName: aws.String(r.client.coreTable),
+		TableName: aws.String(r.client.catalogTable),
 		Key: map[string]types.AttributeValue{
 			"PK": &types.AttributeValueMemberS{Value: "PRODUCT#" + id},
 			"SK": &types.AttributeValueMemberS{Value: "METADATA"},
@@ -324,7 +324,7 @@ func (r *ProductRepository) BatchGetByIDs(ctx context.Context, ids []string) ([]
 
 	result, err := r.client.db.BatchGetItem(ctx, &dynamodb.BatchGetItemInput{
 		RequestItems: map[string]types.KeysAndAttributes{
-			r.client.coreTable: {Keys: keys},
+			r.client.catalogTable: {Keys: keys},
 		},
 	})
 	if err != nil {
@@ -332,7 +332,7 @@ func (r *ProductRepository) BatchGetByIDs(ctx context.Context, ids []string) ([]
 	}
 
 	var products []*domain.Product
-	if err := attributevalue.UnmarshalListOfMaps(result.Responses[r.client.coreTable], &products); err != nil {
+	if err := attributevalue.UnmarshalListOfMaps(result.Responses[r.client.catalogTable], &products); err != nil {
 		return nil, errors.Internal(err)
 	}
 
@@ -361,7 +361,7 @@ func (r *ProductRepository) CreateWithAttributeIndexes(ctx context.Context, prod
 
 	transactItems = append(transactItems, types.TransactWriteItem{
 		Put: &types.Put{
-			TableName:           aws.String(r.client.coreTable),
+			TableName:           aws.String(r.client.catalogTable),
 			Item:                productAV,
 			ConditionExpression: aws.String("attribute_not_exists(PK)"),
 		},
@@ -376,7 +376,7 @@ func (r *ProductRepository) CreateWithAttributeIndexes(ctx context.Context, prod
 	}
 	transactItems = append(transactItems, types.TransactWriteItem{
 		Put: &types.Put{
-			TableName:           aws.String(r.client.coreTable),
+			TableName:           aws.String(r.client.catalogTable),
 			Item:                skuItem,
 			ConditionExpression: aws.String("attribute_not_exists(PK)"),
 		},
@@ -395,7 +395,7 @@ func (r *ProductRepository) CreateWithAttributeIndexes(ctx context.Context, prod
 
 		transactItems = append(transactItems, types.TransactWriteItem{
 			Put: &types.Put{
-				TableName: aws.String(r.client.coreTable),
+				TableName: aws.String(r.client.catalogTable),
 				Item:      invAV,
 			},
 		})
@@ -422,7 +422,7 @@ func (r *ProductRepository) CreateWithAttributeIndexes(ctx context.Context, prod
 
 			transactItems = append(transactItems, types.TransactWriteItem{
 				Put: &types.Put{
-					TableName: aws.String(r.client.coreTable),
+					TableName: aws.String(r.client.catalogTable),
 					Item:      indexAV,
 				},
 			})
@@ -470,7 +470,7 @@ func (r *ProductRepository) UpdateWithAttributeIndexes(ctx context.Context, prod
 
 	transactItems = append(transactItems, types.TransactWriteItem{
 		Put: &types.Put{
-			TableName:           aws.String(r.client.coreTable),
+			TableName:           aws.String(r.client.catalogTable),
 			Item:                productAV,
 			ConditionExpression: aws.String("attribute_exists(PK)"),
 		},
@@ -489,7 +489,7 @@ func (r *ProductRepository) UpdateWithAttributeIndexes(ctx context.Context, prod
 				// This value is being removed
 				transactItems = append(transactItems, types.TransactWriteItem{
 					Delete: &types.Delete{
-						TableName: aws.String(r.client.coreTable),
+						TableName: aws.String(r.client.catalogTable),
 						Key: map[string]types.AttributeValue{
 							"PK": &types.AttributeValueMemberS{Value: "PRODUCT#" + product.ID},
 							"SK": &types.AttributeValueMemberS{Value: "ATTR#" + attrName + "#" + oldValue},
@@ -529,7 +529,7 @@ func (r *ProductRepository) UpdateWithAttributeIndexes(ctx context.Context, prod
 
 				transactItems = append(transactItems, types.TransactWriteItem{
 					Put: &types.Put{
-						TableName: aws.String(r.client.coreTable),
+						TableName: aws.String(r.client.catalogTable),
 						Item:      indexAV,
 					},
 				})
@@ -558,7 +558,7 @@ func (r *ProductRepository) DeleteWithAttributeIndexes(ctx context.Context, id s
 	// 1. Delete product
 	transactItems = append(transactItems, types.TransactWriteItem{
 		Delete: &types.Delete{
-			TableName: aws.String(r.client.coreTable),
+			TableName: aws.String(r.client.catalogTable),
 			Key: map[string]types.AttributeValue{
 				"PK": &types.AttributeValueMemberS{Value: "PRODUCT#" + id},
 				"SK": &types.AttributeValueMemberS{Value: "METADATA"},
@@ -570,7 +570,7 @@ func (r *ProductRepository) DeleteWithAttributeIndexes(ctx context.Context, id s
 	// 2. Delete SKU uniqueness item
 	transactItems = append(transactItems, types.TransactWriteItem{
 		Delete: &types.Delete{
-			TableName: aws.String(r.client.coreTable),
+			TableName: aws.String(r.client.catalogTable),
 			Key: map[string]types.AttributeValue{
 				"PK": &types.AttributeValueMemberS{Value: "SKU#" + sku},
 				"SK": &types.AttributeValueMemberS{Value: "METADATA"},
@@ -586,7 +586,7 @@ func (r *ProductRepository) DeleteWithAttributeIndexes(ctx context.Context, id s
 			}
 			transactItems = append(transactItems, types.TransactWriteItem{
 				Delete: &types.Delete{
-					TableName: aws.String(r.client.coreTable),
+					TableName: aws.String(r.client.catalogTable),
 					Key: map[string]types.AttributeValue{
 						"PK": &types.AttributeValueMemberS{Value: "PRODUCT#" + id},
 						"SK": &types.AttributeValueMemberS{Value: "ATTR#" + attrName + "#" + value},
@@ -649,7 +649,7 @@ func (r *ProductRepository) FilterByAttributes(ctx context.Context, categoryID s
 		// Query for each value (OR logic within same attribute)
 		for _, value := range values {
 			result, err := r.client.db.Query(ctx, &dynamodb.QueryInput{
-				TableName:              aws.String(r.client.coreTable),
+				TableName:              aws.String(r.client.catalogTable),
 				IndexName:              aws.String("GSI1"),
 				KeyConditionExpression: aws.String("GSI1PK = :pk AND begins_with(GSI1SK, :sk)"),
 				ExpressionAttributeValues: map[string]types.AttributeValue{
@@ -786,7 +786,7 @@ func (r *ProductRepository) AddAttributeValues(ctx context.Context, categoryID s
 	fullExpr := setParts + " " + addExpr
 
 	_, err := r.client.db.UpdateItem(ctx, &dynamodb.UpdateItemInput{
-		TableName: aws.String(r.client.coreTable),
+		TableName: aws.String(r.client.catalogTable),
 		Key: map[string]types.AttributeValue{
 			"PK": &types.AttributeValueMemberS{Value: pk},
 			"SK": &types.AttributeValueMemberS{Value: sk},
@@ -806,7 +806,7 @@ func (r *ProductRepository) AddAttributeValues(ctx context.Context, categoryID s
 // Each searchable attribute is stored as a top-level String Set field named "attr_<name>".
 func (r *ProductRepository) GetAttributeValues(ctx context.Context, categoryID string) (map[string][]string, error) {
 	result, err := r.client.db.GetItem(ctx, &dynamodb.GetItemInput{
-		TableName: aws.String(r.client.coreTable),
+		TableName: aws.String(r.client.catalogTable),
 		Key: map[string]types.AttributeValue{
 			"PK": &types.AttributeValueMemberS{Value: "CATEGORY#" + categoryID},
 			"SK": &types.AttributeValueMemberS{Value: "ATTR_VALUES"},
