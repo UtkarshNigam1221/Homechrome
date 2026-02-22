@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Edit, Eye, Filter, Package, Plus, Search, Trash2, X } from 'lucide-react';
+import { ArrowUpDown, Edit, Eye, Filter, Package, Plus, Search, Trash2, X } from 'lucide-react';
 import { useState } from 'react';
 import toast from 'react-hot-toast';
 
@@ -31,6 +31,7 @@ import { formatCurrency } from '@/shared/utils/currency';
 import type { Product } from '../types';
 import { AttributeFilterSidebar } from './AttributeFilterSidebar';
 import { ProductFormModal } from './ProductFormModal';
+import { ProductRankingModal } from './ProductRankingModal';
 
 export function ProductsPage() {
   const queryClient = useQueryClient();
@@ -53,6 +54,7 @@ export function ProductsPage() {
   const [showAttributeFilters, setShowAttributeFilters] = useState(false);
   const [showFormModal, setShowFormModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [showRankingModal, setShowRankingModal] = useState(false);
 
   // Fetch products
   const { data: productsData, isLoading } = useQuery({
@@ -150,15 +152,26 @@ export function ProductsPage() {
           <h1 className="page-title">Products</h1>
           <p className="page-subtitle">Manage your product catalog</p>
         </div>
-        <Button
-          leftIcon={<Plus className="w-4 h-4" />}
-          onClick={() => {
-            setEditingProduct(null);
-            setShowFormModal(true);
-          }}
-        >
-          Add Product
-        </Button>
+        <div className="flex gap-2">
+          {categoryFilter && (
+            <Button
+              variant="secondary"
+              leftIcon={<ArrowUpDown className="h-4 w-4" />}
+              onClick={() => setShowRankingModal(true)}
+            >
+              Manage Order
+            </Button>
+          )}
+          <Button
+            leftIcon={<Plus className="w-4 h-4" />}
+            onClick={() => {
+              setEditingProduct(null);
+              setShowFormModal(true);
+            }}
+          >
+            Add Product
+          </Button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -515,6 +528,19 @@ export function ProductsPage() {
         }}
         product={editingProduct}
       />
+
+      {/* Product Ranking Modal */}
+      {categoryFilter && (
+        <ProductRankingModal
+          isOpen={showRankingModal}
+          onClose={() => setShowRankingModal(false)}
+          categoryId={categoryFilter}
+          categoryName={
+            categories.find((c: { id: string; name: string }) => c.id === categoryFilter)?.name ||
+            ''
+          }
+        />
+      )}
     </div>
   );
 }
