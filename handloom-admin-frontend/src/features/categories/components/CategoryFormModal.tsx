@@ -2,13 +2,13 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { useFieldArray, useForm } from 'react-hook-form';
+import { Controller, useFieldArray, useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
 import { z } from 'zod';
 
 import { categoriesApi } from '@/features/categories/api';
 import { getErrorMessage } from '@/shared/api/client';
-import { Button, Input, Modal, Select } from '@/shared/components/ui';
+import { Button, ImageUpload, Input, Modal, Select } from '@/shared/components/ui';
 
 import type { AttributeType, Category, CategoryAttribute, CreateCategoryRequest } from '../types';
 
@@ -42,6 +42,7 @@ const attributeSchema = z.object({
 const categorySchema = z.object({
   name: z.string().min(1, 'Name is required').max(100, 'Name must be less than 100 characters'),
   description: z.string().optional(),
+  image_url: z.string().optional().default(''),
   status: z.enum(['ACTIVE', 'INACTIVE']),
   own_attributes: z.array(attributeSchema).optional(),
 });
@@ -80,6 +81,7 @@ export function CategoryFormModal({ isOpen, onClose, category }: CategoryFormMod
     defaultValues: {
       name: '',
       description: '',
+      image_url: '',
       status: 'ACTIVE',
       own_attributes: [],
     },
@@ -104,6 +106,7 @@ export function CategoryFormModal({ isOpen, onClose, category }: CategoryFormMod
         reset({
           name: category.name,
           description: category.description || '',
+          image_url: category.image_url || '',
           status: category.status,
           own_attributes: category.own_attributes || [],
         });
@@ -111,6 +114,7 @@ export function CategoryFormModal({ isOpen, onClose, category }: CategoryFormMod
         reset({
           name: '',
           description: '',
+          image_url: '',
           status: 'ACTIVE',
           own_attributes: [],
         });
@@ -149,6 +153,7 @@ export function CategoryFormModal({ isOpen, onClose, category }: CategoryFormMod
     const requestData: CreateCategoryRequest & { own_attributes?: CategoryAttribute[] } = {
       name: data.name,
       description: data.description,
+      image_url: data.image_url || undefined,
       status: data.status,
       own_attributes: data.own_attributes as CategoryAttribute[],
     };
@@ -262,6 +267,19 @@ export function CategoryFormModal({ isOpen, onClose, category }: CategoryFormMod
               ]}
               required
               {...register('status')}
+            />
+
+            <Controller
+              name="image_url"
+              control={control}
+              render={({ field }) => (
+                <ImageUpload
+                  label="Category Image"
+                  value={field.value || ''}
+                  onChange={(value) => field.onChange(Array.isArray(value) ? value[0] || '' : value)}
+                  hint="Upload a category image (optional)"
+                />
+              )}
             />
           </div>
         )}
