@@ -91,4 +91,11 @@ export const productsApi = {
     );
     return response.data;
   },
+
+  reorder: async (categoryId: string, productIds: string[]) => {
+    const response = await apiClient.put(`/admin/products/categories/${categoryId}/reorder`, {
+      product_ids: productIds,
+    });
+    return response.data;
+  },
 };

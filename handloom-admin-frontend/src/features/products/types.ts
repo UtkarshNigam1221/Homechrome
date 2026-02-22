@@ -37,6 +37,7 @@ export interface Product {
   reserved_qty: number;
   available_qty: number;
   low_stock_threshold: number;
+  sort_order: number;
   status: ProductStatus;
   created_at: string;
   updated_at: string;
@@ -67,4 +68,8 @@ export interface CreateProductRequest {
   initial_stock?: number;
   low_stock_threshold?: number;
   status?: ProductStatus;
+}
+
+export interface ReorderProductsRequest {
+  product_ids: string[];
 }
