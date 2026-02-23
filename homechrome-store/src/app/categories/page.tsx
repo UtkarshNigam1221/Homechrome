@@ -3,7 +3,7 @@ import type { Metadata } from 'next';
 import CategoryCard from '@/components/catalog/CategoryCard';
 import { Category } from '@/types';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8081';
 
 export const metadata: Metadata = {
   title: 'All Categories | Homechrome',

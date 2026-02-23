@@ -55,6 +55,13 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
     setAdding(true);
     try {
       await addItem(product.id, quantity);
+      track('add_to_cart', {
+        product_id: product.id,
+        product_name: product.name,
+        category_id: product.category_id,
+        price: product.selling_price,
+        quantity,
+      });
     } catch {
       // ignore
     } finally {

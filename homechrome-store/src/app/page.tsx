@@ -52,7 +52,7 @@ export default async function HomePage() {
               <span className="text-primary">tradition</span>
             </h1>
             <p className="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-gray-300">
-              Discover premium handloom textiles crafted by master artisans
+              Discover premium handloom textiles crafted with tradition
               across India. Each piece tells a story of heritage and
               craftsmanship.
             </p>
@@ -96,10 +96,10 @@ export default async function HomePage() {
                 </svg>
               </div>
               <h3 className="mt-4 text-base font-semibold text-foreground">
-                Artisan Crafted
+                Handcrafted
               </h3>
               <p className="mt-2 text-sm text-muted">
-                Each piece is handwoven by skilled artisans preserving
+                Each piece is handwoven by skilled weavers preserving
                 centuries-old techniques.
               </p>
             </div>

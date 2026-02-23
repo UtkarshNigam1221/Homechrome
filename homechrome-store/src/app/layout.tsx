@@ -15,7 +15,7 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: 'Homechrome | Handloom Textiles',
   description:
-    'Premium handloom textiles from master artisans across India. Sarees, dupattas, fabrics, and more.',
+    'Premium handloom textiles from across India. Sarees, dupattas, fabrics, and more.',
 };
 
 export default function RootLayout({

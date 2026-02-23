@@ -4,6 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:local": "next dev --port 3000",
+    "dev:lambda": "cp .env.local-lambda .env.local && next dev --port 3000",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"

@@ -11,7 +11,7 @@ export default function Footer() {
               HOME<span className="text-primary">CHROME</span>
             </span>
             <p className="mt-3 text-sm leading-relaxed text-muted">
-              Premium handloom textiles from master artisans across India.
+              Premium handloom textiles from across India.
               Celebrating the art of traditional weaving.
             </p>
           </div>

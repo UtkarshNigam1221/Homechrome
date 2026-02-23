@@ -14,6 +14,7 @@ interface TrackingEvent {
 
 const eventBuffer: TrackingEvent[] = [];
 let flushTimer: ReturnType<typeof setInterval> | null = null;
+let initialized = false;
 
 function getSessionId(): string {
   let id = sessionStorage.getItem('hc_session_id');
@@ -87,6 +88,8 @@ export function track(
 
 export function initAnalytics() {
   if (typeof window === 'undefined') return;
+  if (initialized) return;
+  initialized = true;
 
   // Periodic flush
   flushTimer = setInterval(flush, FLUSH_INTERVAL_MS);
@@ -102,5 +105,7 @@ export function initAnalytics() {
 
 export function stopAnalytics() {
   if (flushTimer) clearInterval(flushTimer);
+  flushTimer = null;
+  initialized = false;
   flush();
 }

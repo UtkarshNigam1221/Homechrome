@@ -14,8 +14,10 @@ interface ApiResponse<T> {
   };
 }
 
+// Always use relative URLs so requests go through Next.js rewrites (same-origin).
+// NEXT_PUBLIC_API_URL is for server-side fetches only (page.tsx files).
 const client: AxiosInstance = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || '',
+  baseURL: '',
   withCredentials: true,
   headers: { 'Content-Type': 'application/json' },
 });
@@ -34,13 +36,22 @@ client.interceptors.response.use(
     };
 
     if (error.response?.status === 401 && !originalRequest._retry) {
+      // Skip refresh for auth-check calls — just let them fail quietly
+      const isAuthCheck = originalRequest.url?.includes('/store/me');
+      if (isAuthCheck) {
+        return Promise.reject(error);
+      }
+
       originalRequest._retry = true;
       try {
         await client.post('/api/v1/store/auth/refresh');
         return client(originalRequest);
       } catch {
-        // Refresh failed, redirect to login
-        if (typeof window !== 'undefined') {
+        // Refresh failed — redirect to login only if not already there
+        if (
+          typeof window !== 'undefined' &&
+          !window.location.pathname.startsWith('/login')
+        ) {
           window.location.href = '/login';
         }
       }
