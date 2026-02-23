@@ -6,6 +6,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/handloom/admin/internal/domain"
+	"github.com/handloom/admin/internal/middleware"
 	"github.com/handloom/admin/pkg/errors"
 	"github.com/handloom/admin/pkg/logger"
 	"github.com/handloom/admin/pkg/response"
@@ -45,11 +46,7 @@ func (h *OrderHandler) Routes() chi.Router {
 
 // ListMyOrders handles listing orders for the authenticated customer.
 func (h *OrderHandler) ListMyOrders(w http.ResponseWriter, r *http.Request) {
-	customerID := getCustomerID(r)
-	if customerID == "" {
-		response.Unauthorized(w, "Authentication required")
-		return
-	}
+	customerID := middleware.GetCustomerIDFromContext(r.Context())
 
 	ctx := r.Context()
 	pagination := parsePagination(r)
@@ -70,11 +67,7 @@ func (h *OrderHandler) ListMyOrders(w http.ResponseWriter, r *http.Request) {
 
 // GetOrder handles getting a specific order for the authenticated customer.
 func (h *OrderHandler) GetOrder(w http.ResponseWriter, r *http.Request) {
-	customerID := getCustomerID(r)
-	if customerID == "" {
-		response.Unauthorized(w, "Authentication required")
-		return
-	}
+	customerID := middleware.GetCustomerIDFromContext(r.Context())
 
 	ctx := r.Context()
 	id := chi.URLParam(r, "id")
@@ -96,11 +89,7 @@ func (h *OrderHandler) GetOrder(w http.ResponseWriter, r *http.Request) {
 
 // CancelOrder handles cancelling an order for the authenticated customer.
 func (h *OrderHandler) CancelOrder(w http.ResponseWriter, r *http.Request) {
-	customerID := getCustomerID(r)
-	if customerID == "" {
-		response.Unauthorized(w, "Authentication required")
-		return
-	}
+	customerID := middleware.GetCustomerIDFromContext(r.Context())
 
 	ctx := r.Context()
 	id := chi.URLParam(r, "id")

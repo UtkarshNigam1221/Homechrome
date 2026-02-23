@@ -45,11 +45,7 @@ func (h *CheckoutHandler) Routes() chi.Router {
 
 // CheckServiceability handles POST /serviceability - checks if delivery is available for a pincode.
 func (h *CheckoutHandler) CheckServiceability(w http.ResponseWriter, r *http.Request) {
-	customerID := getCustomerID(r)
-	if customerID == "" {
-		response.Unauthorized(w, "Authentication required")
-		return
-	}
+	customerID := middleware.GetCustomerIDFromContext(r.Context())
 
 	req := middleware.MustGetValidatedBody[domain.ServiceabilityRequest](r.Context())
 
@@ -64,11 +60,7 @@ func (h *CheckoutHandler) CheckServiceability(w http.ResponseWriter, r *http.Req
 
 // Initiate handles POST /initiate - creates an order and initiates payment.
 func (h *CheckoutHandler) Initiate(w http.ResponseWriter, r *http.Request) {
-	customerID := getCustomerID(r)
-	if customerID == "" {
-		response.Unauthorized(w, "Authentication required")
-		return
-	}
+	customerID := middleware.GetCustomerIDFromContext(r.Context())
 
 	req := middleware.MustGetValidatedBody[domain.CheckoutRequest](r.Context())
 
@@ -86,17 +78,9 @@ func (h *CheckoutHandler) Initiate(w http.ResponseWriter, r *http.Request) {
 
 // GetPaymentStatus handles GET /payment-status/{orderID} - returns payment status for an order.
 func (h *CheckoutHandler) GetPaymentStatus(w http.ResponseWriter, r *http.Request) {
-	customerID := getCustomerID(r)
-	if customerID == "" {
-		response.Unauthorized(w, "Authentication required")
-		return
-	}
+	customerID := middleware.GetCustomerIDFromContext(r.Context())
 
 	orderID := chi.URLParam(r, "orderID")
-	if orderID == "" {
-		response.BadRequest(w, "Order ID is required")
-		return
-	}
 
 	result, err := h.checkoutService.GetPaymentStatus(r.Context(), customerID, orderID)
 	if err != nil {

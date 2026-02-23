@@ -19,7 +19,7 @@ import (
 type ShippingService struct {
 	shipmentRepo  domain.ShipmentRepository
 	orderRepo     domain.OrderRepository
-	shiprocket    *shiprocket.Client
+	shiprocket    shiprocket.Gateway
 	pickupPincode string
 	logger        *logger.Logger
 }
@@ -28,7 +28,7 @@ type ShippingService struct {
 func NewShippingService(
 	shipmentRepo domain.ShipmentRepository,
 	orderRepo domain.OrderRepository,
-	shiprocketClient *shiprocket.Client,
+	shiprocketClient shiprocket.Gateway,
 	pickupPincode string,
 	logger *logger.Logger,
 ) *ShippingService {

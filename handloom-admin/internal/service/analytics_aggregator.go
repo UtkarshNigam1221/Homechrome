@@ -324,7 +324,7 @@ func (a *AnalyticsAggregator) aggregateEngagement(ctx context.Context, date stri
 		}
 
 		if evt.EventType == "scroll_depth" {
-			depth := extractFloat64Prop(evt.Properties, "depth")
+			depth := extractFloat64Prop(evt.Properties, "max_depth_percent")
 			if depth > 0 {
 				scrollDepthSum += depth
 				scrollDepthCount++

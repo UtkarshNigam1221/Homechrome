@@ -6,6 +6,7 @@
 ENDPOINT="${DYNAMODB_LOCAL_ENDPOINT:-http://localhost:4566}"
 REGION="${AWS_REGION:-ap-south-1}"
 TABLE="handloom-core"
+POSTGRES_DSN="${POSTGRES_DSN:-postgres://handloom:handloom@localhost:5432/handloom?sslmode=disable}"
 
 # Set dummy AWS credentials for local DynamoDB (bypasses SSO)
 export AWS_ACCESS_KEY_ID="${AWS_ACCESS_KEY_ID:-fakekey}"
@@ -27,7 +28,7 @@ echo "Using AWS CLI: $AWS_CMD"
 echo "Seeding test data at $ENDPOINT..."
 
 # =============================================================================
-# Admin User
+# Admin User (DynamoDB)
 # =============================================================================
 # Default credentials:
 #   Email: admin@handloom.com
@@ -99,187 +100,117 @@ $AWS_CMD dynamodb put-item \
     --region $REGION 2>/dev/null || echo "Manager user already exists"
 
 # =============================================================================
-# Categories and Pricing Rules
+# Categories (PostgreSQL)
 # =============================================================================
 
 echo ""
-echo "Creating categories and pricing rules..."
+echo "Seeding categories into PostgreSQL..."
 
-# Create root category: Home Textiles
-echo "Creating root category: Home Textiles..."
-$AWS_CMD dynamodb put-item \
-    --table-name $TABLE \
-    --item '{
-        "PK": {"S": "CATEGORY#cat_home_textiles"},
-        "SK": {"S": "METADATA"},
-        "GSI1PK": {"S": "CATEGORY#ROOT"},
-        "GSI1SK": {"S": "CATEGORY#cat_home_textiles"},
-        "entity_type": {"S": "CATEGORY"},
-        "id": {"S": "cat_home_textiles"},
-        "name": {"S": "Home Textiles"},
-        "slug": {"S": "home-textiles"},
-        "description": {"S": "Quality handloom home textiles"},
-        "level": {"N": "0"},
-        "path": {"S": "cat_home_textiles"},
-        "ancestor_ids": {"L": []},
-        "status": {"S": "ACTIVE"},
-        "allow_custom_dimensions": {"BOOL": false},
-        "product_count": {"N": "0"},
-        "design_count": {"N": "0"},
-        "own_attributes": {"L": [
-            {"M": {
-                "name": {"S": "material"},
-                "label": {"S": "Material"},
-                "type": {"S": "SELECT"},
-                "required": {"BOOL": true},
-                "affects_pricing": {"BOOL": true},
-                "options": {"L": [
-                    {"M": {"value": {"S": "cotton"}, "label": {"S": "Cotton"}, "surcharge": {"N": "0"}}},
-                    {"M": {"value": {"S": "silk"}, "label": {"S": "Silk"}, "surcharge": {"N": "50000"}}},
-                    {"M": {"value": {"S": "linen"}, "label": {"S": "Linen"}, "surcharge": {"N": "30000"}}},
-                    {"M": {"value": {"S": "blend"}, "label": {"S": "Cotton-Silk Blend"}, "surcharge": {"N": "25000"}}}
-                ]}
-            }},
-            {"M": {
-                "name": {"S": "color"},
-                "label": {"S": "Color"},
-                "type": {"S": "TEXT"},
-                "required": {"BOOL": true},
-                "affects_pricing": {"BOOL": false}
-            }},
-            {"M": {
-                "name": {"S": "weave_type"},
-                "label": {"S": "Weave Type"},
-                "type": {"S": "SELECT"},
-                "required": {"BOOL": false},
-                "affects_pricing": {"BOOL": true},
-                "options": {"L": [
-                    {"M": {"value": {"S": "plain"}, "label": {"S": "Plain Weave"}, "surcharge": {"N": "0"}}},
-                    {"M": {"value": {"S": "twill"}, "label": {"S": "Twill Weave"}, "surcharge": {"N": "10000"}}},
-                    {"M": {"value": {"S": "satin"}, "label": {"S": "Satin Weave"}, "surcharge": {"N": "20000"}}},
-                    {"M": {"value": {"S": "jacquard"}, "label": {"S": "Jacquard"}, "surcharge": {"N": "35000"}}}
-                ]}
-            }}
-        ]},
-        "created_at": {"S": "2024-01-15T10:00:00Z"},
-        "updated_at": {"S": "2024-01-15T10:00:00Z"}
-    }' \
-    --endpoint-url $ENDPOINT \
-    --region $REGION
+psql "$POSTGRES_DSN" <<'EOSQL'
+-- Idempotent: use ON CONFLICT DO NOTHING
 
-# Create Bedding category
-echo "Creating category: Bedding..."
-$AWS_CMD dynamodb put-item \
-    --table-name $TABLE \
-    --item '{
-        "PK": {"S": "CATEGORY#cat_bedding"},
-        "SK": {"S": "METADATA"},
-        "GSI1PK": {"S": "CATEGORY#cat_home_textiles"},
-        "GSI1SK": {"S": "CATEGORY#cat_bedding"},
-        "entity_type": {"S": "CATEGORY"},
-        "id": {"S": "cat_bedding"},
-        "name": {"S": "Bedding"},
-        "slug": {"S": "bedding"},
-        "description": {"S": "Quality bedding products"},
-        "parent_id": {"S": "cat_home_textiles"},
-        "level": {"N": "1"},
-        "path": {"S": "cat_home_textiles/cat_bedding"},
-        "ancestor_ids": {"L": [{"S": "cat_home_textiles"}]},
-        "status": {"S": "ACTIVE"},
-        "allow_custom_dimensions": {"BOOL": false},
-        "product_count": {"N": "0"},
-        "design_count": {"N": "0"},
-        "own_attributes": {"L": [
-            {"M": {
-                "name": {"S": "thread_count"},
-                "label": {"S": "Thread Count"},
-                "type": {"S": "SELECT"},
-                "required": {"BOOL": false},
-                "affects_pricing": {"BOOL": true},
-                "options": {"L": [
-                    {"M": {"value": {"S": "200"}, "label": {"S": "200 TC"}, "surcharge": {"N": "0"}}},
-                    {"M": {"value": {"S": "300"}, "label": {"S": "300 TC"}, "surcharge": {"N": "15000"}}},
-                    {"M": {"value": {"S": "400"}, "label": {"S": "400 TC"}, "surcharge": {"N": "30000"}}},
-                    {"M": {"value": {"S": "600"}, "label": {"S": "600 TC"}, "surcharge": {"N": "50000"}}}
-                ]}
-            }}
-        ]},
-        "created_at": {"S": "2024-01-15T10:00:00Z"},
-        "updated_at": {"S": "2024-01-15T10:00:00Z"}
-    }' \
-    --endpoint-url $ENDPOINT \
-    --region $REGION
+-- Home Textiles (root category)
+INSERT INTO categories (id, name, slug, description, image_url, status, product_count, created_at, updated_at, created_by)
+VALUES ('cat_home_textiles', 'Home Textiles', 'home-textiles', 'Quality handloom home textiles', '', 'ACTIVE', 0, '2024-01-15T10:00:00Z', '2024-01-15T10:00:00Z', 'seed')
+ON CONFLICT (id) DO NOTHING;
 
-# Create Bedsheets category (with custom dimensions)
-echo "Creating category: Bedsheets..."
-$AWS_CMD dynamodb put-item \
-    --table-name $TABLE \
-    --item '{
-        "PK": {"S": "CATEGORY#cat_bedsheets"},
-        "SK": {"S": "METADATA"},
-        "GSI1PK": {"S": "CATEGORY#cat_bedding"},
-        "GSI1SK": {"S": "CATEGORY#cat_bedsheets"},
-        "entity_type": {"S": "CATEGORY"},
-        "id": {"S": "cat_bedsheets"},
-        "name": {"S": "Bedsheets"},
-        "slug": {"S": "bedsheets"},
-        "description": {"S": "Premium handloom bedsheets with custom sizing"},
-        "parent_id": {"S": "cat_bedding"},
-        "level": {"N": "2"},
-        "path": {"S": "cat_home_textiles/cat_bedding/cat_bedsheets"},
-        "ancestor_ids": {"L": [{"S": "cat_home_textiles"}, {"S": "cat_bedding"}]},
-        "status": {"S": "ACTIVE"},
-        "allow_custom_dimensions": {"BOOL": true},
-        "dimension_config": {"M": {
-            "length_enabled": {"BOOL": true},
-            "length_min": {"N": "60"},
-            "length_max": {"N": "120"},
-            "length_step": {"N": "1"},
-            "length_unit": {"S": "inches"},
-            "width_enabled": {"BOOL": true},
-            "width_min": {"N": "40"},
-            "width_max": {"N": "108"},
-            "width_step": {"N": "1"},
-            "width_unit": {"S": "inches"},
-            "height_enabled": {"BOOL": false},
-            "pricing_model": {"S": "AREA_BASED"}
-        }},
-        "default_pricing_rule_id": {"S": "rule_bedsheets_area"},
-        "product_count": {"N": "0"},
-        "design_count": {"N": "0"},
-        "own_attributes": {"L": [
-            {"M": {
-                "name": {"S": "bed_size"},
-                "label": {"S": "Bed Size"},
-                "type": {"S": "SELECT"},
-                "required": {"BOOL": true},
-                "affects_pricing": {"BOOL": true},
-                "options": {"L": [
-                    {"M": {"value": {"S": "single"}, "label": {"S": "Single (36x75)"}, "surcharge": {"N": "0"}}},
-                    {"M": {"value": {"S": "double"}, "label": {"S": "Double (54x75)"}, "surcharge": {"N": "0"}}},
-                    {"M": {"value": {"S": "queen"}, "label": {"S": "Queen (60x80)"}, "surcharge": {"N": "10000"}}},
-                    {"M": {"value": {"S": "king"}, "label": {"S": "King (76x80)"}, "surcharge": {"N": "20000"}}},
-                    {"M": {"value": {"S": "custom"}, "label": {"S": "Custom Size"}, "surcharge": {"N": "0"}}}
-                ]}
-            }},
-            {"M": {
-                "name": {"S": "elastic_type"},
-                "label": {"S": "Elastic Type"},
-                "type": {"S": "SELECT"},
-                "required": {"BOOL": true},
-                "affects_pricing": {"BOOL": true},
-                "options": {"L": [
-                    {"M": {"value": {"S": "flat"}, "label": {"S": "Flat Sheet"}, "surcharge": {"N": "0"}}},
-                    {"M": {"value": {"S": "fitted"}, "label": {"S": "Fitted Sheet"}, "surcharge": {"N": "15000"}}},
-                    {"M": {"value": {"S": "elasticated"}, "label": {"S": "Elasticated Corners"}, "surcharge": {"N": "10000"}}}
-                ]}
-            }}
-        ]},
-        "created_at": {"S": "2024-01-15T10:00:00Z"},
-        "updated_at": {"S": "2024-01-15T10:00:00Z"}
-    }' \
-    --endpoint-url $ENDPOINT \
-    --region $REGION
+-- Home Textiles attributes: material, color, weave_type
+INSERT INTO category_attributes (id, category_id, name, label, type, required, searchable, display_order)
+VALUES
+    ('attr_ht_material', 'cat_home_textiles', 'material', 'Material', 'SELECT', true, true, 0),
+    ('attr_ht_color', 'cat_home_textiles', 'color', 'Color', 'TEXT', true, true, 1),
+    ('attr_ht_weave_type', 'cat_home_textiles', 'weave_type', 'Weave Type', 'SELECT', false, true, 2)
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO category_attribute_options (id, attribute_id, value, label, sort_order)
+VALUES
+    ('opt_ht_mat_cotton', 'attr_ht_material', 'cotton', 'Cotton', 0),
+    ('opt_ht_mat_silk', 'attr_ht_material', 'silk', 'Silk', 1),
+    ('opt_ht_mat_linen', 'attr_ht_material', 'linen', 'Linen', 2),
+    ('opt_ht_mat_blend', 'attr_ht_material', 'blend', 'Cotton-Silk Blend', 3),
+    ('opt_ht_wt_plain', 'attr_ht_weave_type', 'plain', 'Plain Weave', 0),
+    ('opt_ht_wt_twill', 'attr_ht_weave_type', 'twill', 'Twill Weave', 1),
+    ('opt_ht_wt_satin', 'attr_ht_weave_type', 'satin', 'Satin Weave', 2),
+    ('opt_ht_wt_jacquard', 'attr_ht_weave_type', 'jacquard', 'Jacquard', 3)
+ON CONFLICT (id) DO NOTHING;
+
+-- Bedding category
+INSERT INTO categories (id, name, slug, description, image_url, status, product_count, created_at, updated_at, created_by)
+VALUES ('cat_bedding', 'Bedding', 'bedding', 'Quality bedding products', '', 'ACTIVE', 0, '2024-01-15T10:00:00Z', '2024-01-15T10:00:00Z', 'seed')
+ON CONFLICT (id) DO NOTHING;
+
+-- Bedding attributes: thread_count
+INSERT INTO category_attributes (id, category_id, name, label, type, required, searchable, display_order)
+VALUES
+    ('attr_bed_thread_count', 'cat_bedding', 'thread_count', 'Thread Count', 'SELECT', false, true, 0)
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO category_attribute_options (id, attribute_id, value, label, sort_order)
+VALUES
+    ('opt_bed_tc_200', 'attr_bed_thread_count', '200', '200 TC', 0),
+    ('opt_bed_tc_300', 'attr_bed_thread_count', '300', '300 TC', 1),
+    ('opt_bed_tc_400', 'attr_bed_thread_count', '400', '400 TC', 2),
+    ('opt_bed_tc_600', 'attr_bed_thread_count', '600', '600 TC', 3)
+ON CONFLICT (id) DO NOTHING;
+
+-- Bedsheets category
+INSERT INTO categories (id, name, slug, description, image_url, status, product_count, created_at, updated_at, created_by)
+VALUES ('cat_bedsheets', 'Bedsheets', 'bedsheets', 'Premium handloom bedsheets with custom sizing', '', 'ACTIVE', 0, '2024-01-15T10:00:00Z', '2024-01-15T10:00:00Z', 'seed')
+ON CONFLICT (id) DO NOTHING;
+
+-- Bedsheets attributes: bed_size, elastic_type
+INSERT INTO category_attributes (id, category_id, name, label, type, required, searchable, display_order)
+VALUES
+    ('attr_bs_bed_size', 'cat_bedsheets', 'bed_size', 'Bed Size', 'SELECT', true, true, 0),
+    ('attr_bs_elastic_type', 'cat_bedsheets', 'elastic_type', 'Elastic Type', 'SELECT', true, true, 1)
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO category_attribute_options (id, attribute_id, value, label, sort_order)
+VALUES
+    ('opt_bs_bs_single', 'attr_bs_bed_size', 'single', 'Single (36x75)', 0),
+    ('opt_bs_bs_double', 'attr_bs_bed_size', 'double', 'Double (54x75)', 1),
+    ('opt_bs_bs_queen', 'attr_bs_bed_size', 'queen', 'Queen (60x80)', 2),
+    ('opt_bs_bs_king', 'attr_bs_bed_size', 'king', 'King (76x80)', 3),
+    ('opt_bs_bs_custom', 'attr_bs_bed_size', 'custom', 'Custom Size', 4),
+    ('opt_bs_et_flat', 'attr_bs_elastic_type', 'flat', 'Flat Sheet', 0),
+    ('opt_bs_et_fitted', 'attr_bs_elastic_type', 'fitted', 'Fitted Sheet', 1),
+    ('opt_bs_et_elasticated', 'attr_bs_elastic_type', 'elasticated', 'Elasticated Corners', 2)
+ON CONFLICT (id) DO NOTHING;
+
+-- Pillow Covers category
+INSERT INTO categories (id, name, slug, description, image_url, status, product_count, created_at, updated_at, created_by)
+VALUES ('cat_pillow_covers', 'Pillow Covers', 'pillow-covers', 'Premium handloom pillow covers', '', 'ACTIVE', 0, '2024-01-15T10:00:00Z', '2024-01-15T10:00:00Z', 'seed')
+ON CONFLICT (id) DO NOTHING;
+
+-- Pillow Covers attributes: pillow_size, closure_type
+INSERT INTO category_attributes (id, category_id, name, label, type, required, searchable, display_order)
+VALUES
+    ('attr_pc_pillow_size', 'cat_pillow_covers', 'pillow_size', 'Pillow Size', 'SELECT', true, true, 0),
+    ('attr_pc_closure_type', 'cat_pillow_covers', 'closure_type', 'Closure Type', 'SELECT', true, true, 1)
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO category_attribute_options (id, attribute_id, value, label, sort_order)
+VALUES
+    ('opt_pc_ps_standard', 'attr_pc_pillow_size', 'standard', 'Standard (20x26)', 0),
+    ('opt_pc_ps_queen', 'attr_pc_pillow_size', 'queen', 'Queen (20x30)', 1),
+    ('opt_pc_ps_king', 'attr_pc_pillow_size', 'king', 'King (20x36)', 2),
+    ('opt_pc_ps_euro', 'attr_pc_pillow_size', 'euro', 'Euro Square (26x26)', 3),
+    ('opt_pc_ps_custom', 'attr_pc_pillow_size', 'custom', 'Custom Size', 4),
+    ('opt_pc_ct_envelope', 'attr_pc_closure_type', 'envelope', 'Envelope Back', 0),
+    ('opt_pc_ct_zipper', 'attr_pc_closure_type', 'zipper', 'Hidden Zipper', 1),
+    ('opt_pc_ct_button', 'attr_pc_closure_type', 'button', 'Button Closure', 2)
+ON CONFLICT (id) DO NOTHING;
+
+EOSQL
+
+echo "Categories seeded into PostgreSQL."
+
+# =============================================================================
+# Pricing Rules (DynamoDB — stays in handloom-core)
+# =============================================================================
+
+echo ""
+echo "Creating pricing rules..."
 
 # Create global pricing rule
 echo "Creating global pricing rule..."
@@ -377,76 +308,6 @@ $AWS_CMD dynamodb put-item \
     --endpoint-url $ENDPOINT \
     --region $REGION
 
-# Create Pillow Covers category
-echo "Creating category: Pillow Covers..."
-$AWS_CMD dynamodb put-item \
-    --table-name $TABLE \
-    --item '{
-        "PK": {"S": "CATEGORY#cat_pillow_covers"},
-        "SK": {"S": "METADATA"},
-        "GSI1PK": {"S": "CATEGORY#cat_bedding"},
-        "GSI1SK": {"S": "CATEGORY#cat_pillow_covers"},
-        "entity_type": {"S": "CATEGORY"},
-        "id": {"S": "cat_pillow_covers"},
-        "name": {"S": "Pillow Covers"},
-        "slug": {"S": "pillow-covers"},
-        "description": {"S": "Premium handloom pillow covers"},
-        "parent_id": {"S": "cat_bedding"},
-        "level": {"N": "2"},
-        "path": {"S": "cat_home_textiles/cat_bedding/cat_pillow_covers"},
-        "ancestor_ids": {"L": [{"S": "cat_home_textiles"}, {"S": "cat_bedding"}]},
-        "status": {"S": "ACTIVE"},
-        "allow_custom_dimensions": {"BOOL": true},
-        "dimension_config": {"M": {
-            "length_enabled": {"BOOL": true},
-            "length_min": {"N": "16"},
-            "length_max": {"N": "36"},
-            "length_step": {"N": "1"},
-            "length_unit": {"S": "inches"},
-            "width_enabled": {"BOOL": true},
-            "width_min": {"N": "16"},
-            "width_max": {"N": "36"},
-            "width_step": {"N": "1"},
-            "width_unit": {"S": "inches"},
-            "height_enabled": {"BOOL": false},
-            "pricing_model": {"S": "AREA_BASED"}
-        }},
-        "product_count": {"N": "0"},
-        "design_count": {"N": "0"},
-        "own_attributes": {"L": [
-            {"M": {
-                "name": {"S": "pillow_size"},
-                "label": {"S": "Pillow Size"},
-                "type": {"S": "SELECT"},
-                "required": {"BOOL": true},
-                "affects_pricing": {"BOOL": true},
-                "options": {"L": [
-                    {"M": {"value": {"S": "standard"}, "label": {"S": "Standard (20x26)"}, "surcharge": {"N": "0"}}},
-                    {"M": {"value": {"S": "queen"}, "label": {"S": "Queen (20x30)"}, "surcharge": {"N": "5000"}}},
-                    {"M": {"value": {"S": "king"}, "label": {"S": "King (20x36)"}, "surcharge": {"N": "10000"}}},
-                    {"M": {"value": {"S": "euro"}, "label": {"S": "Euro Square (26x26)"}, "surcharge": {"N": "8000"}}},
-                    {"M": {"value": {"S": "custom"}, "label": {"S": "Custom Size"}, "surcharge": {"N": "0"}}}
-                ]}
-            }},
-            {"M": {
-                "name": {"S": "closure_type"},
-                "label": {"S": "Closure Type"},
-                "type": {"S": "SELECT"},
-                "required": {"BOOL": true},
-                "affects_pricing": {"BOOL": true},
-                "options": {"L": [
-                    {"M": {"value": {"S": "envelope"}, "label": {"S": "Envelope Back"}, "surcharge": {"N": "0"}}},
-                    {"M": {"value": {"S": "zipper"}, "label": {"S": "Hidden Zipper"}, "surcharge": {"N": "5000"}}},
-                    {"M": {"value": {"S": "button"}, "label": {"S": "Button Closure"}, "surcharge": {"N": "7000"}}}
-                ]}
-            }}
-        ]},
-        "created_at": {"S": "2024-01-15T10:00:00Z"},
-        "updated_at": {"S": "2024-01-15T10:00:00Z"}
-    }' \
-    --endpoint-url $ENDPOINT \
-    --region $REGION
-
 echo ""
 echo "=============================================="
 echo "  Test data seeded successfully!"
@@ -463,13 +324,13 @@ echo "    Email: manager@handloom.com"
 echo "    Password: Admin@123!"
 echo "    Role: manager"
 echo ""
-echo "Categories:"
+echo "Categories (PostgreSQL):"
 echo "  - Home Textiles (root)"
-echo "    - Bedding"
-echo "      - Bedsheets (with custom dimensions)"
-echo "      - Pillow Covers (with custom dimensions)"
+echo "  - Bedding"
+echo "  - Bedsheets (with attributes: bed_size, elastic_type)"
+echo "  - Pillow Covers (with attributes: pillow_size, closure_type)"
 echo ""
-echo "Pricing Rules:"
+echo "Pricing Rules (DynamoDB):"
 echo "  - Global Default Pricing"
 echo "  - Bedsheets Area Pricing"
 echo ""

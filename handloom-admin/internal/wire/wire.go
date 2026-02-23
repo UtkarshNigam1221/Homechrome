@@ -94,14 +94,6 @@ type CouponDeps struct {
 	AuthMiddleware *middleware.Auth
 }
 
-// ArtisanDeps holds dependencies for the Artisan Lambda
-type ArtisanDeps struct {
-	Config         *config.Config
-	Logger         *logger.Logger
-	Handler        *handler.ArtisanHandler
-	AuthMiddleware *middleware.Auth
-}
-
 // AssetDeps holds dependencies for the Asset Lambda
 type AssetDeps struct {
 	Config         *config.Config
@@ -142,7 +134,6 @@ type ApiDeps struct {
 	AuditHandler        *handler.AuditHandler
 	NotificationHandler *handler.NotificationHandler
 	CouponHandler       *handler.CouponHandler
-	ArtisanHandler      *handler.ArtisanHandler
 	AnalyticsHandler    *handler.AnalyticsHandler
 	AssetHandler        *handler.AssetHandler
 	ReportHandler       *handler.ReportHandler
@@ -282,7 +273,6 @@ func InitializeInventoryDeps(ctx context.Context, cfg *config.Config) (*Inventor
 		ProvideUserRepository,
 		ProvideTokenStore,
 		ProvideInventoryRepository,
-		ProvideProductRepository,
 		ProvideEventPublisher,
 		ProvideAuthService,
 		ProvideInventoryService,
@@ -344,24 +334,6 @@ func InitializeCouponDeps(ctx context.Context, cfg *config.Config) (*CouponDeps,
 		ProvideCouponHandler,
 		ProvideAuthMiddleware,
 		wire.Struct(new(CouponDeps), "*"),
-	)
-	return nil, nil
-}
-
-// InitializeArtisanDeps creates Artisan Lambda dependencies
-func InitializeArtisanDeps(ctx context.Context, cfg *config.Config) (*ArtisanDeps, error) {
-	wire.Build(
-		CoreSet,
-		ProvideValidator,
-		ProvideValidation,
-		ProvideUserRepository,
-		ProvideTokenStore,
-		ProvideArtisanRepository,
-		ProvideAuthService,
-		ProvideArtisanService,
-		ProvideArtisanHandler,
-		ProvideAuthMiddleware,
-		wire.Struct(new(ArtisanDeps), "*"),
 	)
 	return nil, nil
 }

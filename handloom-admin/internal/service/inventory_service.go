@@ -12,7 +12,6 @@ import (
 // InventoryService implements domain.InventoryService
 type InventoryService struct {
 	inventoryRepo domain.InventoryRepository
-	productRepo   domain.ProductRepository
 	publisher     event.EventPublisher
 	logger        *logger.Logger
 }
@@ -20,13 +19,11 @@ type InventoryService struct {
 // NewInventoryService creates a new InventoryService
 func NewInventoryService(
 	inventoryRepo domain.InventoryRepository,
-	productRepo domain.ProductRepository,
 	publisher event.EventPublisher,
 	logger *logger.Logger,
 ) *InventoryService {
 	return &InventoryService{
 		inventoryRepo: inventoryRepo,
-		productRepo:   productRepo,
 		publisher:     publisher,
 		logger:        logger,
 	}
@@ -42,12 +39,6 @@ func (s *InventoryService) AddStock(ctx context.Context, productID string, req d
 	txn, err := s.inventoryRepo.AddStock(ctx, productID, req.Quantity, req.Reason, userID)
 	if err != nil {
 		return nil, err
-	}
-
-	// Update product inventory fields
-	inventory, _ := s.inventoryRepo.GetByProductID(ctx, productID)
-	if inventory != nil {
-		_ = s.productRepo.UpdateInventory(ctx, productID, inventory.Quantity, inventory.ReservedQty, inventory.AvailableQty)
 	}
 
 	if pubErr := s.publisher.Publish(ctx, event.New(event.InventoryRestocked, map[string]interface{}{
@@ -77,13 +68,8 @@ func (s *InventoryService) RemoveStock(ctx context.Context, productID string, re
 		return nil, err
 	}
 
-	// Update product inventory fields
-	inventory, _ := s.inventoryRepo.GetByProductID(ctx, productID)
-	if inventory != nil {
-		_ = s.productRepo.UpdateInventory(ctx, productID, inventory.Quantity, inventory.ReservedQty, inventory.AvailableQty)
-	}
-
 	// Check stock levels and emit appropriate events
+	inventory, _ := s.inventoryRepo.GetByProductID(ctx, productID)
 	if inventory != nil {
 		if inventory.AvailableQty <= 0 {
 			if pubErr := s.publisher.Publish(ctx, event.New(event.InventoryOutOfStock, map[string]interface{}{
@@ -120,12 +106,6 @@ func (s *InventoryService) AdjustStock(ctx context.Context, productID string, re
 	txn, err := s.inventoryRepo.AdjustStock(ctx, productID, req.NewQuantity, req.Reason, userID)
 	if err != nil {
 		return nil, err
-	}
-
-	// Update product inventory fields
-	inventory, _ := s.inventoryRepo.GetByProductID(ctx, productID)
-	if inventory != nil {
-		_ = s.productRepo.UpdateInventory(ctx, productID, inventory.Quantity, inventory.ReservedQty, inventory.AvailableQty)
 	}
 
 	s.logger.WithContext(ctx).Infof("Adjusted stock for product %s: %d -> %d", productID, txn.PreviousQty, txn.NewQty)

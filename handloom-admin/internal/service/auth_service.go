@@ -206,7 +206,7 @@ func (s *AuthService) ChangePassword(ctx context.Context, userID string, req dom
 
 	// Verify current password
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.CurrentPassword)); err != nil {
-		return errors.New(errors.ErrCodeInvalidCredentials, "Current password is incorrect")
+		return errors.New(errors.ErrCodeBadRequest, "Current password is incorrect")
 	}
 
 	// Hash new password

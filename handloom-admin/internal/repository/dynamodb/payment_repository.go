@@ -2,7 +2,6 @@ package dynamodb
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -142,43 +141,20 @@ func (r *PaymentRepository) GetByMerchantTxnID(ctx context.Context, merchantTxnI
 
 // UpdateStatus updates the payment status and additional fields using a dynamic UpdateItem expression
 func (r *PaymentRepository) UpdateStatus(ctx context.Context, id string, status domain.PaymentStatus, updates map[string]interface{}) error {
-	now := time.Now()
-
-	// Build the SET expression dynamically
-	expr := "SET #status = :status, updated_at = :now"
-	exprAttrNames := map[string]string{
-		"#status": "status",
-	}
-	exprAttrValues := map[string]types.AttributeValue{
-		":status": &types.AttributeValueMemberS{Value: string(status)},
-		":now":    &types.AttributeValueMemberS{Value: now.Format(time.RFC3339)},
+	du, err := buildDynamicUpdate(string(status), updates)
+	if err != nil {
+		return err
 	}
 
-	i := 0
-	for key, val := range updates {
-		placeholder := fmt.Sprintf(":val%d", i)
-		namePlaceholder := fmt.Sprintf("#field%d", i)
-
-		expr += fmt.Sprintf(", %s = %s", namePlaceholder, placeholder)
-		exprAttrNames[namePlaceholder] = key
-
-		av, err := attributevalue.Marshal(val)
-		if err != nil {
-			return errors.Wrap(err, fmt.Sprintf("Failed to marshal update value for key %s", key))
-		}
-		exprAttrValues[placeholder] = av
-		i++
-	}
-
-	_, err := r.client.db.UpdateItem(ctx, &dynamodb.UpdateItemInput{
+	_, err = r.client.db.UpdateItem(ctx, &dynamodb.UpdateItemInput{
 		TableName: aws.String(r.client.ordersTable),
 		Key: map[string]types.AttributeValue{
 			"PK": &types.AttributeValueMemberS{Value: "PAYMENT#" + id},
 			"SK": &types.AttributeValueMemberS{Value: "METADATA"},
 		},
-		UpdateExpression:          aws.String(expr),
-		ExpressionAttributeNames:  exprAttrNames,
-		ExpressionAttributeValues: exprAttrValues,
+		UpdateExpression:          aws.String(du.Expression),
+		ExpressionAttributeNames:  du.AttrNames,
+		ExpressionAttributeValues: du.AttrValues,
 		ConditionExpression:       aws.String("attribute_exists(PK)"),
 	})
 	if err != nil {

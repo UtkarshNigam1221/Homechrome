@@ -13,9 +13,12 @@ import (
 )
 
 const (
-	testCoreTable   = "handloom-core-test"
-	testOrdersTable = "handloom-orders-test"
-	testAuditTable  = "handloom-audit-test"
+	testCoreTable          = "handloom-core-test"
+	testOrdersTable        = "handloom-orders-test"
+	testSessionsTable      = "handloom-sessions-test"
+	testAuditTable         = "handloom-audit-test"
+	testAnalyticsTable     = "handloom-analytics-test"
+	testNotificationsTable = "handloom-notifications-test"
 )
 
 // testClient creates a DynamoDB client for testing
@@ -106,11 +109,13 @@ func cleanupTestTable(t *testing.T, client *dynamodb.Client, tableName string) {
 func testWrappedClient(t *testing.T) (*Client, *dynamodb.Client) {
 	raw := testClient(t)
 	wrapped := &Client{
-		db:             raw,
-		coreTable:      testCoreTable,
-		ordersTable:    testOrdersTable,
-		auditTable:     testAuditTable,
-		analyticsTable: "handloom-analytics-test",
+		db:                 raw,
+		coreTable:          testCoreTable,
+		ordersTable:        testOrdersTable,
+		sessionsTable:      testSessionsTable,
+		auditTable:         testAuditTable,
+		analyticsTable:     testAnalyticsTable,
+		notificationsTable: testNotificationsTable,
 	}
 	return wrapped, raw
 }

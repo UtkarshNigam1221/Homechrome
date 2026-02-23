@@ -69,10 +69,5 @@ type ApplyCouponRequest struct {
 	Discount   int64  `json:"discount" validate:"required,gt=0"`
 }
 
-// Artisan request types
 
-// UpdateArtisanStatusRequest is the request body for updating artisan status
-type UpdateArtisanStatusRequest struct {
-	Status domain.ArtisanStatus `json:"status" validate:"required"`
-}
 

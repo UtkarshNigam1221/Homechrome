@@ -1,10 +1,14 @@
 #!/bin/bash
 set -euo pipefail
 
-ENDPOINT="http://localhost:4566"
-REGION="ap-south-1"
+ENDPOINT="${AWS_ENDPOINT:-http://localhost:4566}"
+REGION="${AWS_REGION:-ap-south-1}"
 ACCOUNT="000000000000"
 ENV="local"
+
+# Set dummy AWS credentials for LocalStack (prevents SSO/profile auth)
+export AWS_ACCESS_KEY_ID="${AWS_ACCESS_KEY_ID:-local}"
+export AWS_SECRET_ACCESS_KEY="${AWS_SECRET_ACCESS_KEY:-local}"
 
 awslocal() {
     aws --endpoint-url="$ENDPOINT" --region "$REGION" "$@"

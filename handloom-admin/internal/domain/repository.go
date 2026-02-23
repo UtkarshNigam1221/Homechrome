@@ -103,9 +103,8 @@ type ListCategoriesResponse struct {
 
 // ProductRepository defines the interface for product data access
 type ProductRepository interface {
-	// CreateWithAttributeIndexes creates a product with its searchable attribute indexes in a transaction.
-	// If inventory is non-nil it is included in the same transaction.
-	CreateWithAttributeIndexes(ctx context.Context, product *Product, searchableAttrs map[string][]string, inventory *Inventory) error
+	// Create creates a product and its initial inventory record atomically
+	Create(ctx context.Context, product *Product, inventory *Inventory) error
 
 	// GetByID retrieves a product by ID
 	GetByID(ctx context.Context, id string) (*Product, error)
@@ -113,41 +112,26 @@ type ProductRepository interface {
 	// GetBySKU retrieves a product by SKU
 	GetBySKU(ctx context.Context, sku string) (*Product, error)
 
-	// UpdateWithAttributeIndexes updates a product and syncs its attribute indexes
-	UpdateWithAttributeIndexes(ctx context.Context, product *Product, oldSearchableAttrs, newSearchableAttrs map[string][]string) error
+	// Update updates an existing product
+	Update(ctx context.Context, product *Product) error
 
-	// Delete deletes a product by ID
+	// Delete deletes a product by ID (cascade removes related data)
 	Delete(ctx context.Context, id string) error
 
-	// DeleteWithAttributeIndexes deletes a product, its SKU uniqueness item, and its attribute indexes
-	DeleteWithAttributeIndexes(ctx context.Context, id string, sku string, searchableAttrs map[string][]string) error
-
-	// List retrieves products with filters
+	// List retrieves products with filters (including attribute filters)
 	List(ctx context.Context, req ListProductsRequest) (*ListProductsResponse, error)
-
-	// GetByCategory retrieves products by category ID
-	GetByCategory(ctx context.Context, categoryID string, pagination PaginationRequest) (*ListProductsResponse, error)
-
-	// FilterByAttributes retrieves products by category and attribute filters
-	FilterByAttributes(ctx context.Context, categoryID string, filters map[string][]string, pagination PaginationRequest) (*ListProductsResponse, error)
-
-	// UpdateInventory updates the inventory fields
-	UpdateInventory(ctx context.Context, id string, quantity, reservedQty, availableQty int) error
 
 	// BatchGetByIDs retrieves multiple products by IDs
 	BatchGetByIDs(ctx context.Context, ids []string) ([]*Product, error)
 
-	// BatchUpdateSortOrder updates sort_order and GSI1SK for multiple products in a transaction
+	// BatchUpdateSortOrder updates sort_order for multiple products in a transaction
 	BatchUpdateSortOrder(ctx context.Context, products []*Product) error
 
 	// GetByCategoryAll retrieves all products in a category (unpaginated, for reordering)
 	GetByCategoryAll(ctx context.Context, categoryID string) ([]*Product, error)
 
-	// AddAttributeValues adds values to the stored distinct value sets for a category's searchable attributes
-	AddAttributeValues(ctx context.Context, categoryID string, attrValues map[string][]string) error
-
-	// GetAttributeValues reads the stored distinct value sets for a category
-	GetAttributeValues(ctx context.Context, categoryID string) (map[string][]string, error)
+	// GetAttributeFilterOptions returns distinct values for each attribute in a category
+	GetAttributeFilterOptions(ctx context.Context, categoryID string, attrNames []string) (map[string][]string, error)
 }
 
 // ListProductsRequest contains parameters for listing products

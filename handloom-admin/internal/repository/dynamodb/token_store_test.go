@@ -12,8 +12,8 @@ import (
 func TestTokenStore_StoreRefreshToken(t *testing.T) {
 	wrappedClient, rawClient := testWrappedClient(t)
 	skipIfNoLocal(t, rawClient)
-	setupTestTable(t, rawClient, testCoreTable)
-	defer cleanupTestTable(t, rawClient, testCoreTable)
+	setupTestTable(t, rawClient, testSessionsTable)
+	defer cleanupTestTable(t, rawClient, testSessionsTable)
 
 	store := NewTokenStore(wrappedClient)
 	ctx := context.Background()
@@ -49,8 +49,8 @@ func TestTokenStore_StoreRefreshToken(t *testing.T) {
 func TestTokenStore_RevokeRefreshToken(t *testing.T) {
 	wrappedClient, rawClient := testWrappedClient(t)
 	skipIfNoLocal(t, rawClient)
-	setupTestTable(t, rawClient, testCoreTable)
-	defer cleanupTestTable(t, rawClient, testCoreTable)
+	setupTestTable(t, rawClient, testSessionsTable)
+	defer cleanupTestTable(t, rawClient, testSessionsTable)
 
 	store := NewTokenStore(wrappedClient)
 	ctx := context.Background()
@@ -81,8 +81,8 @@ func TestTokenStore_RevokeRefreshToken(t *testing.T) {
 func TestTokenStore_RevokeAllUserTokens(t *testing.T) {
 	wrappedClient, rawClient := testWrappedClient(t)
 	skipIfNoLocal(t, rawClient)
-	setupTestTable(t, rawClient, testCoreTable)
-	defer cleanupTestTable(t, rawClient, testCoreTable)
+	setupTestTable(t, rawClient, testSessionsTable)
+	defer cleanupTestTable(t, rawClient, testSessionsTable)
 
 	store := NewTokenStore(wrappedClient)
 	ctx := context.Background()
@@ -126,8 +126,8 @@ func TestTokenStore_RevokeAllUserTokens(t *testing.T) {
 func TestTokenStore_PasswordResetToken(t *testing.T) {
 	wrappedClient, rawClient := testWrappedClient(t)
 	skipIfNoLocal(t, rawClient)
-	setupTestTable(t, rawClient, testCoreTable)
-	defer cleanupTestTable(t, rawClient, testCoreTable)
+	setupTestTable(t, rawClient, testSessionsTable)
+	defer cleanupTestTable(t, rawClient, testSessionsTable)
 
 	store := NewTokenStore(wrappedClient)
 	ctx := context.Background()
@@ -175,8 +175,8 @@ func TestTokenStore_PasswordResetToken(t *testing.T) {
 func TestTokenStore_TokenWithSameUserMultipleSessions(t *testing.T) {
 	wrappedClient, rawClient := testWrappedClient(t)
 	skipIfNoLocal(t, rawClient)
-	setupTestTable(t, rawClient, testCoreTable)
-	defer cleanupTestTable(t, rawClient, testCoreTable)
+	setupTestTable(t, rawClient, testSessionsTable)
+	defer cleanupTestTable(t, rawClient, testSessionsTable)
 
 	store := NewTokenStore(wrappedClient)
 	ctx := context.Background()

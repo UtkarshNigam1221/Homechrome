@@ -24,6 +24,8 @@ LAMBDA_ENV='{
     "DYNAMODB_ORDERS_TABLE": "handloom-orders",
     "DYNAMODB_AUDIT_TABLE": "handloom-audit",
     "DYNAMODB_ANALYTICS_TABLE": "handloom-analytics",
+    "DYNAMODB_NOTIFICATIONS_TABLE": "handloom-notifications",
+    "POSTGRES_DSN": "postgres://handloom:handloom@host.docker.internal:5432/handloom?sslmode=disable",
     "JWT_SECRET_KEY": "dev-secret-key-change-in-production",
     "S3_ASSETS_BUCKET": "handloom-assets",
     "QUOTE_VALIDITY_HRS": "24"

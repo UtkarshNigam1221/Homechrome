@@ -107,18 +107,6 @@ func ValidatePaymentStatus(status string) bool {
 	return validPaymentStatuses[status]
 }
 
-// Artisan status constants
-var validArtisanStatuses = map[string]bool{
-	"ACTIVE":   true,
-	"INACTIVE": true,
-	"PENDING":  true,
-}
-
-// ValidateArtisanStatus validates artisan status.
-func ValidateArtisanStatus(status string) bool {
-	return validArtisanStatuses[status]
-}
-
 // Product status constants
 var validProductStatuses = map[string]bool{
 	"ACTIVE":   true,

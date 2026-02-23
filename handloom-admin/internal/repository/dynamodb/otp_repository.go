@@ -34,7 +34,7 @@ func (r *OTPRepository) Store(ctx context.Context, otp *domain.OTP) error {
 	}
 
 	_, err = r.client.db.PutItem(ctx, &dynamodb.PutItemInput{
-		TableName: aws.String(r.client.coreTable),
+		TableName: aws.String(r.client.sessionsTable),
 		Item:      av,
 	})
 	if err != nil {
@@ -47,7 +47,7 @@ func (r *OTPRepository) Store(ctx context.Context, otp *domain.OTP) error {
 // Get retrieves an OTP record by phone number
 func (r *OTPRepository) Get(ctx context.Context, phone string) (*domain.OTP, error) {
 	result, err := r.client.db.GetItem(ctx, &dynamodb.GetItemInput{
-		TableName: aws.String(r.client.coreTable),
+		TableName: aws.String(r.client.sessionsTable),
 		Key: map[string]types.AttributeValue{
 			"PK": &types.AttributeValueMemberS{Value: "OTP#" + phone},
 			"SK": &types.AttributeValueMemberS{Value: "METADATA"},
@@ -77,7 +77,7 @@ func (r *OTPRepository) Get(ctx context.Context, phone string) (*domain.OTP, err
 // IncrementAttempts atomically increments the attempts counter for an OTP
 func (r *OTPRepository) IncrementAttempts(ctx context.Context, phone string) error {
 	_, err := r.client.db.UpdateItem(ctx, &dynamodb.UpdateItemInput{
-		TableName: aws.String(r.client.coreTable),
+		TableName: aws.String(r.client.sessionsTable),
 		Key: map[string]types.AttributeValue{
 			"PK": &types.AttributeValueMemberS{Value: "OTP#" + phone},
 			"SK": &types.AttributeValueMemberS{Value: "METADATA"},
@@ -97,7 +97,7 @@ func (r *OTPRepository) IncrementAttempts(ctx context.Context, phone string) err
 // Delete removes an OTP record by phone number
 func (r *OTPRepository) Delete(ctx context.Context, phone string) error {
 	_, err := r.client.db.DeleteItem(ctx, &dynamodb.DeleteItemInput{
-		TableName: aws.String(r.client.coreTable),
+		TableName: aws.String(r.client.sessionsTable),
 		Key: map[string]types.AttributeValue{
 			"PK": &types.AttributeValueMemberS{Value: "OTP#" + phone},
 			"SK": &types.AttributeValueMemberS{Value: "METADATA"},

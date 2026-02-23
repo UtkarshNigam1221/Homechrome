@@ -18,7 +18,6 @@ import (
 type Client struct {
 	db                 *dynamodb.Client
 	coreTable          string
-	catalogTable       string
 	ordersTable        string
 	sessionsTable      string
 	auditTable         string
@@ -67,7 +66,6 @@ func NewClient(ctx context.Context, cfg *appconfig.Config) (*Client, error) {
 	return &Client{
 		db:                 client,
 		coreTable:          cfg.DynamoDB.CoreTable,
-		catalogTable:       cfg.DynamoDB.CatalogTable,
 		ordersTable:        cfg.DynamoDB.OrdersTable,
 		sessionsTable:      cfg.DynamoDB.SessionsTable,
 		auditTable:         cfg.DynamoDB.AuditTable,
@@ -85,11 +83,6 @@ func (c *Client) DB() *dynamodb.Client {
 // CoreTable returns the core table name
 func (c *Client) CoreTable() string {
 	return c.coreTable
-}
-
-// CatalogTable returns the catalog table name
-func (c *Client) CatalogTable() string {
-	return c.catalogTable
 }
 
 // OrdersTable returns the orders table name

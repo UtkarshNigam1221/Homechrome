@@ -82,6 +82,26 @@ func parseInt64Param(value string, target *int64) (bool, error) {
 	return true, nil
 }
 
+// parseStringPtr returns a pointer to the value, or nil if empty.
+func parseStringPtr(value string) *string {
+	if value == "" {
+		return nil
+	}
+	return &value
+}
+
+// parseInt64Ptr parses an int64 query param and returns a pointer, or nil if empty/invalid.
+func parseInt64Ptr(value string) *int64 {
+	if value == "" {
+		return nil
+	}
+	parsed, err := strconv.ParseInt(value, 10, 64)
+	if err != nil {
+		return nil
+	}
+	return &parsed
+}
+
 // parseBoolParam parses a boolean parameter
 func parseBoolParam(value string) *bool {
 	if value == "" {

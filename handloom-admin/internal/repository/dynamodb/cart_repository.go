@@ -185,34 +185,17 @@ func (r *CartRepository) ClearCart(ctx context.Context, cartPK string) error {
 		return nil
 	}
 
-	// BatchWriteItem can handle up to 25 items per request
-	const batchSize = 25
-	for i := 0; i < len(result.Items); i += batchSize {
-		end := i + batchSize
-		if end > len(result.Items) {
-			end = len(result.Items)
-		}
-
-		var deleteRequests []types.WriteRequest
-		for _, item := range result.Items[i:end] {
-			deleteRequests = append(deleteRequests, types.WriteRequest{
-				DeleteRequest: &types.DeleteRequest{
-					Key: map[string]types.AttributeValue{
-						"PK": item["PK"],
-						"SK": item["SK"],
-					},
-				},
-			})
-		}
-
-		_, err := r.client.db.BatchWriteItem(ctx, &dynamodb.BatchWriteItemInput{
-			RequestItems: map[string][]types.WriteRequest{
-				r.client.ordersTable: deleteRequests,
-			},
+	// Extract PK/SK keys for batch deletion
+	keys := make([]map[string]types.AttributeValue, 0, len(result.Items))
+	for _, item := range result.Items {
+		keys = append(keys, map[string]types.AttributeValue{
+			"PK": item["PK"],
+			"SK": item["SK"],
 		})
-		if err != nil {
-			return errors.Wrap(err, "Failed to batch delete cart items")
-		}
+	}
+
+	if err := batchDeleteKeys(ctx, r.client.db, r.client.ordersTable, keys); err != nil {
+		return errors.Wrap(err, "Failed to batch delete cart items")
 	}
 
 	return nil

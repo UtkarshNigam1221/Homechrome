@@ -26,6 +26,22 @@ func NewClient(config Config) *Client {
 	}
 }
 
+// DevClient is a no-op SMS client that logs OTPs to stdout for local development
+type DevClient struct{}
+
+// NewDevClient creates a dev SMS client that prints OTPs to console
+func NewDevClient() *DevClient {
+	return &DevClient{}
+}
+
+// SendOTP logs the OTP to stdout instead of sending a real SMS
+func (d *DevClient) SendOTP(_ context.Context, phone, code string) error {
+	fmt.Printf("\n╔══════════════════════════════════════╗\n")
+	fmt.Printf("║  DEV OTP: %s → %s           ║\n", phone, code)
+	fmt.Printf("╚══════════════════════════════════════╝\n\n")
+	return nil
+}
+
 // SendOTP sends an OTP code to the given phone number via MSG91 Flow API
 func (c *Client) SendOTP(ctx context.Context, phone, code string) error {
 	payload := map[string]interface{}{

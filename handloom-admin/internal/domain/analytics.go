@@ -12,7 +12,7 @@ type DashboardStats struct {
 	// Today's metrics (live counters from DASHBOARD#CURRENT)
 	TodayOrders          int   `json:"today_orders" dynamodbav:"today_orders"`
 	TodayRevenue         int64 `json:"today_revenue" dynamodbav:"today_revenue"`
-	TodayVisitors        int   `json:"today_visitors" dynamodbav:"today_visitors"`
+	TodayPageViews       int   `json:"today_page_views" dynamodbav:"today_page_views"`
 	TodayAddToCarts      int   `json:"today_add_to_carts" dynamodbav:"today_add_to_carts"`
 	TodayProductViews    int   `json:"today_product_views" dynamodbav:"today_product_views"`
 	TodayPaymentsSuccess int   `json:"today_payments_success" dynamodbav:"today_payments_success"`

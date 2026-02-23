@@ -36,7 +36,7 @@ func (r *NotificationRepository) Create(ctx context.Context, notification *domai
 	}
 
 	_, err = r.client.db.PutItem(ctx, &dynamodb.PutItemInput{
-		TableName:           aws.String(r.client.coreTable),
+		TableName:           aws.String(r.client.notificationsTable),
 		Item:                av,
 		ConditionExpression: aws.String("attribute_not_exists(PK)"),
 	})
@@ -53,7 +53,7 @@ func (r *NotificationRepository) Create(ctx context.Context, notification *domai
 // GetByID retrieves a notification by ID
 func (r *NotificationRepository) GetByID(ctx context.Context, id string) (*domain.Notification, error) {
 	result, err := r.client.db.GetItem(ctx, &dynamodb.GetItemInput{
-		TableName: aws.String(r.client.coreTable),
+		TableName: aws.String(r.client.notificationsTable),
 		Key: map[string]types.AttributeValue{
 			"PK": &types.AttributeValueMemberS{Value: "NOTIFICATION#" + id},
 			"SK": &types.AttributeValueMemberS{Value: "METADATA"},
@@ -85,7 +85,7 @@ func (r *NotificationRepository) Update(ctx context.Context, notification *domai
 	}
 
 	_, err = r.client.db.PutItem(ctx, &dynamodb.PutItemInput{
-		TableName:           aws.String(r.client.coreTable),
+		TableName:           aws.String(r.client.notificationsTable),
 		Item:                av,
 		ConditionExpression: aws.String("attribute_exists(PK)"),
 	})

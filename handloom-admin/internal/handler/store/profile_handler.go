@@ -1,7 +1,6 @@
 package store
 
 import (
-	"encoding/json"
 	"net/http"
 	"time"
 
@@ -76,11 +75,7 @@ type AddAddressRequest struct {
 
 // GetProfile handles retrieving the authenticated customer's profile.
 func (h *ProfileHandler) GetProfile(w http.ResponseWriter, r *http.Request) {
-	customerID := getCustomerID(r)
-	if customerID == "" {
-		response.Unauthorized(w, "Authentication required")
-		return
-	}
+	customerID := middleware.GetCustomerIDFromContext(r.Context())
 
 	customer, err := h.customerRepo.GetByID(r.Context(), customerID)
 	if err != nil {
@@ -93,11 +88,7 @@ func (h *ProfileHandler) GetProfile(w http.ResponseWriter, r *http.Request) {
 
 // UpdateProfile handles updating the authenticated customer's profile.
 func (h *ProfileHandler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
-	customerID := getCustomerID(r)
-	if customerID == "" {
-		response.Unauthorized(w, "Authentication required")
-		return
-	}
+	customerID := middleware.GetCustomerIDFromContext(r.Context())
 
 	ctx := r.Context()
 	req := middleware.MustGetValidatedBody[UpdateProfileRequest](ctx)
@@ -131,11 +122,7 @@ func (h *ProfileHandler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
 
 // AddAddress handles adding a new address to the customer's address list.
 func (h *ProfileHandler) AddAddress(w http.ResponseWriter, r *http.Request) {
-	customerID := getCustomerID(r)
-	if customerID == "" {
-		response.Unauthorized(w, "Authentication required")
-		return
-	}
+	customerID := middleware.GetCustomerIDFromContext(r.Context())
 
 	ctx := r.Context()
 	req := middleware.MustGetValidatedBody[AddAddressRequest](ctx)
@@ -146,19 +133,7 @@ func (h *ProfileHandler) AddAddress(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	newAddress := domain.Address{
-		ID:           uuid.New().String(),
-		FirstName:    req.FirstName,
-		LastName:     req.LastName,
-		Phone:        req.Phone,
-		AddressLine1: req.AddressLine1,
-		AddressLine2: req.AddressLine2,
-		City:         req.City,
-		State:        req.State,
-		PostalCode:   req.PostalCode,
-		Country:      req.Country,
-		IsDefault:    req.IsDefault,
-	}
+	newAddress := addressFromRequest(uuid.New().String(), *req)
 
 	// If the new address is default, clear default on existing addresses
 	if newAddress.IsDefault {
@@ -181,11 +156,7 @@ func (h *ProfileHandler) AddAddress(w http.ResponseWriter, r *http.Request) {
 
 // UpdateAddress handles updating a specific address in the customer's address list.
 func (h *ProfileHandler) UpdateAddress(w http.ResponseWriter, r *http.Request) {
-	customerID := getCustomerID(r)
-	if customerID == "" {
-		response.Unauthorized(w, "Authentication required")
-		return
-	}
+	customerID := middleware.GetCustomerIDFromContext(r.Context())
 
 	ctx := r.Context()
 	addressID := chi.URLParam(r, "id")
@@ -208,19 +179,7 @@ func (h *ProfileHandler) UpdateAddress(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 
-			customer.Addresses[i] = domain.Address{
-				ID:           addressID,
-				FirstName:    req.FirstName,
-				LastName:     req.LastName,
-				Phone:        req.Phone,
-				AddressLine1: req.AddressLine1,
-				AddressLine2: req.AddressLine2,
-				City:         req.City,
-				State:        req.State,
-				PostalCode:   req.PostalCode,
-				Country:      req.Country,
-				IsDefault:    req.IsDefault,
-			}
+			customer.Addresses[i] = addressFromRequest(addressID, *req)
 			found = true
 			break
 		}
@@ -244,11 +203,7 @@ func (h *ProfileHandler) UpdateAddress(w http.ResponseWriter, r *http.Request) {
 
 // RemoveAddress handles removing an address from the customer's address list.
 func (h *ProfileHandler) RemoveAddress(w http.ResponseWriter, r *http.Request) {
-	customerID := getCustomerID(r)
-	if customerID == "" {
-		response.Unauthorized(w, "Authentication required")
-		return
-	}
+	customerID := middleware.GetCustomerIDFromContext(r.Context())
 
 	ctx := r.Context()
 	addressID := chi.URLParam(r, "id")
@@ -287,10 +242,19 @@ func (h *ProfileHandler) RemoveAddress(w http.ResponseWriter, r *http.Request) {
 	response.NoContent(w)
 }
 
-// decodeJSON is a helper to decode JSON request bodies (used for unvalidated requests).
-func decodeJSON(r *http.Request, v interface{}) error {
-	if err := json.NewDecoder(r.Body).Decode(v); err != nil {
-		return errors.BadRequest("Invalid JSON: " + err.Error())
+// addressFromRequest maps an AddAddressRequest to a domain.Address with the given ID.
+func addressFromRequest(id string, req AddAddressRequest) domain.Address {
+	return domain.Address{
+		ID:           id,
+		FirstName:    req.FirstName,
+		LastName:     req.LastName,
+		Phone:        req.Phone,
+		AddressLine1: req.AddressLine1,
+		AddressLine2: req.AddressLine2,
+		City:         req.City,
+		State:        req.State,
+		PostalCode:   req.PostalCode,
+		Country:      req.Country,
+		IsDefault:    req.IsDefault,
 	}
-	return nil
 }

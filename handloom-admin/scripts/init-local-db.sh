@@ -49,40 +49,8 @@ aws dynamodb create-table \
 
 echo "Created handloom-core table"
 
-# Catalog Table (Categories, Products, Inventory, Artisans)
-aws dynamodb create-table \
-    --endpoint-url $ENDPOINT \
-    --region $REGION \
-    --table-name handloom-catalog \
-    --attribute-definitions \
-        AttributeName=PK,AttributeType=S \
-        AttributeName=SK,AttributeType=S \
-        AttributeName=GSI1PK,AttributeType=S \
-        AttributeName=GSI1SK,AttributeType=S \
-        AttributeName=GSI2PK,AttributeType=S \
-        AttributeName=GSI2SK,AttributeType=S \
-    --key-schema \
-        AttributeName=PK,KeyType=HASH \
-        AttributeName=SK,KeyType=RANGE \
-    --global-secondary-indexes \
-        "[
-            {
-                \"IndexName\": \"GSI1\",
-                \"KeySchema\": [{\"AttributeName\":\"GSI1PK\",\"KeyType\":\"HASH\"},{\"AttributeName\":\"GSI1SK\",\"KeyType\":\"RANGE\"}],
-                \"Projection\": {\"ProjectionType\":\"ALL\"},
-                \"ProvisionedThroughput\": {\"ReadCapacityUnits\": 5, \"WriteCapacityUnits\": 5}
-            },
-            {
-                \"IndexName\": \"GSI2\",
-                \"KeySchema\": [{\"AttributeName\":\"GSI2PK\",\"KeyType\":\"HASH\"},{\"AttributeName\":\"GSI2SK\",\"KeyType\":\"RANGE\"}],
-                \"Projection\": {\"ProjectionType\":\"ALL\"},
-                \"ProvisionedThroughput\": {\"ReadCapacityUnits\": 5, \"WriteCapacityUnits\": 5}
-            }
-        ]" \
-    --provisioned-throughput ReadCapacityUnits=5,WriteCapacityUnits=5 \
-    2>/dev/null || echo "Table handloom-catalog already exists"
-
-echo "Created handloom-catalog table"
+# NOTE: Catalog data (Categories, Products, Inventory) now lives in PostgreSQL.
+# Tables are auto-created via migrations/001_catalog_schema.sql when postgres container starts.
 
 # Notifications Table (Notifications)
 aws dynamodb create-table \
@@ -260,16 +228,6 @@ aws dynamodb update-time-to-live \
     2>/dev/null || echo "TTL already enabled on handloom-core"
 
 echo "Enabled TTL on handloom-core table"
-
-# Enable TTL on catalog table
-aws dynamodb update-time-to-live \
-    --table-name handloom-catalog \
-    --time-to-live-specification "Enabled=true, AttributeName=ttl" \
-    --endpoint-url $ENDPOINT \
-    --region $REGION \
-    2>/dev/null || echo "TTL already enabled on handloom-catalog"
-
-echo "Enabled TTL on handloom-catalog table"
 
 # Enable TTL on notifications table
 aws dynamodb update-time-to-live \

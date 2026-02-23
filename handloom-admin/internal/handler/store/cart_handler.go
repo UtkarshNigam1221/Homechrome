@@ -46,18 +46,9 @@ func (h *CartHandler) Routes() chi.Router {
 	return r
 }
 
-// getCustomerID extracts the customer ID from the request context.
-func getCustomerID(r *http.Request) string {
-	return middleware.GetCustomerIDFromContext(r.Context())
-}
-
 // GetCart handles GET / — returns the customer's cart with all items.
 func (h *CartHandler) GetCart(w http.ResponseWriter, r *http.Request) {
-	customerID := getCustomerID(r)
-	if customerID == "" {
-		response.Unauthorized(w, "Authentication required")
-		return
-	}
+	customerID := middleware.GetCustomerIDFromContext(r.Context())
 
 	cart, err := h.cartService.GetCart(r.Context(), customerID)
 	if err != nil {
@@ -70,11 +61,7 @@ func (h *CartHandler) GetCart(w http.ResponseWriter, r *http.Request) {
 
 // AddItem handles POST /items — adds a product to the cart.
 func (h *CartHandler) AddItem(w http.ResponseWriter, r *http.Request) {
-	customerID := getCustomerID(r)
-	if customerID == "" {
-		response.Unauthorized(w, "Authentication required")
-		return
-	}
+	customerID := middleware.GetCustomerIDFromContext(r.Context())
 
 	req := middleware.MustGetValidatedBody[domain.AddCartItemRequest](r.Context())
 
@@ -89,17 +76,9 @@ func (h *CartHandler) AddItem(w http.ResponseWriter, r *http.Request) {
 
 // UpdateQuantity handles PATCH /items/{productID} — updates item quantity.
 func (h *CartHandler) UpdateQuantity(w http.ResponseWriter, r *http.Request) {
-	customerID := getCustomerID(r)
-	if customerID == "" {
-		response.Unauthorized(w, "Authentication required")
-		return
-	}
+	customerID := middleware.GetCustomerIDFromContext(r.Context())
 
 	productID := chi.URLParam(r, "productID")
-	if productID == "" {
-		response.BadRequest(w, "Product ID is required")
-		return
-	}
 
 	req := middleware.MustGetValidatedBody[domain.UpdateCartItemRequest](r.Context())
 
@@ -114,17 +93,9 @@ func (h *CartHandler) UpdateQuantity(w http.ResponseWriter, r *http.Request) {
 
 // RemoveItem handles DELETE /items/{productID} — removes an item from the cart.
 func (h *CartHandler) RemoveItem(w http.ResponseWriter, r *http.Request) {
-	customerID := getCustomerID(r)
-	if customerID == "" {
-		response.Unauthorized(w, "Authentication required")
-		return
-	}
+	customerID := middleware.GetCustomerIDFromContext(r.Context())
 
 	productID := chi.URLParam(r, "productID")
-	if productID == "" {
-		response.BadRequest(w, "Product ID is required")
-		return
-	}
 
 	cart, err := h.cartService.RemoveItem(r.Context(), customerID, productID)
 	if err != nil {
@@ -137,11 +108,7 @@ func (h *CartHandler) RemoveItem(w http.ResponseWriter, r *http.Request) {
 
 // ClearCart handles DELETE / — removes all items from the cart.
 func (h *CartHandler) ClearCart(w http.ResponseWriter, r *http.Request) {
-	customerID := getCustomerID(r)
-	if customerID == "" {
-		response.Unauthorized(w, "Authentication required")
-		return
-	}
+	customerID := middleware.GetCustomerIDFromContext(r.Context())
 
 	if err := h.cartService.ClearCart(r.Context(), customerID); err != nil {
 		response.Error(w, err)
@@ -153,11 +120,7 @@ func (h *CartHandler) ClearCart(w http.ResponseWriter, r *http.Request) {
 
 // MergeGuestCart handles POST /merge — merges guest cart items into the customer's cart.
 func (h *CartHandler) MergeGuestCart(w http.ResponseWriter, r *http.Request) {
-	customerID := getCustomerID(r)
-	if customerID == "" {
-		response.Unauthorized(w, "Authentication required")
-		return
-	}
+	customerID := middleware.GetCustomerIDFromContext(r.Context())
 
 	req := middleware.MustGetValidatedBody[domain.MergeCartRequest](r.Context())
 

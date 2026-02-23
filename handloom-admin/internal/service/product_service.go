@@ -45,7 +45,7 @@ func NewProductService(
 
 // Create creates a new product
 func (s *ProductService) Create(ctx context.Context, req domain.CreateProductRequest, createdBy string) (*domain.Product, error) {
-	// Validate category exists and get its attributes
+	// Validate category exists
 	category, err := s.categoryRepo.GetByID(ctx, req.CategoryID)
 	if err != nil {
 		return nil, errors.New(errors.ErrCodeNotFound, "Category not found")
@@ -67,9 +67,6 @@ func (s *ProductService) Create(ctx context.Context, req domain.CreateProductReq
 
 	product := domain.NewProduct(req, "prod_"+uuid.New().String(), generateSlug(req.Name), createdBy)
 
-	// Extract searchable attributes for indexing
-	searchableAttrs := extractSearchableAttributes(product, category.OwnAttributes)
-
 	// Build inventory record to include in the same transaction
 	inventory := &domain.Inventory{
 		ID:                product.ID,
@@ -82,16 +79,9 @@ func (s *ProductService) Create(ctx context.Context, req domain.CreateProductReq
 	}
 	inventory.CreatedBy = createdBy
 
-	// Create product with attribute indexes and inventory atomically
-	if err := s.productRepo.CreateWithAttributeIndexes(ctx, product, searchableAttrs, inventory); err != nil {
+	// Create product and inventory atomically
+	if err := s.productRepo.Create(ctx, product, inventory); err != nil {
 		return nil, err
-	}
-
-	// Add attribute values to the stored distinct value sets for this category
-	if len(searchableAttrs) > 0 {
-		if err := s.productRepo.AddAttributeValues(ctx, product.CategoryID, searchableAttrs); err != nil {
-			return nil, errors.Wrap(err, "failed to update attribute value sets")
-		}
 	}
 
 	// Increment category product count
@@ -144,7 +134,7 @@ func (s *ProductService) Update(ctx context.Context, id string, req domain.Updat
 		return nil, err
 	}
 
-	// Get category for attribute management
+	// Get category for attribute validation
 	category, err := s.categoryRepo.GetByID(ctx, product.CategoryID)
 	if err != nil {
 		return nil, err
@@ -158,9 +148,6 @@ func (s *ProductService) Update(ctx context.Context, id string, req domain.Updat
 		}
 		req.Images[i].URL = finalURL
 	}
-
-	// Extract old searchable attributes before update
-	oldSearchableAttrs := extractSearchableAttributes(product, category.OwnAttributes)
 
 	// Apply updates
 	product.ApplyUpdate(req)
@@ -176,19 +163,9 @@ func (s *ProductService) Update(ctx context.Context, id string, req domain.Updat
 	product.UpdatedBy = updatedBy
 	product.UpdatedAt = time.Now()
 
-	// Extract new searchable attributes after update
-	newSearchableAttrs := extractSearchableAttributes(product, category.OwnAttributes)
-
-	// Update product with attribute index sync
-	if err := s.productRepo.UpdateWithAttributeIndexes(ctx, product, oldSearchableAttrs, newSearchableAttrs); err != nil {
+	// Update product (repository handles attribute value sync)
+	if err := s.productRepo.Update(ctx, product); err != nil {
 		return nil, err
-	}
-
-	// Add new attribute values to the stored distinct value sets
-	if len(newSearchableAttrs) > 0 {
-		if err := s.productRepo.AddAttributeValues(ctx, product.CategoryID, newSearchableAttrs); err != nil {
-			return nil, errors.Wrap(err, "failed to update attribute value sets")
-		}
 	}
 
 	if pubErr := s.publisher.Publish(ctx, event.New(event.ProductUpdated, product)); pubErr != nil {
@@ -206,26 +183,9 @@ func (s *ProductService) Delete(ctx context.Context, id string) error {
 		return err
 	}
 
-	// Get category for attribute cleanup
-	category, err := s.categoryRepo.GetByID(ctx, product.CategoryID)
-	if err != nil {
-		// If category not found, still try to delete product
-		if err := s.productRepo.Delete(ctx, id); err != nil {
-			return err
-		}
-	} else {
-		// Extract searchable attributes for cleanup
-		searchableAttrs := extractSearchableAttributes(product, category.OwnAttributes)
-
-		// Delete product with attribute indexes
-		if err := s.productRepo.DeleteWithAttributeIndexes(ctx, id, product.SKU, searchableAttrs); err != nil {
-			return err
-		}
-	}
-
-	// Delete inventory record and its transactions
-	if err := s.inventoryRepo.DeleteByProductID(ctx, id); err != nil {
-		return errors.Wrap(err, "failed to delete inventory for product")
+	// Delete product (CASCADE removes inventory, attribute values, images)
+	if err := s.productRepo.Delete(ctx, id); err != nil {
+		return err
 	}
 
 	// Decrement category count
@@ -245,15 +205,10 @@ func (s *ProductService) Delete(ctx context.Context, id string) error {
 
 // List retrieves products with filters
 func (s *ProductService) List(ctx context.Context, req domain.ListProductsRequest) (*domain.ListProductsResponse, error) {
-	// If attribute filters are provided and category is specified, use the optimized filter method
-	if len(req.AttributeFilters) > 0 && req.CategoryID != nil {
-		return s.productRepo.FilterByAttributes(ctx, *req.CategoryID, req.AttributeFilters, req.PaginationRequest)
-	}
 	return s.productRepo.List(ctx, req)
 }
 
 // GetAttributeFilterOptions returns all distinct values for each searchable attribute in a category.
-// Reads from the pre-computed CategoryAttributeValues record — a single DynamoDB GetItem.
 func (s *ProductService) GetAttributeFilterOptions(ctx context.Context, categoryID string) (map[string][]string, error) {
 	// Get category to know which attributes are searchable
 	category, err := s.categoryRepo.GetByID(ctx, categoryID)
@@ -261,79 +216,34 @@ func (s *ProductService) GetAttributeFilterOptions(ctx context.Context, category
 		return nil, err
 	}
 
-	// Build set of searchable attribute names
-	searchableSet := make(map[string]bool)
+	// Collect searchable attribute names
+	var attrNames []string
 	for _, attr := range category.OwnAttributes {
 		if attr.Searchable {
-			searchableSet[attr.Name] = true
+			attrNames = append(attrNames, attr.Name)
 		}
 	}
 
-	// Read the stored distinct value sets (single GetItem)
-	allValues, err := s.productRepo.GetAttributeValues(ctx, categoryID)
+	if len(attrNames) == 0 {
+		return map[string][]string{}, nil
+	}
+
+	// Query distinct values from the product_attribute_values table
+	result, err := s.productRepo.GetAttributeFilterOptions(ctx, categoryID, attrNames)
 	if err != nil {
 		return nil, err
 	}
 
-	// Filter to only searchable attributes and sort the values
-	result := make(map[string][]string)
-	for attrName, values := range allValues {
-		if !searchableSet[attrName] {
-			continue
-		}
-		if len(values) > 0 {
-			sort.Strings(values)
-			result[attrName] = values
-		}
+	// Sort each attribute's values
+	for _, values := range result {
+		sort.Strings(values)
 	}
 
 	return result, nil
 }
 
-// extractSearchableAttributes extracts searchable attribute values from a product
-// Returns a map of attribute name -> list of values to index
-func extractSearchableAttributes(product *domain.Product, categoryAttrs []domain.CategoryAttribute) map[string][]string {
-	result := make(map[string][]string)
 
-	// Build a set of searchable attribute names
-	searchableAttrs := make(map[string]bool)
-	for _, attr := range categoryAttrs {
-		if attr.Searchable {
-			searchableAttrs[attr.Name] = true
-		}
-	}
-
-	// Fixed fields that are always indexed regardless of category definition
-	fixedFields := map[string]string{
-		"material":   product.Material,
-		"color":      product.Color,
-		"weave_type": product.WeaveType,
-		"origin":     product.Origin,
-		"craft_type": product.CraftType,
-	}
-	for name, value := range fixedFields {
-		searchableAttrs[name] = true
-		if value != "" {
-			result[name] = []string{value}
-		}
-	}
-
-	// Extract values from product's dynamic Attributes map
-	if product.Attributes != nil {
-		for attrName := range searchableAttrs {
-			if value, exists := product.Attributes[attrName]; exists {
-				values := normalizeToStringSlice(value)
-				if len(values) > 0 {
-					result[attrName] = values
-				}
-			}
-		}
-	}
-
-	return result
-}
-
-// normalizeToStringSlice converts various types to a slice of strings
+// normalizeToStringSlice converts various types to a slice of strings for attribute validation.
 func normalizeToStringSlice(value interface{}) []string {
 	switch v := value.(type) {
 	case string:
@@ -350,8 +260,6 @@ func normalizeToStringSlice(value interface{}) []string {
 			}
 		}
 		return result
-	case int, int64, float64:
-		return []string{fmt.Sprintf("%v", v)}
 	}
 	return nil
 }

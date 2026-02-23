@@ -27,7 +27,7 @@ func (s *CustomerTokenStore) StoreToken(ctx context.Context, customerID, tokenHa
 	now := time.Now()
 
 	_, err := s.client.db.PutItem(ctx, &dynamodb.PutItemInput{
-		TableName: aws.String(s.client.coreTable),
+		TableName: aws.String(s.client.sessionsTable),
 		Item: map[string]types.AttributeValue{
 			"PK":          &types.AttributeValueMemberS{Value: "CUST_TOKEN#" + customerID},
 			"SK":          &types.AttributeValueMemberS{Value: "REFRESH_TOKEN#" + tokenHash},
@@ -48,7 +48,7 @@ func (s *CustomerTokenStore) StoreToken(ctx context.Context, customerID, tokenHa
 // ValidateToken checks if a customer refresh token exists and is not expired
 func (s *CustomerTokenStore) ValidateToken(ctx context.Context, customerID, tokenHash string) (bool, error) {
 	result, err := s.client.db.GetItem(ctx, &dynamodb.GetItemInput{
-		TableName: aws.String(s.client.coreTable),
+		TableName: aws.String(s.client.sessionsTable),
 		Key: map[string]types.AttributeValue{
 			"PK": &types.AttributeValueMemberS{Value: "CUST_TOKEN#" + customerID},
 			"SK": &types.AttributeValueMemberS{Value: "REFRESH_TOKEN#" + tokenHash},
@@ -76,7 +76,7 @@ func (s *CustomerTokenStore) ValidateToken(ctx context.Context, customerID, toke
 // RevokeToken revokes a specific customer refresh token
 func (s *CustomerTokenStore) RevokeToken(ctx context.Context, customerID, tokenHash string) error {
 	_, err := s.client.db.DeleteItem(ctx, &dynamodb.DeleteItemInput{
-		TableName: aws.String(s.client.coreTable),
+		TableName: aws.String(s.client.sessionsTable),
 		Key: map[string]types.AttributeValue{
 			"PK": &types.AttributeValueMemberS{Value: "CUST_TOKEN#" + customerID},
 			"SK": &types.AttributeValueMemberS{Value: "REFRESH_TOKEN#" + tokenHash},
@@ -97,7 +97,7 @@ func (s *CustomerTokenStore) RevokeAllTokens(ctx context.Context, customerID str
 	// Paginate through all tokens for customer
 	for {
 		result, err := s.client.db.Query(ctx, &dynamodb.QueryInput{
-			TableName:              aws.String(s.client.coreTable),
+			TableName:              aws.String(s.client.sessionsTable),
 			KeyConditionExpression: aws.String("PK = :pk AND begins_with(SK, :sk)"),
 			ExpressionAttributeValues: map[string]types.AttributeValue{
 				":pk": &types.AttributeValueMemberS{Value: "CUST_TOKEN#" + customerID},
@@ -127,29 +127,8 @@ func (s *CustomerTokenStore) RevokeAllTokens(ctx context.Context, customerID str
 		return nil
 	}
 
-	// BatchWriteItem in chunks of 25 (DynamoDB limit)
-	const batchSize = 25
-	for i := 0; i < len(allKeys); i += batchSize {
-		end := i + batchSize
-		if end > len(allKeys) {
-			end = len(allKeys)
-		}
-
-		writeRequests := make([]types.WriteRequest, 0, end-i)
-		for _, key := range allKeys[i:end] {
-			writeRequests = append(writeRequests, types.WriteRequest{
-				DeleteRequest: &types.DeleteRequest{Key: key},
-			})
-		}
-
-		_, err := s.client.db.BatchWriteItem(ctx, &dynamodb.BatchWriteItemInput{
-			RequestItems: map[string][]types.WriteRequest{
-				s.client.coreTable: writeRequests,
-			},
-		})
-		if err != nil {
-			return errors.Wrap(err, "Failed to batch-delete customer tokens")
-		}
+	if err := batchDeleteKeys(ctx, s.client.db, s.client.sessionsTable, allKeys); err != nil {
+		return errors.Wrap(err, "Failed to batch-delete customer tokens")
 	}
 
 	return nil

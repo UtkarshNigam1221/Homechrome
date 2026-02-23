@@ -3,6 +3,7 @@ package service
 
 import (
 	"context"
+	"sort"
 	"time"
 
 	"github.com/handloom/admin/internal/domain"
@@ -106,15 +107,16 @@ func (s *AnalyticsService) GetFunnelAnalytics(ctx context.Context, startDate, en
 		return nil, err
 	}
 
-	// Aggregate funnel step counts across all days
+	// Aggregate funnel step counts across all days.
+	// Field names must match the dynamodbav tags on funnelAggregate in analytics_aggregator.go.
 	stepTotals := map[string]int{
-		"product_views": 0,
-		"add_to_cart":   0,
-		"checkout":      0,
-		"payment":       0,
-		"completed":     0,
+		"page_views":        0,
+		"product_views":     0,
+		"add_to_carts":      0,
+		"checkouts_started": 0,
+		"orders_created":    0,
 	}
-	stepOrder := []string{"product_views", "add_to_cart", "checkout", "payment", "completed"}
+	stepOrder := []string{"page_views", "product_views", "add_to_carts", "checkouts_started", "orders_created"}
 
 	for _, row := range rows {
 		for _, step := range stepOrder {
@@ -143,8 +145,8 @@ func (s *AnalyticsService) GetFunnelAnalytics(ctx context.Context, startDate, en
 	}
 
 	var overallConversion float64
-	if stepTotals["product_views"] > 0 {
-		overallConversion = float64(stepTotals["completed"]) / float64(stepTotals["product_views"]) * 100
+	if stepTotals["page_views"] > 0 {
+		overallConversion = float64(stepTotals["orders_created"]) / float64(stepTotals["page_views"]) * 100
 	}
 
 	return &domain.FunnelAnalytics{
@@ -157,7 +159,9 @@ func (s *AnalyticsService) GetFunnelAnalytics(ctx context.Context, startDate, en
 	}, nil
 }
 
-// GetEngagementAnalytics retrieves user engagement analytics aggregated across a date range
+// GetEngagementAnalytics retrieves user engagement analytics aggregated across a date range.
+// Field names must match the dynamodbav tags on engagementAggregate in analytics_aggregator.go.
+// Device breakdown is sourced from CUSTOMERS aggregates (by_device_type field).
 func (s *AnalyticsService) GetEngagementAnalytics(ctx context.Context, startDate, endDate string) (*domain.EngagementAnalytics, error) {
 	rows, err := s.analyticsRepo.GetDailyAggregates(ctx, "ENGAGEMENT", startDate, endDate)
 	if err != nil {
@@ -166,66 +170,72 @@ func (s *AnalyticsService) GetEngagementAnalytics(ctx context.Context, startDate
 	}
 
 	var totalSessions int
-	var totalDuration int
 	var totalBounces int
-	deviceCounts := map[string]int{}
+	var durationSum float64
+	var durationDays int
 	pageViewCounts := map[string]int{}
 
 	for _, row := range rows {
-		if v, ok := row["sessions"]; ok {
-			if val, ok := v.(float64); ok {
-				totalSessions += int(val)
-			}
+		daySessions := extractMapInt(row, "total_sessions")
+		totalSessions += daySessions
+
+		totalBounces += extractMapInt(row, "bounce_count")
+
+		// avg_session_duration is already an average for that day, so we
+		// compute a weighted average across days using total_sessions as weight.
+		if avgDur := extractMapFloat64(row, "avg_session_duration"); avgDur > 0 && daySessions > 0 {
+			durationSum += avgDur * float64(daySessions)
+			durationDays += daySessions
 		}
-		if v, ok := row["total_duration"]; ok {
-			if val, ok := v.(float64); ok {
-				totalDuration += int(val)
-			}
-		}
-		if v, ok := row["bounces"]; ok {
-			if val, ok := v.(float64); ok {
-				totalBounces += int(val)
-			}
-		}
-		// Aggregate device counts
-		if v, ok := row["devices"]; ok {
-			if devices, ok := v.(map[string]interface{}); ok {
-				for device, count := range devices {
-					if c, ok := count.(float64); ok {
-						deviceCounts[device] += int(c)
-					}
-				}
-			}
-		}
-		// Aggregate page view counts
-		if v, ok := row["pages"]; ok {
-			if pages, ok := v.(map[string]interface{}); ok {
-				for page, count := range pages {
-					if c, ok := count.(float64); ok {
-						pageViewCounts[page] += int(c)
+
+		// top_pages is a list of {path, views} structs written by the aggregator
+		if v, ok := row["top_pages"]; ok {
+			if items, ok := v.([]interface{}); ok {
+				for _, item := range items {
+					if m, ok := item.(map[string]interface{}); ok {
+						path := extractMapString(m, "path")
+						views := extractMapInt(m, "views")
+						if path != "" {
+							pageViewCounts[path] += views
+						}
 					}
 				}
 			}
 		}
 	}
 
-	// Compute averages
+	// Compute weighted average session duration across all days
 	var avgDuration int
 	var bounceRate float64
 	if totalSessions > 0 {
-		avgDuration = totalDuration / totalSessions
 		bounceRate = float64(totalBounces) / float64(totalSessions) * 100
 	}
-
-	// Device breakdown as percentages
-	deviceBreakdown := map[string]float64{}
-	totalDevices := 0
-	for _, count := range deviceCounts {
-		totalDevices += count
+	if durationDays > 0 {
+		avgDuration = int(durationSum / float64(durationDays))
 	}
-	if totalDevices > 0 {
-		for device, count := range deviceCounts {
-			deviceBreakdown[device] = float64(count) / float64(totalDevices) * 100
+
+	// Device breakdown from CUSTOMERS aggregates (by_device_type field)
+	deviceBreakdown := map[string]float64{}
+	custRows, err := s.analyticsRepo.GetDailyAggregates(ctx, "CUSTOMERS", startDate, endDate)
+	if err == nil {
+		deviceCounts := map[string]int{}
+		for _, row := range custRows {
+			if v, ok := row["by_device_type"]; ok {
+				if devices, ok := v.(map[string]interface{}); ok {
+					for device, count := range devices {
+						deviceCounts[device] += toInt(count)
+					}
+				}
+			}
+		}
+		totalDevices := 0
+		for _, count := range deviceCounts {
+			totalDevices += count
+		}
+		if totalDevices > 0 {
+			for device, count := range deviceCounts {
+				deviceBreakdown[device] = float64(count) / float64(totalDevices) * 100
+			}
 		}
 	}
 
@@ -234,14 +244,7 @@ func (s *AnalyticsService) GetEngagementAnalytics(ctx context.Context, startDate
 	for path, views := range pageViewCounts {
 		topPages = append(topPages, domain.PageStats{Path: path, Views: views})
 	}
-	// Sort descending by views
-	for i := 0; i < len(topPages); i++ {
-		for j := i + 1; j < len(topPages); j++ {
-			if topPages[j].Views > topPages[i].Views {
-				topPages[i], topPages[j] = topPages[j], topPages[i]
-			}
-		}
-	}
+	sort.Slice(topPages, func(i, j int) bool { return topPages[i].Views > topPages[j].Views })
 	if len(topPages) > 10 {
 		topPages = topPages[:10]
 	}
@@ -257,6 +260,60 @@ func (s *AnalyticsService) GetEngagementAnalytics(ctx context.Context, startDate
 		DeviceBreakdown:    deviceBreakdown,
 		TopPages:           topPages,
 	}, nil
+}
+
+// ---------------------------------------------------------------------------
+// Map extraction helpers for untyped DynamoDB aggregate data
+// ---------------------------------------------------------------------------
+
+func extractMapString(m map[string]interface{}, key string) string {
+	v, ok := m[key]
+	if !ok {
+		return ""
+	}
+	s, ok := v.(string)
+	if !ok {
+		return ""
+	}
+	return s
+}
+
+func extractMapInt(m map[string]interface{}, key string) int {
+	v, ok := m[key]
+	if !ok {
+		return 0
+	}
+	return toInt(v)
+}
+
+func extractMapFloat64(m map[string]interface{}, key string) float64 {
+	v, ok := m[key]
+	if !ok {
+		return 0
+	}
+	switch n := v.(type) {
+	case float64:
+		return n
+	case int:
+		return float64(n)
+	case int64:
+		return float64(n)
+	default:
+		return 0
+	}
+}
+
+func toInt(v interface{}) int {
+	switch n := v.(type) {
+	case float64:
+		return int(n)
+	case int:
+		return n
+	case int64:
+		return int(n)
+	default:
+		return 0
+	}
 }
 
 // Ensure interface compliance

@@ -2,6 +2,21 @@ package domain
 
 import "time"
 
+// ValidStoreEventTypes is the set of accepted frontend tracking event types.
+var ValidStoreEventTypes = map[string]struct{}{
+	"page_view":        {},
+	"product_viewed":   {},
+	"add_to_cart":      {},
+	"checkout_started": {},
+	"scroll_depth":     {},
+}
+
+// IsValidStoreEventType checks if the event type is in the allowlist.
+func IsValidStoreEventType(eventType string) bool {
+	_, ok := ValidStoreEventTypes[eventType]
+	return ok
+}
+
 // StoreEvent represents a single frontend tracking event
 type StoreEvent struct {
 	EventType  string                 `json:"event_type" validate:"required"`

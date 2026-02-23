@@ -292,9 +292,27 @@ func (r *AnalyticsRepository) RecordEvent(ctx context.Context, eventType string,
 	return nil
 }
 
+// allowedCounterFields is the set of fields that IncrementDashboardCounter may write.
+var allowedCounterFields = map[string]struct{}{
+	"today_page_views":    {},
+	"today_product_views": {},
+	"today_add_to_carts":  {},
+	"today_orders":        {},
+	"today_revenue":       {},
+	"total_orders":        {},
+	"total_revenue":       {},
+	"total_products":      {},
+	"total_customers":     {},
+	"low_stock_count":     {},
+	"out_of_stock_count":  {},
+}
+
 // IncrementDashboardCounter atomically increments a counter field on the DASHBOARD#CURRENT item.
-// Uses DynamoDB ADD to perform an atomic increment.
+// Uses DynamoDB ADD to perform an atomic increment. Only allowed field names are accepted.
 func (r *AnalyticsRepository) IncrementDashboardCounter(ctx context.Context, field string, amount int64) error {
+	if _, ok := allowedCounterFields[field]; !ok {
+		return fmt.Errorf("invalid dashboard counter field: %s", field)
+	}
 	_, err := r.client.db.UpdateItem(ctx, &dynamodb.UpdateItemInput{
 		TableName: aws.String(r.client.analyticsTable),
 		Key: map[string]types.AttributeValue{

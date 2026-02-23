@@ -51,11 +51,11 @@ func (h *EventsHandler) IngestEvents(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	batch := middleware.MustGetValidatedBody[domain.StoreEventBatch](ctx)
 
-	// Filter out events older than 24 hours
+	// Filter out events older than 24 hours and with unknown event types
 	cutoff := time.Now().Add(-24 * time.Hour)
 	valid := make([]domain.StoreEvent, 0, len(batch.Events))
 	for _, evt := range batch.Events {
-		if evt.Timestamp.After(cutoff) {
+		if evt.Timestamp.After(cutoff) && domain.IsValidStoreEventType(evt.EventType) {
 			valid = append(valid, evt)
 		}
 	}
@@ -75,7 +75,7 @@ func (h *EventsHandler) IngestEvents(w http.ResponseWriter, r *http.Request) {
 		var field string
 		switch evt.EventType {
 		case "page_view":
-			field = "today_visitors"
+			field = "today_page_views"
 		case "add_to_cart":
 			field = "today_add_to_carts"
 		case "product_viewed":

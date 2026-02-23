@@ -4,7 +4,6 @@ package handler
 import (
 	"encoding/json"
 	"net/http"
-	"strconv"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/handloom/admin/internal/domain"
@@ -62,49 +61,28 @@ func (h *ProductHandler) Routes() chi.Router {
 func (h *ProductHandler) List(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
+	q := r.URL.Query()
 	req := domain.ListProductsRequest{
 		PaginationRequest: parsePagination(r),
+		Search:            q.Get("search"),
+		CategoryID:        parseStringPtr(q.Get("category_id")),
+		MinPrice:          parseInt64Ptr(q.Get("min_price")),
+		MaxPrice:          parseInt64Ptr(q.Get("max_price")),
+		InStock:           parseBoolParam(q.Get("in_stock")),
+		LowStock:          parseBoolParam(q.Get("low_stock")),
+		Material:          parseStringPtr(q.Get("material")),
+		Color:             parseStringPtr(q.Get("color")),
 	}
-
-	// Parse filters
-	if categoryID := r.URL.Query().Get("category_id"); categoryID != "" {
-		req.CategoryID = &categoryID
-	}
-	if status := r.URL.Query().Get("status"); status != "" {
+	if status := q.Get("status"); status != "" {
 		statusEnum := domain.ProductStatus(status)
 		req.Status = &statusEnum
 	}
-	if minPrice := r.URL.Query().Get("min_price"); minPrice != "" {
-		if val, err := strconv.ParseInt(minPrice, 10, 64); err == nil {
-			req.MinPrice = &val
-		}
-	}
-	if maxPrice := r.URL.Query().Get("max_price"); maxPrice != "" {
-		if val, err := strconv.ParseInt(maxPrice, 10, 64); err == nil {
-			req.MaxPrice = &val
-		}
-	}
-	if inStock := r.URL.Query().Get("in_stock"); inStock != "" {
-		val := inStock == "true"
-		req.InStock = &val
-	}
-	if lowStock := r.URL.Query().Get("low_stock"); lowStock != "" {
-		val := lowStock == "true"
-		req.LowStock = &val
-	}
-	if material := r.URL.Query().Get("material"); material != "" {
-		req.Material = &material
-	}
-	if color := r.URL.Query().Get("color"); color != "" {
-		req.Color = &color
-	}
-	if attrFiltersJSON := r.URL.Query().Get("attribute_filters"); attrFiltersJSON != "" {
+	if attrFiltersJSON := q.Get("attribute_filters"); attrFiltersJSON != "" {
 		var attrFilters map[string][]string
 		if err := json.Unmarshal([]byte(attrFiltersJSON), &attrFilters); err == nil {
 			req.AttributeFilters = attrFilters
 		}
 	}
-	req.Search = r.URL.Query().Get("search")
 
 	result, err := h.productService.List(ctx, req)
 	if err != nil {

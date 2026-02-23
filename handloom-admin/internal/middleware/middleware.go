@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/pkg/logger"
 	"github.com/handloom/admin/pkg/response"
@@ -104,22 +105,10 @@ func NewAuth(authService domain.AuthService, logger *logger.Logger) *Auth {
 // Authenticate validates JWT token and sets user in context
 func (a *Auth) Authenticate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Try cookie first, then fall back to Authorization header
-		var token string
-		if cookie, err := r.Cookie("access_token"); err == nil && cookie.Value != "" {
-			token = cookie.Value
-		} else {
-			authHeader := r.Header.Get("Authorization")
-			if authHeader == "" {
-				response.Unauthorized(w, "Authentication required")
-				return
-			}
-			parts := strings.SplitN(authHeader, " ", 2)
-			if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
-				response.Unauthorized(w, "Invalid authorization header format")
-				return
-			}
-			token = parts[1]
+		token, err := extractBearerToken(r, "access_token")
+		if err != nil {
+			response.Unauthorized(w, err.Error())
+			return
 		}
 
 		// Validate token

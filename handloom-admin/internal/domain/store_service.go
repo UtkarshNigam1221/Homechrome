@@ -2,12 +2,25 @@ package domain
 
 import "context"
 
+// SMSGateway defines the SMS sending interface
+type SMSGateway interface {
+	SendOTP(ctx context.Context, phone, code string) error
+}
+
+// CustomerTokenClaims holds validated customer JWT claims
+type CustomerTokenClaims struct {
+	CustomerID string `json:"customer_id"`
+	Phone      string `json:"phone"`
+	Email      string `json:"email"`
+}
+
 // CustomerAuthService defines customer authentication operations
 type CustomerAuthService interface {
 	SendOTP(ctx context.Context, phone string) error
 	VerifyOTP(ctx context.Context, phone, code string) (*Customer, *TokenPair, bool, error)
 	RefreshToken(ctx context.Context, refreshToken string) (*Customer, *TokenPair, error)
 	Logout(ctx context.Context, customerID, refreshToken string) error
+	ValidateCustomerToken(ctx context.Context, token string) (*CustomerTokenClaims, error)
 }
 
 // CartService defines shopping cart operations

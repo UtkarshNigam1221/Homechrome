@@ -19,9 +19,8 @@ func TestInventoryService_GetByProductID(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockInventoryRepo := mocks.NewMockInventoryRepository(ctrl)
-	mockProductRepo := mocks.NewMockProductRepository(ctrl)
 	log := logger.NewNoop()
-	service := NewInventoryService(mockInventoryRepo, mockProductRepo, event.NewNoopPublisher(), log)
+	service := NewInventoryService(mockInventoryRepo, event.NewNoopPublisher(), log)
 	ctx := context.Background()
 
 	t.Run("successful get inventory", func(t *testing.T) {
@@ -63,9 +62,8 @@ func TestInventoryService_AddStock(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockInventoryRepo := mocks.NewMockInventoryRepository(ctrl)
-	mockProductRepo := mocks.NewMockProductRepository(ctrl)
 	log := logger.NewNoop()
-	service := NewInventoryService(mockInventoryRepo, mockProductRepo, event.NewNoopPublisher(), log)
+	service := NewInventoryService(mockInventoryRepo, event.NewNoopPublisher(), log)
 	ctx := context.Background()
 
 	t.Run("successful add stock", func(t *testing.T) {
@@ -84,24 +82,9 @@ func TestInventoryService_AddStock(t *testing.T) {
 			Reason:      req.Reason,
 		}
 
-		updatedInventory := &domain.Inventory{
-			ProductID:    "prod_123",
-			Quantity:     150,
-			ReservedQty:  10,
-			AvailableQty: 140,
-		}
-
 		mockInventoryRepo.EXPECT().
 			AddStock(ctx, "prod_123", 50, req.Reason, "user_123").
 			Return(transaction, nil)
-
-		mockInventoryRepo.EXPECT().
-			GetByProductID(ctx, "prod_123").
-			Return(updatedInventory, nil)
-
-		mockProductRepo.EXPECT().
-			UpdateInventory(ctx, "prod_123", 150, 10, 140).
-			Return(nil)
 
 		result, err := service.AddStock(ctx, "prod_123", req, "user_123")
 
@@ -135,9 +118,8 @@ func TestInventoryService_RemoveStock(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockInventoryRepo := mocks.NewMockInventoryRepository(ctrl)
-	mockProductRepo := mocks.NewMockProductRepository(ctrl)
 	log := logger.NewNoop()
-	service := NewInventoryService(mockInventoryRepo, mockProductRepo, event.NewNoopPublisher(), log)
+	service := NewInventoryService(mockInventoryRepo, event.NewNoopPublisher(), log)
 	ctx := context.Background()
 
 	t.Run("successful remove stock", func(t *testing.T) {
@@ -170,10 +152,6 @@ func TestInventoryService_RemoveStock(t *testing.T) {
 		mockInventoryRepo.EXPECT().
 			GetByProductID(ctx, "prod_123").
 			Return(updatedInventory, nil)
-
-		mockProductRepo.EXPECT().
-			UpdateInventory(ctx, "prod_123", 80, 10, 70).
-			Return(nil)
 
 		result, err := service.RemoveStock(ctx, "prod_123", req, "user_123")
 
@@ -208,9 +186,8 @@ func TestInventoryService_AdjustStock(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockInventoryRepo := mocks.NewMockInventoryRepository(ctrl)
-	mockProductRepo := mocks.NewMockProductRepository(ctrl)
 	log := logger.NewNoop()
-	service := NewInventoryService(mockInventoryRepo, mockProductRepo, event.NewNoopPublisher(), log)
+	service := NewInventoryService(mockInventoryRepo, event.NewNoopPublisher(), log)
 	ctx := context.Background()
 
 	t.Run("successful adjust stock up", func(t *testing.T) {
@@ -229,24 +206,9 @@ func TestInventoryService_AdjustStock(t *testing.T) {
 			Reason:      req.Reason,
 		}
 
-		updatedInventory := &domain.Inventory{
-			ProductID:    "prod_123",
-			Quantity:     150,
-			ReservedQty:  10,
-			AvailableQty: 140,
-		}
-
 		mockInventoryRepo.EXPECT().
 			AdjustStock(ctx, "prod_123", 150, req.Reason, "user_123").
 			Return(transaction, nil)
-
-		mockInventoryRepo.EXPECT().
-			GetByProductID(ctx, "prod_123").
-			Return(updatedInventory, nil)
-
-		mockProductRepo.EXPECT().
-			UpdateInventory(ctx, "prod_123", 150, 10, 140).
-			Return(nil)
 
 		result, err := service.AdjustStock(ctx, "prod_123", req, "user_123")
 
@@ -273,24 +235,9 @@ func TestInventoryService_AdjustStock(t *testing.T) {
 			Reason:      req.Reason,
 		}
 
-		updatedInventory := &domain.Inventory{
-			ProductID:    "prod_123",
-			Quantity:     80,
-			ReservedQty:  10,
-			AvailableQty: 70,
-		}
-
 		mockInventoryRepo.EXPECT().
 			AdjustStock(ctx, "prod_123", 80, req.Reason, "user_123").
 			Return(transaction, nil)
-
-		mockInventoryRepo.EXPECT().
-			GetByProductID(ctx, "prod_123").
-			Return(updatedInventory, nil)
-
-		mockProductRepo.EXPECT().
-			UpdateInventory(ctx, "prod_123", 80, 10, 70).
-			Return(nil)
 
 		result, err := service.AdjustStock(ctx, "prod_123", req, "user_123")
 
@@ -305,9 +252,8 @@ func TestInventoryService_GetTransactions(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockInventoryRepo := mocks.NewMockInventoryRepository(ctrl)
-	mockProductRepo := mocks.NewMockProductRepository(ctrl)
 	log := logger.NewNoop()
-	service := NewInventoryService(mockInventoryRepo, mockProductRepo, event.NewNoopPublisher(), log)
+	service := NewInventoryService(mockInventoryRepo, event.NewNoopPublisher(), log)
 	ctx := context.Background()
 
 	t.Run("successful get transactions", func(t *testing.T) {
@@ -343,9 +289,8 @@ func TestInventoryService_GetLowStockProducts(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockInventoryRepo := mocks.NewMockInventoryRepository(ctrl)
-	mockProductRepo := mocks.NewMockProductRepository(ctrl)
 	log := logger.NewNoop()
-	service := NewInventoryService(mockInventoryRepo, mockProductRepo, event.NewNoopPublisher(), log)
+	service := NewInventoryService(mockInventoryRepo, event.NewNoopPublisher(), log)
 	ctx := context.Background()
 
 	t.Run("successful get low stock products", func(t *testing.T) {

@@ -74,7 +74,7 @@ func (s *TokenStore) StoreRefreshToken(ctx context.Context, userID string, token
 	}
 
 	_, err = s.client.db.PutItem(ctx, &dynamodb.PutItemInput{
-		TableName: aws.String(s.client.coreTable),
+		TableName: aws.String(s.client.sessionsTable),
 		Item:      av,
 	})
 	if err != nil {
@@ -89,7 +89,7 @@ func (s *TokenStore) ValidateRefreshToken(ctx context.Context, userID string, to
 	tokenHash := hashToken(token)
 
 	result, err := s.client.db.GetItem(ctx, &dynamodb.GetItemInput{
-		TableName: aws.String(s.client.coreTable),
+		TableName: aws.String(s.client.sessionsTable),
 		Key: map[string]types.AttributeValue{
 			"PK": &types.AttributeValueMemberS{Value: "USER#" + userID},
 			"SK": &types.AttributeValueMemberS{Value: "REFRESH_TOKEN#" + tokenHash},
@@ -121,7 +121,7 @@ func (s *TokenStore) RevokeRefreshToken(ctx context.Context, userID string, toke
 	tokenHash := hashToken(token)
 
 	_, err := s.client.db.DeleteItem(ctx, &dynamodb.DeleteItemInput{
-		TableName: aws.String(s.client.coreTable),
+		TableName: aws.String(s.client.sessionsTable),
 		Key: map[string]types.AttributeValue{
 			"PK": &types.AttributeValueMemberS{Value: "USER#" + userID},
 			"SK": &types.AttributeValueMemberS{Value: "REFRESH_TOKEN#" + tokenHash},
@@ -142,7 +142,7 @@ func (s *TokenStore) RevokeAllUserTokens(ctx context.Context, userID string) err
 	// Paginate through all tokens for user
 	for {
 		result, err := s.client.db.Query(ctx, &dynamodb.QueryInput{
-			TableName:              aws.String(s.client.coreTable),
+			TableName:              aws.String(s.client.sessionsTable),
 			KeyConditionExpression: aws.String("PK = :pk AND begins_with(SK, :sk)"),
 			ExpressionAttributeValues: map[string]types.AttributeValue{
 				":pk": &types.AttributeValueMemberS{Value: "USER#" + userID},
@@ -172,29 +172,8 @@ func (s *TokenStore) RevokeAllUserTokens(ctx context.Context, userID string) err
 		return nil
 	}
 
-	// BatchWriteItem in chunks of 25 (DynamoDB limit)
-	const batchSize = 25
-	for i := 0; i < len(allKeys); i += batchSize {
-		end := i + batchSize
-		if end > len(allKeys) {
-			end = len(allKeys)
-		}
-
-		writeRequests := make([]types.WriteRequest, 0, end-i)
-		for _, key := range allKeys[i:end] {
-			writeRequests = append(writeRequests, types.WriteRequest{
-				DeleteRequest: &types.DeleteRequest{Key: key},
-			})
-		}
-
-		_, err := s.client.db.BatchWriteItem(ctx, &dynamodb.BatchWriteItemInput{
-			RequestItems: map[string][]types.WriteRequest{
-				s.client.coreTable: writeRequests,
-			},
-		})
-		if err != nil {
-			return errors.Wrap(err, "Failed to batch-delete user tokens")
-		}
+	if err := batchDeleteKeys(ctx, s.client.db, s.client.sessionsTable, allKeys); err != nil {
+		return errors.Wrap(err, "Failed to batch-delete user tokens")
 	}
 
 	return nil
@@ -222,7 +201,7 @@ func (s *TokenStore) StorePasswordResetToken(ctx context.Context, userID string,
 	}
 
 	_, err = s.client.db.PutItem(ctx, &dynamodb.PutItemInput{
-		TableName: aws.String(s.client.coreTable),
+		TableName: aws.String(s.client.sessionsTable),
 		Item:      av,
 	})
 	if err != nil {
@@ -237,7 +216,7 @@ func (s *TokenStore) ValidatePasswordResetToken(ctx context.Context, token strin
 	tokenHash := hashToken(token)
 
 	result, err := s.client.db.GetItem(ctx, &dynamodb.GetItemInput{
-		TableName: aws.String(s.client.coreTable),
+		TableName: aws.String(s.client.sessionsTable),
 		Key: map[string]types.AttributeValue{
 			"PK": &types.AttributeValueMemberS{Value: "PASSWORD_RESET#" + tokenHash},
 			"SK": &types.AttributeValueMemberS{Value: "METADATA"},
@@ -269,7 +248,7 @@ func (s *TokenStore) RevokePasswordResetToken(ctx context.Context, token string)
 	tokenHash := hashToken(token)
 
 	_, err := s.client.db.DeleteItem(ctx, &dynamodb.DeleteItemInput{
-		TableName: aws.String(s.client.coreTable),
+		TableName: aws.String(s.client.sessionsTable),
 		Key: map[string]types.AttributeValue{
 			"PK": &types.AttributeValueMemberS{Value: "PASSWORD_RESET#" + tokenHash},
 			"SK": &types.AttributeValueMemberS{Value: "METADATA"},

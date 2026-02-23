@@ -11,6 +11,8 @@ import (
 	"github.com/handloom/admin/pkg/logger"
 )
 
+var slugDashCollapse = regexp.MustCompile("-+")
+
 // CategoryService implements domain.CategoryService
 type CategoryService struct {
 	categoryRepo   domain.CategoryRepository
@@ -34,27 +36,36 @@ func NewCategoryService(
 	}
 }
 
+// finalizeImage resolves a tmp/ asset key into a permanent URL.
+func (s *CategoryService) finalizeImage(ctx context.Context, url string) (string, error) {
+	finalURL, err := s.assetFinalizer.FinalizeIfTemp(ctx, url)
+	if err != nil {
+		return "", errors.Wrap(err, "failed to finalize image")
+	}
+	return finalURL, nil
+}
+
+// findAttributeIndex returns the index of the attribute with the given name, or -1.
+func findAttributeIndex(attrs []domain.CategoryAttribute, name string) int {
+	for i, a := range attrs {
+		if a.Name == name {
+			return i
+		}
+	}
+	return -1
+}
+
 // Create creates a new category
 func (s *CategoryService) Create(ctx context.Context, req domain.CreateCategoryRequest, createdBy string) (*domain.Category, error) {
-	// Finalize image if it's a tmp key
 	if req.ImageURL != "" {
-		finalURL, err := s.assetFinalizer.FinalizeIfTemp(ctx, req.ImageURL)
+		finalURL, err := s.finalizeImage(ctx, req.ImageURL)
 		if err != nil {
-			return nil, errors.Wrap(err, "failed to finalize image")
+			return nil, err
 		}
 		req.ImageURL = finalURL
 	}
 
-	category := &domain.Category{
-		ID:            "cat_" + uuid.New().String(),
-		Name:          req.Name,
-		Slug:          generateSlug(req.Name),
-		Description:   req.Description,
-		ImageURL:      req.ImageURL,
-		OwnAttributes: req.OwnAttributes,
-		Status:        domain.CategoryStatusActive,
-	}
-	category.CreatedBy = createdBy
+	category := domain.NewCategory(req, "cat_"+uuid.New().String(), generateSlug(req.Name), createdBy)
 
 	if err := s.categoryRepo.Create(ctx, category); err != nil {
 		return nil, err
@@ -76,25 +87,18 @@ func (s *CategoryService) Update(ctx context.Context, id string, req domain.Upda
 		return nil, err
 	}
 
+	slug := category.Slug
 	if req.Name != nil {
-		category.Name = *req.Name
-		category.Slug = generateSlug(*req.Name)
+		slug = generateSlug(*req.Name)
 	}
-	if req.Description != nil {
-		category.Description = *req.Description
-	}
+	category.ApplyUpdate(req, slug)
+
 	if req.ImageURL != nil {
-		finalURL, err := s.assetFinalizer.FinalizeIfTemp(ctx, *req.ImageURL)
+		finalURL, err := s.finalizeImage(ctx, *req.ImageURL)
 		if err != nil {
-			return nil, errors.Wrap(err, "failed to finalize image")
+			return nil, err
 		}
 		category.ImageURL = finalURL
-	}
-	if req.Status != nil {
-		category.Status = *req.Status
-	}
-	if req.OwnAttributes != nil {
-		category.OwnAttributes = req.OwnAttributes
 	}
 	category.UpdatedBy = updatedBy
 
@@ -132,11 +136,8 @@ func (s *CategoryService) AddAttribute(ctx context.Context, categoryID string, a
 		return nil, err
 	}
 
-	// Check if attribute already exists
-	for _, existing := range category.OwnAttributes {
-		if existing.Name == attr.Name {
-			return nil, errors.Conflict("Attribute with this name already exists")
-		}
+	if findAttributeIndex(category.OwnAttributes, attr.Name) != -1 {
+		return nil, errors.Conflict("Attribute with this name already exists")
 	}
 
 	category.OwnAttributes = append(category.OwnAttributes, attr)
@@ -156,18 +157,11 @@ func (s *CategoryService) UpdateAttribute(ctx context.Context, categoryID string
 		return nil, err
 	}
 
-	found := false
-	for i, existing := range category.OwnAttributes {
-		if existing.Name == attrName {
-			category.OwnAttributes[i] = attr
-			found = true
-			break
-		}
-	}
-
-	if !found {
+	idx := findAttributeIndex(category.OwnAttributes, attrName)
+	if idx == -1 {
 		return nil, errors.NotFound("Attribute")
 	}
+	category.OwnAttributes[idx] = attr
 
 	category.UpdatedBy = updatedBy
 
@@ -185,21 +179,11 @@ func (s *CategoryService) DeleteAttribute(ctx context.Context, categoryID string
 		return err
 	}
 
-	found := false
-	var newAttrs []domain.CategoryAttribute
-	for _, existing := range category.OwnAttributes {
-		if existing.Name == attrName {
-			found = true
-			continue
-		}
-		newAttrs = append(newAttrs, existing)
-	}
-
-	if !found {
+	idx := findAttributeIndex(category.OwnAttributes, attrName)
+	if idx == -1 {
 		return errors.NotFound("Attribute")
 	}
-
-	category.OwnAttributes = newAttrs
+	category.OwnAttributes = append(category.OwnAttributes[:idx], category.OwnAttributes[idx+1:]...)
 	category.UpdatedBy = updatedBy
 
 	return s.categoryRepo.Update(ctx, category)
@@ -229,8 +213,7 @@ func generateSlug(name string) string {
 			result.WriteRune(r)
 		}
 	}
-	// Collapse consecutive dashes and trim leading/trailing dashes
-	slug = regexp.MustCompile("-+").ReplaceAllString(result.String(), "-")
+	slug = slugDashCollapse.ReplaceAllString(result.String(), "-")
 	slug = strings.Trim(slug, "-")
 	return slug
 }

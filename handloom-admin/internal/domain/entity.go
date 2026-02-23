@@ -2,7 +2,6 @@
 package domain
 
 import (
-	"fmt"
 	"time"
 )
 
@@ -184,42 +183,56 @@ func (u *User) SetKeys() {
 
 // Category represents a flat product category
 type Category struct {
-	ID         string `json:"id" dynamodbav:"id"`
-	PK         string `json:"-" dynamodbav:"PK"`
-	SK         string `json:"-" dynamodbav:"SK"`
-	GSI1PK     string `json:"-" dynamodbav:"GSI1PK"`
-	GSI1SK     string `json:"-" dynamodbav:"GSI1SK"`
-	EntityType string `json:"-" dynamodbav:"entity_type"`
+	ID string `json:"id" dynamodbav:"id"`
 
 	Name        string `json:"name" dynamodbav:"name"`
 	Slug        string `json:"slug" dynamodbav:"slug"`
 	Description string `json:"description,omitempty" dynamodbav:"description,omitempty"`
 	ImageURL    string `json:"image_url,omitempty" dynamodbav:"image_url,omitempty"`
 
-	// Attributes
+	// Attributes (loaded from category_attributes table)
 	OwnAttributes []CategoryAttribute `json:"own_attributes,omitempty" dynamodbav:"own_attributes,omitempty"`
 
 	Status CategoryStatus `json:"status" dynamodbav:"status"`
 
-	// Counts (denormalized)
+	// Counts
 	ProductCount int `json:"product_count" dynamodbav:"product_count"`
 
 	BaseEntity
 }
 
-// TableName returns the DynamoDB table name for Category
-func (c *Category) TableName() string {
-	return "handloom-core"
+// NewCategory creates a Category from a CreateCategoryRequest.
+func NewCategory(req CreateCategoryRequest, id, slug, createdBy string) *Category {
+	c := &Category{
+		ID:            id,
+		Name:          req.Name,
+		Slug:          slug,
+		Description:   req.Description,
+		ImageURL:      req.ImageURL,
+		OwnAttributes: req.OwnAttributes,
+		Status:        CategoryStatusActive,
+	}
+	c.CreatedBy = createdBy
+	return c
 }
 
-// SetKeys sets the DynamoDB keys for Category
-func (c *Category) SetKeys() {
-	c.PK = "CATEGORY#" + c.ID
-	c.SK = "METADATA"
-	c.GSI1PK = "CATEGORY#ALL"
-	c.GSI1SK = "CATEGORY#" + c.ID
-	c.EntityType = "CATEGORY"
+// ApplyUpdate applies non-nil fields from an UpdateCategoryRequest to the category.
+func (c *Category) ApplyUpdate(req UpdateCategoryRequest, slug string) {
+	if req.Name != nil {
+		c.Name = *req.Name
+		c.Slug = slug
+	}
+	if req.Description != nil {
+		c.Description = *req.Description
+	}
+	if req.Status != nil {
+		c.Status = *req.Status
+	}
+	if req.OwnAttributes != nil {
+		c.OwnAttributes = req.OwnAttributes
+	}
 }
+
 
 // CategoryAttribute defines an attribute for a category
 type CategoryAttribute struct {
@@ -274,14 +287,7 @@ type ProductImage struct {
 
 // Product represents a handloom product
 type Product struct {
-	ID         string `json:"id" dynamodbav:"id"`
-	PK         string `json:"-" dynamodbav:"PK"`
-	SK         string `json:"-" dynamodbav:"SK"`
-	GSI1PK     string `json:"-" dynamodbav:"GSI1PK"`
-	GSI1SK     string `json:"-" dynamodbav:"GSI1SK"`
-	GSI2PK     string `json:"-" dynamodbav:"GSI2PK"`
-	GSI2SK     string `json:"-" dynamodbav:"GSI2SK"`
-	EntityType string `json:"-" dynamodbav:"entity_type"`
+	ID string `json:"id" dynamodbav:"id"`
 
 	// Basic Info
 	Name        string `json:"name" dynamodbav:"name"`
@@ -337,21 +343,6 @@ type Product struct {
 	BaseEntity
 }
 
-// TableName returns the DynamoDB table name for Product
-func (p *Product) TableName() string {
-	return "handloom-core"
-}
-
-// SetKeys sets the DynamoDB keys for Product
-func (p *Product) SetKeys() {
-	p.PK = "PRODUCT#" + p.ID
-	p.SK = "METADATA"
-	p.GSI1PK = "CATEGORY#" + p.CategoryID
-	p.GSI1SK = fmt.Sprintf("RANK#%06d#%s", p.SortOrder, p.ID)
-	p.GSI2PK = "PRODUCT#ALL"
-	p.GSI2SK = "PRODUCT#" + p.ID
-	p.EntityType = "PRODUCT"
-}
 
 // NewProduct creates a Product from a CreateProductRequest.
 func NewProduct(req CreateProductRequest, id, slug, createdBy string) *Product {
@@ -468,53 +459,6 @@ type Dimensions struct {
 	Unit   string  `json:"unit" dynamodbav:"unit"`
 }
 
-// ==================== PRODUCT ATTRIBUTE INDEX ====================
-
-// ProductAttributeIndex is used to index product attributes for filtering
-// This enables efficient queries like "all products in category X with material=silk"
-// without creating separate GSIs for each attribute
-type ProductAttributeIndex struct {
-	PK         string `json:"-" dynamodbav:"PK"`          // PRODUCT#<product_id>
-	SK         string `json:"-" dynamodbav:"SK"`          // ATTR#<attr_name>#<attr_value>
-	GSI1PK     string `json:"-" dynamodbav:"GSI1PK"`      // ATTR#<category_id>#<attr_name>
-	GSI1SK     string `json:"-" dynamodbav:"GSI1SK"`      // <attr_value>#PRODUCT#<product_id>
-	EntityType string `json:"-" dynamodbav:"entity_type"` // PRODUCT_ATTR
-
-	ProductID  string `json:"product_id" dynamodbav:"product_id"`
-	CategoryID string `json:"category_id" dynamodbav:"category_id"`
-	AttrName   string `json:"attr_name" dynamodbav:"attr_name"`
-	AttrValue  string `json:"attr_value" dynamodbav:"attr_value"`
-}
-
-// SetKeys sets the DynamoDB keys for ProductAttributeIndex
-func (p *ProductAttributeIndex) SetKeys() {
-	p.PK = "PRODUCT#" + p.ProductID
-	p.SK = "ATTR#" + p.AttrName + "#" + p.AttrValue
-	p.GSI1PK = "ATTR#" + p.CategoryID + "#" + p.AttrName
-	p.GSI1SK = p.AttrValue + "#PRODUCT#" + p.ProductID
-	p.EntityType = "PRODUCT_ATTR"
-}
-
-// ==================== CATEGORY ATTRIBUTE VALUES ====================
-
-// CategoryAttributeValues stores the set of distinct values for each searchable attribute in a category.
-// This is maintained incrementally when products are created/updated so that filter options
-// can be fetched in a single read rather than querying the GSI.
-// PK = CATEGORY#<id>, SK = ATTR_VALUES
-type CategoryAttributeValues struct {
-	PK         string              `json:"-" dynamodbav:"PK"`
-	SK         string              `json:"-" dynamodbav:"SK"`
-	EntityType string              `json:"-" dynamodbav:"entity_type"`
-	CategoryID string              `json:"category_id" dynamodbav:"category_id"`
-	Values     map[string][]string `json:"values" dynamodbav:"values"` // attr_name -> distinct values
-}
-
-// SetKeys sets the DynamoDB keys for CategoryAttributeValues
-func (c *CategoryAttributeValues) SetKeys() {
-	c.PK = "CATEGORY#" + c.CategoryID
-	c.SK = "ATTR_VALUES"
-	c.EntityType = "CATEGORY_ATTR_VALUES"
-}
 
 // ==================== PRICING RULE ENTITY ====================
 
@@ -670,12 +614,7 @@ type SurchargeDetail struct {
 
 // Inventory represents inventory for a product
 type Inventory struct {
-	ID         string `json:"id" dynamodbav:"id"`
-	PK         string `json:"-" dynamodbav:"PK"`
-	SK         string `json:"-" dynamodbav:"SK"`
-	GSI2PK     string `json:"-" dynamodbav:"GSI2PK,omitempty"`
-	GSI2SK     string `json:"-" dynamodbav:"GSI2SK,omitempty"`
-	EntityType string `json:"-" dynamodbav:"entity_type"`
+	ID string `json:"id" dynamodbav:"id"`
 
 	ProductID   string `json:"product_id" dynamodbav:"product_id"`
 	ProductSKU  string `json:"product_sku" dynamodbav:"product_sku"`
@@ -693,24 +632,10 @@ type Inventory struct {
 	BaseEntity
 }
 
-// TableName returns the DynamoDB table name for Inventory
-func (i *Inventory) TableName() string {
-	return "handloom-core"
-}
-
-// SetKeys sets the DynamoDB keys for Inventory
-func (i *Inventory) SetKeys() {
-	i.PK = "INVENTORY#" + i.ProductID
-	i.SK = "METADATA"
-	i.EntityType = "INVENTORY"
-}
 
 // InventoryTransaction represents a transaction in inventory
 type InventoryTransaction struct {
-	ID         string `json:"id" dynamodbav:"id"`
-	PK         string `json:"-" dynamodbav:"PK"`
-	SK         string `json:"-" dynamodbav:"SK"`
-	EntityType string `json:"-" dynamodbav:"entity_type"`
+	ID string `json:"id" dynamodbav:"id"`
 
 	ProductID     string                   `json:"product_id" dynamodbav:"product_id"`
 	Type          InventoryTransactionType `json:"type" dynamodbav:"type"`
@@ -725,17 +650,6 @@ type InventoryTransaction struct {
 	CreatedBy string    `json:"created_by" dynamodbav:"created_by"`
 }
 
-// TableName returns the DynamoDB table name for InventoryTransaction
-func (t *InventoryTransaction) TableName() string {
-	return "handloom-core"
-}
-
-// SetKeys sets the DynamoDB keys for InventoryTransaction
-func (t *InventoryTransaction) SetKeys() {
-	t.PK = "INVENTORY#" + t.ProductID
-	t.SK = "TXN#" + t.CreatedAt.Format("2006-01-02T15:04:05.000Z") + "#" + t.ID
-	t.EntityType = "INVENTORY_TRANSACTION"
-}
 
 // ==================== OTP ENTITY ====================
 

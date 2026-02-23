@@ -26,9 +26,16 @@ func NewEventsRepository(client *Client) *EventsRepository {
 	return &EventsRepository{client: client}
 }
 
+// batchWriteLimit is the DynamoDB BatchWriteItem limit per request.
+const batchWriteLimit = 25
+
+// maxUnprocessedRetries limits retries for unprocessed items.
+const maxUnprocessedRetries = 3
+
 // BatchWriteEvents writes a batch of tracking events to the events table.
 // Events are partitioned by date (PK=EVENT#YYYY-MM-DD) with a unique sort key
 // composed of the timestamp and a UUID. Each item has a 30-day TTL.
+// Handles DynamoDB's 25-item batch limit and retries unprocessed items.
 func (r *EventsRepository) BatchWriteEvents(ctx context.Context, events []domain.StoreEvent) error {
 	if len(events) == 0 {
 		return nil
@@ -40,7 +47,10 @@ func (r *EventsRepository) BatchWriteEvents(ctx context.Context, events []domain
 		sk := evt.Timestamp.Format(time.RFC3339Nano) + "#" + uuid.New().String()
 		ttl := evt.Timestamp.Add(eventTTLDays * 24 * time.Hour).Unix()
 
-		propsJSON, _ := json.Marshal(evt.Properties)
+		propsJSON, err := json.Marshal(evt.Properties)
+		if err != nil {
+			propsJSON = []byte("{}")
+		}
 
 		item := map[string]types.AttributeValue{
 			"PK":          &types.AttributeValueMemberS{Value: "EVENT#" + date},
@@ -60,12 +70,47 @@ func (r *EventsRepository) BatchWriteEvents(ctx context.Context, events []domain
 		})
 	}
 
-	_, err := r.client.db.BatchWriteItem(ctx, &dynamodb.BatchWriteItemInput{
-		RequestItems: map[string][]types.WriteRequest{
-			r.client.eventsTable: requests,
-		},
-	})
-	return err
+	// Process in chunks of 25 (DynamoDB BatchWriteItem limit)
+	for i := 0; i < len(requests); i += batchWriteLimit {
+		end := i + batchWriteLimit
+		if end > len(requests) {
+			end = len(requests)
+		}
+		chunk := requests[i:end]
+
+		if err := r.batchWriteWithRetry(ctx, chunk); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// batchWriteWithRetry writes a chunk and retries unprocessed items.
+func (r *EventsRepository) batchWriteWithRetry(ctx context.Context, items []types.WriteRequest) error {
+	pending := items
+
+	for attempt := 0; attempt <= maxUnprocessedRetries; attempt++ {
+		result, err := r.client.db.BatchWriteItem(ctx, &dynamodb.BatchWriteItemInput{
+			RequestItems: map[string][]types.WriteRequest{
+				r.client.eventsTable: pending,
+			},
+		})
+		if err != nil {
+			return err
+		}
+
+		unprocessed := result.UnprocessedItems[r.client.eventsTable]
+		if len(unprocessed) == 0 {
+			return nil
+		}
+
+		pending = unprocessed
+		// Brief backoff before retry
+		time.Sleep(time.Duration(attempt+1) * 100 * time.Millisecond)
+	}
+
+	return fmt.Errorf("batch write: %d items still unprocessed after %d retries", len(pending), maxUnprocessedRetries)
 }
 
 // QueryByDate retrieves all events for a given date string (YYYY-MM-DD).

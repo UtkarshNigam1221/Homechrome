@@ -142,8 +142,8 @@ type MockProductRepository struct {
 	mock.Mock
 }
 
-func (m *MockProductRepository) CreateWithAttributeIndexes(ctx context.Context, product *domain.Product, searchableAttrs map[string][]string, inventory *domain.Inventory) error {
-	args := m.Called(ctx, product, searchableAttrs, inventory)
+func (m *MockProductRepository) Create(ctx context.Context, product *domain.Product, inventory *domain.Inventory) error {
+	args := m.Called(ctx, product, inventory)
 	return args.Error(0)
 }
 
@@ -163,18 +163,13 @@ func (m *MockProductRepository) GetBySKU(ctx context.Context, sku string) (*doma
 	return args.Get(0).(*domain.Product), args.Error(1)
 }
 
-func (m *MockProductRepository) UpdateWithAttributeIndexes(ctx context.Context, product *domain.Product, oldSearchableAttrs, newSearchableAttrs map[string][]string) error {
-	args := m.Called(ctx, product, oldSearchableAttrs, newSearchableAttrs)
+func (m *MockProductRepository) Update(ctx context.Context, product *domain.Product) error {
+	args := m.Called(ctx, product)
 	return args.Error(0)
 }
 
 func (m *MockProductRepository) Delete(ctx context.Context, id string) error {
 	args := m.Called(ctx, id)
-	return args.Error(0)
-}
-
-func (m *MockProductRepository) DeleteWithAttributeIndexes(ctx context.Context, id string, sku string, searchableAttrs map[string][]string) error {
-	args := m.Called(ctx, id, sku, searchableAttrs)
 	return args.Error(0)
 }
 
@@ -186,46 +181,12 @@ func (m *MockProductRepository) List(ctx context.Context, req domain.ListProduct
 	return args.Get(0).(*domain.ListProductsResponse), args.Error(1)
 }
 
-func (m *MockProductRepository) GetByCategory(ctx context.Context, categoryID string, pagination domain.PaginationRequest) (*domain.ListProductsResponse, error) {
-	args := m.Called(ctx, categoryID, pagination)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(*domain.ListProductsResponse), args.Error(1)
-}
-
-func (m *MockProductRepository) FilterByAttributes(ctx context.Context, categoryID string, filters map[string][]string, pagination domain.PaginationRequest) (*domain.ListProductsResponse, error) {
-	args := m.Called(ctx, categoryID, filters, pagination)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(*domain.ListProductsResponse), args.Error(1)
-}
-
-func (m *MockProductRepository) UpdateInventory(ctx context.Context, id string, quantity, reservedQty, availableQty int) error {
-	args := m.Called(ctx, id, quantity, reservedQty, availableQty)
-	return args.Error(0)
-}
-
 func (m *MockProductRepository) BatchGetByIDs(ctx context.Context, ids []string) ([]*domain.Product, error) {
 	args := m.Called(ctx, ids)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
 	return args.Get(0).([]*domain.Product), args.Error(1)
-}
-
-func (m *MockProductRepository) AddAttributeValues(ctx context.Context, categoryID string, attrValues map[string][]string) error {
-	args := m.Called(ctx, categoryID, attrValues)
-	return args.Error(0)
-}
-
-func (m *MockProductRepository) GetAttributeValues(ctx context.Context, categoryID string) (map[string][]string, error) {
-	args := m.Called(ctx, categoryID)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(map[string][]string), args.Error(1)
 }
 
 func (m *MockProductRepository) BatchUpdateSortOrder(ctx context.Context, products []*domain.Product) error {
@@ -239,6 +200,14 @@ func (m *MockProductRepository) GetByCategoryAll(ctx context.Context, categoryID
 		return nil, args.Error(1)
 	}
 	return args.Get(0).([]*domain.Product), args.Error(1)
+}
+
+func (m *MockProductRepository) GetAttributeFilterOptions(ctx context.Context, categoryID string, attrNames []string) (map[string][]string, error) {
+	args := m.Called(ctx, categoryID, attrNames)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(map[string][]string), args.Error(1)
 }
 
 func TestPricingService_CalculatePrice_AreaBased(t *testing.T) {

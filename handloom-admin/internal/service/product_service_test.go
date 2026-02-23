@@ -65,8 +65,8 @@ func TestProductService_Create(t *testing.T) {
 			Return(category, nil)
 
 		mockProdRepo.EXPECT().
-			CreateWithAttributeIndexes(ctx, gomock.Any(), gomock.Any(), gomock.Any()).
-			DoAndReturn(func(ctx context.Context, product *domain.Product, attrs map[string][]string, inv *domain.Inventory) error {
+			Create(ctx, gomock.Any(), gomock.Any()).
+			DoAndReturn(func(ctx context.Context, product *domain.Product, inv *domain.Inventory) error {
 				assert.Contains(t, product.ID, "prod_")
 				assert.Equal(t, "Banarasi Silk Saree", product.Name)
 				assert.Equal(t, "banarasi-silk-saree", product.Slug)
@@ -78,10 +78,6 @@ func TestProductService_Create(t *testing.T) {
 				assert.Equal(t, 10, inv.AvailableQty)
 				return nil
 			})
-
-		mockProdRepo.EXPECT().
-			AddAttributeValues(ctx, "cat_123", gomock.Any()).
-			Return(nil)
 
 		mockCatRepo.EXPECT().
 			IncrementProductCount(ctx, "cat_123", 1).
@@ -117,8 +113,8 @@ func TestProductService_Create(t *testing.T) {
 			Return(category, nil)
 
 		mockProdRepo.EXPECT().
-			CreateWithAttributeIndexes(ctx, gomock.Any(), gomock.Any(), gomock.Any()).
-			DoAndReturn(func(ctx context.Context, product *domain.Product, attrs map[string][]string, inv *domain.Inventory) error {
+			Create(ctx, gomock.Any(), gomock.Any()).
+			DoAndReturn(func(ctx context.Context, product *domain.Product, inv *domain.Inventory) error {
 				assert.Equal(t, domain.ProductStatusActive, product.Status)
 				return nil
 			})
@@ -210,16 +206,12 @@ func TestProductService_Create(t *testing.T) {
 			Return("assets/product/img2.jpg", nil)
 
 		mockProdRepo.EXPECT().
-			CreateWithAttributeIndexes(ctx, gomock.Any(), gomock.Any(), gomock.Any()).
-			DoAndReturn(func(ctx context.Context, product *domain.Product, _ map[string][]string, _ *domain.Inventory) error {
+			Create(ctx, gomock.Any(), gomock.Any()).
+			DoAndReturn(func(ctx context.Context, product *domain.Product, _ *domain.Inventory) error {
 				assert.Equal(t, "assets/product/img1.jpg", product.Images[0].URL)
 				assert.Equal(t, "assets/product/img2.jpg", product.Images[1].URL)
 				return nil
 			})
-
-		mockProdRepo.EXPECT().
-			AddAttributeValues(ctx, "cat_123", gomock.Any()).
-			Return(nil)
 
 		mockCatRepo.EXPECT().
 			IncrementProductCount(ctx, "cat_123", 1).
@@ -273,7 +265,7 @@ func TestProductService_Create(t *testing.T) {
 			Return(category, nil)
 
 		mockProdRepo.EXPECT().
-			CreateWithAttributeIndexes(ctx, gomock.Any(), gomock.Any(), gomock.Any()).
+			Create(ctx, gomock.Any(), gomock.Any()).
 			Return(errors.Internal("db error"))
 
 		product, err := svc.Create(ctx, req, "admin_1")
@@ -396,17 +388,13 @@ func TestProductService_Update(t *testing.T) {
 			Return(category, nil)
 
 		mockProdRepo.EXPECT().
-			UpdateWithAttributeIndexes(ctx, gomock.Any(), gomock.Any(), gomock.Any()).
-			DoAndReturn(func(ctx context.Context, product *domain.Product, old, new map[string][]string) error {
+			Update(ctx, gomock.Any()).
+			DoAndReturn(func(ctx context.Context, product *domain.Product) error {
 				assert.Equal(t, "New Name", product.Name)
 				assert.Equal(t, "new-name", product.Slug)
 				assert.Equal(t, "admin_1", product.UpdatedBy)
 				return nil
 			})
-
-		mockProdRepo.EXPECT().
-			AddAttributeValues(ctx, "cat_123", gomock.Any()).
-			Return(nil)
 
 		product, err := svc.Update(ctx, "prod_123", req, "admin_1")
 
@@ -455,11 +443,7 @@ func TestProductService_Update(t *testing.T) {
 			Return("assets/product/new.jpg", nil)
 
 		mockProdRepo.EXPECT().
-			UpdateWithAttributeIndexes(ctx, gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil)
-
-		mockProdRepo.EXPECT().
-			AddAttributeValues(ctx, "cat_123", gomock.Any()).
+			Update(ctx, gomock.Any()).
 			Return(nil)
 
 		product, err := svc.Update(ctx, "prod_123", req, "admin_1")
@@ -470,37 +454,20 @@ func TestProductService_Update(t *testing.T) {
 }
 
 func TestProductService_Delete(t *testing.T) {
-	t.Run("successful delete with attribute cleanup", func(t *testing.T) {
-		svc, mockProdRepo, mockCatRepo, mockInvRepo, _, ctx := setupProductTest(t)
+	t.Run("successful delete", func(t *testing.T) {
+		svc, mockProdRepo, mockCatRepo, _, _, ctx := setupProductTest(t)
 
 		product := &domain.Product{
 			ID:         "prod_123",
-			SKU:        "BSS-001",
 			CategoryID: "cat_123",
-			Material:   "silk",
-		}
-
-		category := &domain.Category{
-			ID: "cat_123",
-			OwnAttributes: []domain.CategoryAttribute{
-				{Name: "weave_pattern", Searchable: true},
-			},
 		}
 
 		mockProdRepo.EXPECT().
 			GetByID(ctx, "prod_123").
 			Return(product, nil)
 
-		mockCatRepo.EXPECT().
-			GetByID(ctx, "cat_123").
-			Return(category, nil)
-
 		mockProdRepo.EXPECT().
-			DeleteWithAttributeIndexes(ctx, "prod_123", "BSS-001", gomock.Any()).
-			Return(nil)
-
-		mockInvRepo.EXPECT().
-			DeleteByProductID(ctx, "prod_123").
+			Delete(ctx, "prod_123").
 			Return(nil)
 
 		mockCatRepo.EXPECT().
@@ -522,8 +489,8 @@ func TestProductService_Delete(t *testing.T) {
 		require.Error(t, err)
 	})
 
-	t.Run("delete when category missing - falls back to simple delete", func(t *testing.T) {
-		svc, mockProdRepo, mockCatRepo, mockInvRepo, _, ctx := setupProductTest(t)
+	t.Run("delete with category count decrement", func(t *testing.T) {
+		svc, mockProdRepo, mockCatRepo, _, _, ctx := setupProductTest(t)
 
 		product := &domain.Product{
 			ID:         "prod_123",
@@ -534,16 +501,8 @@ func TestProductService_Delete(t *testing.T) {
 			GetByID(ctx, "prod_123").
 			Return(product, nil)
 
-		mockCatRepo.EXPECT().
-			GetByID(ctx, "cat_deleted").
-			Return(nil, errors.NotFound("Category"))
-
 		mockProdRepo.EXPECT().
 			Delete(ctx, "prod_123").
-			Return(nil)
-
-		mockInvRepo.EXPECT().
-			DeleteByProductID(ctx, "prod_123").
 			Return(nil)
 
 		mockCatRepo.EXPECT().
@@ -581,7 +540,7 @@ func TestProductService_List(t *testing.T) {
 		assert.Len(t, resp.Products, 2)
 	})
 
-	t.Run("list with attribute filters uses FilterByAttributes", func(t *testing.T) {
+	t.Run("list with attribute filters", func(t *testing.T) {
 		svc, mockProdRepo, _, _, _, ctx := setupProductTest(t)
 
 		catID := "cat_123"
@@ -592,12 +551,12 @@ func TestProductService_List(t *testing.T) {
 		}
 
 		expected := &domain.ListProductsResponse{
-			Products: []*domain.Product{{ID: "prod_1"}},
+			Products:   []*domain.Product{{ID: "prod_1"}},
 			Pagination: domain.PaginationResponse{Limit: 10, HasMore: false},
 		}
 
 		mockProdRepo.EXPECT().
-			FilterByAttributes(ctx, "cat_123", req.AttributeFilters, req.PaginationRequest).
+			List(ctx, req).
 			Return(expected, nil)
 
 		resp, err := svc.List(ctx, req)
@@ -620,9 +579,8 @@ func TestProductService_GetAttributeFilterOptions(t *testing.T) {
 			},
 		}
 
-		allValues := map[string][]string{
+		repoValues := map[string][]string{
 			"color":   {"red", "blue", "green"},
-			"size":    {"S", "M", "L"},
 			"pattern": {"floral", "geometric"},
 		}
 
@@ -631,8 +589,8 @@ func TestProductService_GetAttributeFilterOptions(t *testing.T) {
 			Return(category, nil)
 
 		mockProdRepo.EXPECT().
-			GetAttributeValues(ctx, "cat_123").
-			Return(allValues, nil)
+			GetAttributeFilterOptions(ctx, "cat_123", gomock.InAnyOrder([]string{"color", "pattern"})).
+			Return(repoValues, nil)
 
 		result, err := svc.GetAttributeFilterOptions(ctx, "cat_123")
 
@@ -658,33 +616,6 @@ func TestProductService_GetAttributeFilterOptions(t *testing.T) {
 	})
 }
 
-func TestExtractSearchableAttributes(t *testing.T) {
-	product := &domain.Product{
-		Material:  "silk",
-		Color:     "red",
-		WeaveType: "jacquard",
-		Origin:    "Varanasi",
-		CraftType: "handloom",
-		Attributes: map[string]interface{}{
-			"pattern": "floral",
-		},
-	}
-
-	categoryAttrs := []domain.CategoryAttribute{
-		{Name: "pattern", Searchable: true},
-		{Name: "style", Searchable: false}, // not searchable
-	}
-
-	result := extractSearchableAttributes(product, categoryAttrs)
-
-	assert.Contains(t, result, "material")
-	assert.Equal(t, []string{"silk"}, result["material"])
-	assert.Contains(t, result, "color")
-	assert.Contains(t, result, "pattern")
-	assert.Equal(t, []string{"floral"}, result["pattern"])
-	assert.NotContains(t, result, "style")
-}
-
 func TestNormalizeToStringSlice(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -695,8 +626,6 @@ func TestNormalizeToStringSlice(t *testing.T) {
 		{"empty string", "", nil},
 		{"string slice", []string{"a", "b"}, []string{"a", "b"}},
 		{"interface slice", []interface{}{"a", "b"}, []string{"a", "b"}},
-		{"integer", 42, []string{"42"}},
-		{"float64", 3.14, []string{"3.14"}},
 		{"nil", nil, nil},
 	}
 

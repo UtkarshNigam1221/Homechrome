@@ -37,7 +37,7 @@ func (r *ReportRepository) Create(ctx context.Context, report *domain.Report) er
 	}
 
 	_, err = r.client.db.PutItem(ctx, &dynamodb.PutItemInput{
-		TableName:           aws.String(r.client.coreTable),
+		TableName:           aws.String(r.client.analyticsTable),
 		Item:                av,
 		ConditionExpression: aws.String("attribute_not_exists(PK)"),
 	})
@@ -54,7 +54,7 @@ func (r *ReportRepository) Create(ctx context.Context, report *domain.Report) er
 // GetByID retrieves a report by ID
 func (r *ReportRepository) GetByID(ctx context.Context, id string) (*domain.Report, error) {
 	result, err := r.client.db.GetItem(ctx, &dynamodb.GetItemInput{
-		TableName: aws.String(r.client.coreTable),
+		TableName: aws.String(r.client.analyticsTable),
 		Key: map[string]types.AttributeValue{
 			"PK": &types.AttributeValueMemberS{Value: "REPORT#" + id},
 			"SK": &types.AttributeValueMemberS{Value: "METADATA"},
@@ -87,7 +87,7 @@ func (r *ReportRepository) Update(ctx context.Context, report *domain.Report) er
 	}
 
 	_, err = r.client.db.PutItem(ctx, &dynamodb.PutItemInput{
-		TableName:           aws.String(r.client.coreTable),
+		TableName:           aws.String(r.client.analyticsTable),
 		Item:                av,
 		ConditionExpression: aws.String("attribute_exists(PK)"),
 	})
@@ -104,7 +104,7 @@ func (r *ReportRepository) Update(ctx context.Context, report *domain.Report) er
 // Delete deletes a report
 func (r *ReportRepository) Delete(ctx context.Context, id string) error {
 	_, err := r.client.db.DeleteItem(ctx, &dynamodb.DeleteItemInput{
-		TableName: aws.String(r.client.coreTable),
+		TableName: aws.String(r.client.analyticsTable),
 		Key: map[string]types.AttributeValue{
 			"PK": &types.AttributeValueMemberS{Value: "REPORT#" + id},
 			"SK": &types.AttributeValueMemberS{Value: "METADATA"},

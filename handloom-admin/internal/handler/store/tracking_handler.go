@@ -75,11 +75,6 @@ func (h *TrackingHandler) TrackOrder(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	orderNumber := chi.URLParam(r, "orderNumber")
 
-	if orderNumber == "" {
-		response.Error(w, errors.BadRequest("Order number is required"))
-		return
-	}
-
 	// Look up the order by order number
 	order, err := h.orderRepo.GetByOrderNumber(ctx, orderNumber)
 	if err != nil {
