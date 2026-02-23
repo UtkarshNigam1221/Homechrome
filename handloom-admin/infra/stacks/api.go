@@ -65,11 +65,14 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 	commonEnv := map[string]*string{
 		"APP_ENV":                    jsii.String(props.Environment),
 		"APP_DEBUG":                  jsii.String(fmt.Sprintf("%t", !isProd)),
-		"DYNAMODB_CORE_TABLE":        props.DatabaseStack.CoreTable.TableName(),
-		"DYNAMODB_ORDERS_TABLE":      props.DatabaseStack.OrdersTable.TableName(),
-		"DYNAMODB_SESSIONS_TABLE":    props.DatabaseStack.SessionsTable.TableName(),
-		"DYNAMODB_AUDIT_TABLE":       props.DatabaseStack.AuditTable.TableName(),
-		"DYNAMODB_ANALYTICS_TABLE":   props.DatabaseStack.AnalyticsTable.TableName(),
+		"DYNAMODB_CORE_TABLE":          props.DatabaseStack.CoreTable.TableName(),
+		"DYNAMODB_CATALOG_TABLE":       props.DatabaseStack.CatalogTable.TableName(),
+		"DYNAMODB_ORDERS_TABLE":        props.DatabaseStack.OrdersTable.TableName(),
+		"DYNAMODB_SESSIONS_TABLE":      props.DatabaseStack.SessionsTable.TableName(),
+		"DYNAMODB_AUDIT_TABLE":         props.DatabaseStack.AuditTable.TableName(),
+		"DYNAMODB_ANALYTICS_TABLE":     props.DatabaseStack.AnalyticsTable.TableName(),
+		"DYNAMODB_NOTIFICATIONS_TABLE": props.DatabaseStack.NotificationsTable.TableName(),
+		"DYNAMODB_EVENTS_TABLE":        props.DatabaseStack.EventsTable.TableName(),
 		"S3_ASSETS_BUCKET":           assetsBucket.BucketName(),
 		"JWT_SECRET_PARAM":           jwtSecret.ParameterName(),
 		"JWT_ISSUER":                 jsii.String("handloom-admin"),
@@ -135,10 +138,13 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 
 		// Grant permissions
 		props.DatabaseStack.CoreTable.GrantReadWriteData(lambdaFn)
+		props.DatabaseStack.CatalogTable.GrantReadWriteData(lambdaFn)
 		props.DatabaseStack.OrdersTable.GrantReadWriteData(lambdaFn)
 		props.DatabaseStack.SessionsTable.GrantReadWriteData(lambdaFn)
 		props.DatabaseStack.AuditTable.GrantReadWriteData(lambdaFn)
 		props.DatabaseStack.AnalyticsTable.GrantReadWriteData(lambdaFn)
+		props.DatabaseStack.NotificationsTable.GrantReadWriteData(lambdaFn)
+		props.DatabaseStack.EventsTable.GrantReadWriteData(lambdaFn)
 		assetsBucket.GrantReadWrite(lambdaFn, nil)
 		jwtSecret.GrantRead(lambdaFn)
 

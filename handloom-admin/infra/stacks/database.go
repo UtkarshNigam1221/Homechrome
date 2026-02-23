@@ -16,11 +16,14 @@ type DatabaseStackProps struct {
 // DatabaseStack contains the DynamoDB tables
 type DatabaseStack struct {
 	awscdk.Stack
-	CoreTable      awsdynamodb.Table
-	OrdersTable    awsdynamodb.Table
-	SessionsTable  awsdynamodb.Table
-	AuditTable     awsdynamodb.Table
-	AnalyticsTable awsdynamodb.Table
+	CoreTable          awsdynamodb.Table
+	CatalogTable       awsdynamodb.Table
+	OrdersTable        awsdynamodb.Table
+	SessionsTable      awsdynamodb.Table
+	AuditTable         awsdynamodb.Table
+	AnalyticsTable     awsdynamodb.Table
+	NotificationsTable awsdynamodb.Table
+	EventsTable        awsdynamodb.Table
 }
 
 // NewDatabaseStack creates a new database stack
@@ -87,6 +90,81 @@ func NewDatabaseStack(scope constructs.Construct, id string, props *DatabaseStac
 		},
 		SortKey: &awsdynamodb.Attribute{
 			Name: jsii.String("GSI2SK"),
+			Type: awsdynamodb.AttributeType_STRING,
+		},
+		ProjectionType: awsdynamodb.ProjectionType_ALL,
+	})
+
+	// Catalog Table - categories, products, inventory, artisans
+	// Separated from core for independent scaling of high-traffic catalog reads
+	catalogTable := awsdynamodb.NewTable(stack, jsii.String("CatalogTable"), &awsdynamodb.TableProps{
+		TableName:     jsii.String("handloom-catalog-" + props.Environment),
+		BillingMode:   billingMode,
+		RemovalPolicy: removalPolicy,
+		PartitionKey: &awsdynamodb.Attribute{
+			Name: jsii.String("PK"),
+			Type: awsdynamodb.AttributeType_STRING,
+		},
+		SortKey: &awsdynamodb.Attribute{
+			Name: jsii.String("SK"),
+			Type: awsdynamodb.AttributeType_STRING,
+		},
+		PointInTimeRecovery:  jsii.Bool(false),
+		TimeToLiveAttribute: jsii.String("ttl"),
+	})
+
+	catalogTable.AddGlobalSecondaryIndex(&awsdynamodb.GlobalSecondaryIndexProps{
+		IndexName: jsii.String("GSI1"),
+		PartitionKey: &awsdynamodb.Attribute{
+			Name: jsii.String("GSI1PK"),
+			Type: awsdynamodb.AttributeType_STRING,
+		},
+		SortKey: &awsdynamodb.Attribute{
+			Name: jsii.String("GSI1SK"),
+			Type: awsdynamodb.AttributeType_STRING,
+		},
+		ProjectionType: awsdynamodb.ProjectionType_ALL,
+	})
+
+	catalogTable.AddGlobalSecondaryIndex(&awsdynamodb.GlobalSecondaryIndexProps{
+		IndexName: jsii.String("GSI2"),
+		PartitionKey: &awsdynamodb.Attribute{
+			Name: jsii.String("GSI2PK"),
+			Type: awsdynamodb.AttributeType_STRING,
+		},
+		SortKey: &awsdynamodb.Attribute{
+			Name: jsii.String("GSI2SK"),
+			Type: awsdynamodb.AttributeType_STRING,
+		},
+		ProjectionType: awsdynamodb.ProjectionType_ALL,
+	})
+
+	// Notifications Table - notifications with recipient-based GSI
+	// Separated for independent scaling during notification spikes
+	notificationsTable := awsdynamodb.NewTable(stack, jsii.String("NotificationsTable"), &awsdynamodb.TableProps{
+		TableName:     jsii.String("handloom-notifications-" + props.Environment),
+		BillingMode:   billingMode,
+		RemovalPolicy: removalPolicy,
+		PartitionKey: &awsdynamodb.Attribute{
+			Name: jsii.String("PK"),
+			Type: awsdynamodb.AttributeType_STRING,
+		},
+		SortKey: &awsdynamodb.Attribute{
+			Name: jsii.String("SK"),
+			Type: awsdynamodb.AttributeType_STRING,
+		},
+		PointInTimeRecovery:  jsii.Bool(false),
+		TimeToLiveAttribute: jsii.String("ttl"),
+	})
+
+	notificationsTable.AddGlobalSecondaryIndex(&awsdynamodb.GlobalSecondaryIndexProps{
+		IndexName: jsii.String("GSI1"),
+		PartitionKey: &awsdynamodb.Attribute{
+			Name: jsii.String("GSI1PK"),
+			Type: awsdynamodb.AttributeType_STRING,
+		},
+		SortKey: &awsdynamodb.Attribute{
+			Name: jsii.String("GSI1SK"),
 			Type: awsdynamodb.AttributeType_STRING,
 		},
 		ProjectionType: awsdynamodb.ProjectionType_ALL,
@@ -228,11 +306,34 @@ func NewDatabaseStack(scope constructs.Construct, id string, props *DatabaseStac
 		ProjectionType: awsdynamodb.ProjectionType_ALL,
 	})
 
+	// Events Table - raw frontend tracking events with 30-day TTL
+	// Simple PK/SK table, no GSIs needed
+	eventsTable := awsdynamodb.NewTable(stack, jsii.String("EventsTable"), &awsdynamodb.TableProps{
+		TableName:     jsii.String("handloom-events-" + props.Environment),
+		BillingMode:   billingMode,
+		RemovalPolicy: removalPolicy,
+		PartitionKey: &awsdynamodb.Attribute{
+			Name: jsii.String("PK"),
+			Type: awsdynamodb.AttributeType_STRING,
+		},
+		SortKey: &awsdynamodb.Attribute{
+			Name: jsii.String("SK"),
+			Type: awsdynamodb.AttributeType_STRING,
+		},
+		TimeToLiveAttribute: jsii.String("ttl"),
+	})
+
 	// Outputs
 	awscdk.NewCfnOutput(stack, jsii.String("CoreTableName"), &awscdk.CfnOutputProps{
 		Value:       coreTable.TableName(),
 		Description: jsii.String("Core DynamoDB table name"),
 		ExportName:  jsii.String("handloom-core-table-" + props.Environment),
+	})
+
+	awscdk.NewCfnOutput(stack, jsii.String("CatalogTableName"), &awscdk.CfnOutputProps{
+		Value:       catalogTable.TableName(),
+		Description: jsii.String("Catalog DynamoDB table name"),
+		ExportName:  jsii.String("handloom-catalog-table-" + props.Environment),
 	})
 
 	awscdk.NewCfnOutput(stack, jsii.String("OrdersTableName"), &awscdk.CfnOutputProps{
@@ -247,12 +348,27 @@ func NewDatabaseStack(scope constructs.Construct, id string, props *DatabaseStac
 		ExportName:  jsii.String("handloom-sessions-table-" + props.Environment),
 	})
 
+	awscdk.NewCfnOutput(stack, jsii.String("NotificationsTableName"), &awscdk.CfnOutputProps{
+		Value:       notificationsTable.TableName(),
+		Description: jsii.String("Notifications DynamoDB table name"),
+		ExportName:  jsii.String("handloom-notifications-table-" + props.Environment),
+	})
+
+	awscdk.NewCfnOutput(stack, jsii.String("EventsTableName"), &awscdk.CfnOutputProps{
+		Value:       eventsTable.TableName(),
+		Description: jsii.String("Events DynamoDB table name"),
+		ExportName:  jsii.String("handloom-events-table-" + props.Environment),
+	})
+
 	return &DatabaseStack{
-		Stack:          stack,
-		CoreTable:      coreTable,
-		OrdersTable:    ordersTable,
-		SessionsTable:  sessionsTable,
-		AuditTable:     auditTable,
-		AnalyticsTable: analyticsTable,
+		Stack:              stack,
+		CoreTable:          coreTable,
+		CatalogTable:       catalogTable,
+		OrdersTable:        ordersTable,
+		SessionsTable:      sessionsTable,
+		AuditTable:         auditTable,
+		AnalyticsTable:     analyticsTable,
+		NotificationsTable: notificationsTable,
+		EventsTable:        eventsTable,
 	}
 }
