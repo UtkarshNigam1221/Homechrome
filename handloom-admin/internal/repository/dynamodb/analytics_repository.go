@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 
@@ -24,20 +25,27 @@ func NewAnalyticsRepository(client *Client) *AnalyticsRepository {
 	}
 }
 
-// GetDashboardStats retrieves dashboard statistics
+// GetDashboardStats retrieves dashboard statistics from the DASHBOARD#CURRENT item
 func (r *AnalyticsRepository) GetDashboardStats(ctx context.Context) (*domain.DashboardStats, error) {
-	// TODO: Implement with DynamoDB queries
-	// For now, return mock data
-	return &domain.DashboardStats{
-		TotalRevenue:      125000.50,
-		TotalOrders:       1250,
-		TotalCustomers:    850,
-		TotalProducts:     320,
-		RevenueGrowth:     12.5,
-		OrdersGrowth:      8.3,
-		CustomersGrowth:   15.2,
-		AverageOrderValue: 100.00,
-	}, nil
+	result, err := r.client.db.GetItem(ctx, &dynamodb.GetItemInput{
+		TableName: aws.String(r.client.analyticsTable),
+		Key: map[string]types.AttributeValue{
+			"PK": &types.AttributeValueMemberS{Value: "DASHBOARD#CURRENT"},
+			"SK": &types.AttributeValueMemberS{Value: "METADATA"},
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	if result.Item == nil {
+		return &domain.DashboardStats{}, nil
+	}
+
+	var stats domain.DashboardStats
+	if err := attributevalue.UnmarshalMap(result.Item, &stats); err != nil {
+		return nil, err
+	}
+	return &stats, nil
 }
 
 // GetSalesAnalytics retrieves sales analytics for a period

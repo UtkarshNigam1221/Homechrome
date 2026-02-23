@@ -9,39 +9,44 @@ import (
 
 // DashboardStats contains overall dashboard statistics
 type DashboardStats struct {
-	// Today's metrics
-	TodayOrders    int     `json:"today_orders"`
-	TodayRevenue   int64   `json:"today_revenue"`
-	TodayVisitors  int     `json:"today_visitors"`
+	// Today's metrics (live counters from DASHBOARD#CURRENT)
+	TodayOrders          int   `json:"today_orders" dynamodbav:"today_orders"`
+	TodayRevenue         int64 `json:"today_revenue" dynamodbav:"today_revenue"`
+	TodayVisitors        int   `json:"today_visitors" dynamodbav:"today_visitors"`
+	TodayAddToCarts      int   `json:"today_add_to_carts" dynamodbav:"today_add_to_carts"`
+	TodayProductViews    int   `json:"today_product_views" dynamodbav:"today_product_views"`
+	TodayPaymentsSuccess int   `json:"today_payments_success" dynamodbav:"today_payments_success"`
+	TodayPaymentsFailed  int   `json:"today_payments_failed" dynamodbav:"today_payments_failed"`
+	TodayNewCustomers    int   `json:"today_new_customers" dynamodbav:"today_new_customers"`
 
 	// This week
-	WeekOrders     int     `json:"week_orders"`
-	WeekRevenue    int64   `json:"week_revenue"`
+	WeekOrders  int   `json:"week_orders" dynamodbav:"week_orders"`
+	WeekRevenue int64 `json:"week_revenue" dynamodbav:"week_revenue"`
 
 	// This month
-	MonthOrders    int     `json:"month_orders"`
-	MonthRevenue   int64   `json:"month_revenue"`
+	MonthOrders  int   `json:"month_orders" dynamodbav:"month_orders"`
+	MonthRevenue int64 `json:"month_revenue" dynamodbav:"month_revenue"`
 
 	// All time
-	TotalOrders    int     `json:"total_orders"`
-	TotalRevenue   float64 `json:"total_revenue"`
-	TotalCustomers int     `json:"total_customers"`
-	TotalProducts  int     `json:"total_products"`
+	TotalOrders    int     `json:"total_orders" dynamodbav:"total_orders"`
+	TotalRevenue   float64 `json:"total_revenue" dynamodbav:"total_revenue"`
+	TotalCustomers int     `json:"total_customers" dynamodbav:"total_customers"`
+	TotalProducts  int     `json:"total_products" dynamodbav:"total_products"`
 
 	// Growth metrics
-	RevenueGrowth     float64 `json:"revenue_growth"`
-	OrdersGrowth      float64 `json:"orders_growth"`
-	CustomersGrowth   float64 `json:"customers_growth"`
-	AverageOrderValue float64 `json:"average_order_value"`
+	RevenueGrowth     float64 `json:"revenue_growth" dynamodbav:"revenue_growth"`
+	OrdersGrowth      float64 `json:"orders_growth" dynamodbav:"orders_growth"`
+	CustomersGrowth   float64 `json:"customers_growth" dynamodbav:"customers_growth"`
+	AverageOrderValue float64 `json:"average_order_value" dynamodbav:"average_order_value"`
 
 	// Inventory
-	LowStockCount  int     `json:"low_stock_count"`
-	OutOfStockCount int    `json:"out_of_stock_count"`
+	LowStockCount   int `json:"low_stock_count" dynamodbav:"low_stock_count"`
+	OutOfStockCount int `json:"out_of_stock_count" dynamodbav:"out_of_stock_count"`
 
 	// Orders by status
-	PendingOrders    int `json:"pending_orders"`
-	ProcessingOrders int `json:"processing_orders"`
-	ShippedOrders    int `json:"shipped_orders"`
+	PendingOrders    int `json:"pending_orders" dynamodbav:"pending_orders"`
+	ProcessingOrders int `json:"processing_orders" dynamodbav:"processing_orders"`
+	ShippedOrders    int `json:"shipped_orders" dynamodbav:"shipped_orders"`
 }
 
 // SalesAnalytics contains sales analytics data
