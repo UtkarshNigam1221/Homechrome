@@ -19,7 +19,6 @@ type CartService struct {
 	logger        *logger.Logger
 }
 
-// NewCartService creates a new CartService
 func NewCartService(
 	cartRepo domain.CartRepository,
 	productRepo domain.ProductRepository,
@@ -34,28 +33,19 @@ func NewCartService(
 	}
 }
 
-// cartPK derives the DynamoDB partition key for a customer's cart
 func cartPK(customerID string) string {
 	return "CART#" + customerID
 }
 
-// cartTTL returns a Unix timestamp 30 days from now
 func cartTTL() int64 {
 	return time.Now().Add(cartTTLDays * 24 * time.Hour).Unix()
 }
 
-// GetCart retrieves the cart for a customer
 func (s *CartService) GetCart(ctx context.Context, customerID string) (*domain.CartWithItems, error) {
-	result, err := s.cartRepo.GetCart(ctx, cartPK(customerID))
-	if err != nil {
-		return nil, err
-	}
-	return result, nil
+	return s.cartRepo.GetCart(ctx, cartPK(customerID))
 }
 
-// AddItem adds an item to the customer's cart after validating the product
 func (s *CartService) AddItem(ctx context.Context, customerID string, req domain.AddCartItemRequest) (*domain.CartWithItems, error) {
-	// Validate product exists and is ACTIVE
 	product, err := s.productRepo.GetByID(ctx, req.ProductID)
 	if err != nil {
 		return nil, err
@@ -64,31 +54,18 @@ func (s *CartService) AddItem(ctx context.Context, customerID string, req domain
 		return nil, errors.BadRequest("Product is not available")
 	}
 
-	// Check stock availability
-	inventory, err := s.inventoryRepo.GetByProductID(ctx, req.ProductID)
-	if err != nil {
-		if !errors.IsNotFound(err) {
-			return nil, err
-		}
-		// No inventory record means no stock
-		return nil, errors.New(errors.ErrCodeInsufficientStock, "Product is out of stock")
+	if err := s.validateStock(ctx, req.ProductID, req.Quantity); err != nil {
+		return nil, err
 	}
-	if inventory.AvailableQty < req.Quantity {
-		return nil, errors.New(errors.ErrCodeInsufficientStock, "Insufficient stock available")
-	}
-
-	// Determine primary image
-	productImage := primaryImage(product.Images)
 
 	pk := cartPK(customerID)
-	ttl := cartTTL()
 
-	// Build the cart item
 	item := &domain.CartItem{
 		ProductID:    req.ProductID,
 		ProductName:  product.Name,
 		ProductSKU:   product.SKU,
-		ProductImage: productImage,
+		ProductImage: primaryImage(product.Images),
+		CategoryID:   product.CategoryID,
 		Quantity:     req.Quantity,
 		UnitPrice:    product.SellingPrice,
 		TotalPrice:   product.SellingPrice * int64(req.Quantity),
@@ -96,82 +73,49 @@ func (s *CartService) AddItem(ctx context.Context, customerID string, req domain
 		Dimensions:   req.Dimensions,
 		QuoteID:      req.QuoteID,
 		AddedAt:      time.Now(),
-		TTL:          ttl,
+		TTL:          cartTTL(),
 	}
 	item.SetKeys(pk)
 
-	// Write the item
 	if err := s.cartRepo.PutCartItem(ctx, item); err != nil {
-		return nil, err
-	}
-
-	// Recalculate and update header
-	if err := s.recalculateHeader(ctx, pk, customerID); err != nil {
 		return nil, err
 	}
 
 	s.logger.WithContext(ctx).Infof("Added item %s to cart for customer %s", req.ProductID, customerID)
 
-	return s.cartRepo.GetCart(ctx, pk)
+	return s.recalculateAndGetCart(ctx, pk, customerID)
 }
 
-// UpdateItemQuantity updates the quantity of a cart item
 func (s *CartService) UpdateItemQuantity(ctx context.Context, customerID, productID string, quantity int) (*domain.CartWithItems, error) {
-	// If quantity is 0, remove the item
 	if quantity == 0 {
 		return s.RemoveItem(ctx, customerID, productID)
 	}
 
-	// Validate stock availability
-	inventory, err := s.inventoryRepo.GetByProductID(ctx, productID)
-	if err != nil {
-		if !errors.IsNotFound(err) {
-			return nil, err
-		}
-		return nil, errors.New(errors.ErrCodeInsufficientStock, "Product is out of stock")
-	}
-	if inventory.AvailableQty < quantity {
-		return nil, errors.New(errors.ErrCodeInsufficientStock, "Insufficient stock available")
+	if err := s.validateStock(ctx, productID, quantity); err != nil {
+		return nil, err
 	}
 
 	pk := cartPK(customerID)
 
-	// Get the current cart to find the item's unit price
 	cart, err := s.cartRepo.GetCart(ctx, pk)
 	if err != nil {
 		return nil, err
 	}
 
-	var unitPrice int64
-	found := false
-	for _, item := range cart.Items {
-		if item.ProductID == productID {
-			unitPrice = item.UnitPrice
-			found = true
-			break
-		}
-	}
+	unitPrice, found := findItemUnitPrice(cart.Items, productID)
 	if !found {
 		return nil, errors.NotFound("Cart item not found")
 	}
 
-	totalPrice := unitPrice * int64(quantity)
-
-	if err := s.cartRepo.UpdateCartItem(ctx, pk, productID, quantity, totalPrice); err != nil {
-		return nil, err
-	}
-
-	// Recalculate and update header
-	if err := s.recalculateHeader(ctx, pk, customerID); err != nil {
+	if err := s.cartRepo.UpdateCartItem(ctx, pk, productID, quantity, unitPrice*int64(quantity)); err != nil {
 		return nil, err
 	}
 
 	s.logger.WithContext(ctx).Infof("Updated item %s quantity to %d for customer %s", productID, quantity, customerID)
 
-	return s.cartRepo.GetCart(ctx, pk)
+	return s.recalculateAndGetCart(ctx, pk, customerID)
 }
 
-// RemoveItem removes an item from the cart
 func (s *CartService) RemoveItem(ctx context.Context, customerID, productID string) (*domain.CartWithItems, error) {
 	pk := cartPK(customerID)
 
@@ -179,26 +123,17 @@ func (s *CartService) RemoveItem(ctx context.Context, customerID, productID stri
 		return nil, err
 	}
 
-	// Recalculate and update header
-	if err := s.recalculateHeader(ctx, pk, customerID); err != nil {
-		return nil, err
-	}
-
 	s.logger.WithContext(ctx).Infof("Removed item %s from cart for customer %s", productID, customerID)
 
-	return s.cartRepo.GetCart(ctx, pk)
+	return s.recalculateAndGetCart(ctx, pk, customerID)
 }
 
-// ClearCart removes all items from the cart
 func (s *CartService) ClearCart(ctx context.Context, customerID string) error {
-	pk := cartPK(customerID)
-
-	if err := s.cartRepo.ClearCart(ctx, pk); err != nil {
+	if err := s.cartRepo.ClearCart(ctx, cartPK(customerID)); err != nil {
 		return err
 	}
 
 	s.logger.WithContext(ctx).Infof("Cleared cart for customer %s", customerID)
-
 	return nil
 }
 
@@ -207,29 +142,21 @@ func (s *CartService) ClearCart(ctx context.Context, customerID string) error {
 func (s *CartService) MergeGuestCart(ctx context.Context, customerID string, items []domain.AddCartItemRequest) (*domain.CartWithItems, error) {
 	pk := cartPK(customerID)
 
-	// Get existing cart to check for duplicates
 	existingCart, err := s.cartRepo.GetCart(ctx, pk)
 	if err != nil {
 		return nil, err
 	}
 
-	// Build a map of existing items by product ID
-	existingItems := make(map[string]int)
+	existingQty := make(map[string]int, len(existingCart.Items))
 	for _, item := range existingCart.Items {
-		existingItems[item.ProductID] = item.Quantity
+		existingQty[item.ProductID] = item.Quantity
 	}
 
 	for _, req := range items {
-		existingQty, exists := existingItems[req.ProductID]
-		if exists && existingQty >= req.Quantity {
-			// Existing cart already has equal or higher quantity, skip
+		if qty, exists := existingQty[req.ProductID]; exists && qty >= req.Quantity {
 			continue
 		}
-
-		// Add or replace with the guest item (which has higher quantity)
-		_, err := s.AddItem(ctx, customerID, req)
-		if err != nil {
-			// Log but continue merging other items
+		if _, err := s.AddItem(ctx, customerID, req); err != nil {
 			s.logger.WithContext(ctx).Warnf("Failed to merge item %s: %v", req.ProductID, err)
 			continue
 		}
@@ -240,23 +167,37 @@ func (s *CartService) MergeGuestCart(ctx context.Context, customerID string, ite
 	return s.cartRepo.GetCart(ctx, pk)
 }
 
-// recalculateHeader reads all cart items and updates the cart header with
-// the correct item count and subtotal.
-func (s *CartService) recalculateHeader(ctx context.Context, pk, customerID string) error {
+// validateStock checks that the product has sufficient available inventory.
+func (s *CartService) validateStock(ctx context.Context, productID string, quantity int) error {
+	inventory, err := s.inventoryRepo.GetByProductID(ctx, productID)
+	if err != nil {
+		if !errors.IsNotFound(err) {
+			return err
+		}
+		return errors.New(errors.ErrCodeInsufficientStock, "Product is out of stock")
+	}
+	if inventory.AvailableQty < quantity {
+		return errors.New(errors.ErrCodeInsufficientStock, "Insufficient stock available")
+	}
+	return nil
+}
+
+// recalculateAndGetCart reads all cart items, updates the header totals,
+// and returns the final cart state — avoiding a redundant second read.
+func (s *CartService) recalculateAndGetCart(ctx context.Context, pk, customerID string) (*domain.CartWithItems, error) {
 	cart, err := s.cartRepo.GetCart(ctx, pk)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	var subtotal int64
-	itemCount := len(cart.Items)
 	for _, item := range cart.Items {
 		subtotal += item.TotalPrice
 	}
 
 	header := cart.Cart
 	header.CustomerID = customerID
-	header.ItemCount = itemCount
+	header.ItemCount = len(cart.Items)
 	header.Subtotal = subtotal
 	header.Currency = "INR"
 	header.UpdatedAt = time.Now()
@@ -265,11 +206,23 @@ func (s *CartService) recalculateHeader(ctx context.Context, pk, customerID stri
 	header.PK = pk
 	header.SK = "METADATA"
 
-	return s.cartRepo.UpdateCartHeader(ctx, header)
+	if err := s.cartRepo.UpdateCartHeader(ctx, header); err != nil {
+		return nil, err
+	}
+
+	cart.Cart = header
+	return cart, nil
 }
 
-// primaryImage returns the URL of the primary image, or the first image URL,
-// or an empty string if no images exist.
+func findItemUnitPrice(items []domain.CartItem, productID string) (int64, bool) {
+	for _, item := range items {
+		if item.ProductID == productID {
+			return item.UnitPrice, true
+		}
+	}
+	return 0, false
+}
+
 func primaryImage(images []domain.ProductImage) string {
 	if len(images) == 0 {
 		return ""
@@ -282,5 +235,4 @@ func primaryImage(images []domain.ProductImage) string {
 	return images[0].URL
 }
 
-// Ensure interface compliance
 var _ domain.CartService = (*CartService)(nil)

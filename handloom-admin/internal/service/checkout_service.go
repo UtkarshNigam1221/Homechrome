@@ -132,6 +132,8 @@ func (s *CheckoutService) Initiate(ctx context.Context, customerID string, req d
 			ProductName:  item.ProductName,
 			ProductSKU:   item.ProductSKU,
 			ProductImage: item.ProductImage,
+			CategoryID:   item.CategoryID,
+			CategoryName: item.CategoryName,
 			IsCustomSize: item.IsCustomSize,
 			Dimensions:   item.Dimensions,
 			QuoteID:      item.QuoteID,
