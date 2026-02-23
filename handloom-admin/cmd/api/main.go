@@ -85,7 +85,7 @@ func main() {
 	// Initialize event handlers and publisher (LocalPublisher for monolith dev mode)
 	notifEventHandler := eventhandlers.NewNotificationHandler(log)
 	reportEventHandler := eventhandlers.NewReportHandler(log)
-	analyticsEventHandler := eventhandlers.NewAnalyticsHandler(log)
+	analyticsEventHandler := eventhandlers.NewAnalyticsHandler(log, eventsRepo, analyticsRepo)
 	auditEventHandler := eventhandlers.NewAuditHandler(log)
 	publisher := event.NewLocalPublisher(log, notifEventHandler, reportEventHandler, analyticsEventHandler, auditEventHandler)
 
