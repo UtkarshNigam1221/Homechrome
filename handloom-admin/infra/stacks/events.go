@@ -4,6 +4,8 @@ import (
 	"fmt"
 
 	"github.com/aws/aws-cdk-go/awscdk/v2"
+	"github.com/aws/aws-cdk-go/awscdk/v2/awsevents"
+	"github.com/aws/aws-cdk-go/awscdk/v2/awseventstargets"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awslambda"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awslambdaeventsources"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awslogs"
@@ -105,6 +107,9 @@ func NewEventStack(scope constructs.Construct, id string, props *EventStackProps
 		},
 	}
 
+	// Track analytics Lambda for EventBridge schedule
+	var analyticsLambda awslambda.Function
+
 	for _, w := range workers {
 		// DLQ
 		dlq := awssqs.NewQueue(stack, jsii.String(fmt.Sprintf("%sDLQ", capitalize(w.name))), &awssqs.QueueProps{
@@ -204,6 +209,30 @@ func NewEventStack(scope constructs.Construct, id string, props *EventStackProps
 		props.DatabaseStack.AnalyticsTable.GrantReadWriteData(lambdaFn)
 		props.DatabaseStack.NotificationsTable.GrantReadWriteData(lambdaFn)
 		props.DatabaseStack.EventsTable.GrantReadWriteData(lambdaFn)
+
+		// Capture analytics Lambda for EventBridge schedule
+		if w.name == "analytics" {
+			analyticsLambda = lambdaFn
+		}
+	}
+
+	// --- EventBridge Rule: Daily Analytics Aggregation ---
+	// Triggers the analytics worker Lambda at 00:30 UTC daily to aggregate
+	// the previous day's raw events into daily metrics.
+	if analyticsLambda != nil {
+		awsevents.NewRule(stack, jsii.String("DailyAggregationRule"), &awsevents.RuleProps{
+			RuleName:    jsii.String(fmt.Sprintf("handloom-daily-aggregation-%s", props.Environment)),
+			Description: jsii.String("Trigger daily analytics aggregation at 00:30 UTC"),
+			Schedule:    awsevents.Schedule_Cron(&awsevents.CronOptions{
+				Minute: jsii.String("30"),
+				Hour:   jsii.String("0"),
+			}),
+			Targets: &[]awsevents.IRuleTarget{
+				awseventstargets.NewLambdaFunction(analyticsLambda, &awseventstargets.LambdaFunctionProps{
+					RetryAttempts: jsii.Number(2),
+				}),
+			},
+		})
 	}
 
 	// Outputs

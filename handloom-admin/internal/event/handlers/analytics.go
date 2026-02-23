@@ -4,32 +4,47 @@ import (
 	"context"
 	"encoding/json"
 	"strings"
+	"time"
 
 	"github.com/aws/aws-lambda-go/events"
 
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/internal/event"
+	"github.com/handloom/admin/internal/service"
 	"github.com/handloom/admin/pkg/logger"
 )
 
-// AnalyticsHandler processes analytics-aggregation events from SQS.
-// It writes raw events to the events table and updates live dashboard counters.
+// AnalyticsHandler processes analytics-aggregation events from SQS and
+// scheduled daily aggregation from EventBridge.
+// It writes raw events to the events table, updates live dashboard counters,
+// and runs daily aggregation on a schedule.
 type AnalyticsHandler struct {
 	logger        *logger.Logger
 	eventsRepo    domain.EventsRepository
 	analyticsRepo domain.AnalyticsRepository
+	aggregator    *service.AnalyticsAggregator
 }
 
 func NewAnalyticsHandler(
 	log *logger.Logger,
 	eventsRepo domain.EventsRepository,
 	analyticsRepo domain.AnalyticsRepository,
+	aggregator *service.AnalyticsAggregator,
 ) *AnalyticsHandler {
 	return &AnalyticsHandler{
 		logger:        log,
 		eventsRepo:    eventsRepo,
 		analyticsRepo: analyticsRepo,
+		aggregator:    aggregator,
 	}
+}
+
+// HandleScheduledEvent runs daily aggregation for the previous day.
+// It is invoked by EventBridge on a cron schedule (00:30 UTC daily).
+func (h *AnalyticsHandler) HandleScheduledEvent(ctx context.Context) error {
+	yesterday := time.Now().AddDate(0, 0, -1).Format("2006-01-02")
+	h.logger.Infof("Running daily aggregation for %s", yesterday)
+	return h.aggregator.AggregateDate(ctx, yesterday)
 }
 
 // HandleSQSEvent is the Lambda entry point for SQS-triggered invocations.
