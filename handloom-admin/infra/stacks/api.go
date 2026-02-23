@@ -66,13 +66,16 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 		"APP_ENV":                    jsii.String(props.Environment),
 		"APP_DEBUG":                  jsii.String(fmt.Sprintf("%t", !isProd)),
 		"DYNAMODB_CORE_TABLE":          props.DatabaseStack.CoreTable.TableName(),
-		"DYNAMODB_CATALOG_TABLE":       props.DatabaseStack.CatalogTable.TableName(),
 		"DYNAMODB_ORDERS_TABLE":        props.DatabaseStack.OrdersTable.TableName(),
 		"DYNAMODB_SESSIONS_TABLE":      props.DatabaseStack.SessionsTable.TableName(),
 		"DYNAMODB_AUDIT_TABLE":         props.DatabaseStack.AuditTable.TableName(),
 		"DYNAMODB_ANALYTICS_TABLE":     props.DatabaseStack.AnalyticsTable.TableName(),
 		"DYNAMODB_NOTIFICATIONS_TABLE": props.DatabaseStack.NotificationsTable.TableName(),
 		"DYNAMODB_EVENTS_TABLE":        props.DatabaseStack.EventsTable.TableName(),
+		"RDS_SECRET_ARN": props.DatabaseStack.CatalogDBSecret.SecretArn(),
+		"RDS_ENDPOINT":   props.DatabaseStack.CatalogDB.DbInstanceEndpointAddress(),
+		"RDS_PORT":       jsii.String("5432"),
+		"RDS_DATABASE":   jsii.String("handloom"),
 		"S3_ASSETS_BUCKET":           assetsBucket.BucketName(),
 		"JWT_SECRET_PARAM":           jwtSecret.ParameterName(),
 		"JWT_ISSUER":                 jsii.String("handloom-admin"),
@@ -138,7 +141,6 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 
 		// Grant permissions
 		props.DatabaseStack.CoreTable.GrantReadWriteData(lambdaFn)
-		props.DatabaseStack.CatalogTable.GrantReadWriteData(lambdaFn)
 		props.DatabaseStack.OrdersTable.GrantReadWriteData(lambdaFn)
 		props.DatabaseStack.SessionsTable.GrantReadWriteData(lambdaFn)
 		props.DatabaseStack.AuditTable.GrantReadWriteData(lambdaFn)
@@ -147,6 +149,7 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 		props.DatabaseStack.EventsTable.GrantReadWriteData(lambdaFn)
 		assetsBucket.GrantReadWrite(lambdaFn, nil)
 		jwtSecret.GrantRead(lambdaFn)
+		props.DatabaseStack.CatalogDBSecret.GrantRead(lambdaFn, nil)
 
 		// Grant SNS publish permission when EventStack is available
 		if props.EventStack != nil {
@@ -236,6 +239,13 @@ func createServiceLambda(
 	}
 	env["SERVICE_NAME"] = jsii.String(serviceName)
 
+	// Explicit log group (replaces deprecated LogRetention on Lambda)
+	logGroup := awslogs.NewLogGroup(stack, jsii.String(fmt.Sprintf("%sLogGroup", capitalize(serviceName))), &awslogs.LogGroupProps{
+		LogGroupName: jsii.String(fmt.Sprintf("/aws/lambda/handloom-%s-%s", serviceName, environment)),
+		Retention:    logRetention,
+		RemovalPolicy: awscdk.RemovalPolicy_DESTROY,
+	})
+
 	// Lambda function optimized for AWS Free Tier
 	// Free tier: 1M requests/month, 400,000 GB-seconds compute
 	// ARM64 is more cost-effective than x86
@@ -248,7 +258,7 @@ func createServiceLambda(
 		MemorySize:   jsii.Number(memorySize),
 		Timeout:      awscdk.Duration_Seconds(jsii.Number(15)), // Reduced timeout for cost efficiency
 		Environment:  &env,
-		LogRetention: logRetention,
+		LogGroup:     logGroup,
 		Tracing:      awslambda.Tracing_DISABLED, // Disable X-Ray tracing (not free)
 	})
 }

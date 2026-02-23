@@ -10,6 +10,7 @@ import (
 	"github.com/handloom/admin/internal/handler"
 	"github.com/handloom/admin/internal/middleware"
 	"github.com/handloom/admin/internal/repository/dynamodb"
+	"github.com/handloom/admin/internal/repository/postgres"
 	"github.com/handloom/admin/internal/router"
 	"github.com/handloom/admin/internal/s3client"
 	"github.com/handloom/admin/internal/service"
@@ -34,16 +35,23 @@ func main() {
 		log.Fatalf("Failed to initialize DynamoDB client: %v", err)
 	}
 
+	// Initialize PostgreSQL pool for catalog data
+	pgPool, err := postgres.NewPool(ctx, &cfg.Postgres)
+	if err != nil {
+		log.Fatalf("Failed to initialize PostgreSQL pool: %v", err)
+	}
+	defer pgPool.Close()
+
 	// Initialize repositories
 	userRepo := dynamodb.NewUserRepository(dbClient)
 	tokenStore := dynamodb.NewTokenStore(dbClient)
 	reportRepo := dynamodb.NewReportRepository(dbClient)
 	orderRepo := dynamodb.NewOrderRepository(dbClient)
-	productRepo := dynamodb.NewProductRepository(dbClient)
+	productRepo := postgres.NewProductRepository(pgPool)
 	customerRepo := dynamodb.NewCustomerRepository(dbClient)
-	inventoryRepo := dynamodb.NewInventoryRepository(dbClient)
+	inventoryRepo := postgres.NewInventoryRepository(pgPool)
 	analyticsRepo := dynamodb.NewAnalyticsRepository(dbClient)
-	categoryRepo := dynamodb.NewCategoryRepository(dbClient)
+	categoryRepo := postgres.NewCategoryRepository(pgPool)
 	priceQuoteRepo := dynamodb.NewPriceQuoteRepository(dbClient)
 	pricingRuleRepo := dynamodb.NewPricingRuleRepository(dbClient)
 
@@ -67,7 +75,7 @@ func main() {
 		cfg.JWT.Issuer,
 	)
 	assetService := service.NewAssetService(log, s3c, cfg.AWS.S3Bucket, cfg.AWS.Endpoint)
-	inventoryService := service.NewInventoryService(inventoryRepo, productRepo, publisher, log)
+	inventoryService := service.NewInventoryService(inventoryRepo, publisher, log)
 	productService := service.NewProductService(
 		productRepo,
 		categoryRepo,

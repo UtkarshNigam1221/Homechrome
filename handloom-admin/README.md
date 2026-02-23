@@ -1,29 +1,60 @@
 # Handloom Admin API
 
-A serverless microservices backend for handloom product management with dynamic pricing and custom dimension support.
+A serverless backend for the Homechrome handloom e-commerce platform. Powers both the admin dashboard and the B2C customer storefront.
 
 ## Architecture
 
-The application is built as **14 independent AWS Lambda microservices**, designed for high availability, scalability, and cost efficiency.
+The application is built as **25 AWS Lambda services** (12 admin + 9 B2C store + 4 event workers), designed for high availability, scalability, and cost efficiency.
 
-### Microservices
+### Admin Microservices
 
 | Service | Purpose | Key Endpoints |
 |---------|---------|---------------|
-| **Auth** | Authentication & password management | `/auth/login`, `/auth/refresh`, `/password/*` |
-| **User** | Admin user CRUD & role management | `/users`, `/users/{id}` |
-| **Catalog** | Products, categories, designs | `/categories`, `/designs`, `/products` |
-| **Order** | Order & customer management | `/orders`, `/customers` |
-| **Pricing** | Dynamic pricing engine | `/api/v1/pricing/*`, `/pricing/rules` |
-| **Inventory** | Stock management | `/inventory`, `/inventory/alerts` |
-| **Analytics** | Dashboard metrics | `/analytics/*` |
-| **Notification** | User notifications | `/notifications` |
-| **Coupon** | Coupon management | `/coupons`, `/coupons/apply` |
-| **Artisan** | Artisan & payout management | `/artisans`, `/artisans/{id}/payouts` |
-| **Bulk** | Bulk import/export operations | `/bulk/import`, `/bulk/export` |
-| **Asset** | Media/image management | `/assets`, `/assets/upload` |
-| **Report** | Report generation | `/reports` |
-| **Audit** | Audit log access (admin only) | `/audit`, `/audit/entity/*` |
+| **Auth** | Authentication & password management | `/admin/auth/login`, `/admin/auth/refresh` |
+| **User** | Admin user CRUD & role management | `/admin/users`, `/admin/users/{id}` |
+| **Catalog** | Products, categories, designs | `/admin/categories`, `/admin/products` |
+| **Order** | Order & customer management | `/admin/orders`, `/admin/customers` |
+| **Pricing** | Dynamic pricing engine | `/api/v1/pricing/*`, `/admin/pricing/rules` |
+| **Inventory** | Stock management | `/admin/inventory` |
+| **Analytics** | Dashboard metrics | `/admin/analytics/*` |
+| **Notification** | User notifications | `/admin/notifications` |
+| **Coupon** | Coupon management | `/admin/coupons` |
+| **Asset** | Media/image management | `/admin/assets` |
+| **Report** | Report generation | `/admin/reports` |
+| **Audit** | Audit log access (admin only) | `/admin/audit` |
+
+### B2C Store Routes
+
+| Route Group | Purpose | Key Endpoints |
+|-------------|---------|---------------|
+| **Store Auth** | Phone OTP login for customers | `/api/v1/store/auth/*` |
+| **Store Catalog** | Public product/category browsing | `/api/v1/store/catalog/*` |
+| **Store Cart** | Shopping cart management | `/api/v1/store/cart/*` |
+| **Store Checkout** | Order placement + payment | `/api/v1/store/checkout/*` |
+| **Store Orders** | Customer order history | `/api/v1/store/orders/*` |
+| **Store Profile** | Customer account management | `/api/v1/store/me/*` |
+| **Store Tracking** | Order tracking | `/api/v1/store/track/*` |
+| **Store Events** | Storefront analytics events | `/api/v1/store/events/*` |
+| **Webhooks** | Payment callback (PhonePe) | `/api/v1/store/webhooks/*` |
+
+### External Integrations
+
+| Gateway | Purpose | Config Prefix |
+|---------|---------|---------------|
+| **PhonePe** | Payment processing | `PHONEPE_*` |
+| **Shiprocket** | Shipping & delivery tracking | `SHIPROCKET_*` |
+| **MSG91** | SMS OTP for customer auth | `MSG91_*` |
+
+### Event-Driven Architecture
+
+| Worker | Queue | Purpose |
+|--------|-------|---------|
+| **worker-analytics** | analytics queue | Process analytics events |
+| **worker-audit** | audit queue | Record audit trail entries |
+| **worker-notification** | notification queue | Send user notifications |
+| **worker-report** | report queue | Generate business reports |
+
+Domain events are published to an SNS topic and fanned out to SQS queues. Each worker Lambda processes its queue independently.
 
 ### Features
 
@@ -31,12 +62,13 @@ The application is built as **14 independent AWS Lambda microservices**, designe
 - **Dynamic Pricing Engine** - Area/length-based pricing with material multipliers and attribute surcharges
 - **Custom Dimensions** - Allow customers to specify custom product dimensions within configurable ranges
 - **Multi-Table DynamoDB Design** - Optimized for scale with separate tables for core data, orders, audit logs, and analytics
+- **B2C Storefront** - Customer-facing cart, checkout, payment, and order tracking
 
 ## Tech Stack
 
 - **Language**: Go 1.24+
 - **Router**: Chi
-- **Database**: DynamoDB (4 tables)
+- **Database**: DynamoDB (7 tables) + PostgreSQL (catalog data)
 - **Infrastructure**: AWS CDK (Go)
 - **DI**: Wire
 - **Runtime**: AWS Lambda (ARM64, provided.al2023)
@@ -49,8 +81,8 @@ The application is built as **14 independent AWS Lambda microservices**, designe
 .
 ├── cmd/
 │   ├── api/                    # Local development server entry point
-│   └── lambda/                 # Lambda entry points (14 services)
-│       ├── auth/
+│   └── lambda/                 # Lambda entry points (25 services)
+│       ├── auth/               # Admin services (12)
 │       ├── user/
 │       ├── catalog/
 │       ├── order/
@@ -59,24 +91,47 @@ The application is built as **14 independent AWS Lambda microservices**, designe
 │       ├── analytics/
 │       ├── notification/
 │       ├── coupon/
-│       ├── artisan/
-│       ├── bulk/
 │       ├── asset/
 │       ├── report/
-│       └── audit/
+│       ├── audit/
+│       ├── store-auth/         # B2C store services (9)
+│       ├── store-catalog/
+│       ├── store-cart/
+│       ├── store-checkout/
+│       ├── store-events/
+│       ├── store-orders/
+│       ├── store-profile/
+│       ├── store-tracking/
+│       ├── store-webhooks/
+│       ├── worker-analytics/   # Event workers (4)
+│       ├── worker-audit/
+│       ├── worker-notification/
+│       └── worker-report/
 ├── internal/
 │   ├── config/                 # Configuration loading
 │   ├── domain/                 # Domain entities and interfaces
-│   ├── handler/                # HTTP handlers
-│   ├── middleware/             # HTTP middleware
+│   ├── handler/                # HTTP handlers (admin)
+│   │   └── store/              # B2C store handlers
+│   ├── gateway/                # External service integrations
+│   │   ├── phonepe/            # PhonePe payment gateway
+│   │   ├── shiprocket/         # Shiprocket shipping
+│   │   └── sms/                # MSG91 SMS/OTP
+│   ├── middleware/             # HTTP middleware (admin + customer auth)
 │   ├── repository/             # Data access layer
-│   │   └── dynamodb/           # DynamoDB implementations
+│   │   ├── dynamodb/           # DynamoDB implementations
+│   │   └── postgres/           # PostgreSQL implementations (catalog)
 │   ├── router/                 # Service-specific routers & Lambda adapter
+│   ├── s3client/               # S3 client wrapper
+│   ├── event/                  # Event-driven architecture
+│   │   ├── publisher.go        # SNS event publisher
+│   │   ├── types.go            # Event type definitions
+│   │   └── handlers/           # SQS worker handlers (analytics, audit, notification, report)
 │   ├── service/                # Business logic layer
+│   ├── validator/              # Request validation
 │   └── wire/                   # Dependency injection (Wire)
 ├── infra/                      # AWS CDK Infrastructure (Go)
 │   ├── cmd/                    # CDK entry point
-│   └── stacks/                 # CDK stacks (database, storage, api)
+│   └── stacks/                 # CDK stacks (database, storage, api, events)
 ├── pkg/
 │   ├── errors/                 # Custom error types
 │   ├── logger/                 # Structured logging
@@ -103,7 +158,7 @@ make setup-local  # Starts LocalStack, creates DynamoDB tables, S3 buckets, seed
 make run          # Start the API server (monolith mode)
 ```
 
-**That's it!** The API will be available at `http://localhost:8080`.
+**That's it!** The API will be available at `http://localhost:8081`.
 
 ### Default Credentials
 
@@ -128,12 +183,12 @@ Runs the entire backend as a single Go process with hot reload. Fastest iteratio
 # Terminal 1 — Backend
 cd handloom-admin
 make setup-local   # Only needed once (or after make teardown-local)
-make run           # API on :8080
+make run           # API on :8081
 # Or: make run-watch  # Hot reload via air
 
 # Terminal 2 — Frontend
 cd handloom-admin-frontend
-npm run dev:local  # Vite on :5173 → localhost:8080
+npm run dev:local  # Vite on :5173 → localhost:8081
 ```
 
 ### Mode 2: Lambda (Integration testing)
@@ -159,13 +214,20 @@ make redeploy-local   # Faster — rebuilds and updates Lambda code only
 
 ### Frontend Dev Modes
 
-The frontend supports three targets via Vite modes:
+The **admin frontend** (`handloom-admin-frontend/`) supports three targets via Vite modes:
 
 | Script | Target | Env File | Use Case |
 |--------|--------|----------|----------|
-| `npm run dev:local` | `localhost:8080` | `.env.local-backend` | Daily dev against monolith |
+| `npm run dev:local` | `localhost:8081` | `.env.local-backend` | Daily dev against monolith |
 | `npm run dev:lambda` | `localhost:4566` | `.env.local-lambda` | Test against local Lambdas |
 | `npm run dev` | AWS dev API | `.env.development` | Test against deployed AWS |
+
+The **B2C storefront** (`homechrome-store/`) supports two targets:
+
+| Script | Target | Env File | Use Case |
+|--------|--------|----------|----------|
+| `npm run dev` | `localhost:8081` | `.env.local` | Daily dev against monolith |
+| `npm run dev:lambda` | `localhost:4566` | `.env.local-lambda` | Test against local Lambdas |
 
 ### Step-by-Step Setup
 
@@ -216,9 +278,10 @@ make test-api
 
 | Service | URL | Description |
 |---------|-----|-------------|
-| API Server | http://localhost:8080 | Go monolith (when using `make run`) |
+| API Server | http://localhost:8081 | Go monolith (when using `make run`) |
 | LocalStack | http://localhost:4566 | DynamoDB, S3, Lambda, API Gateway |
 | DynamoDB Admin UI | http://localhost:8001 | Browse DynamoDB tables in browser |
+| pgAdmin | http://localhost:5050 | Browse PostgreSQL tables in browser |
 
 ### Environment Configuration
 
@@ -231,9 +294,16 @@ cp .env.example .env
 Key environment variables:
 - `APP_ENV` - Environment (development/production)
 - `APP_DEBUG` - Enable debug logging
+- `SERVER_PORT` - API server port (default: 8081)
 - `AWS_ENDPOINT` - LocalStack endpoint (set for local, empty for AWS)
 - `AWS_REGION` - AWS region (ap-south-1)
-- `JWT_SECRET_KEY` - JWT signing key (change in production!)
+- `JWT_SECRET_KEY` - Admin JWT signing key (change in production!)
+- `CUSTOMER_JWT_SECRET` - Customer JWT signing key (B2C store auth)
+- `PHONEPE_*` - PhonePe payment gateway config
+- `SHIPROCKET_*` - Shiprocket shipping config
+- `MSG91_*` - MSG91 SMS/OTP config
+- `SNS_TOPIC_ARN` - SNS event topic ARN
+- `EVENT_PUBLISHING_ENABLED` - Enable/disable event publishing
 
 ## Deployment
 
@@ -290,15 +360,31 @@ make cdk-destroy
 
 ## API Endpoints
 
-### Public APIs (B2C)
+### Public APIs
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
+| `/health` | GET | Health check |
 | `/api/v1/pricing/calculate` | POST | Calculate price for custom dimensions |
 | `/api/v1/pricing/dimension-options/{categoryId}` | GET | Get dimension options for a category |
 | `/api/v1/pricing/bulk-calculate` | POST | Calculate prices for multiple configurations |
 
-### Admin APIs
+### B2C Store APIs (`/api/v1/store/*`)
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/v1/store/auth/send-otp` | POST | Send OTP to phone number |
+| `/api/v1/store/auth/verify-otp` | POST | Verify OTP and get tokens |
+| `/api/v1/store/auth/refresh` | POST | Refresh customer access token |
+| `/api/v1/store/catalog/*` | GET | Browse categories and products |
+| `/api/v1/store/cart/*` | GET, POST, PATCH, DELETE | Cart management |
+| `/api/v1/store/checkout/*` | POST | Place order and initiate payment |
+| `/api/v1/store/orders/*` | GET | Customer order history |
+| `/api/v1/store/me/*` | GET, PATCH | Customer profile |
+| `/api/v1/store/track/*` | GET | Order tracking |
+| `/api/v1/store/webhooks/phonepe` | POST | PhonePe payment callback |
+
+### Admin APIs (`/admin/*`)
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
@@ -317,7 +403,7 @@ make cdk-destroy
 ## Example: Calculate Price
 
 ```bash
-curl -X POST http://localhost:8080/api/v1/pricing/calculate \
+curl -X POST http://localhost:8081/api/v1/pricing/calculate \
   -H "Content-Type: application/json" \
   -d '{
     "category_id": "cat_bedsheets",
@@ -355,10 +441,13 @@ make test-integration
 
 | Table | Purpose | Entities |
 |-------|---------|----------|
-| `handloom-core` | Core business data | Users, Products, Categories, Designs, Inventory, Artisans, Coupons, Assets |
-| `handloom-orders` | Order management | Orders, OrderItems, StatusHistory, Customers |
+| `handloom-core` | Core business data | Users, Pricing Rules, Coupons |
+| `handloom-catalog` | Product catalog (migrated to PostgreSQL) | Categories, Products, Inventory |
+| `handloom-orders` | Order management | Orders, OrderItems, StatusHistory, Customers, PriceQuotes |
+| `handloom-sessions` | Auth sessions (TTL-based) | OTPs, Refresh Tokens |
 | `handloom-audit` | Compliance logs (90-day TTL) | AuditLogs |
-| `handloom-analytics` | Dashboard metrics (2-year TTL) | DailyMetrics, TopProducts, Alerts |
+| `handloom-analytics` | Dashboard metrics (2-year TTL) | DailyMetrics, TopProducts, Alerts, Reports |
+| `handloom-notifications` | User notifications | Notifications |
 
 ## Development Commands
 
@@ -452,9 +541,10 @@ aws --endpoint-url=http://localhost:4566 --region ap-south-1 apigateway get-rest
 aws --endpoint-url=http://localhost:4566 --region ap-south-1 logs describe-log-groups
 ```
 
-### View DynamoDB Data
+### View Database Data
 
-Visit http://localhost:8001 for the DynamoDB Admin UI.
+- **DynamoDB**: Visit http://localhost:8001 for the DynamoDB Admin UI.
+- **PostgreSQL**: Visit http://localhost:5050 for pgAdmin. On first use, add server: host `postgres`, port `5432`, user/password `handloom`.
 
 ### Generate Password Hash
 

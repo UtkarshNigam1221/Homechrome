@@ -1,8 +1,12 @@
 package stacks
 
 import (
+	"fmt"
+
 	"github.com/aws/aws-cdk-go/awscdk/v2"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awsdynamodb"
+	"github.com/aws/aws-cdk-go/awscdk/v2/awsec2"
+	"github.com/aws/aws-cdk-go/awscdk/v2/awsrds"
 	"github.com/aws/constructs-go/constructs/v10"
 	"github.com/aws/jsii-runtime-go"
 )
@@ -13,17 +17,20 @@ type DatabaseStackProps struct {
 	Environment string
 }
 
-// DatabaseStack contains the DynamoDB tables
+// DatabaseStack contains the DynamoDB tables and PostgreSQL catalog database
 type DatabaseStack struct {
 	awscdk.Stack
 	CoreTable          awsdynamodb.Table
-	CatalogTable       awsdynamodb.Table
 	OrdersTable        awsdynamodb.Table
 	SessionsTable      awsdynamodb.Table
 	AuditTable         awsdynamodb.Table
 	AnalyticsTable     awsdynamodb.Table
 	NotificationsTable awsdynamodb.Table
 	EventsTable        awsdynamodb.Table
+	// PostgreSQL catalog database
+	CatalogVPC      awsec2.Vpc
+	CatalogDB       awsrds.DatabaseInstance
+	CatalogDBSecret awsrds.DatabaseSecret
 }
 
 // NewDatabaseStack creates a new database stack
@@ -63,7 +70,9 @@ func NewDatabaseStack(scope constructs.Construct, id string, props *DatabaseStac
 			Name: jsii.String("SK"),
 			Type: awsdynamodb.AttributeType_STRING,
 		},
-		PointInTimeRecovery:  jsii.Bool(false), // Disable PITR in dev to save costs (not free)
+		PointInTimeRecoverySpecification: &awsdynamodb.PointInTimeRecoverySpecification{
+			PointInTimeRecoveryEnabled: jsii.Bool(false),
+		},
 		TimeToLiveAttribute: jsii.String("ttl"), // TTL for pricing/coupon expiry
 	})
 
@@ -95,50 +104,6 @@ func NewDatabaseStack(scope constructs.Construct, id string, props *DatabaseStac
 		ProjectionType: awsdynamodb.ProjectionType_ALL,
 	})
 
-	// Catalog Table - categories, products, inventory, artisans
-	// Separated from core for independent scaling of high-traffic catalog reads
-	catalogTable := awsdynamodb.NewTable(stack, jsii.String("CatalogTable"), &awsdynamodb.TableProps{
-		TableName:     jsii.String("handloom-catalog-" + props.Environment),
-		BillingMode:   billingMode,
-		RemovalPolicy: removalPolicy,
-		PartitionKey: &awsdynamodb.Attribute{
-			Name: jsii.String("PK"),
-			Type: awsdynamodb.AttributeType_STRING,
-		},
-		SortKey: &awsdynamodb.Attribute{
-			Name: jsii.String("SK"),
-			Type: awsdynamodb.AttributeType_STRING,
-		},
-		PointInTimeRecovery:  jsii.Bool(false),
-		TimeToLiveAttribute: jsii.String("ttl"),
-	})
-
-	catalogTable.AddGlobalSecondaryIndex(&awsdynamodb.GlobalSecondaryIndexProps{
-		IndexName: jsii.String("GSI1"),
-		PartitionKey: &awsdynamodb.Attribute{
-			Name: jsii.String("GSI1PK"),
-			Type: awsdynamodb.AttributeType_STRING,
-		},
-		SortKey: &awsdynamodb.Attribute{
-			Name: jsii.String("GSI1SK"),
-			Type: awsdynamodb.AttributeType_STRING,
-		},
-		ProjectionType: awsdynamodb.ProjectionType_ALL,
-	})
-
-	catalogTable.AddGlobalSecondaryIndex(&awsdynamodb.GlobalSecondaryIndexProps{
-		IndexName: jsii.String("GSI2"),
-		PartitionKey: &awsdynamodb.Attribute{
-			Name: jsii.String("GSI2PK"),
-			Type: awsdynamodb.AttributeType_STRING,
-		},
-		SortKey: &awsdynamodb.Attribute{
-			Name: jsii.String("GSI2SK"),
-			Type: awsdynamodb.AttributeType_STRING,
-		},
-		ProjectionType: awsdynamodb.ProjectionType_ALL,
-	})
-
 	// Notifications Table - notifications with recipient-based GSI
 	// Separated for independent scaling during notification spikes
 	notificationsTable := awsdynamodb.NewTable(stack, jsii.String("NotificationsTable"), &awsdynamodb.TableProps{
@@ -153,7 +118,9 @@ func NewDatabaseStack(scope constructs.Construct, id string, props *DatabaseStac
 			Name: jsii.String("SK"),
 			Type: awsdynamodb.AttributeType_STRING,
 		},
-		PointInTimeRecovery:  jsii.Bool(false),
+		PointInTimeRecoverySpecification: &awsdynamodb.PointInTimeRecoverySpecification{
+			PointInTimeRecoveryEnabled: jsii.Bool(false),
+		},
 		TimeToLiveAttribute: jsii.String("ttl"),
 	})
 
@@ -184,7 +151,9 @@ func NewDatabaseStack(scope constructs.Construct, id string, props *DatabaseStac
 			Name: jsii.String("SK"),
 			Type: awsdynamodb.AttributeType_STRING,
 		},
-		PointInTimeRecovery:  jsii.Bool(false),
+		PointInTimeRecoverySpecification: &awsdynamodb.PointInTimeRecoverySpecification{
+			PointInTimeRecoveryEnabled: jsii.Bool(false),
+		},
 		TimeToLiveAttribute: jsii.String("ttl"),
 	})
 
@@ -201,7 +170,9 @@ func NewDatabaseStack(scope constructs.Construct, id string, props *DatabaseStac
 			Name: jsii.String("SK"),
 			Type: awsdynamodb.AttributeType_STRING,
 		},
-		PointInTimeRecovery:  jsii.Bool(false), // Disable PITR in dev to save costs
+		PointInTimeRecoverySpecification: &awsdynamodb.PointInTimeRecoverySpecification{
+			PointInTimeRecoveryEnabled: jsii.Bool(false),
+		},
 		TimeToLiveAttribute: jsii.String("ttl"), // TTL for PriceQuote and Cart expiry
 	})
 
@@ -245,7 +216,9 @@ func NewDatabaseStack(scope constructs.Construct, id string, props *DatabaseStac
 			Name: jsii.String("SK"),
 			Type: awsdynamodb.AttributeType_STRING,
 		},
-		PointInTimeRecovery: jsii.Bool(false), // Disable PITR to save costs
+		PointInTimeRecoverySpecification: &awsdynamodb.PointInTimeRecoverySpecification{
+			PointInTimeRecoveryEnabled: jsii.Bool(false),
+		},
 		TimeToLiveAttribute: jsii.String("ttl"), // Use TTL to auto-delete old records and save storage
 	})
 
@@ -323,17 +296,71 @@ func NewDatabaseStack(scope constructs.Construct, id string, props *DatabaseStac
 		TimeToLiveAttribute: jsii.String("ttl"),
 	})
 
+	// --- PostgreSQL for Catalog Data ---
+
+	// VPC with public subnets only (no NAT Gateway = cheapest)
+	catalogVPC := awsec2.NewVpc(stack, jsii.String("CatalogVPC"), &awsec2.VpcProps{
+		VpcName:    jsii.String(fmt.Sprintf("handloom-catalog-vpc-%s", props.Environment)),
+		MaxAzs:     jsii.Number(2),
+		NatGateways: jsii.Number(0),
+		SubnetConfiguration: &[]*awsec2.SubnetConfiguration{
+			{
+				Name:       jsii.String("Public"),
+				SubnetType: awsec2.SubnetType_PUBLIC,
+				CidrMask:   jsii.Number(24),
+			},
+		},
+	})
+
+	// Security group — allow PostgreSQL from anywhere (Lambdas have dynamic IPs)
+	catalogSG := awsec2.NewSecurityGroup(stack, jsii.String("CatalogDBSG"), &awsec2.SecurityGroupProps{
+		Vpc:              catalogVPC,
+		SecurityGroupName: jsii.String(fmt.Sprintf("handloom-catalog-db-%s", props.Environment)),
+		Description:       jsii.String("Allow PostgreSQL access for Lambda functions"),
+		AllowAllOutbound:  jsii.Bool(true),
+	})
+	catalogSG.AddIngressRule(
+		awsec2.Peer_AnyIpv4(),
+		awsec2.Port_Tcp(jsii.Number(5432)),
+		jsii.String("PostgreSQL from Lambda / dev machines"),
+		jsii.Bool(false),
+	)
+
+	// RDS credentials in Secrets Manager
+	catalogDBSecret := awsrds.NewDatabaseSecret(stack, jsii.String("CatalogDBSecret"), &awsrds.DatabaseSecretProps{
+		SecretName: jsii.String(fmt.Sprintf("handloom/%s/catalog-db", props.Environment)),
+		Username:   jsii.String("handloom"),
+	})
+
+	// RDS PostgreSQL db.t4g.micro
+	catalogDB := awsrds.NewDatabaseInstance(stack, jsii.String("CatalogDB"), &awsrds.DatabaseInstanceProps{
+		InstanceIdentifier: jsii.String(fmt.Sprintf("handloom-catalog-%s", props.Environment)),
+		Engine: awsrds.DatabaseInstanceEngine_Postgres(&awsrds.PostgresInstanceEngineProps{
+			Version: awsrds.PostgresEngineVersion_VER_16(),
+		}),
+		InstanceType:              awsec2.InstanceType_Of(awsec2.InstanceClass_BURSTABLE4_GRAVITON, awsec2.InstanceSize_MICRO),
+		Vpc:                       catalogVPC,
+		VpcSubnets:                &awsec2.SubnetSelection{SubnetType: awsec2.SubnetType_PUBLIC},
+		SecurityGroups:            &[]awsec2.ISecurityGroup{catalogSG},
+		Credentials:               awsrds.Credentials_FromSecret(catalogDBSecret, nil),
+		DatabaseName:              jsii.String("handloom"),
+		AllocatedStorage:          jsii.Number(20),
+		StorageType:               awsrds.StorageType_GP3,
+		MultiAz:                   jsii.Bool(false),
+		PubliclyAccessible:        jsii.Bool(true),
+		RemovalPolicy:             removalPolicy,
+		DeletionProtection:        jsii.Bool(isProd),
+		BackupRetention:           awscdk.Duration_Days(jsii.Number(1)),
+		MonitoringInterval:        awscdk.Duration_Seconds(jsii.Number(0)),
+		EnablePerformanceInsights: jsii.Bool(false),
+		StorageEncrypted:          jsii.Bool(true),
+	})
+
 	// Outputs
 	awscdk.NewCfnOutput(stack, jsii.String("CoreTableName"), &awscdk.CfnOutputProps{
 		Value:       coreTable.TableName(),
 		Description: jsii.String("Core DynamoDB table name"),
 		ExportName:  jsii.String("handloom-core-table-" + props.Environment),
-	})
-
-	awscdk.NewCfnOutput(stack, jsii.String("CatalogTableName"), &awscdk.CfnOutputProps{
-		Value:       catalogTable.TableName(),
-		Description: jsii.String("Catalog DynamoDB table name"),
-		ExportName:  jsii.String("handloom-catalog-table-" + props.Environment),
 	})
 
 	awscdk.NewCfnOutput(stack, jsii.String("OrdersTableName"), &awscdk.CfnOutputProps{
@@ -360,15 +387,29 @@ func NewDatabaseStack(scope constructs.Construct, id string, props *DatabaseStac
 		ExportName:  jsii.String("handloom-events-table-" + props.Environment),
 	})
 
+	awscdk.NewCfnOutput(stack, jsii.String("CatalogDBEndpoint"), &awscdk.CfnOutputProps{
+		Value:       catalogDB.DbInstanceEndpointAddress(),
+		Description: jsii.String("Catalog PostgreSQL endpoint"),
+		ExportName:  jsii.String(fmt.Sprintf("handloom-catalog-db-endpoint-%s", props.Environment)),
+	})
+
+	awscdk.NewCfnOutput(stack, jsii.String("CatalogDBSecretARN"), &awscdk.CfnOutputProps{
+		Value:       catalogDBSecret.SecretArn(),
+		Description: jsii.String("Catalog DB credentials secret ARN"),
+		ExportName:  jsii.String(fmt.Sprintf("handloom-catalog-db-secret-%s", props.Environment)),
+	})
+
 	return &DatabaseStack{
 		Stack:              stack,
 		CoreTable:          coreTable,
-		CatalogTable:       catalogTable,
 		OrdersTable:        ordersTable,
 		SessionsTable:      sessionsTable,
 		AuditTable:         auditTable,
 		AnalyticsTable:     analyticsTable,
 		NotificationsTable: notificationsTable,
 		EventsTable:        eventsTable,
+		CatalogVPC:         catalogVPC,
+		CatalogDB:          catalogDB,
+		CatalogDBSecret:    catalogDBSecret,
 	}
 }

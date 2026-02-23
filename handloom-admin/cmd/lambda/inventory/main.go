@@ -10,6 +10,7 @@ import (
 	"github.com/handloom/admin/internal/handler"
 	"github.com/handloom/admin/internal/middleware"
 	"github.com/handloom/admin/internal/repository/dynamodb"
+	"github.com/handloom/admin/internal/repository/postgres"
 	"github.com/handloom/admin/internal/router"
 	"github.com/handloom/admin/internal/service"
 	"github.com/handloom/admin/pkg/logger"
@@ -32,11 +33,17 @@ func main() {
 		log.Fatalf("Failed to initialize DynamoDB client: %v", err)
 	}
 
+	// Initialize PostgreSQL pool for catalog data
+	pgPool, err := postgres.NewPool(ctx, &cfg.Postgres)
+	if err != nil {
+		log.Fatalf("Failed to initialize PostgreSQL pool: %v", err)
+	}
+	defer pgPool.Close()
+
 	// Initialize repositories
 	userRepo := dynamodb.NewUserRepository(dbClient)
 	tokenStore := dynamodb.NewTokenStore(dbClient)
-	inventoryRepo := dynamodb.NewInventoryRepository(dbClient)
-	productRepo := dynamodb.NewProductRepository(dbClient)
+	inventoryRepo := postgres.NewInventoryRepository(pgPool)
 
 	// Initialize event publisher (noop for inventory Lambda)
 	publisher := event.NewNoopPublisher()
@@ -51,7 +58,7 @@ func main() {
 		cfg.JWT.RefreshTokenDuration,
 		cfg.JWT.Issuer,
 	)
-	inventoryService := service.NewInventoryService(inventoryRepo, productRepo, publisher, log)
+	inventoryService := service.NewInventoryService(inventoryRepo, publisher, log)
 
 	// Initialize handler
 	inventoryHandler := handler.NewInventoryHandler(inventoryService, log)

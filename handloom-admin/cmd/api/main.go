@@ -21,10 +21,12 @@ import (
 	"github.com/handloom/admin/internal/gateway/phonepe"
 	"github.com/handloom/admin/internal/gateway/shiprocket"
 	"github.com/handloom/admin/internal/gateway/sms"
+	"github.com/handloom/admin/internal/cache"
 	"github.com/handloom/admin/internal/handler"
 	"github.com/handloom/admin/internal/handler/store"
 	"github.com/handloom/admin/internal/middleware"
 	"github.com/handloom/admin/internal/repository/dynamodb"
+	"github.com/handloom/admin/internal/repository/postgres"
 	"github.com/handloom/admin/internal/s3client"
 	"github.com/handloom/admin/internal/service"
 	"github.com/handloom/admin/internal/validator"
@@ -57,20 +59,32 @@ func main() {
 	}
 	log.Info("S3 client initialized")
 
+	// Initialize PostgreSQL pool for catalog data
+	pgPool, err := postgres.NewPool(ctx, &cfg.Postgres)
+	if err != nil {
+		log.Fatalf("Failed to initialize PostgreSQL pool: %v", err)
+	}
+	defer pgPool.Close()
+	log.Info("PostgreSQL pool initialized")
+
 	// Initialize repositories
+	catalogCache := cache.New(5*time.Minute, 10*time.Minute)
 	userRepo := dynamodb.NewUserRepository(dbClient)
-	categoryRepo := dynamodb.NewCategoryRepository(dbClient)
-	productRepo := dynamodb.NewProductRepository(dbClient)
+	categoryRepo := postgres.NewCachedCategoryRepository(
+		postgres.NewCategoryRepository(pgPool), catalogCache,
+	)
+	productRepo := postgres.NewCachedProductRepository(
+		postgres.NewProductRepository(pgPool), catalogCache,
+	)
 	pricingRuleRepo := dynamodb.NewPricingRuleRepository(dbClient)
 	priceQuoteRepo := dynamodb.NewPriceQuoteRepository(dbClient)
-	inventoryRepo := dynamodb.NewInventoryRepository(dbClient)
+	inventoryRepo := postgres.NewInventoryRepository(pgPool)
 	orderRepo := dynamodb.NewOrderRepository(dbClient)
 	customerRepo := dynamodb.NewCustomerRepository(dbClient)
 	auditRepo := dynamodb.NewAuditRepository(dbClient)
 	tokenStore := dynamodb.NewTokenStore(dbClient)
 	notificationRepo := dynamodb.NewNotificationRepository(dbClient)
 	couponRepo := dynamodb.NewCouponRepository(dbClient)
-	artisanRepo := dynamodb.NewArtisanRepository(dbClient)
 	analyticsRepo := dynamodb.NewAnalyticsRepository(dbClient)
 	reportRepo := dynamodb.NewReportRepository(dbClient)
 
@@ -104,7 +118,7 @@ func main() {
 	userService := service.NewUserService(userRepo, tokenStore, log)
 	assetService := service.NewAssetService(log, s3c, cfg.AWS.S3Bucket, cfg.AWS.Endpoint)
 	categoryService := service.NewCategoryService(categoryRepo, productRepo, assetService, log)
-	inventoryService := service.NewInventoryService(inventoryRepo, productRepo, publisher, log)
+	inventoryService := service.NewInventoryService(inventoryRepo, publisher, log)
 	productService := service.NewProductService(
 		productRepo,
 		categoryRepo,
@@ -134,7 +148,6 @@ func main() {
 	auditService := service.NewAuditService(auditRepo, log)
 	notificationService := service.NewNotificationService(notificationRepo, userRepo, log)
 	couponService := service.NewCouponService(couponRepo, log)
-	artisanService := service.NewArtisanService(artisanRepo, log)
 	analyticsService := service.NewAnalyticsService(analyticsRepo, orderRepo, productRepo, inventoryRepo, log)
 	reportService := service.NewReportService(reportRepo, orderService, productService, customerService, inventoryService, analyticsService, log)
 
@@ -218,7 +231,6 @@ func main() {
 	auditHandler := handler.NewAuditHandler(auditService)
 	notificationHandler := handler.NewNotificationHandler(notificationService, validation)
 	couponHandler := handler.NewCouponHandler(couponService, validation)
-	artisanHandler := handler.NewArtisanHandler(artisanService, validation)
 	analyticsHandler := handler.NewAnalyticsHandler(analyticsService)
 	assetHandler := handler.NewAssetHandler(assetService, validation)
 	reportHandler := handler.NewReportHandler(reportService, validation)
@@ -245,7 +257,7 @@ func main() {
 		authHandler, userHandler, categoryHandler,
 		productHandler, inventoryHandler, pricingHandler, orderHandler,
 		customerHandler, auditHandler, notificationHandler, couponHandler,
-		artisanHandler, analyticsHandler, assetHandler, reportHandler,
+		analyticsHandler, assetHandler, reportHandler,
 		// B2C store handlers
 		storeAuthHandler, storeCatalogHandler, storeCartHandler,
 		storeCheckoutHandler, storeOrderHandler, storeTrackingHandler,
@@ -302,7 +314,6 @@ func createRouter(
 	auditHandler *handler.AuditHandler,
 	notificationHandler *handler.NotificationHandler,
 	couponHandler *handler.CouponHandler,
-	artisanHandler *handler.ArtisanHandler,
 	analyticsHandler *handler.AnalyticsHandler,
 	assetHandler *handler.AssetHandler,
 	reportHandler *handler.ReportHandler,
@@ -364,7 +375,10 @@ func createRouter(
 		})
 		r.Mount("/catalog", storeCatalogHandler.Routes())
 		r.Mount("/track", storeTrackingHandler.Routes())
-		r.Mount("/events", storeEventsHandler.Routes())
+		r.Group(func(r chi.Router) {
+			r.Use(httprate.LimitByIP(60, time.Minute))
+			r.Mount("/events", storeEventsHandler.Routes())
+		})
 
 		// Webhook routes (signature-verified, not customer auth)
 		r.Mount("/webhooks", storeWebhookHandler.Routes())
@@ -426,9 +440,6 @@ func createRouter(
 
 			// Coupons
 			r.Mount("/coupons", couponHandler.Routes())
-
-			// Artisans
-			r.Mount("/artisans", artisanHandler.Routes())
 
 			// Analytics/Dashboard
 			r.Mount("/analytics", analyticsRoutes(analyticsHandler))

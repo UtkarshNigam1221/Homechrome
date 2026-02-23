@@ -1,7 +1,7 @@
 .PHONY: all build run test clean docker-up docker-down create-tables seed-data generate-mocks lint \
 	build-lambdas build-lambda-auth build-lambda-user build-lambda-catalog build-lambda-order \
 	build-lambda-pricing build-lambda-inventory build-lambda-analytics build-lambda-notification \
-	build-lambda-coupon build-lambda-artisan build-lambda-asset \
+	build-lambda-coupon build-lambda-asset \
 	build-lambda-report build-lambda-audit \
 	build-lambda-store-auth build-lambda-store-catalog build-lambda-store-cart \
 	build-lambda-store-checkout build-lambda-store-orders build-lambda-store-tracking \
@@ -27,7 +27,7 @@ BINARY_PATH=./bin/$(BINARY_NAME)
 # Lambda build parameters
 LAMBDA_BUILD_FLAGS=CGO_ENABLED=0 GOOS=linux GOARCH=arm64
 LAMBDA_OUT_DIR=./bin/lambda
-LAMBDA_SERVICES=auth user catalog order pricing inventory analytics notification coupon artisan asset report audit \
+LAMBDA_SERVICES=auth user catalog order pricing inventory analytics notification coupon asset report audit \
 	store-auth store-catalog store-cart store-checkout store-orders store-tracking store-profile store-webhooks \
 	worker-notification worker-report worker-analytics worker-audit
 
@@ -53,6 +53,7 @@ run:
 	@echo "  API Server:     http://localhost:8081"
 	@echo "  LocalStack:     http://localhost:4566"
 	@echo "  DynamoDB Admin: http://localhost:8001"
+	@echo "  pgAdmin:        http://localhost:5050"
 	@echo ""
 	@echo "  Health Check:   curl http://localhost:8081/health"
 	@echo ""
@@ -67,6 +68,7 @@ run:
 	AWS_ACCESS_KEY_ID=local \
 	AWS_SECRET_ACCESS_KEY=local \
 	JWT_SECRET_KEY=dev-secret-key-change-in-production \
+	POSTGRES_DSN=postgres://handloom:handloom@localhost:5432/handloom?sslmode=disable \
 	$(GOCMD) run $(MAIN_PKG)
 
 ## Run with hot reload using air (requires: go install github.com/cosmtrek/air@latest)
@@ -81,6 +83,7 @@ run-watch:
 	AWS_ACCESS_KEY_ID=local \
 	AWS_SECRET_ACCESS_KEY=local \
 	JWT_SECRET_KEY=dev-secret-key-change-in-production \
+	POSTGRES_DSN=postgres://handloom:handloom@localhost:5432/handloom?sslmode=disable \
 	air
 
 ## Run tests
@@ -117,6 +120,7 @@ wire:
 generate-mocks:
 	@echo "Generating mocks..."
 	mockgen -source=internal/domain/repository.go -destination=internal/mocks/repository_mock.go -package=mocks
+	mockgen -source=internal/domain/analytics.go -destination=internal/mocks/analytics_mock.go -package=mocks
 	mockgen -source=internal/domain/service.go -destination=internal/mocks/service_mock.go -package=mocks
 
 ## Run linter
@@ -129,10 +133,10 @@ fmt:
 	@echo "Formatting code..."
 	$(GOCMD) fmt ./...
 
-## Start Docker services (LocalStack)
+## Start Docker services (LocalStack + PostgreSQL + Admin UIs)
 docker-up:
-	@echo "Starting LocalStack..."
-	docker-compose up -d localstack dynamodb-admin
+	@echo "Starting LocalStack + PostgreSQL + Admin UIs..."
+	docker-compose up -d localstack dynamodb-admin postgres pgadmin
 	@echo "Waiting for LocalStack to be ready..."
 	@for i in 1 2 3 4 5 6 7 8 9 10; do \
 		curl -sf http://localhost:4566/_localstack/health > /dev/null 2>&1 && break; \
@@ -140,6 +144,13 @@ docker-up:
 		sleep 3; \
 	done
 	@echo "LocalStack is ready!"
+	@echo "Waiting for PostgreSQL to be ready..."
+	@for i in 1 2 3 4 5 6 7 8 9 10; do \
+		docker exec handloom-postgres pg_isready -U handloom > /dev/null 2>&1 && break; \
+		echo "  waiting... ($$i)"; \
+		sleep 2; \
+	done
+	@echo "PostgreSQL is ready!"
 
 ## Stop Docker services
 docker-down:
@@ -184,8 +195,10 @@ setup-local: docker-up create-tables init-s3 create-events seed-data
 	@echo "Local development environment ready!"
 	@echo ""
 	@echo "Services:"
-	@echo "  - LocalStack:    http://localhost:4566"
+	@echo "  - LocalStack:     http://localhost:4566"
 	@echo "  - DynamoDB Admin: http://localhost:8001"
+	@echo "  - pgAdmin:        http://localhost:5050"
+	@echo "  - PostgreSQL:     localhost:5432 (handloom/handloom)"
 	@echo ""
 	@echo "Run 'make run' to start the API server (monolith mode)"
 	@echo "Run 'make deploy-local' to deploy Lambda functions"
@@ -224,11 +237,15 @@ health:
 ## Reset local database (drop all tables and recreate)
 reset-db: docker-up
 	@echo "Resetting local database..."
+	@echo "Resetting DynamoDB tables..."
 	@AWS_ACCESS_KEY_ID=local AWS_SECRET_ACCESS_KEY=local aws dynamodb delete-table --table-name handloom-core --endpoint-url http://localhost:4566 --region ap-south-1 2>/dev/null || true
 	@AWS_ACCESS_KEY_ID=local AWS_SECRET_ACCESS_KEY=local aws dynamodb delete-table --table-name handloom-orders --endpoint-url http://localhost:4566 --region ap-south-1 2>/dev/null || true
 	@AWS_ACCESS_KEY_ID=local AWS_SECRET_ACCESS_KEY=local aws dynamodb delete-table --table-name handloom-audit --endpoint-url http://localhost:4566 --region ap-south-1 2>/dev/null || true
 	@AWS_ACCESS_KEY_ID=local AWS_SECRET_ACCESS_KEY=local aws dynamodb delete-table --table-name handloom-analytics --endpoint-url http://localhost:4566 --region ap-south-1 2>/dev/null || true
 	@AWS_ACCESS_KEY_ID=local AWS_SECRET_ACCESS_KEY=local aws dynamodb delete-table --table-name handloom-sessions --endpoint-url http://localhost:4566 --region ap-south-1 2>/dev/null || true
+	@echo "Resetting PostgreSQL catalog tables..."
+	@docker exec handloom-postgres psql -U handloom -d handloom -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;" 2>/dev/null || true
+	@docker exec handloom-postgres psql -U handloom -d handloom -f /docker-entrypoint-initdb.d/001_catalog_schema.sql 2>/dev/null || true
 	@sleep 2
 	@$(MAKE) create-tables
 	@$(MAKE) seed-data
@@ -329,11 +346,6 @@ build-lambda-coupon:
 	@echo "Building coupon Lambda..."
 	@mkdir -p $(LAMBDA_OUT_DIR)/coupon
 	$(LAMBDA_BUILD_FLAGS) $(GOBUILD) -ldflags="-s -w" -o $(LAMBDA_OUT_DIR)/coupon/bootstrap ./cmd/lambda/coupon
-
-build-lambda-artisan:
-	@echo "Building artisan Lambda..."
-	@mkdir -p $(LAMBDA_OUT_DIR)/artisan
-	$(LAMBDA_BUILD_FLAGS) $(GOBUILD) -ldflags="-s -w" -o $(LAMBDA_OUT_DIR)/artisan/bootstrap ./cmd/lambda/artisan
 
 build-lambda-asset:
 	@echo "Building asset Lambda..."

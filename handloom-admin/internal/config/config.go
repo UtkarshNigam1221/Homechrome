@@ -16,10 +16,20 @@ type Config struct {
 	Server   ServerConfig
 	AWS      AWSConfig
 	DynamoDB DynamoDBConfig
+	Postgres PostgresConfig
 	JWT      JWTConfig
 	App      AppConfig
 	Store    StoreConfig
 	Event    EventConfig
+}
+
+// PostgresConfig holds PostgreSQL connection configuration
+type PostgresConfig struct {
+	DSN          string // Direct DSN (local dev): env POSTGRES_DSN
+	SecretARN    string // Secrets Manager ARN (Lambda): env RDS_SECRET_ARN
+	Endpoint     string // RDS endpoint (Lambda): env RDS_ENDPOINT
+	Port         string // RDS port (Lambda): env RDS_PORT
+	DatabaseName string // RDS database name (Lambda): env RDS_DATABASE
 }
 
 // StoreConfig holds B2C storefront configuration
@@ -76,7 +86,6 @@ type AWSConfig struct {
 // DynamoDBConfig holds DynamoDB table names
 type DynamoDBConfig struct {
 	CoreTable          string // User, PricingRule, Coupon
-	CatalogTable       string // Category, Product, Inventory, Artisan
 	OrdersTable        string
 	SessionsTable      string
 	AuditTable         string
@@ -119,7 +128,6 @@ func Load() *Config {
 		},
 		DynamoDB: DynamoDBConfig{
 			CoreTable:          getEnv("DYNAMODB_CORE_TABLE", "handloom-core"),
-			CatalogTable:       getEnv("DYNAMODB_CATALOG_TABLE", "handloom-catalog"),
 			OrdersTable:        getEnv("DYNAMODB_ORDERS_TABLE", "handloom-orders"),
 			SessionsTable:      getEnv("DYNAMODB_SESSIONS_TABLE", "handloom-sessions"),
 			AuditTable:         getEnv("DYNAMODB_AUDIT_TABLE", "handloom-audit"),
@@ -137,6 +145,13 @@ func Load() *Config {
 			Environment:      getEnv("APP_ENV", "development"),
 			Debug:            getBoolEnv("APP_DEBUG", true),
 			QuoteValidityHrs: getIntEnv("QUOTE_VALIDITY_HRS", 24),
+		},
+		Postgres: PostgresConfig{
+			DSN:          getEnv("POSTGRES_DSN", ""),
+			SecretARN:    getEnv("RDS_SECRET_ARN", ""),
+			Endpoint:     getEnv("RDS_ENDPOINT", ""),
+			Port:         getEnv("RDS_PORT", "5432"),
+			DatabaseName: getEnv("RDS_DATABASE", "handloom"),
 		},
 		Event: EventConfig{
 			SNSTopicARN: getEnv("SNS_TOPIC_ARN", ""),

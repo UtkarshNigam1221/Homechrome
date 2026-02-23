@@ -10,6 +10,7 @@ import (
 	"github.com/handloom/admin/internal/handler"
 	"github.com/handloom/admin/internal/middleware"
 	"github.com/handloom/admin/internal/repository/dynamodb"
+	"github.com/handloom/admin/internal/repository/postgres"
 	"github.com/handloom/admin/internal/router"
 	"github.com/handloom/admin/internal/service"
 	"github.com/handloom/admin/internal/validator"
@@ -33,13 +34,20 @@ func main() {
 		log.Fatalf("Failed to initialize DynamoDB client: %v", err)
 	}
 
+	// Initialize PostgreSQL pool for catalog data
+	pgPool, err := postgres.NewPool(ctx, &cfg.Postgres)
+	if err != nil {
+		log.Fatalf("Failed to initialize PostgreSQL pool: %v", err)
+	}
+	defer pgPool.Close()
+
 	// Initialize repositories
 	userRepo := dynamodb.NewUserRepository(dbClient)
 	tokenStore := dynamodb.NewTokenStore(dbClient)
 	pricingRuleRepo := dynamodb.NewPricingRuleRepository(dbClient)
 	priceQuoteRepo := dynamodb.NewPriceQuoteRepository(dbClient)
-	categoryRepo := dynamodb.NewCategoryRepository(dbClient)
-	productRepo := dynamodb.NewProductRepository(dbClient)
+	categoryRepo := postgres.NewCategoryRepository(pgPool)
+	productRepo := postgres.NewProductRepository(pgPool)
 
 	// Initialize services
 	authService := service.NewAuthService(

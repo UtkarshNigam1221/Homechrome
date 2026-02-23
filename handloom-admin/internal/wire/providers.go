@@ -3,11 +3,14 @@ package wire
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/wire"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/handloom/admin/internal/cache"
 	"github.com/handloom/admin/internal/config"
-	"github.com/handloom/admin/internal/event"
 	"github.com/handloom/admin/internal/domain"
+	"github.com/handloom/admin/internal/event"
 	"github.com/handloom/admin/internal/gateway/phonepe"
 	"github.com/handloom/admin/internal/gateway/shiprocket"
 	"github.com/handloom/admin/internal/gateway/sms"
@@ -15,6 +18,7 @@ import (
 	"github.com/handloom/admin/internal/handler/store"
 	"github.com/handloom/admin/internal/middleware"
 	"github.com/handloom/admin/internal/repository/dynamodb"
+	"github.com/handloom/admin/internal/repository/postgres"
 	"github.com/handloom/admin/internal/s3client"
 	"github.com/handloom/admin/internal/service"
 	"github.com/handloom/admin/internal/validator"
@@ -40,10 +44,22 @@ func ProvideS3Client(ctx context.Context, cfg *config.Config) (*s3client.S3Clien
 	return s3client.New(ctx, cfg.AWS.Region, cfg.AWS.Endpoint)
 }
 
+// ProvidePostgresPool creates a new PostgreSQL connection pool for catalog data
+func ProvidePostgresPool(ctx context.Context, cfg *config.Config) (*pgxpool.Pool, error) {
+	return postgres.NewPool(ctx, &cfg.Postgres)
+}
+
+// ProvideCatalogCache creates an in-process cache for catalog data
+func ProvideCatalogCache() *cache.Cache {
+	return cache.New(5*time.Minute, 10*time.Minute)
+}
+
 // CoreSet contains core providers used by all services
 var CoreSet = wire.NewSet(
 	ProvideLogger,
 	ProvideDynamoDBClient,
+	ProvidePostgresPool,
+	ProvideCatalogCache,
 )
 
 // ============================================================================
@@ -60,19 +76,23 @@ func ProvideTokenStore(client *dynamodb.Client) domain.TokenStore {
 	return dynamodb.NewTokenStore(client)
 }
 
-// ProvideCategoryRepository creates a new CategoryRepository
-func ProvideCategoryRepository(client *dynamodb.Client) domain.CategoryRepository {
-	return dynamodb.NewCategoryRepository(client)
+// ProvideCategoryRepository creates a new CategoryRepository backed by PostgreSQL with cache
+func ProvideCategoryRepository(pool *pgxpool.Pool, c *cache.Cache) domain.CategoryRepository {
+	return postgres.NewCachedCategoryRepository(
+		postgres.NewCategoryRepository(pool), c,
+	)
 }
 
-// ProvideProductRepository creates a new ProductRepository
-func ProvideProductRepository(client *dynamodb.Client) domain.ProductRepository {
-	return dynamodb.NewProductRepository(client)
+// ProvideProductRepository creates a new ProductRepository backed by PostgreSQL with cache
+func ProvideProductRepository(pool *pgxpool.Pool, c *cache.Cache) domain.ProductRepository {
+	return postgres.NewCachedProductRepository(
+		postgres.NewProductRepository(pool), c,
+	)
 }
 
-// ProvideInventoryRepository creates a new InventoryRepository
-func ProvideInventoryRepository(client *dynamodb.Client) domain.InventoryRepository {
-	return dynamodb.NewInventoryRepository(client)
+// ProvideInventoryRepository creates a new InventoryRepository backed by PostgreSQL
+func ProvideInventoryRepository(pool *pgxpool.Pool) domain.InventoryRepository {
+	return postgres.NewInventoryRepository(pool)
 }
 
 // ProvideOrderRepository creates a new OrderRepository
@@ -110,11 +130,6 @@ func ProvideCouponRepository(client *dynamodb.Client) domain.CouponRepository {
 	return dynamodb.NewCouponRepository(client)
 }
 
-// ProvideArtisanRepository creates a new ArtisanRepository
-func ProvideArtisanRepository(client *dynamodb.Client) domain.ArtisanRepository {
-	return dynamodb.NewArtisanRepository(client)
-}
-
 // ProvideReportRepository creates a new ReportRepository
 func ProvideReportRepository(client *dynamodb.Client) domain.ReportRepository {
 	return dynamodb.NewReportRepository(client)
@@ -144,7 +159,6 @@ var RepositorySet = wire.NewSet(
 	ProvideAnalyticsRepository,
 	ProvideNotificationRepository,
 	ProvideCouponRepository,
-	ProvideArtisanRepository,
 	ProvideReportRepository,
 	ProvideAuditRepository,
 	ProvideEventsRepository,
@@ -206,11 +220,10 @@ func ProvideProductService(
 // ProvideInventoryService creates a new InventoryService
 func ProvideInventoryService(
 	inventoryRepo domain.InventoryRepository,
-	productRepo domain.ProductRepository,
 	publisher event.EventPublisher,
 	log *logger.Logger,
 ) *service.InventoryService {
-	return service.NewInventoryService(inventoryRepo, productRepo, publisher, log)
+	return service.NewInventoryService(inventoryRepo, publisher, log)
 }
 
 // ProvidePricingService creates a new PricingService
@@ -282,14 +295,6 @@ func ProvideCouponService(
 	return service.NewCouponService(couponRepo, log)
 }
 
-// ProvideArtisanService creates a new ArtisanService
-func ProvideArtisanService(
-	artisanRepo domain.ArtisanRepository,
-	log *logger.Logger,
-) *service.ArtisanService {
-	return service.NewArtisanService(artisanRepo, log)
-}
-
 // ProvideAssetService creates a new AssetService
 func ProvideAssetService(
 	log *logger.Logger,
@@ -343,7 +348,6 @@ var ServiceSet = wire.NewSet(
 	ProvideAnalyticsService,
 	ProvideNotificationService,
 	ProvideCouponService,
-	ProvideArtisanService,
 	ProvideAssetService,
 	ProvideReportService,
 	ProvideAuditService,
@@ -450,14 +454,6 @@ func ProvideCouponHandler(
 	return handler.NewCouponHandler(couponService, validation)
 }
 
-// ProvideArtisanHandler creates a new ArtisanHandler
-func ProvideArtisanHandler(
-	artisanService *service.ArtisanService,
-	validation *middleware.Validation,
-) *handler.ArtisanHandler {
-	return handler.NewArtisanHandler(artisanService, validation)
-}
-
 // ProvideAssetHandler creates a new AssetHandler
 func ProvideAssetHandler(
 	assetService *service.AssetService,
@@ -494,7 +490,6 @@ var HandlerSet = wire.NewSet(
 	ProvideAnalyticsHandler,
 	ProvideNotificationHandler,
 	ProvideCouponHandler,
-	ProvideArtisanHandler,
 	ProvideAssetHandler,
 	ProvideReportHandler,
 	ProvideAuditHandler,

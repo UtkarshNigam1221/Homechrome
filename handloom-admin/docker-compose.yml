@@ -6,7 +6,7 @@ services:
     ports:
       - "4566:4566"           # LocalStack gateway
     environment:
-      SERVICES: dynamodb,s3,lambda,apigateway,iam
+      SERVICES: dynamodb,s3,lambda,apigateway,iam,sns,sqs
       DEBUG: 0
     volumes:
       - localstack-data:/var/lib/localstack
@@ -32,5 +32,43 @@ services:
       localstack:
         condition: service_healthy
 
+  # PostgreSQL — catalog data (categories, products, inventory)
+  postgres:
+    image: postgres:16
+    container_name: handloom-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: handloom
+      POSTGRES_USER: handloom
+      POSTGRES_PASSWORD: handloom
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U handloom"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # pgAdmin — PostgreSQL admin UI (browse tables in browser)
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: handloom-pgadmin
+    ports:
+      - "5050:80"
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@homechrome.dev
+      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      postgres:
+        condition: service_healthy
+
 volumes:
   localstack-data:
+  postgres_data:
+  pgadmin_data:

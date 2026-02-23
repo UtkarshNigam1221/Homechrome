@@ -171,14 +171,24 @@ func NewEventStack(scope constructs.Construct, id string, props *EventStackProps
 			"APP_ENV":                  jsii.String(props.Environment),
 			"APP_DEBUG":                jsii.String(fmt.Sprintf("%t", !isProd)),
 			"DYNAMODB_CORE_TABLE":          props.DatabaseStack.CoreTable.TableName(),
-			"DYNAMODB_CATALOG_TABLE":       props.DatabaseStack.CatalogTable.TableName(),
 			"DYNAMODB_ORDERS_TABLE":        props.DatabaseStack.OrdersTable.TableName(),
 			"DYNAMODB_AUDIT_TABLE":         props.DatabaseStack.AuditTable.TableName(),
 			"DYNAMODB_ANALYTICS_TABLE":     props.DatabaseStack.AnalyticsTable.TableName(),
 			"DYNAMODB_NOTIFICATIONS_TABLE": props.DatabaseStack.NotificationsTable.TableName(),
 			"DYNAMODB_EVENTS_TABLE":        props.DatabaseStack.EventsTable.TableName(),
+			"RDS_SECRET_ARN": props.DatabaseStack.CatalogDBSecret.SecretArn(),
+			"RDS_ENDPOINT":   props.DatabaseStack.CatalogDB.DbInstanceEndpointAddress(),
+			"RDS_PORT":       jsii.String("5432"),
+			"RDS_DATABASE":   jsii.String("handloom"),
 			"SERVICE_NAME":             jsii.String(workerName),
 		}
+
+		// Explicit log group (replaces deprecated LogRetention on Lambda)
+		workerLogGroup := awslogs.NewLogGroup(stack, jsii.String(fmt.Sprintf("%sLogGroup", capitalize(workerName))), &awslogs.LogGroupProps{
+			LogGroupName:  jsii.String(fmt.Sprintf("/aws/lambda/handloom-%s-%s", workerName, props.Environment)),
+			Retention:     logRetention,
+			RemovalPolicy: awscdk.RemovalPolicy_DESTROY,
+		})
 
 		lambdaFn := awslambda.NewFunction(stack, jsii.String(fmt.Sprintf("%sFunction", capitalize(workerName))), &awslambda.FunctionProps{
 			FunctionName:                 jsii.String(fmt.Sprintf("handloom-%s-%s", workerName, props.Environment)),
@@ -189,7 +199,7 @@ func NewEventStack(scope constructs.Construct, id string, props *EventStackProps
 			MemorySize:                   jsii.Number(memorySize),
 			Timeout:                      awscdk.Duration_Seconds(jsii.Number(60)),
 			Environment:                  &env,
-			LogRetention:                 logRetention,
+			LogGroup:                     workerLogGroup,
 			Tracing:                      awslambda.Tracing_DISABLED,
 			ReservedConcurrentExecutions: jsii.Number(w.concurrency),
 		})
@@ -203,12 +213,12 @@ func NewEventStack(scope constructs.Construct, id string, props *EventStackProps
 
 		// Grant DynamoDB read/write access to all tables
 		props.DatabaseStack.CoreTable.GrantReadWriteData(lambdaFn)
-		props.DatabaseStack.CatalogTable.GrantReadWriteData(lambdaFn)
 		props.DatabaseStack.OrdersTable.GrantReadWriteData(lambdaFn)
 		props.DatabaseStack.AuditTable.GrantReadWriteData(lambdaFn)
 		props.DatabaseStack.AnalyticsTable.GrantReadWriteData(lambdaFn)
 		props.DatabaseStack.NotificationsTable.GrantReadWriteData(lambdaFn)
 		props.DatabaseStack.EventsTable.GrantReadWriteData(lambdaFn)
+		props.DatabaseStack.CatalogDBSecret.GrantRead(lambdaFn, nil)
 
 		// Capture analytics Lambda for EventBridge schedule
 		if w.name == "analytics" {
