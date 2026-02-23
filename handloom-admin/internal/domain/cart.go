@@ -39,6 +39,8 @@ type CartItem struct {
 	ProductName  string            `json:"product_name" dynamodbav:"product_name"`
 	ProductSKU   string            `json:"product_sku" dynamodbav:"product_sku"`
 	ProductImage string            `json:"product_image" dynamodbav:"product_image"`
+	CategoryID   string            `json:"category_id" dynamodbav:"category_id"`
+	CategoryName string            `json:"category_name" dynamodbav:"category_name"`
 	Quantity     int               `json:"quantity" dynamodbav:"quantity"`
 	UnitPrice    int64             `json:"unit_price" dynamodbav:"unit_price"`     // in paise
 	TotalPrice   int64             `json:"total_price" dynamodbav:"total_price"`   // in paise

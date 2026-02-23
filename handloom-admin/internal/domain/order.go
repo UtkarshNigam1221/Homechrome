@@ -87,6 +87,8 @@ type OrderItem struct {
 	ProductName     string                 `json:"product_name" dynamodbav:"product_name"`
 	ProductSKU      string                 `json:"product_sku" dynamodbav:"product_sku"`
 	ProductImage    string                 `json:"product_image,omitempty" dynamodbav:"product_image,omitempty"`
+	CategoryID      string                 `json:"category_id" dynamodbav:"category_id"`
+	CategoryName    string                 `json:"category_name" dynamodbav:"category_name"`
 
 	// Custom dimensions (if applicable)
 	IsCustomSize    bool                   `json:"is_custom_size" dynamodbav:"is_custom_size"`
@@ -198,7 +200,11 @@ func (c *Customer) SetKeys() {
 	c.PK = "CUSTOMER#" + c.ID
 	c.SK = "METADATA"
 	c.GSI1PK = "CUSTOMER_EMAIL"
-	c.GSI1SK = c.Email
+	if c.Email != "" {
+		c.GSI1SK = c.Email
+	} else {
+		c.GSI1SK = "NONE#" + c.ID
+	}
 	c.GSI2PK = "CUSTOMER#ALL"
 	c.GSI2SK = c.CreatedAt.Format("2006-01-02T15:04:05Z")
 	c.EntityType = "CUSTOMER"
