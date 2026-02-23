@@ -500,6 +500,13 @@ type StoreWebhooksDeps struct {
 	Handler *store.WebhookHandler
 }
 
+// StoreEventsDeps holds dependencies for the Store Events Lambda
+type StoreEventsDeps struct {
+	Config  *config.Config
+	Logger  *logger.Logger
+	Handler *store.EventsHandler
+}
+
 // ============================================================================
 // B2C STORE INJECTOR FUNCTIONS
 // ============================================================================
@@ -656,6 +663,19 @@ func InitializeStoreWebhooksDeps(ctx context.Context, cfg *config.Config) (*Stor
 		ProvidePaymentService,
 		ProvideStoreWebhookHandler,
 		wire.Struct(new(StoreWebhooksDeps), "*"),
+	)
+	return nil, nil
+}
+
+// InitializeStoreEventsDeps creates Store Events Lambda dependencies
+func InitializeStoreEventsDeps(ctx context.Context, cfg *config.Config) (*StoreEventsDeps, error) {
+	wire.Build(
+		CoreSet,
+		ProvideValidator,
+		ProvideValidation,
+		ProvideEventsRepository,
+		ProvideStoreEventsHandler,
+		wire.Struct(new(StoreEventsDeps), "*"),
 	)
 	return nil, nil
 }

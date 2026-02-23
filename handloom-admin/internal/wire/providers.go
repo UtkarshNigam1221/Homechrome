@@ -737,6 +737,15 @@ func ProvideStoreWebhookHandler(
 	return store.NewWebhookHandler(paymentService, log)
 }
 
+// ProvideStoreEventsHandler creates a new store EventsHandler
+func ProvideStoreEventsHandler(
+	eventsRepo domain.EventsRepository,
+	validation *middleware.Validation,
+	log *logger.Logger,
+) *store.EventsHandler {
+	return store.NewEventsHandler(eventsRepo, validation, log)
+}
+
 // ============================================================================
 // B2C STORE MIDDLEWARE PROVIDERS
 // ============================================================================

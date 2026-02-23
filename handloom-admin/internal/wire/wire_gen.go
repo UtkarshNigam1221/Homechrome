@@ -717,6 +717,25 @@ func InitializeStoreWebhooksDeps(ctx context.Context, cfg *config.Config) (*Stor
 	return storeWebhooksDeps, nil
 }
 
+// InitializeStoreEventsDeps creates Store Events Lambda dependencies
+func InitializeStoreEventsDeps(ctx context.Context, cfg *config.Config) (*StoreEventsDeps, error) {
+	logger := ProvideLogger(cfg)
+	client, err := ProvideDynamoDBClient(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+	eventsRepository := ProvideEventsRepository(client)
+	service := ProvideValidator()
+	validation := ProvideValidation(service)
+	eventsHandler := ProvideStoreEventsHandler(eventsRepository, validation, logger)
+	storeEventsDeps := &StoreEventsDeps{
+		Config:  cfg,
+		Logger:  logger,
+		Handler: eventsHandler,
+	}
+	return storeEventsDeps, nil
+}
+
 // InitializeApp creates the application with all dependencies (deprecated)
 func InitializeApp(ctx context.Context, cfg *config.Config) (*App, error) {
 	logger := ProvideLogger(cfg)
@@ -927,6 +946,13 @@ type StoreWebhooksDeps struct {
 	Config  *config.Config
 	Logger  *logger.Logger
 	Handler *store.WebhookHandler
+}
+
+// StoreEventsDeps holds dependencies for the Store Events Lambda
+type StoreEventsDeps struct {
+	Config  *config.Config
+	Logger  *logger.Logger
+	Handler *store.EventsHandler
 }
 
 // App holds all application dependencies (deprecated, use service-specific deps)

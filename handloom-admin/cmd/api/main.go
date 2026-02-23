@@ -80,6 +80,7 @@ func main() {
 	cartRepo := dynamodb.NewCartRepository(dbClient)
 	paymentRepo := dynamodb.NewPaymentRepository(dbClient)
 	shipmentRepo := dynamodb.NewShipmentRepository(dbClient)
+	eventsRepo := dynamodb.NewEventsRepository(dbClient)
 
 	// Initialize event handlers and publisher (LocalPublisher for monolith dev mode)
 	notifEventHandler := eventhandlers.NewNotificationHandler(log)
@@ -233,6 +234,7 @@ func main() {
 	storeTrackingHandler := store.NewTrackingHandler(orderRepo, shipmentRepo, log)
 	storeProfileHandler := store.NewProfileHandler(customerRepo, validation, log)
 	storeWebhookHandler := store.NewWebhookHandler(paymentService, log)
+	storeEventsHandler := store.NewEventsHandler(eventsRepo, validation, log)
 
 	// Customer auth middleware
 	customerAuthMiddleware := middleware.NewCustomerAuth(customerAuthService, log)
@@ -246,7 +248,8 @@ func main() {
 		// B2C store handlers
 		storeAuthHandler, storeCatalogHandler, storeCartHandler,
 		storeCheckoutHandler, storeOrderHandler, storeTrackingHandler,
-		storeProfileHandler, storeWebhookHandler, customerAuthMiddleware,
+		storeProfileHandler, storeWebhookHandler, storeEventsHandler,
+		customerAuthMiddleware,
 	)
 
 	// Create server
@@ -311,6 +314,7 @@ func createRouter(
 	storeTrackingHandler *store.TrackingHandler,
 	storeProfileHandler *store.ProfileHandler,
 	storeWebhookHandler *store.WebhookHandler,
+	storeEventsHandler *store.EventsHandler,
 	customerAuthMiddleware *middleware.CustomerAuth,
 ) *chi.Mux {
 	r := chi.NewRouter()
@@ -359,6 +363,7 @@ func createRouter(
 		})
 		r.Mount("/catalog", storeCatalogHandler.Routes())
 		r.Mount("/track", storeTrackingHandler.Routes())
+		r.Mount("/events", storeEventsHandler.Routes())
 
 		// Webhook routes (signature-verified, not customer auth)
 		r.Mount("/webhooks", storeWebhookHandler.Routes())
