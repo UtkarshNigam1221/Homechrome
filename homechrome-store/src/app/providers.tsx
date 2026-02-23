@@ -1,7 +1,17 @@
 'use client';
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+
+import { initAnalytics, stopAnalytics } from '@/lib/analytics';
+
+function AnalyticsProvider({ children }: { children: React.ReactNode }) {
+  useEffect(() => {
+    initAnalytics();
+    return () => stopAnalytics();
+  }, []);
+  return <>{children}</>;
+}
 
 export function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(
@@ -17,6 +27,8 @@ export function Providers({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    <QueryClientProvider client={queryClient}>
+      <AnalyticsProvider>{children}</AnalyticsProvider>
+    </QueryClientProvider>
   );
 }

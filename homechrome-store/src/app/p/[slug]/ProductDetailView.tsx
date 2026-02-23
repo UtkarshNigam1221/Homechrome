@@ -2,10 +2,12 @@
 
 import Image from 'next/image';
 import Link from 'next/link';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import Button from '@/components/common/Button';
 import { useCart } from '@/hooks/useCart';
+import { useScrollDepth } from '@/hooks/useScrollDepth';
+import { track } from '@/lib/analytics';
 import { formatPrice } from '@/lib/utils';
 import { useAuthStore } from '@/stores/auth';
 import { Product, ProductImage } from '@/types';
@@ -28,6 +30,17 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
   const [adding, setAdding] = useState(false);
   const { addItem } = useCart();
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+
+  useEffect(() => {
+    track('product_viewed', {
+      product_id: product.id,
+      product_name: product.name,
+      category_id: product.category_id,
+      price: product.selling_price,
+    });
+  }, [product.id, product.name, product.category_id, product.selling_price]);
+
+  useScrollDepth('product');
 
   const hasDiscount = product.mrp > product.selling_price;
   const discountPercent = hasDiscount

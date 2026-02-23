@@ -4,7 +4,9 @@ import CategoryCard from '@/components/catalog/CategoryCard';
 import ProductCard from '@/components/catalog/ProductCard';
 import { Category, Product } from '@/types';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+import HomePageTracker from './HomePageTracker';
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8081';
 
 async function getCategories(): Promise<Category[]> {
   try {
@@ -40,6 +42,7 @@ export default async function HomePage() {
 
   return (
     <div>
+      <HomePageTracker />
       {/* Hero Section */}
       <section className="relative bg-foreground">
         <div className="mx-auto max-w-7xl px-4 py-24 sm:px-6 sm:py-32 lg:px-8">

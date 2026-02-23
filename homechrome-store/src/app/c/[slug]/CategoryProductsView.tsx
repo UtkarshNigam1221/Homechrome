@@ -1,10 +1,12 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import FilterSidebar, { FilterValues } from '@/components/catalog/FilterSidebar';
 import ProductGrid from '@/components/catalog/ProductGrid';
+import { useScrollDepth } from '@/hooks/useScrollDepth';
+import { track } from '@/lib/analytics';
 import { Category, Product } from '@/types';
 
 interface CategoryProductsViewProps {
@@ -22,6 +24,19 @@ export default function CategoryProductsView({
     inStockOnly: false,
   });
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    track('page_view', {
+      page_type: 'category',
+      category_slug: category.slug,
+      utm_source: params.get('utm_source') || undefined,
+      utm_medium: params.get('utm_medium') || undefined,
+      utm_campaign: params.get('utm_campaign') || undefined,
+    });
+  }, [category.slug]);
+
+  useScrollDepth('category');
 
   const filteredProducts = useMemo(() => {
     return products.filter((product) => {
