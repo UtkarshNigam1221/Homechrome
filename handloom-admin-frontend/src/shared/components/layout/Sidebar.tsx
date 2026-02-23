@@ -12,7 +12,6 @@ import {
   Settings,
   ShoppingCart,
   Tag,
-  UserCircle,
   Users,
   Warehouse,
 } from 'lucide-react';
@@ -28,7 +27,6 @@ const navigation = [
   { name: 'Inventory', href: '/inventory', icon: Warehouse },
   { name: 'Orders', href: '/orders', icon: ShoppingCart },
   { name: 'Customers', href: '/customers', icon: Users },
-  { name: 'Artisans', href: '/artisans', icon: UserCircle },
   { name: 'Pricing Rules', href: '/pricing', icon: Tag },
   { name: 'Coupons', href: '/coupons', icon: Percent },
   { name: 'Analytics', href: '/analytics', icon: BarChart3 },

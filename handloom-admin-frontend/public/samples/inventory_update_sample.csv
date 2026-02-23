@@ -1,5 +1,5 @@
 product_id,sku,quantity,operation,reason
-prod_abc123,SKU-001,50,ADD,Received new shipment from artisan
+prod_abc123,SKU-001,50,ADD,Received new shipment from supplier
 prod_def456,SKU-002,10,SUBTRACT,Damaged items removed from inventory
 prod_ghi789,SKU-003,25,SET,Physical inventory count adjustment
 ,SKU-004,30,ADD,Restocked from warehouse

@@ -16,7 +16,7 @@ export interface Product {
   slug: string;
   description?: string;
   category_id: string;
-  artisan_id?: string;
+
   base_price: number;
   selling_price: number;
   cost_price?: number;
@@ -48,7 +48,7 @@ export interface CreateProductRequest {
   sku: string;
   description?: string;
   category_id: string;
-  artisan_id?: string;
+
   base_price: number;
   selling_price: number;
   cost_price?: number;

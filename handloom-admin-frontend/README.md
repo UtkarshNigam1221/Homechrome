@@ -1,6 +1,6 @@
 # Handloom Admin Frontend
 
-React admin dashboard for the Homechrome handloom e-commerce platform.
+React admin dashboard for the Homechrome handloom e-commerce platform. Manages products, orders, customers, pricing, and analytics.
 
 ## Tech Stack
 
@@ -15,16 +15,19 @@ React admin dashboard for the Homechrome handloom e-commerce platform.
 
 ```bash
 npm install
-npm run dev:local    # Requires backend running on localhost:8080
+npm run dev:local    # Requires backend running on localhost:8081
 ```
 
-See the [root README](../README.md) for full setup instructions including the backend.
+Open http://localhost:5173 in your browser.
+
+> The backend must be running (`cd handloom-admin && make setup-local && make run`).
+> See the [root README](../README.md) for full setup instructions.
 
 ## Dev Modes
 
 | Script | Target | Env File | Use Case |
 |--------|--------|----------|----------|
-| `npm run dev:local` | `localhost:8080` | `.env.local-backend` | Daily dev against monolith backend |
+| `npm run dev:local` | `localhost:8081` | `.env.local-backend` | Daily dev against monolith backend |
 | `npm run dev:lambda` | `localhost:4566` | `.env.local-lambda` | Test against local Lambda/LocalStack |
 | `npm run dev` | AWS dev API | `.env.development` | Test against deployed AWS |
 
@@ -32,7 +35,7 @@ See the [root README](../README.md) for full setup instructions including the ba
 
 ```bash
 # Development
-npm run dev:local         # Vite on :5173 -> localhost:8080
+npm run dev:local         # Vite on :5173 -> localhost:8081
 npm run dev:lambda        # Vite on :5173 -> localhost:4566
 npm run dev               # Vite on :5173 -> AWS dev API
 

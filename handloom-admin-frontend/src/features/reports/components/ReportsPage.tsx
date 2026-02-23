@@ -34,7 +34,6 @@ const REPORT_TYPES: { value: ReportType; label: string; description: string }[] 
   { value: 'ORDERS', label: 'Orders Report', description: 'Order details and status' },
   { value: 'CUSTOMERS', label: 'Customers Report', description: 'Customer data and activity' },
   { value: 'PRODUCTS', label: 'Products Report', description: 'Product catalog and performance' },
-  { value: 'ARTISANS', label: 'Artisans Report', description: 'Artisan details and earnings' },
 ];
 
 export function ReportsPage() {

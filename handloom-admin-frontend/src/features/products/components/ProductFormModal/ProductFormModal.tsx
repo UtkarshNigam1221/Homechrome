@@ -5,7 +5,6 @@ import { Controller, useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
 import { z } from 'zod';
 
-import { artisansApi } from '@/features/artisans/api';
 import { categoriesApi } from '@/features/categories/api';
 import type { Category, CategoryAttribute } from '@/features/categories/types';
 import { productsApi } from '@/features/products/api';
@@ -20,7 +19,6 @@ const productSchema = z.object({
   sku: z.string().min(1, 'SKU is required').max(50, 'SKU must be less than 50 characters'),
   description: z.string().optional(),
   category_id: z.string().min(1, 'Category is required'),
-  artisan_id: z.string().optional(),
   base_price: z.number().min(0, 'Base price must be positive'),
   selling_price: z.number().min(0, 'Selling price must be positive'),
   cost_price: z.number().min(0, 'Cost price must be positive').optional(),
@@ -63,13 +61,6 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
     enabled: isOpen,
   });
 
-  // Fetch artisans
-  const { data: artisansData } = useQuery({
-    queryKey: ['artisans-list'],
-    queryFn: () => artisansApi.list({ limit: 100 }),
-    enabled: isOpen,
-  });
-
   const {
     register,
     handleSubmit,
@@ -85,7 +76,7 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
       sku: '',
       description: '',
       category_id: '',
-      artisan_id: '',
+
       base_price: 0,
       selling_price: 0,
       cost_price: 0,
@@ -153,7 +144,6 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
           sku: product.sku,
           description: product.description || '',
           category_id: product.category_id,
-          artisan_id: product.artisan_id || '',
           base_price: product.base_price / 100,
           selling_price: product.selling_price / 100,
           cost_price: product.cost_price ? product.cost_price / 100 : 0,
@@ -180,7 +170,7 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
           sku: '',
           description: '',
           category_id: '',
-          artisan_id: '',
+    
           base_price: 0,
           selling_price: 0,
           cost_price: 0,
@@ -281,7 +271,6 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
       sku: data.sku,
       description: data.description || undefined,
       category_id: data.category_id,
-      artisan_id: data.artisan_id || undefined,
       base_price: Math.round(data.base_price * 100),
       selling_price: Math.round(data.selling_price * 100),
       cost_price: data.cost_price ? Math.round(data.cost_price * 100) : undefined,
@@ -339,14 +328,8 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
   };
 
   const categories = categoriesData?.items ?? [];
-  const artisans = artisansData?.items ?? [];
 
   const categoryOptions = getCategoryOptions(categories);
-
-  const artisanOptions = [
-    { value: '', label: 'No artisan assigned' },
-    ...artisans.map((a) => ({ value: a.id, label: a.name })),
-  ];
 
   const isLoading = createMutation.isPending || updateMutation.isPending;
 
@@ -492,7 +475,6 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
               {...register('craft_type')}
             />
 
-            <Select label="Artisan" options={artisanOptions} {...register('artisan_id')} />
           </div>
         </div>
 

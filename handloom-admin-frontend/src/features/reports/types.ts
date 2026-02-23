@@ -1,4 +1,4 @@
-export type ReportType = 'SALES' | 'INVENTORY' | 'ORDERS' | 'CUSTOMERS' | 'PRODUCTS' | 'ARTISANS';
+export type ReportType = 'SALES' | 'INVENTORY' | 'ORDERS' | 'CUSTOMERS' | 'PRODUCTS';
 export type ReportFormat = 'CSV' | 'EXCEL' | 'PDF';
 export type ReportStatus = 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
 

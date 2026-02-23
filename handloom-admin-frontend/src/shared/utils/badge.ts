@@ -37,5 +37,6 @@ export function getStatusBadgeVariant(
     EXPIRED: 'danger',
   };
 
+  if (!status) return 'gray';
   return statusMap[status.toUpperCase()] || 'gray';
 }

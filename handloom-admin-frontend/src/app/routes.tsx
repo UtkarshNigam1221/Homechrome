@@ -37,9 +37,6 @@ const OrderDetail = withSuspense(
 const Customers = withSuspense(
   lazy(() => import('@/features/customers').then((m) => ({ default: m.CustomersPage })))
 );
-const Artisans = withSuspense(
-  lazy(() => import('@/features/artisans').then((m) => ({ default: m.ArtisansPage })))
-);
 const PricingRules = withSuspense(
   lazy(() => import('@/features/pricing').then((m) => ({ default: m.PricingRulesPage })))
 );
@@ -132,7 +129,6 @@ export function AppRoutes() {
           <Route path="/orders" element={<Orders />} />
           <Route path="/orders/:id" element={<OrderDetail />} />
           <Route path="/customers" element={<Customers />} />
-          <Route path="/artisans" element={<Artisans />} />
 
           {/* Marketing */}
           <Route path="/pricing" element={<PricingRules />} />
