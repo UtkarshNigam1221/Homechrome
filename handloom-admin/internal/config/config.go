@@ -75,11 +75,14 @@ type AWSConfig struct {
 
 // DynamoDBConfig holds DynamoDB table names
 type DynamoDBConfig struct {
-	CoreTable      string
-	OrdersTable    string
-	SessionsTable  string
-	AuditTable     string
-	AnalyticsTable string
+	CoreTable          string // User, PricingRule, Coupon
+	CatalogTable       string // Category, Product, Inventory, Artisan
+	OrdersTable        string
+	SessionsTable      string
+	AuditTable         string
+	AnalyticsTable     string // + Report
+	NotificationsTable string // Notification
+	EventsTable        string // Raw event store
 }
 
 // JWTConfig holds JWT configuration
@@ -115,11 +118,14 @@ func Load() *Config {
 			CDNUrl:          getEnvAny([]string{"CDN_DOMAIN", "AWS_CDN_URL"}, ""),
 		},
 		DynamoDB: DynamoDBConfig{
-			CoreTable:      getEnv("DYNAMODB_CORE_TABLE", "handloom-core"),
-			OrdersTable:    getEnv("DYNAMODB_ORDERS_TABLE", "handloom-orders"),
-			SessionsTable:  getEnv("DYNAMODB_SESSIONS_TABLE", "handloom-sessions"),
-			AuditTable:     getEnv("DYNAMODB_AUDIT_TABLE", "handloom-audit"),
-			AnalyticsTable: getEnv("DYNAMODB_ANALYTICS_TABLE", "handloom-analytics"),
+			CoreTable:          getEnv("DYNAMODB_CORE_TABLE", "handloom-core"),
+			CatalogTable:       getEnv("DYNAMODB_CATALOG_TABLE", "handloom-catalog"),
+			OrdersTable:        getEnv("DYNAMODB_ORDERS_TABLE", "handloom-orders"),
+			SessionsTable:      getEnv("DYNAMODB_SESSIONS_TABLE", "handloom-sessions"),
+			AuditTable:         getEnv("DYNAMODB_AUDIT_TABLE", "handloom-audit"),
+			AnalyticsTable:     getEnv("DYNAMODB_ANALYTICS_TABLE", "handloom-analytics"),
+			NotificationsTable: getEnv("DYNAMODB_NOTIFICATIONS_TABLE", "handloom-notifications"),
+			EventsTable:        getEnv("DYNAMODB_EVENTS_TABLE", "handloom-events"),
 		},
 		JWT: JWTConfig{
 			SecretKey:            getJWTSecret(),

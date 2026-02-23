@@ -16,11 +16,15 @@ import (
 
 // Client wraps DynamoDB client with table names
 type Client struct {
-	db             *dynamodb.Client
-	coreTable      string
-	ordersTable    string
-	auditTable     string
-	analyticsTable string
+	db                 *dynamodb.Client
+	coreTable          string
+	catalogTable       string
+	ordersTable        string
+	sessionsTable      string
+	auditTable         string
+	analyticsTable     string
+	notificationsTable string
+	eventsTable        string
 }
 
 // NewClient creates a new DynamoDB client
@@ -61,11 +65,15 @@ func NewClient(ctx context.Context, cfg *appconfig.Config) (*Client, error) {
 	}
 
 	return &Client{
-		db:             client,
-		coreTable:      cfg.DynamoDB.CoreTable,
-		ordersTable:    cfg.DynamoDB.OrdersTable,
-		auditTable:     cfg.DynamoDB.AuditTable,
-		analyticsTable: cfg.DynamoDB.AnalyticsTable,
+		db:                 client,
+		coreTable:          cfg.DynamoDB.CoreTable,
+		catalogTable:       cfg.DynamoDB.CatalogTable,
+		ordersTable:        cfg.DynamoDB.OrdersTable,
+		sessionsTable:      cfg.DynamoDB.SessionsTable,
+		auditTable:         cfg.DynamoDB.AuditTable,
+		analyticsTable:     cfg.DynamoDB.AnalyticsTable,
+		notificationsTable: cfg.DynamoDB.NotificationsTable,
+		eventsTable:        cfg.DynamoDB.EventsTable,
 	}, nil
 }
 
@@ -79,6 +87,11 @@ func (c *Client) CoreTable() string {
 	return c.coreTable
 }
 
+// CatalogTable returns the catalog table name
+func (c *Client) CatalogTable() string {
+	return c.catalogTable
+}
+
 // OrdersTable returns the orders table name
 func (c *Client) OrdersTable() string {
 	return c.ordersTable
@@ -89,9 +102,24 @@ func (c *Client) AuditTable() string {
 	return c.auditTable
 }
 
+// SessionsTable returns the sessions table name
+func (c *Client) SessionsTable() string {
+	return c.sessionsTable
+}
+
 // AnalyticsTable returns the analytics table name
 func (c *Client) AnalyticsTable() string {
 	return c.analyticsTable
+}
+
+// NotificationsTable returns the notifications table name
+func (c *Client) NotificationsTable() string {
+	return c.notificationsTable
+}
+
+// EventsTable returns the events table name
+func (c *Client) EventsTable() string {
+	return c.eventsTable
 }
 
 // isConditionalCheckFailed checks if an error is a DynamoDB conditional check failure
