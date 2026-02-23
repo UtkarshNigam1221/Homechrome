@@ -14,21 +14,24 @@ import (
 
 // EventsHandler handles frontend tracking event ingestion for the storefront.
 type EventsHandler struct {
-	eventsRepo domain.EventsRepository
-	validation *middleware.Validation
-	logger     *logger.Logger
+	eventsRepo    domain.EventsRepository
+	analyticsRepo domain.AnalyticsRepository
+	validation    *middleware.Validation
+	logger        *logger.Logger
 }
 
 // NewEventsHandler creates a new EventsHandler.
 func NewEventsHandler(
 	eventsRepo domain.EventsRepository,
+	analyticsRepo domain.AnalyticsRepository,
 	validation *middleware.Validation,
 	logger *logger.Logger,
 ) *EventsHandler {
 	return &EventsHandler{
-		eventsRepo: eventsRepo,
-		validation: validation,
-		logger:     logger,
+		eventsRepo:    eventsRepo,
+		analyticsRepo: analyticsRepo,
+		validation:    validation,
+		logger:        logger,
 	}
 }
 
@@ -67,7 +70,23 @@ func (h *EventsHandler) IngestEvents(w http.ResponseWriter, r *http.Request) {
 		h.logger.WithContext(ctx).WithError(err).Error("failed to write raw events")
 	}
 
-	// TODO: Phase 5 — update live counters on DASHBOARD#CURRENT
+	// Update live counters (best-effort, log errors but don't fail the request)
+	for _, evt := range valid {
+		var field string
+		switch evt.EventType {
+		case "page_view":
+			field = "today_visitors"
+		case "add_to_cart":
+			field = "today_add_to_carts"
+		case "product_viewed":
+			field = "today_product_views"
+		default:
+			continue
+		}
+		if err := h.analyticsRepo.IncrementDashboardCounter(ctx, field, 1); err != nil {
+			h.logger.WithContext(ctx).WithError(err).Errorf("failed to increment counter %s", field)
+		}
+	}
 
 	response.JSON(w, http.StatusAccepted, map[string]int{"accepted": len(valid)})
 }

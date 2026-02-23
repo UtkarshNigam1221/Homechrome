@@ -740,10 +740,11 @@ func ProvideStoreWebhookHandler(
 // ProvideStoreEventsHandler creates a new store EventsHandler
 func ProvideStoreEventsHandler(
 	eventsRepo domain.EventsRepository,
+	analyticsRepo domain.AnalyticsRepository,
 	validation *middleware.Validation,
 	log *logger.Logger,
 ) *store.EventsHandler {
-	return store.NewEventsHandler(eventsRepo, validation, log)
+	return store.NewEventsHandler(eventsRepo, analyticsRepo, validation, log)
 }
 
 // ============================================================================

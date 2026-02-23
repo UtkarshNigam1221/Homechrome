@@ -234,7 +234,7 @@ func main() {
 	storeTrackingHandler := store.NewTrackingHandler(orderRepo, shipmentRepo, log)
 	storeProfileHandler := store.NewProfileHandler(customerRepo, validation, log)
 	storeWebhookHandler := store.NewWebhookHandler(paymentService, log)
-	storeEventsHandler := store.NewEventsHandler(eventsRepo, validation, log)
+	storeEventsHandler := store.NewEventsHandler(eventsRepo, analyticsRepo, validation, log)
 
 	// Customer auth middleware
 	customerAuthMiddleware := middleware.NewCustomerAuth(customerAuthService, log)

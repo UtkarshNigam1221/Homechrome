@@ -674,6 +674,7 @@ func InitializeStoreEventsDeps(ctx context.Context, cfg *config.Config) (*StoreE
 		ProvideValidator,
 		ProvideValidation,
 		ProvideEventsRepository,
+		ProvideAnalyticsRepository,
 		ProvideStoreEventsHandler,
 		wire.Struct(new(StoreEventsDeps), "*"),
 	)

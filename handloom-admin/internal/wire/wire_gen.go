@@ -725,9 +725,10 @@ func InitializeStoreEventsDeps(ctx context.Context, cfg *config.Config) (*StoreE
 		return nil, err
 	}
 	eventsRepository := ProvideEventsRepository(client)
+	analyticsRepository := ProvideAnalyticsRepository(client)
 	service := ProvideValidator()
 	validation := ProvideValidation(service)
-	eventsHandler := ProvideStoreEventsHandler(eventsRepository, validation, logger)
+	eventsHandler := ProvideStoreEventsHandler(eventsRepository, analyticsRepository, validation, logger)
 	storeEventsDeps := &StoreEventsDeps{
 		Config:  cfg,
 		Logger:  logger,

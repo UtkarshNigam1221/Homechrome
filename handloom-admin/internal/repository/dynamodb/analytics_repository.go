@@ -2,7 +2,12 @@ package dynamodb
 
 import (
 	"context"
+	"fmt"
 	"time"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 
 	"github.com/handloom/admin/internal/domain"
 )
@@ -92,6 +97,26 @@ func (r *AnalyticsRepository) RecordPageView(ctx context.Context, page string, u
 func (r *AnalyticsRepository) RecordEvent(ctx context.Context, eventType string, data map[string]interface{}) error {
 	// TODO: Implement with DynamoDB put
 	return nil
+}
+
+// IncrementDashboardCounter atomically increments a counter field on the DASHBOARD#CURRENT item.
+// Uses DynamoDB ADD to perform an atomic increment.
+func (r *AnalyticsRepository) IncrementDashboardCounter(ctx context.Context, field string, amount int64) error {
+	_, err := r.client.db.UpdateItem(ctx, &dynamodb.UpdateItemInput{
+		TableName: aws.String(r.client.analyticsTable),
+		Key: map[string]types.AttributeValue{
+			"PK": &types.AttributeValueMemberS{Value: "DASHBOARD#CURRENT"},
+			"SK": &types.AttributeValueMemberS{Value: "METADATA"},
+		},
+		UpdateExpression: aws.String("ADD #field :val"),
+		ExpressionAttributeNames: map[string]string{
+			"#field": field,
+		},
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":val": &types.AttributeValueMemberN{Value: fmt.Sprintf("%d", amount)},
+		},
+	})
+	return err
 }
 
 // Ensure interface compliance

@@ -146,6 +146,9 @@ type AnalyticsRepository interface {
 
 	// RecordEvent records a custom event
 	RecordEvent(ctx context.Context, eventType string, data map[string]interface{}) error
+
+	// IncrementDashboardCounter atomically increments a counter field on the DASHBOARD#CURRENT item
+	IncrementDashboardCounter(ctx context.Context, field string, amount int64) error
 }
 
 // ==================== ANALYTICS SERVICE ====================
