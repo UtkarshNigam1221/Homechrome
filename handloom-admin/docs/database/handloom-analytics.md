@@ -1,6 +1,6 @@
 # handloom-analytics Table
 
-The analytics table stores pre-aggregated analytics data for dashboards and reporting.
+The analytics table stores pre-aggregated metrics for the admin dashboard. All data is computed from raw events and written as daily aggregates across five categories plus a live-counter singleton.
 
 ## Table Configuration
 
@@ -11,6 +11,8 @@ Sort Key: SK (String)
 Billing Mode: PAY_PER_REQUEST
 ```
 
+**Env var:** `DYNAMODB_ANALYTICS_TABLE=handloom-analytics`
+
 ### Global Secondary Indexes
 
 | Index | Partition Key | Sort Key | Projection |
@@ -19,199 +21,153 @@ Billing Mode: PAY_PER_REQUEST
 
 ---
 
-## Design Philosophy
-
-### Pre-Aggregated Data
-
-The analytics table stores **pre-computed aggregations** rather than raw data. This enables:
-
-- Fast dashboard loading
-- Reduced query costs
-- Consistent metrics across views
-- Historical trend analysis
-
-### Update Strategy
-
-Analytics data is updated via:
-1. **Real-time**: Critical metrics (e.g., daily revenue)
-2. **Batch**: Periodic aggregations (e.g., hourly, daily)
-3. **On-demand**: Report generation triggers
-
----
-
 ## Entities
 
-### 1. Dashboard Stats
+### 1. Dashboard Live Counters
 
-Real-time and daily aggregated statistics for the admin dashboard.
+A singleton item that holds real-time counters for the admin dashboard. Updated in real-time via DynamoDB atomic `ADD` operations (no read-modify-write races). Reset daily by the aggregation cron after archiving to a historical snapshot.
 
 #### Key Structure
 
 | Key | Pattern | Example |
 |-----|---------|---------|
-| PK | `DASHBOARD` | `DASHBOARD` |
-| SK | `STATS#<date>` | `STATS#2024-01-15` |
-
-For current/live stats:
-| Key | Pattern | Example |
-|-----|---------|---------|
-| PK | `DASHBOARD` | `DASHBOARD` |
-| SK | `STATS#CURRENT` | `STATS#CURRENT` |
+| PK | `DASHBOARD#CURRENT` | `DASHBOARD#CURRENT` |
+| SK | `METADATA` | `METADATA` |
 
 #### Attributes
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| Date | String | Yes | Date for stats (or "CURRENT") |
-| Orders | Object | Yes | Order statistics |
-| Revenue | Object | Yes | Revenue statistics |
-| Customers | Object | Yes | Customer statistics |
-| Products | Object | Yes | Product statistics |
-| Inventory | Object | Yes | Inventory statistics |
-| UpdatedAt | String | Yes | Last update timestamp |
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| today_orders | Number | Orders placed today |
+| today_revenue | Number | Revenue today (paise) |
+| today_page_views | Number | Storefront page views today |
+| today_product_views | Number | Product detail page views today |
+| today_add_to_carts | Number | Add-to-cart events today |
+| today_payments_success | Number | Successful payments today |
+| today_payments_failed | Number | Failed payments today |
+| today_new_customers | Number | New customer registrations today |
+| week_orders | Number | Orders this week |
+| week_revenue | Number | Revenue this week (paise) |
+| month_orders | Number | Orders this month |
+| month_revenue | Number | Revenue this month (paise) |
+| total_orders | Number | All-time order count |
+| total_revenue | Number | All-time revenue (paise) |
+| total_customers | Number | All-time customer count |
+| total_products | Number | Current product count |
+| revenue_growth | Number | Revenue growth percentage |
+| orders_growth | Number | Orders growth percentage |
+| customers_growth | Number | Customers growth percentage |
+| average_order_value | Number | Current AOV (paise) |
+| low_stock_count | Number | Products below stock threshold |
+| out_of_stock_count | Number | Products with zero stock |
+| pending_orders | Number | Orders in PENDING status |
+| processing_orders | Number | Orders in PROCESSING status |
+| shipped_orders | Number | Orders in SHIPPED status |
 
-#### Orders Structure
-
-```json
-{
-  "Total": 150,
-  "Pending": 12,
-  "Processing": 25,
-  "Shipped": 45,
-  "Delivered": 60,
-  "Cancelled": 8,
-  "TodayCount": 15,
-  "WeekCount": 85,
-  "MonthCount": 320,
-  "GrowthPercent": 12.5
-}
-```
-
-#### Revenue Structure
-
-```json
-{
-  "Today": 15000000,
-  "Yesterday": 12500000,
-  "ThisWeek": 85000000,
-  "LastWeek": 78000000,
-  "ThisMonth": 320000000,
-  "LastMonth": 290000000,
-  "GrowthPercent": 10.3,
-  "Currency": "INR"
-}
-```
-
-#### Customers Structure
-
-```json
-{
-  "Total": 5420,
-  "Active": 4200,
-  "NewToday": 15,
-  "NewThisWeek": 85,
-  "NewThisMonth": 320,
-  "GrowthPercent": 8.2
-}
-```
-
-#### Products Structure
-
-```json
-{
-  "Total": 1250,
-  "Active": 1100,
-  "Draft": 100,
-  "Inactive": 50,
-  "NewThisWeek": 25
-}
-```
-
-#### Inventory Structure
-
-```json
-{
-  "TotalValue": 45000000000,
-  "LowStockCount": 45,
-  "OutOfStockCount": 12,
-  "Currency": "INR"
-}
-```
+All fields are atomic counters incremented via `UpdateItem` with `ADD` expressions.
 
 #### Access Patterns
 
 | Pattern | Key Condition |
 |---------|---------------|
-| Get current stats | PK = `DASHBOARD`, SK = `STATS#CURRENT` |
-| Get stats for date | PK = `DASHBOARD`, SK = `STATS#2024-01-15` |
-| Get stats range | PK = `DASHBOARD`, SK between `STATS#2024-01-01` and `STATS#2024-01-31` |
+| Get current live counters | PK = `DASHBOARD#CURRENT`, SK = `METADATA` |
 
 ---
 
-### 2. Sales Analytics
+### 2. Dashboard Historical Snapshots
 
-Detailed sales analytics by time period.
+Daily snapshots of the live counters, archived before the daily reset. One item per day, same attribute set as the live counters.
 
 #### Key Structure
 
 | Key | Pattern | Example |
 |-----|---------|---------|
-| PK | `SALES` | `SALES` |
-| SK | `<period>#<date>` | `DAILY#2024-01-15` |
-
-#### Period Types
-
-| Period | SK Pattern | Example |
-|--------|------------|---------|
-| Hourly | `HOURLY#<datetime>` | `HOURLY#2024-01-15T14:00:00Z` |
-| Daily | `DAILY#<date>` | `DAILY#2024-01-15` |
-| Weekly | `WEEKLY#<year>-W<week>` | `WEEKLY#2024-W03` |
-| Monthly | `MONTHLY#<year>-<month>` | `MONTHLY#2024-01` |
-| Yearly | `YEARLY#<year>` | `YEARLY#2024` |
+| PK | `DASHBOARD#STATS#<date>` | `DASHBOARD#STATS#2026-02-22` |
+| SK | `METADATA` | `METADATA` |
 
 #### Attributes
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| Period | String | Yes | Period type |
-| Date | String | Yes | Period identifier |
-| OrderCount | Number | Yes | Number of orders |
-| Revenue | Number | Yes | Total revenue in paise |
-| AverageOrderValue | Number | Yes | AOV in paise |
-| ItemsSold | Number | Yes | Total items sold |
-| UniqueCustomers | Number | Yes | Unique customers |
-| NewCustomers | Number | Yes | New customers |
-| ReturningCustomers | Number | Yes | Returning customers |
-| TopProducts | List[Object] | No | Top selling products |
-| TopCategories | List[Object] | No | Top selling categories |
-| PaymentMethods | Map | No | Breakdown by payment method |
-| Regions | Map | No | Breakdown by region |
-| UpdatedAt | String | Yes | Last update timestamp |
+Same attributes as **Dashboard Live Counters** above, capturing the end-of-day values.
 
-#### TopProducts Structure
+#### Access Patterns
+
+| Pattern | Key Condition |
+|---------|---------------|
+| Get historical snapshot for a date | PK = `DASHBOARD#STATS#2026-02-22`, SK = `METADATA` |
+
+---
+
+### 3. Funnel Aggregates
+
+Daily conversion funnel metrics tracking the customer journey from page view to order.
+
+#### Key Structure
+
+| Key | Pattern | Example |
+|-----|---------|---------|
+| PK | `FUNNEL#DAILY#<date>` | `FUNNEL#DAILY#2026-02-22` |
+| SK | `METADATA` | `METADATA` |
+
+#### Attributes
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| date | String | Date (YYYY-MM-DD) |
+| page_views | Number | Total storefront page views |
+| product_views | Number | Product detail page views |
+| add_to_carts | Number | Add-to-cart events |
+| checkouts_started | Number | Checkout initiations |
+| orders_created | Number | Completed orders |
+| view_to_cart_rate | Number | product_views to add_to_carts conversion rate |
+| cart_to_checkout_rate | Number | add_to_carts to checkouts_started conversion rate |
+| checkout_to_order_rate | Number | checkouts_started to orders_created conversion rate |
+| overall_rate | Number | End-to-end conversion (page_views to orders_created) |
+
+#### Access Patterns
+
+| Pattern | Key Condition |
+|---------|---------------|
+| Get funnel for a date | PK = `FUNNEL#DAILY#2026-02-22`, SK = `METADATA` |
+
+---
+
+### 4. Revenue Aggregates
+
+Daily revenue and order breakdown with category-level and product-level drill-down.
+
+#### Key Structure
+
+| Key | Pattern | Example |
+|-----|---------|---------|
+| PK | `REVENUE#DAILY#<date>` | `REVENUE#DAILY#2026-02-22` |
+| SK | `METADATA` | `METADATA` |
+
+#### Attributes
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| date | String | Date (YYYY-MM-DD) |
+| total_revenue | Number | Total revenue (paise) |
+| total_orders | Number | Total orders |
+| average_order_value | Number | AOV (paise) |
+| revenue_by_category | Map | Map of category_id to revenue (paise) |
+| top_by_views | List[Object] | Top products by views: `{product_id, count}` |
+
+#### revenue_by_category Structure
 
 ```json
-[
-  {
-    "ProductID": "prod-001",
-    "ProductName": "Red Silk Saree",
-    "SKU": "HL-SAR-001",
-    "Quantity": 45,
-    "Revenue": 6750000
-  }
-]
+{
+  "cat-001": 1500000,
+  "cat-002": 850000
+}
 ```
 
-#### TopCategories Structure
+#### top_by_views Structure
 
 ```json
 [
-  {
-    "CategoryID": "cat-001",
-    "CategoryName": "Silk Sarees",
-    "OrderCount": 120,
-    "Revenue": 18000000
-  }
+  { "product_id": "prod-001", "count": 245 },
+  { "product_id": "prod-002", "count": 189 }
 ]
 ```
 
@@ -219,329 +175,162 @@ Detailed sales analytics by time period.
 
 | Pattern | Key Condition |
 |---------|---------------|
-| Get daily sales | PK = `SALES`, SK = `DAILY#2024-01-15` |
-| Get daily sales range | PK = `SALES`, SK between `DAILY#2024-01-01` and `DAILY#2024-01-31` |
-| Get monthly sales | PK = `SALES`, SK = `MONTHLY#2024-01` |
+| Get revenue for a date | PK = `REVENUE#DAILY#2026-02-22`, SK = `METADATA` |
 
 ---
 
-### 3. Customer Analytics
+### 5. Customer Aggregates
 
-Customer behavior and segmentation analytics.
+Daily customer traffic and registration metrics with device breakdowns.
 
 #### Key Structure
 
 | Key | Pattern | Example |
 |-----|---------|---------|
-| PK | `CUSTOMERS` | `CUSTOMERS` |
-| SK | `<period>#<date>` | `MONTHLY#2024-01` |
+| PK | `CUSTOMERS#DAILY#<date>` | `CUSTOMERS#DAILY#2026-02-22` |
+| SK | `METADATA` | `METADATA` |
 
 #### Attributes
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| Period | String | Yes | Period type |
-| Date | String | Yes | Period identifier |
-| TotalCustomers | Number | Yes | Total customers |
-| ActiveCustomers | Number | Yes | Active customers |
-| NewCustomers | Number | Yes | New acquisitions |
-| ChurnedCustomers | Number | Yes | Churned customers |
-| RetentionRate | Number | Yes | Retention percentage |
-| AverageLifetimeValue | Number | Yes | CLV in paise |
-| TopCustomers | List[Object] | No | Highest value customers |
-| SegmentBreakdown | Map | No | Customer segments |
-| AcquisitionChannels | Map | No | Acquisition sources |
-| UpdatedAt | String | Yes | Last update timestamp |
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| date | String | Date (YYYY-MM-DD) |
+| unique_visitors | Number | Unique visitors for the day |
+| new_registrations | Number | New customer sign-ups |
+| returning_visitors | Number | Returning visitors |
+| by_device_type | Map | Map of device type to visitor count |
 
-#### TopCustomers Structure
-
-```json
-[
-  {
-    "CustomerID": "cust-001",
-    "CustomerName": "John Doe",
-    "TotalOrders": 25,
-    "TotalSpent": 450000,
-    "LastOrderDate": "2024-01-10"
-  }
-]
-```
-
-#### SegmentBreakdown Structure
+#### by_device_type Structure
 
 ```json
 {
-  "VIP": {
-    "Count": 150,
-    "Revenue": 45000000
-  },
-  "Regular": {
-    "Count": 2500,
-    "Revenue": 125000000
-  },
-  "Occasional": {
-    "Count": 1800,
-    "Revenue": 36000000
-  },
-  "AtRisk": {
-    "Count": 450,
-    "Revenue": 0
-  }
+  "mobile": 1250,
+  "desktop": 430,
+  "tablet": 85
 }
 ```
 
+#### Access Patterns
+
+| Pattern | Key Condition |
+|---------|---------------|
+| Get customer data for a date | PK = `CUSTOMERS#DAILY#2026-02-22`, SK = `METADATA` |
+
 ---
 
-### 4. Inventory Analytics
+### 6. Engagement Aggregates
 
-Inventory movement and valuation analytics.
+Daily session and engagement metrics including bounce rate and page popularity.
 
 #### Key Structure
 
 | Key | Pattern | Example |
 |-----|---------|---------|
-| PK | `INVENTORY_ANALYTICS` | `INVENTORY_ANALYTICS` |
-| SK | `<period>#<date>` | `DAILY#2024-01-15` |
+| PK | `ENGAGEMENT#DAILY#<date>` | `ENGAGEMENT#DAILY#2026-02-22` |
+| SK | `METADATA` | `METADATA` |
 
 #### Attributes
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| Period | String | Yes | Period type |
-| Date | String | Yes | Period identifier |
-| TotalProducts | Number | Yes | Total SKUs |
-| TotalQuantity | Number | Yes | Total units |
-| TotalValue | Number | Yes | Inventory value in paise |
-| LowStockProducts | Number | Yes | Below threshold count |
-| OutOfStockProducts | Number | Yes | Zero stock count |
-| TopMovingProducts | List[Object] | No | Fast-moving items |
-| SlowMovingProducts | List[Object] | No | Slow-moving items |
-| StockTurnover | Number | No | Turnover ratio |
-| DaysOfInventory | Number | No | Average days to sell |
-| UpdatedAt | String | Yes | Last update timestamp |
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| date | String | Date (YYYY-MM-DD) |
+| total_sessions | Number | Total sessions for the day |
+| bounce_count | Number | Sessions with single page view |
+| bounce_rate | Number | Bounce rate percentage |
+| avg_session_duration | Number | Average session duration (seconds) |
+| top_pages | List[Object] | Most visited pages: `{path, views}` |
+| avg_scroll_depth | Number | Average scroll depth percentage |
 
-#### TopMovingProducts Structure
+#### top_pages Structure
 
 ```json
 [
-  {
-    "ProductID": "prod-001",
-    "ProductName": "Red Silk Saree",
-    "SKU": "HL-SAR-001",
-    "UnitsSold": 150,
-    "TurnoverRate": 4.5
-  }
+  { "path": "/", "views": 3200 },
+  { "path": "/c/silk-sarees", "views": 1850 },
+  { "path": "/p/red-banarasi-saree", "views": 920 }
 ]
 ```
 
-#### SlowMovingProducts Structure
+#### Access Patterns
+
+| Pattern | Key Condition |
+|---------|---------------|
+| Get engagement for a date | PK = `ENGAGEMENT#DAILY#2026-02-22`, SK = `METADATA` |
+
+---
+
+### 7. Product Aggregates
+
+Daily product discovery metrics tracking which products are being viewed.
+
+#### Key Structure
+
+| Key | Pattern | Example |
+|-----|---------|---------|
+| PK | `PRODUCTS#DAILY#<date>` | `PRODUCTS#DAILY#2026-02-22` |
+| SK | `METADATA` | `METADATA` |
+
+#### Attributes
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| date | String | Date (YYYY-MM-DD) |
+| total_product_views | Number | Total product page views |
+| unique_products_viewed | Number | Distinct products viewed |
+| top_by_views | List[Object] | Top products by views: `{product_id, count}` |
+
+#### top_by_views Structure
 
 ```json
 [
-  {
-    "ProductID": "prod-050",
-    "ProductName": "Green Cotton Stole",
-    "SKU": "HL-STL-050",
-    "DaysInStock": 120,
-    "LastSoldDate": "2023-10-15"
-  }
+  { "product_id": "prod-001", "count": 245 },
+  { "product_id": "prod-002", "count": 189 }
 ]
 ```
 
----
+#### Access Patterns
 
-### 5. Category Performance
-
-Category-level performance metrics.
-
-#### Key Structure
-
-| Key | Pattern | Example |
-|-----|---------|---------|
-| PK | `CATEGORY_PERF` | `CATEGORY_PERF` |
-| SK | `<period>#<date>#<category_id>` | `MONTHLY#2024-01#cat-001` |
-
-#### Attributes
-
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| CategoryID | String | Yes | Category ID |
-| CategoryName | String | Yes | Category name |
-| Period | String | Yes | Period type |
-| Date | String | Yes | Period identifier |
-| ProductCount | Number | Yes | Products in category |
-| OrderCount | Number | Yes | Orders containing category |
-| UnitsSold | Number | Yes | Units sold |
-| Revenue | Number | Yes | Revenue in paise |
-| AverageOrderValue | Number | Yes | AOV for category |
-| ConversionRate | Number | No | View to purchase rate |
-| ReturnRate | Number | No | Return percentage |
-| UpdatedAt | String | Yes | Last update timestamp |
+| Pattern | Key Condition |
+|---------|---------------|
+| Get product views for a date | PK = `PRODUCTS#DAILY#2026-02-22`, SK = `METADATA` |
 
 ---
 
-### 6. Artisan Performance
+## Access Patterns Summary
 
-Artisan-level performance metrics.
+| Pattern | Key Condition |
+|---------|---------------|
+| Get current live counters | PK = `DASHBOARD#CURRENT`, SK = `METADATA` |
+| Get historical snapshot | PK = `DASHBOARD#STATS#<date>`, SK = `METADATA` |
+| Get funnel for a date | PK = `FUNNEL#DAILY#<date>`, SK = `METADATA` |
+| Get revenue for a date | PK = `REVENUE#DAILY#<date>`, SK = `METADATA` |
+| Get customer data for a date | PK = `CUSTOMERS#DAILY#<date>`, SK = `METADATA` |
+| Get engagement for a date | PK = `ENGAGEMENT#DAILY#<date>`, SK = `METADATA` |
+| Get product views for a date | PK = `PRODUCTS#DAILY#<date>`, SK = `METADATA` |
 
-#### Key Structure
-
-| Key | Pattern | Example |
-|-----|---------|---------|
-| PK | `ARTISAN_PERF` | `ARTISAN_PERF` |
-| SK | `<period>#<date>#<artisan_id>` | `MONTHLY#2024-01#art-001` |
-
-#### Attributes
-
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| ArtisanID | String | Yes | Artisan ID |
-| ArtisanName | String | Yes | Artisan name |
-| Period | String | Yes | Period type |
-| Date | String | Yes | Period identifier |
-| ProductCount | Number | Yes | Active products |
-| OrderCount | Number | Yes | Orders fulfilled |
-| UnitsSold | Number | Yes | Units sold |
-| Revenue | Number | Yes | Revenue generated |
-| Earnings | Number | Yes | Artisan earnings |
-| AverageRating | Number | No | Customer rating |
-| ReturnRate | Number | No | Return percentage |
-| UpdatedAt | String | Yes | Last update timestamp |
+All reads are single-item `GetItem` calls (PK + SK). No scans or queries required for any access pattern.
 
 ---
 
-## Data Aggregation Jobs
+## Data Aggregation
 
 ### Real-Time Updates
 
-Updated immediately on events:
-- `DASHBOARD#STATS#CURRENT`: Order placed, payment received
-- Order status changes
+Live counters (`DASHBOARD#CURRENT`) are updated in real-time by event-driven workers as events flow through the system. Each event triggers an atomic `ADD` operation on the relevant counter fields -- no read-modify-write cycle, so concurrent updates are safe.
 
-### Hourly Jobs
+Events that trigger counter updates include:
+- `order.created`, `order.confirmed` -- increment order counters and revenue
+- `payment.success`, `payment.failed` -- increment payment counters
+- `customer.registered` -- increment customer counter
+- `product.created` -- increment product counter
+- Page view and cart events -- increment storefront interaction counters
 
-```
-Schedule: Every hour at :00
-Updates:
-  - SALES#HOURLY#<current_hour>
-  - DASHBOARD#STATS#CURRENT (refresh)
-```
+### Daily Aggregation
 
-### Daily Jobs
+Triggered by an EventBridge schedule rule that invokes the `worker-analytics` Lambda, which calls `AnalyticsAggregator.AggregateDate()`:
 
-```
-Schedule: 00:30 UTC daily
-Updates:
-  - SALES#DAILY#<yesterday>
-  - CUSTOMERS#DAILY#<yesterday>
-  - INVENTORY_ANALYTICS#DAILY#<yesterday>
-  - DASHBOARD#STATS#<yesterday>
-  - CATEGORY_PERF#DAILY#<yesterday>#*
-  - ARTISAN_PERF#DAILY#<yesterday>#*
-```
-
-### Weekly Jobs
-
-```
-Schedule: Monday 01:00 UTC
-Updates:
-  - SALES#WEEKLY#<last_week>
-  - CUSTOMERS#WEEKLY#<last_week>
-```
-
-### Monthly Jobs
-
-```
-Schedule: 1st of month, 02:00 UTC
-Updates:
-  - SALES#MONTHLY#<last_month>
-  - CUSTOMERS#MONTHLY#<last_month>
-  - INVENTORY_ANALYTICS#MONTHLY#<last_month>
-  - CATEGORY_PERF#MONTHLY#<last_month>#*
-  - ARTISAN_PERF#MONTHLY#<last_month>#*
-```
-
----
-
-## Common Queries
-
-### Dashboard Data
-
-```
-# Get current stats
-PK = "DASHBOARD", SK = "STATS#CURRENT"
-
-# Get last 30 days stats
-PK = "DASHBOARD", SK between "STATS#2024-01-01" and "STATS#2024-01-30"
-```
-
-### Sales Trends
-
-```
-# Daily sales for a month
-PK = "SALES", SK begins_with "DAILY#2024-01"
-
-# Monthly sales for a year
-PK = "SALES", SK begins_with "MONTHLY#2024"
-```
-
-### Category Comparison
-
-```
-# All category performance for a month
-PK = "CATEGORY_PERF", SK begins_with "MONTHLY#2024-01#"
-```
-
----
-
-## Data Retention
-
-| Data Type | Retention | Archive |
-|-----------|-----------|---------|
-| Hourly | 7 days | Delete |
-| Daily | 90 days | S3 Glacier |
-| Weekly | 2 years | S3 Glacier |
-| Monthly | 7 years | S3 Glacier |
-| Yearly | Forever | S3 Glacier |
-
----
-
-## Integration with Reporting
-
-### Report Generation
-
-Reports query analytics data for fast generation:
-
-```
-1. User requests "Monthly Sales Report"
-2. System queries SALES#MONTHLY#<month>
-3. Pre-aggregated data returned instantly
-4. Report formatted and delivered
-```
-
-### Custom Reports
-
-For custom date ranges:
-1. Query relevant period data
-2. Aggregate in application layer
-3. Cache results if frequently requested
-
----
-
-## Future Enhancements
-
-### Planned Analytics
-
-- [ ] Geographic heatmaps
-- [ ] Product recommendation data
-- [ ] Customer journey analytics
-- [ ] Real-time inventory alerts
-- [ ] Predictive analytics (ML)
-
-### Potential GSIs
-
-| GSI | Purpose |
-|-----|---------|
-| GSI2 | Category-based queries |
-| GSI3 | Artisan-based queries |
-| GSI4 | Time-series optimization |
+1. **Read** raw events from the handloom-events table for the target date
+2. **Compute** five aggregate categories: funnel, revenue, customer, engagement, product
+3. **Write** each aggregate as a single item to the analytics table
+4. **Archive** the current dashboard counters to `DASHBOARD#STATS#<date>`
+5. **Reset** the live counters for the next day

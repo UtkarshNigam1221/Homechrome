@@ -17,6 +17,7 @@ TTL Attribute: ttl
 | Index | Partition Key | Sort Key | Projection |
 |-------|--------------|----------|------------|
 | GSI1 | GSI1PK | GSI1SK | ALL |
+| GSI2 | GSI2PK | GSI2SK | ALL |
 
 ---
 
@@ -53,8 +54,10 @@ SK: <HH:MM:SS.sssZ>#<uuid>
 |-----|---------|---------|
 | PK | `AUDIT#<date>` | `AUDIT#2024-01-15` |
 | SK | `<time>#<id>` | `10:30:45.123Z#audit-001` |
-| GSI1PK | `USER#<user_id>` | `USER#user-001` |
+| GSI1PK | `<entity_type>#<entity_id>` | `PRODUCT#prod-001` |
 | GSI1SK | `<timestamp>` | `2024-01-15T10:30:45.123Z` |
+| GSI2PK | `USER#<user_id>` | `USER#user-001` |
+| GSI2SK | `<timestamp>` | `2024-01-15T10:30:45.123Z` |
 
 ### Attributes
 
@@ -157,46 +160,47 @@ KeyCondition:
 
 **Use Case**: Investigating incidents, shift-based reviews
 
-### 3. Get All Actions by a User
+### 3. Get Actions for a Specific Entity
 
-Query all actions performed by a specific user.
+Query audit trail for a specific entity via GSI1.
 
 ```
 Table: handloom-audit
 Index: GSI1
 KeyCondition:
-  GSI1PK = "USER#user-001"
+  GSI1PK = "PRODUCT#prod-001"
+ScanIndexForward: false (newest first)
+```
+
+**Use Case**: Entity change history, investigating modifications
+
+### 4. Get All Actions by a User
+
+Query all actions performed by a specific user via GSI2.
+
+```
+Table: handloom-audit
+Index: GSI2
+KeyCondition:
+  GSI2PK = "USER#user-001"
 ScanIndexForward: false (newest first)
 ```
 
 **Use Case**: User activity audit, permission reviews
 
-### 4. Get User Actions in Date Range
+### 5. Get User Actions in Date Range
 
 Query user actions within a specific period.
 
 ```
 Table: handloom-audit
-Index: GSI1
+Index: GSI2
 KeyCondition:
-  GSI1PK = "USER#user-001"
-  GSI1SK BETWEEN "2024-01-01T00:00:00Z" AND "2024-01-31T23:59:59Z"
+  GSI2PK = "USER#user-001"
+  GSI2SK BETWEEN "2024-01-01T00:00:00Z" AND "2024-01-31T23:59:59Z"
 ```
 
 **Use Case**: Monthly user activity reports
-
-### 5. Get Actions for a Specific Entity
-
-Scan with filter for entity-specific audit trail.
-
-```
-Table: handloom-audit
-Filter:
-  EntityType = "PRODUCT"
-  EntityID = "prod-001"
-```
-
-**Note**: This requires a scan. For frequent entity-level queries, consider adding GSI2 with `ENTITY#<type>#<id>` as partition key.
 
 ---
 
@@ -243,6 +247,8 @@ For compliance or legal holds:
   "SK": "10:30:45.123Z#audit-001",
   "GSI1PK": "USER#user-001",
   "GSI1SK": "2024-01-15T10:30:45.123Z",
+  "GSI2PK": "USER#user-001",
+  "GSI2SK": "2024-01-15T10:30:45.123Z",
   "ID": "audit-001",
   "UserID": "user-001",
   "UserEmail": "admin@handloom.com",
@@ -302,8 +308,10 @@ For compliance or legal holds:
 {
   "PK": "AUDIT#2024-01-15",
   "SK": "16:45:00.789Z#audit-003",
-  "GSI1PK": "USER#user-002",
+  "GSI1PK": "ORDER#ord-001",
   "GSI1SK": "2024-01-15T16:45:00.789Z",
+  "GSI2PK": "USER#user-002",
+  "GSI2SK": "2024-01-15T16:45:00.789Z",
   "ID": "audit-003",
   "UserID": "user-002",
   "UserEmail": "operator@handloom.com",

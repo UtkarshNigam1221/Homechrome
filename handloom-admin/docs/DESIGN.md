@@ -48,31 +48,28 @@ The Handloom Admin Portal is built as a **serverless microservices architecture*
 │  │ Lambda  │  │ Lambda  │  │ Lambda  │  │ Lambda  │  │ Lambda  │  │ Lambda  │    │
 │  └────┬────┘  └────┬────┘  └────┬────┘  └────┬────┘  └────┬────┘  └────┬────┘    │
 │       │            │            │            │            │            │          │
-│  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐    │
-│  │Analytics│  │  Notif  │  │ Coupon  │  │ Artisan │  │  Bulk   │  │  Asset  │    │
-│  │ Lambda  │  │ Lambda  │  │ Lambda  │  │ Lambda  │  │ Lambda  │  │ Lambda  │    │
-│  └────┬────┘  └────┬────┘  └────┬────┘  └────┬────┘  └────┬────┘  └────┬────┘    │
-│       │            │            │            │            │            │          │
+│  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐               │
+│  │Analytics│  │  Notif  │  │ Coupon  │  │  Asset  │  │  Bulk   │               │
+│  │ Lambda  │  │ Lambda  │  │ Lambda  │  │ Lambda  │  │ Lambda  │               │
+│  └────┬────┘  └────┬────┘  └────┬────┘  └────┬────┘  └────┬────┘               │
+│       │            │            │            │            │                      │
 │  ┌─────────┐  ┌─────────┐                                                        │
 │  │ Report  │  │  Audit  │   All Lambdas: ARM64, provided.al2023                  │
-│  │ Lambda  │  │ Lambda  │   Memory: 512MB (dev) / 1024MB (prod)                  │
-│  └────┬────┘  └────┬────┘   Timeout: 30s, X-Ray Tracing Enabled                  │
+│  │ Lambda  │  │ Lambda  │   Memory: 128MB (dev) / 256MB (prod)                   │
+│  └────┬────┘  └────┬────┘   Timeout: 30s, X-Ray Tracing Disabled                 │
 │       │            │                                                              │
 │       └────────────┼────────────────────────┬───────────────────────────┘        │
 │                    │                        │                                     │
 │                    ▼                        ▼                                     │
 │  ┌─────────────────────────────────────────────────────────────────────────────┐ │
-│  │                           DynamoDB (4 Tables)                                │ │
+│  │                           DynamoDB (7 Tables)                                │ │
 │  │  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐ ┌──────────────┐        │ │
 │  │  │handloom-core │ │handloom-     │ │handloom-     │ │handloom-     │        │ │
 │  │  │              │ │orders        │ │audit         │ │analytics     │        │ │
 │  │  │• Users       │ │• Orders      │ │• AuditLogs   │ │• Metrics     │        │ │
-│  │  │• Products    │ │• OrderItems  │ │  (90d TTL)   │ │• TopProducts │        │ │
-│  │  │• Categories  │ │• Customers   │ │              │ │• Alerts      │        │ │
-│  │  │• Inventory   │ │• StatusHist  │ │              │ │  (2yr TTL)   │        │ │
-│  │  │• Artisans    │ │              │ │              │ │              │        │ │
-│  │  │• Coupons     │ │              │ │              │ │              │        │ │
-│  │  │• Assets      │ │              │ │              │ │              │        │ │
+│  │  │• PricingRules│ │• OrderItems  │ │  (90d TTL)   │ │• TopProducts │        │ │
+│  │  │• Coupons     │ │• Customers   │ │              │ │• Alerts      │        │ │
+│  │  │              │ │• StatusHist  │ │              │ │  (2yr TTL)   │        │ │
 │  │  │ (PITR on)    │ │ (PITR on)    │ │              │ │              │        │ │
 │  │  └──────────────┘ └──────────────┘ └──────────────┘ └──────────────┘        │ │
 │  └─────────────────────────────────────────────────────────────────────────────┘ │
@@ -93,7 +90,7 @@ The Handloom Admin Portal is built as a **serverless microservices architecture*
 
 ### Microservices Architecture
 
-The application is decomposed into **14 independent Lambda functions**, each responsible for a specific domain:
+The application is decomposed into **25 Lambda services** (12 admin + 9 B2C store + 4 event workers), each responsible for a specific domain:
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────────────┐
@@ -158,12 +155,12 @@ The application is decomposed into **14 independent Lambda functions**, each res
 │                                                                                      │
 │  ┌─────────────────────────────────────────────────────────────────────────────┐   │
 │  │                        AUXILIARY SERVICES                                    │   │
-│  │  ┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐                │   │
-│  │  │ Coupon Lambda   │ │ Artisan Lambda  │ │ Notification    │                │   │
-│  │  │ ├── CRUD coupon │ │ ├── CRUD artisan│ │ Lambda          │                │   │
-│  │  │ ├── POST apply  │ │ ├── GET payouts │ │ ├── CRUD notifs │                │   │
-│  │  │ └── GET /code   │ │ └── GET products│ │ └── GET my-noti │                │   │
-│  │  └─────────────────┘ └─────────────────┘ └─────────────────┘                │   │
+│  │  ┌─────────────────┐ ┌─────────────────┐                                     │   │
+│  │  │ Coupon Lambda   │ │ Notification    │                                     │   │
+│  │  │ ├── CRUD coupon │ │ Lambda          │                                     │   │
+│  │  │ ├── POST apply  │ │ ├── CRUD notifs │                                     │   │
+│  │  │ └── GET /code   │ │ └── GET my-noti │                                     │   │
+│  │  └─────────────────┘ └─────────────────┘                                     │   │
 │  │                                                                              │   │
 │  │  ┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐                │   │
 │  │  │  Bulk Lambda    │ │  Asset Lambda   │ │  Audit Lambda   │                │   │
@@ -189,7 +186,6 @@ The application is decomposed into **14 independent Lambda functions**, each res
 | **Analytics** | `handloom-analytics-{env}` | Dashboard metrics | `/analytics/*` |
 | **Notification** | `handloom-notification-{env}` | User notifications | `/notifications` |
 | **Coupon** | `handloom-coupon-{env}` | Coupon management | `/coupons`, `/coupons/apply` |
-| **Artisan** | `handloom-artisan-{env}` | Artisan & payout management | `/artisans`, `/artisans/{id}/payouts` |
 | **Bulk** | `handloom-bulk-{env}` | Bulk import/export | `/bulk/import`, `/bulk/export` |
 | **Asset** | `handloom-asset-{env}` | Media/image management | `/assets`, `/assets/upload` |
 | **Report** | `handloom-report-{env}` | Report generation | `/reports` |
@@ -210,25 +206,32 @@ Infrastructure is defined as code using **AWS CDK for Go**:
 │  │    main.go                                                                    │  │
 │  │      │                                                                        │  │
 │  │      ├── DatabaseStack (stacks/database.go)                                   │  │
-│  │      │     ├── handloom-core-{env}     (DynamoDB, 3 GSIs, PITR)              │  │
-│  │      │     ├── handloom-orders-{env}   (DynamoDB, 3 GSIs, PITR)              │  │
-│  │      │     ├── handloom-audit-{env}    (DynamoDB, 2 GSIs, 90d TTL)           │  │
-│  │      │     └── handloom-analytics-{env} (DynamoDB, 1 GSI, 2yr TTL)           │  │
+│  │      │     ├── handloom-core-{env}          (DynamoDB, GSIs, PITR)           │  │
+│  │      │     ├── PostgreSQL RDS              (Catalog: categories, products)  │  │
+│  │      │     ├── handloom-orders-{env}        (DynamoDB, GSIs, PITR)          │  │
+│  │      │     ├── handloom-sessions-{env}      (DynamoDB, TTL)                 │  │
+│  │      │     ├── handloom-audit-{env}         (DynamoDB, GSIs, 90d TTL)       │  │
+│  │      │     ├── handloom-analytics-{env}     (DynamoDB, GSI, 2yr TTL)        │  │
+│  │      │     └── handloom-notifications-{env} (DynamoDB)                      │  │
 │  │      │                                                                        │  │
 │  │      ├── StorageStack (stacks/storage.go)                                     │  │
 │  │      │     ├── handloom-assets-{env}   (S3, public, versioned)               │  │
 │  │      │     ├── handloom-uploads-{env}  (S3, private, lifecycle)              │  │
 │  │      │     └── CloudFront Distribution (OAI, HTTPS, caching)                 │  │
 │  │      │                                                                        │  │
-│  │      └── APIStack (stacks/api.go)                                             │  │
-│  │            ├── JWT Secret (SSM Parameter)                                     │  │
-│  │            ├── 14 Lambda Functions (ARM64, Go runtime)                        │  │
-│  │            │     └── IAM Roles with least-privilege access                    │  │
-│  │            └── API Gateway (REST API)                                         │  │
-│  │                  ├── CORS configuration                                       │  │
-│  │                  ├── Throttling (100 rps, burst 200)                          │  │
-│  │                  ├── CloudWatch logging & X-Ray tracing                       │  │
-│  │                  └── Route integrations to Lambdas                            │  │
+│  │      ├── APIStack (stacks/api.go)                                              │  │
+│  │      │     ├── JWT Secret (SSM Parameter)                                     │  │
+│  │      │     ├── 25 Lambda Functions (ARM64, Go runtime)                        │  │
+│  │      │     │     └── IAM Roles with least-privilege access                    │  │
+│  │      │     └── API Gateway (REST API)                                         │  │
+│  │      │           ├── CORS configuration                                       │  │
+│  │      │           ├── Throttling (100 rps, burst 200)                          │  │
+│  │      │           └── Route integrations to Lambdas                            │  │
+│  │      │                                                                        │  │
+│  │      └── EventStack (stacks/events.go)                                        │  │
+│  │            ├── SNS Topic (domain events)                                      │  │
+│  │            ├── 4 SQS Queues (analytics, audit, notification, report)          │  │
+│  │            └── 4 Worker Lambdas (SQS consumers)                               │  │
 │  │                                                                                │  │
 │  └───────────────────────────────────────────────────────────────────────────────┘  │
 │                                                                                      │
@@ -329,17 +332,15 @@ We're using a **hybrid multi-table design** that groups related entities togethe
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                              │
 │  ┌─────────────────────────────────────────────────────────────────────┐    │
-│  │  handloom-core                                                       │    │
+│  │  handloom-core (DynamoDB)                                             │    │
 │  │  ├── Users (Admin, Operator)                                         │    │
-│  │  ├── Products                                                        │    │
-│  │  ├── Categories                                                      │    │
-│  │  ├── Designs                                                         │    │
-│  │  ├── Inventory + InventoryTransactions                               │    │
-│  │  ├── Artisans + ArtisanPayments                                      │    │
 │  │  ├── Coupons + CouponUsage                                           │    │
-│  │  ├── Assets (Images)                                                 │    │
-│  │  ├── Notifications                                                   │    │
-│  │  └── BulkJobs + Reports                                              │    │
+│  │  └── PricingRules                                                    │    │
+│  │                                                                       │    │
+│  │  PostgreSQL (Catalog)                                                 │    │
+│  │  ├── Categories + CategoryAttributes                                  │    │
+│  │  ├── Products + ProductImages + ProductAttributeValues                │    │
+│  │  └── Inventory + InventoryTransactions                                │    │
 │  │                                                                       │    │
 │  │  Retention: Permanent | Backup: Daily | GSIs: 3                      │    │
 │  └─────────────────────────────────────────────────────────────────────┘    │
@@ -369,7 +370,6 @@ We're using a **hybrid multi-table design** that groups related entities togethe
 │  │  ├── WeeklyMetrics                                                   │    │
 │  │  ├── MonthlyMetrics                                                  │    │
 │  │  ├── TopProducts                                                     │    │
-│  │  ├── TopArtisans                                                     │    │
 │  │  └── InventoryAlerts                                                 │    │
 │  │                                                                       │    │
 │  │  Retention: 2 years (TTL) | Backup: Monthly | GSIs: 1                │    │
@@ -462,7 +462,7 @@ We're using a **hybrid multi-table design** that groups related entities togethe
 
 ### Data Flow Architecture (Detailed View)
 
-> **Note:** This section provides additional detail on data flows. See the [System Architecture Overview](#system-architecture-overview) above for the complete microservices architecture with all 14 Lambda functions.
+> **Note:** This section provides additional detail on data flows. See the [System Architecture Overview](#system-architecture-overview) above for the complete microservices architecture with all 25 Lambda services.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -484,9 +484,9 @@ We're using a **hybrid multi-table design** that groups related entities togethe
 │ - Login/Logout    │       │ - Products        │       │ - Get Orders      │
 │ - Password Reset  │       │ - Categories      │       │ - Update Status   │
 │ - User Mgmt       │       │ - Inventory       │       │ - Refunds         │
-│ - RBAC            │       │ - Artisans        │       │ - Cancellations   │
-└─────────┬─────────┘       │ - Coupons         │       └─────────┬─────────┘
-          │                 │ - Assets          │                 │
+│ - RBAC            │       │ - Coupons         │       │ - Cancellations   │
+└─────────┬─────────┘       │ - Assets          │       └─────────┬─────────┘
+          │                 │                   │                 │
           │                 └─────────┬─────────┘                 │
           │                           │                           │
           ▼                           ▼                           ▼
@@ -495,13 +495,13 @@ We're using a **hybrid multi-table design** that groups related entities togethe
 │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐             │
 │  │  handloom-core  │  │ handloom-orders │  │  handloom-audit │             │
 │  │  ├─Users        │  │  ├─Orders       │  │  └─AuditLogs    │             │
-│  │  ├─Products     │  │  ├─OrderItems   │  │    (90-day TTL) │             │
-│  │  ├─Categories   │  │  ├─StatusHistory│  └─────────────────┘             │
-│  │  ├─Designs      │  │  └─Customers    │                                  │
-│  │  ├─Inventory    │  └─────────┬───────┘  ┌─────────────────┐             │
-│  │  ├─Artisans     │            │          │handloom-analytics│            │
-│  │  ├─Coupons      │            │          │  ├─DailyMetrics │             │
-│  │  └─Assets       │            │          │  ├─TopProducts  │             │
+│  │  ├─PricingRules │  │  ├─OrderItems   │  │    (90-day TTL) │             │
+│  │  └─Coupons      │  │  ├─StatusHistory│  └─────────────────┘             │
+│  │                  │  │  └─Customers    │                                  │
+│  │  PostgreSQL      │  └─────────┬───────┘  ┌─────────────────┐             │
+│  │  (Catalog)       │            │          │handloom-analytics│            │
+│  │  ├─Categories    │            │          │  ├─DailyMetrics │             │
+│  │  ├─Products      │            │          │  ├─TopProducts  │             │
 │  └─────────┬───────┘            │          │  └─Alerts       │             │
 │            │                    │          └─────────────────┘             │
 └────────────┼────────────────────┼──────────────────┼────────────────────────┘
@@ -553,20 +553,55 @@ We're using a **hybrid multi-table design** that groups related entities togethe
 
 #### 2. Lambda Functions
 
-> See [Lambda Service Details](#lambda-service-details) above for the complete list of 14 microservices.
+> See [Lambda Service Details](#lambda-service-details) above for the complete list of 25 Lambda services (12 admin + 9 store + 4 workers).
 
-#### 3. DynamoDB Tables (Multi-Table Design)
+#### 3. Database Design (Hybrid)
+
+The system uses a hybrid database architecture: **DynamoDB** for core/transactional data and **PostgreSQL (RDS)** for catalog data requiring relational queries and full-text search.
+
+**DynamoDB Tables (7):**
 
 | Table | Purpose | Entities | TTL |
 |-------|---------|----------|-----|
-| `handloom-core` | Core business data | Users, Products, Categories, Designs, Inventory, Artisans, Coupons, Assets | Sessions only |
-| `handloom-orders` | Order management | Orders, OrderItems, StatusHistory, Customers | None |
+| `handloom-core` | Core business data | Users, PricingRules, Coupons | None |
+| `handloom-orders` | Order management | Orders, OrderItems, StatusHistory, Customers, Carts, PriceQuotes | None |
+| `handloom-sessions` | Auth sessions | OTPs, Refresh Tokens, Password Resets | TTL-based |
 | `handloom-audit` | Compliance logs | AuditLogs | 90 days |
-| `handloom-analytics` | Dashboard metrics | DailyMetrics, TopProducts, Alerts | 2 years |
+| `handloom-analytics` | Dashboard metrics | DailyMetrics, TopProducts, Alerts, Reports | 2 years |
+| `handloom-notifications` | User notifications | Notifications, Templates | None |
+| `handloom-events` | Raw tracking events | Frontend tracking events | 30 days |
 
 - On-demand capacity for cost optimization
 - Point-in-time recovery on core & orders tables
-- DynamoDB Streams on core & orders for analytics/audit
+- Composite PK/SK keys with GSIs for flexible access patterns
+- Cursor-based pagination (base64-encoded `ExclusiveStartKey`)
+
+**PostgreSQL (Catalog) — 8 tables:**
+
+Catalog data (categories, products, inventory) lives in PostgreSQL for relational querying, full-text search, and transactional integrity. Schema: `migrations/001_catalog_schema.sql`.
+
+| Table | Purpose | Key Columns |
+|-------|---------|-------------|
+| `categories` | Product categories | `id`, `name`, `slug` (UNIQUE), `status`, `product_count` |
+| `category_attributes` | Dynamic attributes per category | `category_id` (FK), `name`, `type`, `required`, `searchable` |
+| `category_attribute_options` | Allowed values per attribute | `attribute_id` (FK), `value`, `label` |
+| `products` | Product catalog | `id`, `sku` (UNIQUE), `slug`, `category_id` (FK), `base_price`, `selling_price`, `status` |
+| `product_attribute_values` | EAV attribute storage | `product_id` (FK), `attribute_name`, `attribute_value` (composite PK) |
+| `product_images` | Product images | `product_id` (FK), `url`, `alt_text`, `sort_order` |
+| `inventory` | Stock levels | `product_id` (FK, UNIQUE), `quantity`, `reserved_qty`, `available_qty`, `low_stock_threshold` |
+| `inventory_transactions` | Audit trail for stock changes | `product_id` (FK), `type`, `quantity`, `previous_qty`, `new_qty`, `reason` |
+
+**PostgreSQL Key Patterns:**
+
+- **Connection pooling**: `pgxpool` (jackc/pgx v5). Local dev uses `POSTGRES_DSN` directly; Lambda resolves credentials from AWS Secrets Manager (`RDS_SECRET_ARN`) and builds the DSN at startup.
+- **Full-text search**: GIN trigram index (`pg_trgm` extension) on `products.name` for fast `ILIKE '%term%'` queries without full table scans.
+- **Dynamic attribute filtering**: `EXISTS` subqueries on `product_attribute_values` table (EAV pattern). Hardcoded fields (material, color) also stored as attribute rows for uniform filtering across any attribute combination.
+- **Inventory row locking**: `SELECT ... FOR UPDATE` within transactions to prevent race conditions on concurrent stock changes. Every mutation creates an `inventory_transaction` audit record.
+- **Transactional writes**: `pgx.BeginFunc` wraps product creation (product + attributes + images + inventory atomically) to ensure consistency.
+- **Batch relation loading**: Product lists batch-load attributes and images via `WHERE product_id = ANY($1)` to avoid N+1 queries.
+- **Pagination**: Base64-encoded integer offset cursors (different from DynamoDB's `ExclusiveStartKey`). Fetch `LIMIT+1` rows to detect HasMore.
+- **In-process caching**: TTL-based go-cache (`internal/cache/`) wraps category (2–5 min) and product (2 min) repos. Prefix-based invalidation on writes. Product list queries are NOT cached (too many filter combinations).
+- **Partial index for low stock**: `WHERE available_qty <= low_stock_threshold` for efficient low-stock detection without scanning all inventory rows.
 
 #### 4. SQS Queues
 - Decouple notification sending from main request flow
@@ -963,7 +998,7 @@ type PricingRuleService interface {
 
 ### DynamoDB Multi-Table Design
 
-We use 4 tables with related entities grouped together for optimal performance and operational management.
+We use 7 tables with related entities grouped together for optimal performance and operational management.
 
 ---
 
@@ -5835,320 +5870,7 @@ Response 200:
 
 ---
 
-### 5. Artisan Management
-
-#### Entity Definitions
-
-```go
-// ==================== ARTISAN ENTITIES ====================
-
-type ArtisanStatus string
-
-const (
-    ArtisanStatusActive   ArtisanStatus = "ACTIVE"
-    ArtisanStatusInactive ArtisanStatus = "INACTIVE"
-    ArtisanStatusPending  ArtisanStatus = "PENDING_VERIFICATION"
-)
-
-type Artisan struct {
-    ID              string        `json:"id" dynamodbav:"id"`
-    PK              string        `json:"-" dynamodbav:"PK"`           // ARTISAN#<id>
-    SK              string        `json:"-" dynamodbav:"SK"`           // METADATA
-    GSI1PK          string        `json:"-" dynamodbav:"GSI1PK"`       // REGION#<region>
-    GSI2PK          string        `json:"-" dynamodbav:"GSI2PK"`       // CRAFT#<craft_type>
-    EntityType      string        `json:"-" dynamodbav:"entity_type"`  // ARTISAN
-
-    // Basic Info
-    Name            string        `json:"name" dynamodbav:"name"`
-    Code            string        `json:"code" dynamodbav:"code"` // Unique artisan code (e.g., ART-BAN-001)
-    Email           string        `json:"email" dynamodbav:"email"`
-    Phone           string        `json:"phone" dynamodbav:"phone"`
-
-    // Location
-    Address         Address       `json:"address" dynamodbav:"address"`
-    Region          string        `json:"region" dynamodbav:"region"` // e.g., Varanasi, Kanchipuram
-
-    // Craft Details
-    CraftTypes      []string      `json:"craft_types" dynamodbav:"craft_types"` // Banarasi, Chanderi, etc.
-    Specialization  string        `json:"specialization" dynamodbav:"specialization"`
-    Experience      int           `json:"experience" dynamodbav:"experience"` // Years
-
-    // Profile
-    Bio             string        `json:"bio" dynamodbav:"bio"`
-    ProfileImageURL string        `json:"profile_image_url" dynamodbav:"profile_image_url"`
-    CertificationURL string       `json:"certification_url" dynamodbav:"certification_url"`
-
-    // Payment
-    BankDetails     *BankDetails  `json:"bank_details" dynamodbav:"bank_details"`
-    CommissionRate  float64       `json:"commission_rate" dynamodbav:"commission_rate"` // Percentage (e.g., 70 means artisan gets 70%)
-
-    // Status
-    Status          ArtisanStatus `json:"status" dynamodbav:"status"`
-    VerifiedAt      *time.Time    `json:"verified_at" dynamodbav:"verified_at"`
-
-    // Metrics (denormalized for quick access)
-    TotalProducts   int           `json:"total_products" dynamodbav:"total_products"`
-    TotalSales      int64         `json:"total_sales" dynamodbav:"total_sales"`
-    TotalEarnings   int64         `json:"total_earnings" dynamodbav:"total_earnings"`
-
-    CreatedAt       time.Time     `json:"created_at" dynamodbav:"created_at"`
-    UpdatedAt       time.Time     `json:"updated_at" dynamodbav:"updated_at"`
-    CreatedBy       string        `json:"created_by" dynamodbav:"created_by"`
-}
-
-type BankDetails struct {
-    AccountHolderName string `json:"account_holder_name" dynamodbav:"account_holder_name"`
-    BankName          string `json:"bank_name" dynamodbav:"bank_name"`
-    AccountNumber     string `json:"account_number" dynamodbav:"account_number"` // Encrypted
-    IFSC              string `json:"ifsc" dynamodbav:"ifsc"`
-    UPI               string `json:"upi" dynamodbav:"upi"`
-}
-
-type ArtisanPayment struct {
-    ID            string    `json:"id" dynamodbav:"id"`
-    PK            string    `json:"-" dynamodbav:"PK"`           // ARTISAN#<artisan_id>
-    SK            string    `json:"-" dynamodbav:"SK"`           // PAYMENT#<timestamp>#<id>
-    GSI1PK        string    `json:"-" dynamodbav:"GSI1PK"`       // PAYMENT_STATUS#<status>
-    EntityType    string    `json:"-" dynamodbav:"entity_type"`  // ARTISAN_PAYMENT
-
-    ArtisanID     string    `json:"artisan_id" dynamodbav:"artisan_id"`
-    ArtisanName   string    `json:"artisan_name" dynamodbav:"artisan_name"`
-
-    // Payment Period
-    PeriodStart   time.Time `json:"period_start" dynamodbav:"period_start"`
-    PeriodEnd     time.Time `json:"period_end" dynamodbav:"period_end"`
-
-    // Amounts
-    TotalSales    int64     `json:"total_sales" dynamodbav:"total_sales"`
-    CommissionRate float64  `json:"commission_rate" dynamodbav:"commission_rate"`
-    GrossAmount   int64     `json:"gross_amount" dynamodbav:"gross_amount"`
-    Deductions    int64     `json:"deductions" dynamodbav:"deductions"`
-    NetAmount     int64     `json:"net_amount" dynamodbav:"net_amount"`
-
-    // Orders included
-    OrderCount    int       `json:"order_count" dynamodbav:"order_count"`
-    OrderIDs      []string  `json:"order_ids" dynamodbav:"order_ids"`
-
-    // Payment Status
-    Status        string    `json:"status" dynamodbav:"status"` // PENDING, PROCESSING, PAID, FAILED
-    PaidAt        *time.Time `json:"paid_at" dynamodbav:"paid_at"`
-    TransactionRef string   `json:"transaction_ref" dynamodbav:"transaction_ref"`
-    PaymentMethod string    `json:"payment_method" dynamodbav:"payment_method"`
-
-    Note          string    `json:"note" dynamodbav:"note"`
-
-    CreatedAt     time.Time `json:"created_at" dynamodbav:"created_at"`
-    CreatedBy     string    `json:"created_by" dynamodbav:"created_by"`
-}
-```
-
-#### Artisan Service Interface
-
-```go
-type ArtisanService interface {
-    // CRUD
-    CreateArtisan(ctx context.Context, req CreateArtisanRequest, userID string) (*Artisan, error)
-    GetArtisan(ctx context.Context, artisanID string) (*ArtisanDetail, error)
-    ListArtisans(ctx context.Context, req ListArtisansRequest) (*ListArtisansResponse, error)
-    UpdateArtisan(ctx context.Context, artisanID string, req UpdateArtisanRequest) (*Artisan, error)
-    DeleteArtisan(ctx context.Context, artisanID string) error
-
-    // Status
-    VerifyArtisan(ctx context.Context, artisanID string) (*Artisan, error)
-    ActivateArtisan(ctx context.Context, artisanID string) (*Artisan, error)
-    DeactivateArtisan(ctx context.Context, artisanID string) (*Artisan, error)
-
-    // Products
-    GetArtisanProducts(ctx context.Context, artisanID string, pagination PaginationRequest) (*ListProductsResponse, error)
-
-    // Payments
-    GetArtisanPayments(ctx context.Context, artisanID string, pagination PaginationRequest) (*ListArtisanPaymentsResponse, error)
-    CreatePayment(ctx context.Context, artisanID string, req CreatePaymentRequest, userID string) (*ArtisanPayment, error)
-    MarkPaymentAsPaid(ctx context.Context, paymentID string, transactionRef string) (*ArtisanPayment, error)
-
-    // Analytics
-    GetArtisanStats(ctx context.Context, artisanID string, period string) (*ArtisanStats, error)
-    GetPendingPayments(ctx context.Context) ([]*ArtisanPendingPayment, error)
-}
-```
-
-#### Artisan APIs
-
-##### POST /admin/artisans
-```yaml
-Permission: artisan:create
-
-Request:
-  Body:
-    name: string (required)
-    email: string (optional)
-    phone: string (required)
-    address: object (required)
-    region: string (required)
-    craft_types: array of strings (required)
-    specialization: string (optional)
-    experience: int (optional, years)
-    bio: string (optional)
-    commission_rate: float (required, e.g., 70 for 70%)
-    bank_details: object (optional)
-
-Response 201:
-  {
-    "success": true,
-    "data": {
-      "id": "art_abc123",
-      "code": "ART-BAN-001",
-      "name": "Master Weaver Ramesh",
-      "region": "Varanasi, UP",
-      "craft_types": ["Banarasi", "Silk Weaving"],
-      "commission_rate": 70,
-      "status": "PENDING_VERIFICATION",
-      "created_at": "2024-01-15T10:00:00Z"
-    }
-  }
-```
-
-##### GET /admin/artisans
-```yaml
-Permission: artisan:read
-
-Request:
-  Query:
-    page: int
-    per_page: int
-    region: string (optional)
-    craft_type: string (optional)
-    status: string (optional)
-    search: string (optional)
-
-Response 200:
-  {
-    "success": true,
-    "data": [
-      {
-        "id": "art_abc123",
-        "code": "ART-BAN-001",
-        "name": "Master Weaver Ramesh",
-        "region": "Varanasi, UP",
-        "craft_types": ["Banarasi"],
-        "status": "ACTIVE",
-        "total_products": 45,
-        "total_sales": 2850000,
-        "pending_payment": 125000
-      }
-    ],
-    "meta": {...}
-  }
-```
-
-##### GET /admin/artisans/{id}
-```yaml
-Permission: artisan:read
-
-Response 200:
-  {
-    "success": true,
-    "data": {
-      "id": "art_abc123",
-      "code": "ART-BAN-001",
-      "name": "Master Weaver Ramesh",
-      "phone": "+91-9876543210",
-      "address": {...},
-      "region": "Varanasi, UP",
-      "craft_types": ["Banarasi", "Silk Weaving"],
-      "specialization": "Traditional Banarasi patterns",
-      "experience": 25,
-      "bio": "Third-generation master weaver...",
-      "commission_rate": 70,
-      "status": "ACTIVE",
-      "stats": {
-        "total_products": 45,
-        "active_products": 42,
-        "total_orders": 320,
-        "total_sales": 2850000,
-        "total_earnings": 1995000,
-        "pending_payment": 125000
-      },
-      "recent_products": [...],
-      "recent_payments": [...]
-    }
-  }
-```
-
-##### POST /admin/artisans/{id}/payments
-```yaml
-Permission: artisan:payment
-
-Request:
-  Body:
-    period_start: string (required, ISO date)
-    period_end: string (required, ISO date)
-    note: string (optional)
-
-Response 201:
-  {
-    "success": true,
-    "data": {
-      "id": "pay_xyz789",
-      "artisan_id": "art_abc123",
-      "artisan_name": "Master Weaver Ramesh",
-      "period_start": "2024-01-01",
-      "period_end": "2024-01-15",
-      "total_sales": 285000,
-      "commission_rate": 70,
-      "gross_amount": 199500,
-      "deductions": 0,
-      "net_amount": 199500,
-      "order_count": 12,
-      "status": "PENDING"
-    }
-  }
-```
-
-##### PATCH /admin/artisans/payments/{id}/mark-paid
-```yaml
-Permission: artisan:payment
-
-Request:
-  Body:
-    transaction_ref: string (required)
-    payment_method: string (required: BANK_TRANSFER, UPI, CASH)
-    note: string (optional)
-
-Response 200:
-  {
-    "success": true,
-    "data": {
-      "id": "pay_xyz789",
-      "status": "PAID",
-      "paid_at": "2024-01-16T10:00:00Z",
-      "transaction_ref": "UTR123456789"
-    }
-  }
-```
-
-##### GET /admin/artisans/payments/pending
-```yaml
-Permission: artisan:payment
-
-Response 200:
-  {
-    "success": true,
-    "data": [
-      {
-        "artisan_id": "art_abc123",
-        "artisan_name": "Master Weaver Ramesh",
-        "pending_amount": 125000,
-        "orders_count": 8,
-        "oldest_order_date": "2024-01-01"
-      }
-    ]
-  }
-```
-
----
-
-### 6. Password Reset Flow
+### 5. Password Reset Flow
 
 #### Entity Definitions
 
@@ -6538,7 +6260,6 @@ handloom-admin/
 │   │   ├── notification.go
 │   │   ├── audit.go
 │   │   ├── coupon.go          # NEW
-│   │   ├── artisan.go         # NEW
 │   │   ├── asset.go           # NEW
 │   │   ├── bulk_job.go        # NEW
 │   │   ├── report.go          # NEW
@@ -6547,7 +6268,6 @@ handloom-admin/
 │   ├── repository/
 │   │   ├── ... (existing)
 │   │   ├── coupon_repo.go     # NEW
-│   │   ├── artisan_repo.go    # NEW
 │   │   ├── asset_repo.go      # NEW
 │   │   ├── bulk_repo.go       # NEW
 │   │   ├── report_repo.go     # NEW
@@ -6557,7 +6277,6 @@ handloom-admin/
 │   │   ├── ... (existing)
 │   │   ├── dashboard_service.go  # NEW
 │   │   ├── coupon_service.go     # NEW
-│   │   ├── artisan_service.go    # NEW
 │   │   ├── asset_service.go      # NEW
 │   │   ├── bulk_service.go       # NEW
 │   │   └── report_service.go     # NEW
@@ -6566,7 +6285,6 @@ handloom-admin/
 │   │   ├── ... (existing)
 │   │   ├── dashboard_handler.go  # NEW
 │   │   ├── coupon_handler.go     # NEW
-│   │   ├── artisan_handler.go    # NEW
 │   │   ├── asset_handler.go      # NEW
 │   │   ├── bulk_handler.go       # NEW
 │   │   └── report_handler.go     # NEW
@@ -6592,13 +6310,6 @@ const (
     PermCouponUpdate  = "coupon:update"
     PermCouponDelete  = "coupon:delete"
 
-    // Artisan permissions
-    PermArtisanCreate  = "artisan:create"
-    PermArtisanRead    = "artisan:read"
-    PermArtisanUpdate  = "artisan:update"
-    PermArtisanDelete  = "artisan:delete"
-    PermArtisanPayment = "artisan:payment"
-
     // Asset permissions
     PermAssetRead   = "asset:read"
     PermAssetWrite  = "asset:write"
@@ -6619,7 +6330,6 @@ var RolePermissions = map[UserRole][]string{
         // ... existing permissions ...
         PermDashboardRead,
         PermCouponCreate, PermCouponRead, PermCouponUpdate, PermCouponDelete,
-        PermArtisanCreate, PermArtisanRead, PermArtisanUpdate, PermArtisanDelete, PermArtisanPayment,
         PermAssetRead, PermAssetWrite, PermAssetDelete,
         PermBulkRead, PermBulkWrite,
         PermReportGenerate, PermReportRead,
@@ -6628,7 +6338,6 @@ var RolePermissions = map[UserRole][]string{
         // ... existing permissions ...
         PermDashboardRead,
         PermCouponRead,
-        PermArtisanRead,
         PermAssetRead, PermAssetWrite,
         PermBulkRead,
         PermReportRead,
@@ -6667,7 +6376,7 @@ provider:
   iam:
     role:
       statements:
-        # DynamoDB - All 4 tables
+        # DynamoDB - All 7 tables
         - Effect: Allow
           Action:
             - dynamodb:GetItem
@@ -6846,7 +6555,7 @@ resources:
     # ============== DynamoDB Tables (Multi-Table Design) ==============
 
     # Table 1: handloom-core
-    # Stores: Users, Products, Categories, Designs, Inventory, Artisans, Coupons, Assets, Notifications
+    # Stores: Users, PricingRules, Coupons
     CoreTable:
       Type: AWS::DynamoDB::Table
       Properties:
@@ -7186,7 +6895,7 @@ resources:
 
 ## Summary
 
-This design provides a **comprehensive admin portal** for your handloom e-commerce platform:
+This design provides a **comprehensive e-commerce platform** for handloom products, with both admin dashboard and B2C customer storefront:
 
 ### Core Features
 1. **Complete RBAC** with Admin and Operator roles
@@ -7201,8 +6910,7 @@ This design provides a **comprehensive admin portal** for your handloom e-commer
 8. **Bulk Operations** - CSV import/export for products, inventory, prices
 9. **Image Management** - S3 upload, automatic resizing, CDN delivery
 10. **Coupon/Discount Management** - Percentage/flat discounts, usage limits, validity periods
-11. **Artisan Management** - Profiles, product attribution, payment tracking, commissions
-12. **Password Reset Flow** - Secure token-based password recovery
+11. **Password Reset Flow** - Secure token-based password recovery
 13. **Report Generation** - Sales, orders, inventory reports in CSV/XLSX/PDF
 14. **Hierarchical Categories** - Nested categories with inherited attributes (Bedding → Bedsheets)
 15. **Dynamic Pricing Engine** - Area/length-based pricing, material multipliers, attribute surcharges
@@ -7213,19 +6921,39 @@ This design provides a **comprehensive admin portal** for your handloom e-commer
 | Component | Technology | Purpose |
 |-----------|------------|---------|
 | API | API Gateway + Lambda | Serverless, auto-scaling |
-| Database | DynamoDB (Multi-table) | Logical separation, optimized scaling |
+| Database | DynamoDB + PostgreSQL | Hybrid: DynamoDB for core/transactional, PostgreSQL for catalog |
 | File Storage | S3 + CloudFront | Images, reports, bulk files |
 | Async Processing | SQS + Lambda | Notifications, bulk ops, reports |
-| Event Processing | DynamoDB Streams | Real-time audit & analytics |
+| Event Bus | SNS + SQS | Domain event fan-out to worker Lambdas |
 
-### Multi-Table DynamoDB Design
+### Hybrid Database Design
+
+**DynamoDB Tables (7):**
 
 | Table | Purpose | Entities | TTL |
 |-------|---------|----------|-----|
-| `handloom-core` | Core business data | Users, Products, Categories, Designs, Inventory, Artisans, Coupons, Assets, **PricingRules** | Sessions only |
-| `handloom-orders` | Order management | Orders, OrderItems, StatusHistory, Customers, **PriceQuotes** | None |
+| `handloom-core` | Core business data | Users, PricingRules, Coupons | None |
+| `handloom-orders` | Order management | Orders, OrderItems, StatusHistory, Customers, Carts, PriceQuotes | None |
+| `handloom-sessions` | Auth sessions | OTPs, Refresh Tokens, Password Resets | TTL-based |
 | `handloom-audit` | Compliance logs | AuditLogs | 90 days |
-| `handloom-analytics` | Dashboard metrics | DailyMetrics, TopProducts, InventoryAlerts | 2 years |
+| `handloom-analytics` | Dashboard metrics | DailyMetrics, TopProducts, InventoryAlerts, Reports | 2 years |
+| `handloom-notifications` | User notifications | Notifications, Templates | None |
+| `handloom-events` | Raw tracking events | Frontend tracking events | 30 days |
+
+**PostgreSQL (Catalog) — 8 tables:**
+
+| Table | Purpose |
+|-------|---------|
+| `categories` | Product categories with slug-based routing |
+| `category_attributes` | Dynamic attributes defined per category |
+| `category_attribute_options` | Allowed values for each attribute |
+| `products` | Product catalog (prices in paise, UNIQUE sku) |
+| `product_attribute_values` | EAV storage for product attributes |
+| `product_images` | Product images with sort ordering |
+| `inventory` | Stock levels with low-stock threshold detection |
+| `inventory_transactions` | Full audit trail for every stock mutation |
+
+Key PostgreSQL patterns: GIN trigram index for full-text search, `EXISTS` subqueries for dynamic attribute filtering (EAV), `SELECT ... FOR UPDATE` for inventory row locking, `pgxpool` connection pooling, in-process TTL cache (go-cache) for categories and products.
 
 **Benefits of this design:**
 1. **Logical Separation** - Orders scale independently during peak sales
@@ -7233,14 +6961,28 @@ This design provides a **comprehensive admin portal** for your handloom e-commer
 3. **Operational Clarity** - Easy to backup, monitor, and troubleshoot per domain
 4. **Cost Optimization** - Audit table uses minimal provisioning
 5. **Efficient Queries** - Related entities co-located within each table
+6. **Relational Integrity** - Foreign keys and UNIQUE constraints for catalog data
+7. **Full-Text Search** - GIN trigram index enables fast product name search
 
-### Future-Ready for B2C
+### B2C Storefront (Implemented)
 
-The design supports adding B2C APIs later:
-- `handloom-orders` table already has Customer entity
-- Separate Lambda for B2C APIs (uses same tables)
-- Shared notification and inventory services
-- Analytics already tracking customer metrics
+The B2C storefront is fully integrated with 9 dedicated Lambda services:
+- **Store Auth**: Phone OTP login via MSG91, customer JWT in HttpOnly cookies
+- **Store Catalog**: Public product/category browsing (backed by PostgreSQL)
+- **Store Cart**: Shopping cart management (customer-authenticated)
+- **Store Checkout**: Order placement + PhonePe payment initiation
+- **Store Orders**: Customer order history
+- **Store Profile**: Customer account and address management
+- **Store Tracking**: Public order tracking via Shiprocket
+- **Store Events**: Storefront analytics event ingestion (rate-limited)
+- **Store Webhooks**: Payment callback handling (signature-verified)
+
+### Event-Driven Architecture (Implemented)
+
+Domain events flow through SNS → SQS → Worker Lambdas:
+- **SNS Topic**: Publishes order.created, payment.confirmed, shipment.updated, etc.
+- **4 Worker Lambdas**: analytics, audit, notification, report — each consumes its own SQS queue
+- **CDK EventStack**: Defines SNS topic, SQS queues with DLQs, and worker Lambda functions
 
 ### API Count Summary
 
@@ -7260,6 +7002,17 @@ The design supports adding B2C APIs later:
 | Bulk Operations | 7 |
 | Assets | 5 |
 | Coupons | 6 |
-| Artisans | 8 |
 | Reports | 5 |
-| **Total** | **92 endpoints** |
+| **Admin Total** | **84 endpoints** |
+| | |
+| Store Auth | 4 |
+| Store Catalog | 6 |
+| Store Cart | 4 |
+| Store Checkout | 2 |
+| Store Orders | 2 |
+| Store Profile | 4 |
+| Store Tracking | 2 |
+| Store Webhooks | 1 |
+| **B2C Store Total** | **25 endpoints** |
+| | |
+| **Grand Total** | **117 endpoints** |

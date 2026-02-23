@@ -1,6 +1,6 @@
 # handloom-orders Table
 
-The orders table manages all order-related data including orders, customers, and price quotes.
+The orders table manages all order-related data including orders, customers, payments, shipments, carts, and price quotes.
 
 ## Table Configuration
 
@@ -9,6 +9,7 @@ Table Name: handloom-orders
 Partition Key: PK (String)
 Sort Key: SK (String)
 Billing Mode: PAY_PER_REQUEST
+TTL Attribute: ttl
 ```
 
 ### Global Secondary Indexes
@@ -16,6 +17,7 @@ Billing Mode: PAY_PER_REQUEST
 | Index | Partition Key | Sort Key | Projection |
 |-------|--------------|----------|------------|
 | GSI1 | GSI1PK | GSI1SK | ALL |
+| GSI2 | GSI2PK | GSI2SK | ALL |
 
 ---
 
@@ -32,7 +34,18 @@ Customer orders with items, pricing, and fulfillment tracking.
 | PK | `ORDER#<id>` | `ORDER#ord-001` |
 | SK | `METADATA` | `METADATA` |
 | GSI1PK | `CUSTOMER#<customer_id>` | `CUSTOMER#cust-001` |
-| GSI1SK | `<timestamp>` | `2024-01-15T10:30:00Z` |
+| GSI1SK | `<created_at>` | `2024-01-15T10:30:00Z` |
+| GSI2PK | `ORDER#ALL` | `ORDER#ALL` |
+| GSI2SK | `<created_at>` | `2024-01-15T10:30:00Z` |
+
+#### Order Number Uniqueness Index
+
+Created atomically with the order via `TransactWriteItems`.
+
+| Key | Pattern | Example |
+|-----|---------|---------|
+| PK | `ORDER_NUMBER#<number>` | `ORDER_NUMBER#HL-2024-0001` |
+| SK | `METADATA` | `METADATA` |
 
 #### Attributes
 
@@ -64,7 +77,7 @@ Customer orders with items, pricing, and fulfillment tracking.
 | TrackingURL | String | No | Tracking URL |
 | ShippingCarrier | String | No | Carrier name |
 | CustomerNote | String | No | Customer note |
-| InternalNotes | List[Object] | No | Internal notes |
+| InternalNotes | List[Object] | No | Internal notes (appended via `list_append`) |
 | ShippedAt | String | No | Shipping timestamp |
 | DeliveredAt | String | No | Delivery timestamp |
 | CancelledAt | String | No | Cancellation timestamp |
@@ -94,115 +107,26 @@ Customer orders with items, pricing, and fulfillment tracking.
 | `FAILED` | Payment failed |
 | `REFUNDED` | Payment refunded |
 
-#### Items Structure (OrderItem)
-
-```json
-{
-  "ID": "item-001",
-  "ProductID": "prod-001",
-  "ProductName": "Red Silk Saree",
-  "SKU": "HL-SAR-001",
-  "Image": "https://cdn.example.com/image.jpg",
-  "IsCustomSize": true,
-  "Dimensions": {
-    "Length": 550,
-    "Width": 46,
-    "Unit": "CM"
-  },
-  "Attributes": {
-    "Material": "Silk",
-    "Color": "Red"
-  },
-  "QuoteID": "quote-001",
-  "UnitPrice": 1500000,
-  "Quantity": 1,
-  "TotalPrice": 1500000
-}
-```
-
-#### Address Structure
-
-```json
-{
-  "FirstName": "John",
-  "LastName": "Doe",
-  "Phone": "+91-9876543210",
-  "AddressLine1": "123 Main Street",
-  "AddressLine2": "Apartment 4B",
-  "City": "Mumbai",
-  "State": "Maharashtra",
-  "PostalCode": "400001",
-  "Country": "India"
-}
-```
-
-#### InternalNotes Structure
-
-```json
-{
-  "ID": "note-001",
-  "Note": "Customer requested gift wrapping",
-  "CreatedBy": "user-001",
-  "CreatedAt": "2024-01-15T10:30:00Z"
-}
-```
-
 #### Access Patterns
 
 | Pattern | Key Condition |
 |---------|---------------|
 | Get order by ID | PK = `ORDER#<id>`, SK = `METADATA` |
-| Get orders by customer | GSI1: GSI1PK = `CUSTOMER#<customer_id>` |
-| Get customer orders in date range | GSI1: GSI1PK = `CUSTOMER#<customer_id>`, GSI1SK between dates |
+| Get orders by customer | GSI1: GSI1PK = `CUSTOMER#<customer_id>` (filter for entity_type) |
+| List all orders | GSI2: GSI2PK = `ORDER#ALL` (with filter expressions for status, search) |
+| Get order by number | PK = `ORDER_NUMBER#<number>`, SK = `METADATA` → returns order_id |
+
+#### Write Patterns
+
+| Operation | Method | Details |
+|-----------|--------|---------|
+| Create | `TransactWriteItems` | Order + order number index (2 items) |
+| Update | `PutItem` | `attribute_exists(PK)` |
+| Add note | `UpdateItem` | `list_append(if_not_exists(internal_notes, :empty), :note)` |
 
 ---
 
-### 2. Order Status History
-
-Track order status changes over time.
-
-#### Key Structure
-
-| Key | Pattern | Example |
-|-----|---------|---------|
-| PK | `ORDER#<order_id>` | `ORDER#ord-001` |
-| SK | `STATUS#<timestamp>` | `STATUS#2024-01-15T10:30:00Z` |
-
-#### Attributes
-
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| ID | String | Yes | UUID |
-| OrderID | String | Yes | Order ID |
-| FromStatus | String | Yes | Previous status |
-| ToStatus | String | Yes | New status |
-| Reason | String | No | Reason for change |
-| CreatedBy | String | Yes | User ID |
-| CreatedAt | String | Yes | ISO 8601 timestamp |
-
-#### Access Patterns
-
-| Pattern | Key Condition |
-|---------|---------------|
-| Get order status history | PK = `ORDER#<order_id>`, SK begins_with `STATUS#` |
-| Get status changes in date range | PK = `ORDER#<order_id>`, SK between `STATUS#<start>` and `STATUS#<end>` |
-
-#### Example Query
-
-```
-Query:
-  PK = "ORDER#ord-001"
-  SK begins_with "STATUS#"
-
-Returns:
-  - STATUS#2024-01-15T10:00:00Z (PENDING → CONFIRMED)
-  - STATUS#2024-01-15T14:30:00Z (CONFIRMED → PROCESSING)
-  - STATUS#2024-01-16T09:00:00Z (PROCESSING → SHIPPED)
-```
-
----
-
-### 3. Customer
+### 2. Customer
 
 Customer information with addresses and order history.
 
@@ -214,16 +138,29 @@ Customer information with addresses and order history.
 | SK | `METADATA` | `METADATA` |
 | GSI1PK | `CUSTOMER_EMAIL` | `CUSTOMER_EMAIL` |
 | GSI1SK | `<email>` | `john@example.com` |
+| GSI2PK | `CUSTOMER#ALL` | `CUSTOMER#ALL` |
+| GSI2SK | `<created_at>` | `2024-01-15T10:30:00Z` |
+
+#### Phone Uniqueness Index
+
+Created as a best-effort second item during customer creation.
+
+| Key | Pattern | Example |
+|-----|---------|---------|
+| PK | `CUSTOMER_PHONE#<phone>` | `CUSTOMER_PHONE#+919876543210` |
+| SK | `METADATA` | `METADATA` |
+
+Additional attributes: `customer_id`.
 
 #### Attributes
 
 | Attribute | Type | Required | Description |
 |-----------|------|----------|-------------|
 | ID | String | Yes | UUID |
-| Email | String | Yes | Unique email address |
-| FirstName | String | Yes | First name |
-| LastName | String | Yes | Last name |
-| Phone | String | No | Phone number |
+| Email | String | No | Email address |
+| FirstName | String | No | First name |
+| LastName | String | No | Last name |
+| Phone | String | Yes | Phone number (primary identifier for B2C) |
 | Status | String | Yes | `ACTIVE`, `INACTIVE`, `BLOCKED` |
 | Addresses | List[Object] | No | Saved addresses |
 | Tags | List[String] | No | Customer tags |
@@ -232,34 +169,6 @@ Customer information with addresses and order history.
 | TotalSpent | Number | No | Total spent in paise (denormalized) |
 | CreatedAt | String | Yes | ISO 8601 timestamp |
 | UpdatedAt | String | Yes | ISO 8601 timestamp |
-| CreatedBy | String | Yes | User ID |
-| UpdatedBy | String | Yes | User ID |
-
-#### Status Enum
-
-| Status | Description |
-|--------|-------------|
-| `ACTIVE` | Active customer |
-| `INACTIVE` | Inactive customer |
-| `BLOCKED` | Blocked customer (cannot place orders) |
-
-#### Addresses Structure
-
-```json
-{
-  "ID": "addr-001",
-  "FirstName": "John",
-  "LastName": "Doe",
-  "Phone": "+91-9876543210",
-  "AddressLine1": "123 Main Street",
-  "AddressLine2": "Apartment 4B",
-  "City": "Mumbai",
-  "State": "Maharashtra",
-  "PostalCode": "400001",
-  "Country": "India",
-  "IsDefault": true
-}
-```
 
 #### Access Patterns
 
@@ -267,11 +176,152 @@ Customer information with addresses and order history.
 |---------|---------------|
 | Get customer by ID | PK = `CUSTOMER#<id>`, SK = `METADATA` |
 | Get customer by email | GSI1: GSI1PK = `CUSTOMER_EMAIL`, GSI1SK = `<email>` |
-| List all customers | Scan with PK begins_with `CUSTOMER#` |
+| Get customer by phone | PK = `CUSTOMER_PHONE#<phone>`, SK = `METADATA` → returns customer_id |
+| List all customers | GSI2: GSI2PK = `CUSTOMER#ALL` (with filter/search) |
 
 ---
 
-### 4. Price Quote
+### 3. Payment
+
+Payment records for orders.
+
+#### Key Structure
+
+| Key | Pattern | Example |
+|-----|---------|---------|
+| PK | `PAYMENT#<id>` | `PAYMENT#pay-001` |
+| SK | `METADATA` | `METADATA` |
+| GSI1PK | `ORDER#<order_id>` | `ORDER#ord-001` |
+| GSI1SK | `<created_at>` | `2024-01-15T10:30:00Z` |
+| GSI2PK | `PAYMENT_TXN` | `PAYMENT_TXN` |
+| GSI2SK | `<merchant_txn_id>` | `MCHT_abc123` |
+
+#### Attributes
+
+| Attribute | Type | Required | Description |
+|-----------|------|----------|-------------|
+| ID | String | Yes | UUID |
+| OrderID | String | Yes | Associated order |
+| Amount | Number | Yes | Payment amount in paise |
+| Currency | String | Yes | `INR` |
+| Status | String | Yes | `PENDING`, `SUCCESS`, `FAILED`, `REFUNDED` |
+| Method | String | No | Payment method (UPI, CARD, etc.) |
+| MerchantTransactionID | String | No | Gateway transaction ID |
+| GatewayResponse | Map | No | Raw gateway response |
+| CreatedAt | String | Yes | ISO 8601 timestamp |
+| UpdatedAt | String | Yes | ISO 8601 timestamp |
+
+#### Access Patterns
+
+| Pattern | Key Condition |
+|---------|---------------|
+| Get payment by ID | PK = `PAYMENT#<id>`, SK = `METADATA` |
+| Get payments for order | GSI1: GSI1PK = `ORDER#<order_id>` (newest first) |
+| Get payment by merchant txn | GSI2: GSI2PK = `PAYMENT_TXN`, GSI2SK = `<merchant_txn_id>` |
+
+#### Write Patterns
+
+| Operation | Method | Details |
+|-----------|--------|---------|
+| Create | `PutItem` | `attribute_not_exists(PK)` |
+| Update status | `UpdateItem` | Dynamic update with `buildDynamicUpdate` helper |
+
+---
+
+### 4. Shipment
+
+Shipment records stored under the order partition.
+
+#### Key Structure
+
+| Key | Pattern | Example |
+|-----|---------|---------|
+| PK | `ORDER#<order_id>` | `ORDER#ord-001` |
+| SK | `SHIPMENT#<shipment_id>` | `SHIPMENT#ship-001` |
+
+Multiple shipments per order are supported as separate SK items.
+
+#### Attributes
+
+| Attribute | Type | Required | Description |
+|-----------|------|----------|-------------|
+| ID | String | Yes | UUID |
+| OrderID | String | Yes | Associated order |
+| Status | String | Yes | Shipment status |
+| TrackingNumber | String | No | Carrier tracking number |
+| TrackingURL | String | No | Tracking URL |
+| Carrier | String | No | Shipping carrier |
+| CreatedAt | String | Yes | ISO 8601 timestamp |
+| UpdatedAt | String | Yes | ISO 8601 timestamp |
+
+#### Access Patterns
+
+| Pattern | Key Condition |
+|---------|---------------|
+| Get shipments for order | PK = `ORDER#<order_id>`, SK begins_with `SHIPMENT#` |
+| Get latest shipment | PK = `ORDER#<order_id>`, SK begins_with `SHIPMENT#`, Limit 1, ScanIndexForward false |
+
+#### Write Patterns
+
+| Operation | Method | Condition |
+|-----------|--------|-----------|
+| Create | `PutItem` | `attribute_not_exists(PK) AND attribute_not_exists(SK)` |
+| Update | `UpdateItem` | `attribute_exists(PK)`, dynamic update |
+
+---
+
+### 5. Cart
+
+Customer shopping cart with header + line items pattern.
+
+#### Key Structure (Header)
+
+| Key | Pattern | Example |
+|-----|---------|---------|
+| PK | `CART#<customer_id>` | `CART#cust-001` |
+| SK | `METADATA` | `METADATA` |
+
+#### Key Structure (Items)
+
+| Key | Pattern | Example |
+|-----|---------|---------|
+| PK | `CART#<customer_id>` | `CART#cust-001` |
+| SK | `ITEM#<product_id>` | `ITEM#prod-001` |
+
+#### TTL
+
+Cart items have a TTL of **30 days** from last update. DynamoDB auto-deletes stale carts.
+
+#### Attributes (Item)
+
+| Attribute | Type | Required | Description |
+|-----------|------|----------|-------------|
+| ProductID | String | Yes | Product ID |
+| ProductName | String | Yes | Product name (denormalized) |
+| Quantity | Number | Yes | Item quantity |
+| Price | Number | Yes | Unit price in paise |
+| Images | List[Object] | No | Product images (denormalized) |
+| ttl | Number | Yes | Unix timestamp (30 days from update) |
+
+#### Access Patterns
+
+| Pattern | Key Condition |
+|---------|---------------|
+| Get full cart | PK = `CART#<customer_id>` (returns header + all items) |
+| Get cart items | PK = `CART#<customer_id>`, SK begins_with `ITEM#` |
+| Get specific item | PK = `CART#<customer_id>`, SK = `ITEM#<product_id>` |
+
+#### Write Patterns
+
+| Operation | Method | Details |
+|-----------|--------|---------|
+| Add/update item | `PutItem` | Upsert with TTL |
+| Remove item | `DeleteItem` | By PK + SK |
+| Clear cart | `BatchWriteItem` | Delete all items (25-item batches) |
+
+---
+
+### 6. Price Quote
 
 Temporary price calculations for custom-sized products.
 
@@ -284,9 +334,9 @@ Temporary price calculations for custom-sized products.
 
 #### TTL Configuration
 
-- **TTL Attribute**: `ttl`
-- **Default Expiry**: 24 hours (configurable via `QUOTE_VALIDITY_HRS`)
-- **Purpose**: Auto-delete expired quotes to save storage
+- **TTL Attribute**: `ttl` (set to `ValidUntil` Unix timestamp)
+- **Default Expiry**: 24 hours
+- **Auto-Deletion**: DynamoDB automatically deletes expired quotes
 
 #### Attributes
 
@@ -294,7 +344,7 @@ Temporary price calculations for custom-sized products.
 |-----------|------|----------|-------------|
 | ID | String | Yes | UUID |
 | CategoryID | String | Yes | Product category |
-| ProductID | String | No | Specific product (if applicable) |
+| ProductID | String | No | Specific product |
 | Dimensions | Object | Yes | Requested dimensions |
 | Attributes | Map | No | Selected attributes |
 | Quantity | Number | Yes | Requested quantity |
@@ -306,62 +356,11 @@ Temporary price calculations for custom-sized products.
 | CreatedAt | String | Yes | ISO 8601 timestamp |
 | ttl | Number | Yes | Unix timestamp for TTL |
 
-#### Dimensions Structure
-
-```json
-{
-  "Length": 550,
-  "Width": 46,
-  "Unit": "CM"
-}
-```
-
-#### PriceBreakdown Structure
-
-```json
-{
-  "Area": 25300,
-  "AreaUnit": "SQ_CM",
-  "BaseCost": 1000000,
-  "MaterialMultiplier": 1.5,
-  "MaterialCost": 1500000,
-  "Surcharges": [
-    {
-      "Name": "Zari Work",
-      "Type": "PERCENTAGE",
-      "Value": 20,
-      "Amount": 300000
-    }
-  ],
-  "SurchargesTotal": 300000,
-  "SubtotalPerUnit": 1800000,
-  "Quantity": 1,
-  "Total": 1800000
-}
-```
-
 #### Access Patterns
 
 | Pattern | Key Condition |
 |---------|---------------|
 | Get quote by ID | PK = `QUOTE#<id>`, SK = `METADATA` |
-
-#### Quote Lifecycle
-
-```
-1. Customer requests custom size quote
-   → Quote created with 24-hour validity
-
-2. Customer adds to cart
-   → Quote ID stored with cart item
-
-3. Customer places order
-   → Quote marked as UsedInOrder = true
-   → Quote preserved for order reference
-
-4. Quote expires (TTL)
-   → Automatically deleted by DynamoDB
-```
 
 ---
 
@@ -374,91 +373,33 @@ Order.CustomerID → Customer.ID
 Order.GSI1PK = CUSTOMER#<customer_id>
 ```
 
+### Order → Payment
+
+```
+Payment.GSI1PK = ORDER#<order_id>
+(Multiple payments per order possible)
+```
+
+### Order → Shipment
+
+```
+Shipment.PK = ORDER#<order_id>, SK = SHIPMENT#<id>
+(Co-located with order partition)
+```
+
 ### Order → Quote
 
 ```
 Order.Items[].QuoteID → PriceQuote.ID
 ```
 
-### Order → Coupon (in handloom-core)
-
-```
-Order.CouponID → Coupon.ID
-Order.CouponCode → Coupon.Code
-```
-
 ---
 
-## Common Queries
-
-### Get All Orders for a Customer
-
-```
-Table: handloom-orders
-Index: GSI1
-KeyCondition: GSI1PK = "CUSTOMER#cust-001"
-SortOrder: Descending (newest first)
-```
-
-### Get Orders in Date Range for Customer
-
-```
-Table: handloom-orders
-Index: GSI1
-KeyCondition:
-  GSI1PK = "CUSTOMER#cust-001"
-  GSI1SK BETWEEN "2024-01-01T00:00:00Z" AND "2024-01-31T23:59:59Z"
-```
-
-### Get Order with Status History
-
-```
-Table: handloom-orders
-KeyCondition: PK = "ORDER#ord-001"
-(Returns both METADATA and STATUS# items)
-```
-
-### Find Customer by Email
-
-```
-Table: handloom-orders
-Index: GSI1
-KeyCondition:
-  GSI1PK = "CUSTOMER_EMAIL"
-  GSI1SK = "john@example.com"
-```
-
----
-
-## Data Integrity
-
-### Denormalized Fields
+## Denormalized Fields
 
 | Field | Source | Updated When |
 |-------|--------|--------------|
 | Order.CustomerName | Customer.FirstName + LastName | Order creation |
 | Order.CustomerEmail | Customer.Email | Order creation |
 | Customer.TotalOrders | Count of orders | Order status change |
-| Customer.TotalSpent | Sum of order totals | Order payment confirmed |
-
-### Consistency Considerations
-
-1. **Customer stats**: Updated asynchronously after order completion
-2. **Quote validity**: Checked before order placement
-3. **Inventory**: Reserved when order placed, released on cancellation
-
----
-
-## Backup & Recovery
-
-### Point-in-Time Recovery
-
-- **Enabled**: Yes
-- **Retention**: 35 days
-- **Granularity**: Per-second
-
-### Backup Strategy
-
-1. Daily automated backups
-2. Pre-deployment backups
-3. Cross-region replication for DR
+| Customer.TotalSpent | Sum of order totals | Payment confirmed |
