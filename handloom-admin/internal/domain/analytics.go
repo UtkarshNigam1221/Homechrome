@@ -124,6 +124,42 @@ type MovingItem struct {
 	DaysInStock int    `json:"days_in_stock"`
 }
 
+// DateRange represents a start and end date for analytics queries
+type DateRange struct {
+	StartDate string `json:"start_date"`
+	EndDate   string `json:"end_date"`
+}
+
+// FunnelStep represents a single step in the conversion funnel
+type FunnelStep struct {
+	Name  string  `json:"name"`
+	Count int     `json:"count"`
+	Rate  float64 `json:"rate,omitempty"`
+}
+
+// FunnelAnalytics contains conversion funnel data for a date range
+type FunnelAnalytics struct {
+	Period            DateRange    `json:"period"`
+	Steps             []FunnelStep `json:"steps"`
+	OverallConversion float64      `json:"overall_conversion"`
+}
+
+// PageStats represents page view statistics
+type PageStats struct {
+	Path  string `json:"path"`
+	Views int    `json:"views"`
+}
+
+// EngagementAnalytics contains user engagement data for a date range
+type EngagementAnalytics struct {
+	Period             DateRange          `json:"period"`
+	TotalSessions      int                `json:"total_sessions"`
+	AvgSessionDuration int                `json:"avg_session_duration_seconds"`
+	BounceRate         float64            `json:"bounce_rate"`
+	DeviceBreakdown    map[string]float64 `json:"device_breakdown"`
+	TopPages           []PageStats        `json:"top_pages"`
+}
+
 // ==================== ANALYTICS REPOSITORY ====================
 
 // AnalyticsRepository defines the interface for analytics data access
@@ -163,6 +199,9 @@ type AnalyticsRepository interface {
 
 	// ResetDashboardCurrent resets all dashboard counters by deleting the DASHBOARD#CURRENT item
 	ResetDashboardCurrent(ctx context.Context) error
+
+	// GetDailyAggregates retrieves pre-computed daily aggregate records for a prefix and date range
+	GetDailyAggregates(ctx context.Context, prefix string, startDate string, endDate string) ([]map[string]interface{}, error)
 }
 
 // ==================== ANALYTICS SERVICE ====================
@@ -186,6 +225,12 @@ type AnalyticsService interface {
 
 	// GetInventoryAnalytics retrieves inventory analytics
 	GetInventoryAnalytics(ctx context.Context) (*InventoryAnalytics, error)
+
+	// GetFunnelAnalytics retrieves conversion funnel analytics for a date range
+	GetFunnelAnalytics(ctx context.Context, startDate, endDate string) (*FunnelAnalytics, error)
+
+	// GetEngagementAnalytics retrieves user engagement analytics for a date range
+	GetEngagementAnalytics(ctx context.Context, startDate, endDate string) (*EngagementAnalytics, error)
 }
 
 // SalesAnalyticsRequest contains parameters for sales analytics

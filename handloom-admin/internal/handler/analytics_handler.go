@@ -199,3 +199,45 @@ func (h *AnalyticsHandler) GetInventoryAnalytics(w http.ResponseWriter, r *http.
 
 	response.JSON(w, http.StatusOK, analytics)
 }
+
+// GetFunnelAnalytics retrieves conversion funnel analytics
+// GET /admin/analytics/funnel
+func (h *AnalyticsHandler) GetFunnelAnalytics(w http.ResponseWriter, r *http.Request) {
+	startDate := r.URL.Query().Get("start_date")
+	endDate := r.URL.Query().Get("end_date")
+
+	// Default to last 7 days if not provided
+	if startDate == "" || endDate == "" {
+		endDate = time.Now().Format("2006-01-02")
+		startDate = time.Now().AddDate(0, 0, -7).Format("2006-01-02")
+	}
+
+	result, err := h.analyticsService.GetFunnelAnalytics(r.Context(), startDate, endDate)
+	if err != nil {
+		response.Error(w, err)
+		return
+	}
+
+	response.JSON(w, http.StatusOK, result)
+}
+
+// GetEngagementAnalytics retrieves user engagement analytics
+// GET /admin/analytics/engagement
+func (h *AnalyticsHandler) GetEngagementAnalytics(w http.ResponseWriter, r *http.Request) {
+	startDate := r.URL.Query().Get("start_date")
+	endDate := r.URL.Query().Get("end_date")
+
+	// Default to last 7 days if not provided
+	if startDate == "" || endDate == "" {
+		endDate = time.Now().Format("2006-01-02")
+		startDate = time.Now().AddDate(0, 0, -7).Format("2006-01-02")
+	}
+
+	result, err := h.analyticsService.GetEngagementAnalytics(r.Context(), startDate, endDate)
+	if err != nil {
+		response.Error(w, err)
+		return
+	}
+
+	response.JSON(w, http.StatusOK, result)
+}

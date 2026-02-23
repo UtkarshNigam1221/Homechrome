@@ -14,5 +14,7 @@ func NewAnalyticsRouter(r *chi.Mux, h *handler.AnalyticsHandler) {
 		r.Get("/top-categories", h.GetTopCategories)
 		r.Get("/customers", h.GetCustomerAnalytics)
 		r.Get("/inventory", h.GetInventoryAnalytics)
+		r.Get("/funnel", h.GetFunnelAnalytics)
+		r.Get("/engagement", h.GetEngagementAnalytics)
 	})
 }

@@ -174,5 +174,47 @@ func (r *AnalyticsRepository) ResetDashboardCurrent(ctx context.Context) error {
 	return err
 }
 
+// GetDailyAggregates retrieves pre-computed daily aggregate records for a prefix and date range.
+// It iterates over each date from startDate to endDate and does a GetItem for
+// PK={prefix}#DAILY#{date}, SK=METADATA.
+func (r *AnalyticsRepository) GetDailyAggregates(ctx context.Context, prefix string, startDate string, endDate string) ([]map[string]interface{}, error) {
+	start, err := time.Parse("2006-01-02", startDate)
+	if err != nil {
+		return nil, fmt.Errorf("invalid start_date: %w", err)
+	}
+	end, err := time.Parse("2006-01-02", endDate)
+	if err != nil {
+		return nil, fmt.Errorf("invalid end_date: %w", err)
+	}
+
+	var results []map[string]interface{}
+	for d := start; !d.After(end); d = d.AddDate(0, 0, 1) {
+		dateStr := d.Format("2006-01-02")
+		pk := fmt.Sprintf("%s#DAILY#%s", prefix, dateStr)
+
+		result, err := r.client.db.GetItem(ctx, &dynamodb.GetItemInput{
+			TableName: aws.String(r.client.analyticsTable),
+			Key: map[string]types.AttributeValue{
+				"PK": &types.AttributeValueMemberS{Value: pk},
+				"SK": &types.AttributeValueMemberS{Value: "METADATA"},
+			},
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to get daily aggregate for %s: %w", dateStr, err)
+		}
+		if result.Item == nil {
+			continue
+		}
+
+		var item map[string]interface{}
+		if err := attributevalue.UnmarshalMap(result.Item, &item); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal daily aggregate for %s: %w", dateStr, err)
+		}
+		results = append(results, item)
+	}
+
+	return results, nil
+}
+
 // Ensure interface compliance
 var _ domain.AnalyticsRepository = (*AnalyticsRepository)(nil)
