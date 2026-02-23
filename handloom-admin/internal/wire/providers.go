@@ -125,6 +125,11 @@ func ProvideAuditRepository(client *dynamodb.Client) domain.AuditRepository {
 	return dynamodb.NewAuditRepository(client)
 }
 
+// ProvideEventsRepository creates a new EventsRepository
+func ProvideEventsRepository(client *dynamodb.Client) domain.EventsRepository {
+	return dynamodb.NewEventsRepository(client)
+}
+
 // RepositorySet contains all repository providers
 var RepositorySet = wire.NewSet(
 	ProvideUserRepository,
@@ -142,6 +147,7 @@ var RepositorySet = wire.NewSet(
 	ProvideArtisanRepository,
 	ProvideReportRepository,
 	ProvideAuditRepository,
+	ProvideEventsRepository,
 )
 
 // ============================================================================
