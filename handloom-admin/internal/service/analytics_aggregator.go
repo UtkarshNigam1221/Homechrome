@@ -55,7 +55,33 @@ func (a *AnalyticsAggregator) AggregateDate(ctx context.Context, date string) er
 	a.aggregateEngagement(ctx, date, events)
 	a.aggregateProducts(ctx, date, events)
 
+	// Archive yesterday's live counters and reset for the new day
+	a.resetDashboardCounters(ctx, date)
+
 	return nil
+}
+
+// resetDashboardCounters archives the current live dashboard counters as a
+// historical record for the given date and then resets DASHBOARD#CURRENT to
+// zeros so the new day starts fresh.
+func (a *AnalyticsAggregator) resetDashboardCounters(ctx context.Context, date string) {
+	// Read current counters
+	stats, err := a.analyticsRepo.GetDashboardStats(ctx)
+	if err != nil {
+		a.logger.WithContext(ctx).WithError(err).Error("Failed to read dashboard stats for archival")
+		return
+	}
+
+	// Archive as historical record
+	if err := a.analyticsRepo.PutDailyStats(ctx, date, stats); err != nil {
+		a.logger.WithContext(ctx).WithError(err).Error("Failed to archive dashboard stats")
+		return
+	}
+
+	// Reset current counters
+	if err := a.analyticsRepo.ResetDashboardCurrent(ctx); err != nil {
+		a.logger.WithContext(ctx).WithError(err).Error("Failed to reset dashboard counters")
+	}
 }
 
 // ---------------------------------------------------------------------------

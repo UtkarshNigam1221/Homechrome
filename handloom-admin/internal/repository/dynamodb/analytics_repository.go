@@ -144,5 +144,35 @@ func (r *AnalyticsRepository) PutDailyAggregate(ctx context.Context, pk string, 
 	return err
 }
 
+// PutDailyStats archives the current dashboard counters as a historical record for the given date.
+// Stored under PK=DASHBOARD#STATS#<date> SK=METADATA.
+func (r *AnalyticsRepository) PutDailyStats(ctx context.Context, date string, stats *domain.DashboardStats) error {
+	item, err := attributevalue.MarshalMap(stats)
+	if err != nil {
+		return err
+	}
+	item["PK"] = &types.AttributeValueMemberS{Value: "DASHBOARD#STATS#" + date}
+	item["SK"] = &types.AttributeValueMemberS{Value: "METADATA"}
+
+	_, err = r.client.db.PutItem(ctx, &dynamodb.PutItemInput{
+		TableName: aws.String(r.client.analyticsTable),
+		Item:      item,
+	})
+	return err
+}
+
+// ResetDashboardCurrent resets all counters to zero by deleting the DASHBOARD#CURRENT item.
+// The next IncrementDashboardCounter call will recreate it via DynamoDB ADD on a non-existent item.
+func (r *AnalyticsRepository) ResetDashboardCurrent(ctx context.Context) error {
+	_, err := r.client.db.DeleteItem(ctx, &dynamodb.DeleteItemInput{
+		TableName: aws.String(r.client.analyticsTable),
+		Key: map[string]types.AttributeValue{
+			"PK": &types.AttributeValueMemberS{Value: "DASHBOARD#CURRENT"},
+			"SK": &types.AttributeValueMemberS{Value: "METADATA"},
+		},
+	})
+	return err
+}
+
 // Ensure interface compliance
 var _ domain.AnalyticsRepository = (*AnalyticsRepository)(nil)

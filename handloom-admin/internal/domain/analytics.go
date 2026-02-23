@@ -157,6 +157,12 @@ type AnalyticsRepository interface {
 
 	// PutDailyAggregate writes a pre-computed daily aggregate record to the analytics table
 	PutDailyAggregate(ctx context.Context, pk string, sk string, data interface{}) error
+
+	// PutDailyStats archives the current dashboard counters as a historical record for the given date
+	PutDailyStats(ctx context.Context, date string, stats *DashboardStats) error
+
+	// ResetDashboardCurrent resets all dashboard counters by deleting the DASHBOARD#CURRENT item
+	ResetDashboardCurrent(ctx context.Context) error
 }
 
 // ==================== ANALYTICS SERVICE ====================
