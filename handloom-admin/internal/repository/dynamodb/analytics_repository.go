@@ -127,5 +127,22 @@ func (r *AnalyticsRepository) IncrementDashboardCounter(ctx context.Context, fie
 	return err
 }
 
+// PutDailyAggregate writes a pre-computed daily aggregate record to the analytics table.
+// The data struct is marshalled and the PK/SK keys are set explicitly.
+func (r *AnalyticsRepository) PutDailyAggregate(ctx context.Context, pk string, sk string, data interface{}) error {
+	item, err := attributevalue.MarshalMap(data)
+	if err != nil {
+		return err
+	}
+	item["PK"] = &types.AttributeValueMemberS{Value: pk}
+	item["SK"] = &types.AttributeValueMemberS{Value: sk}
+
+	_, err = r.client.db.PutItem(ctx, &dynamodb.PutItemInput{
+		TableName: aws.String(r.client.analyticsTable),
+		Item:      item,
+	})
+	return err
+}
+
 // Ensure interface compliance
 var _ domain.AnalyticsRepository = (*AnalyticsRepository)(nil)

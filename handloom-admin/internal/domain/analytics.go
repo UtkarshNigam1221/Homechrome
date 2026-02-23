@@ -154,6 +154,9 @@ type AnalyticsRepository interface {
 
 	// IncrementDashboardCounter atomically increments a counter field on the DASHBOARD#CURRENT item
 	IncrementDashboardCounter(ctx context.Context, field string, amount int64) error
+
+	// PutDailyAggregate writes a pre-computed daily aggregate record to the analytics table
+	PutDailyAggregate(ctx context.Context, pk string, sk string, data interface{}) error
 }
 
 // ==================== ANALYTICS SERVICE ====================
