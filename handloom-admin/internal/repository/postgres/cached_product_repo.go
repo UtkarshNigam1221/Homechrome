@@ -21,8 +21,10 @@ const (
 	prodListPrefix = "prod:list:"
 )
 
-func prodKey(id string) string         { return fmt.Sprintf("prod:%s", id) }
+func prodKey(id string) string          { return fmt.Sprintf("prod:%s", id) }
+func prodSKUKey(sku string) string      { return fmt.Sprintf("prod:sku:%s", sku) }
 func prodCatPrefix(catID string) string { return fmt.Sprintf("prod:cat:%s:", catID) }
+func prodCatAllKey(catID string) string { return fmt.Sprintf("prod:cat:%s:all", catID) }
 func prodAttrKey(catID string) string   { return fmt.Sprintf("prod:attr:%s", catID) }
 
 // prodListKey builds a deterministic cache key from a ListProductsRequest by
@@ -111,13 +113,23 @@ func (r *CachedProductRepository) GetByID(ctx context.Context, id string) (*doma
 }
 
 func (r *CachedProductRepository) GetBySKU(ctx context.Context, sku string) (*domain.Product, error) {
-	return r.inner.GetBySKU(ctx, sku)
+	key := prodSKUKey(sku)
+	if v, ok := r.cache.Get(key); ok {
+		return v.(*domain.Product), nil
+	}
+	p, err := r.inner.GetBySKU(ctx, sku)
+	if err != nil {
+		return nil, err
+	}
+	r.cache.Set(key, p, prodItemTTL)
+	return p, nil
 }
 
 func (r *CachedProductRepository) Update(ctx context.Context, product *domain.Product) error {
 	err := r.inner.Update(ctx, product)
 	if err == nil {
 		r.cache.Delete(prodKey(product.ID))
+		r.cache.Delete(prodSKUKey(product.SKU))
 		r.invalidateForCategory(product.CategoryID)
 	}
 	return err
@@ -129,6 +141,7 @@ func (r *CachedProductRepository) Delete(ctx context.Context, id string) error {
 	if err == nil {
 		r.cache.Delete(prodKey(id))
 		if p != nil {
+			r.cache.Delete(prodSKUKey(p.SKU))
 			r.invalidateForCategory(p.CategoryID)
 		}
 	}
@@ -153,7 +166,30 @@ func (r *CachedProductRepository) List(ctx context.Context, req domain.ListProdu
 }
 
 func (r *CachedProductRepository) BatchGetByIDs(ctx context.Context, ids []string) ([]*domain.Product, error) {
-	return r.inner.BatchGetByIDs(ctx, ids)
+	results := make([]*domain.Product, 0, len(ids))
+	var missIDs []string
+
+	for _, id := range ids {
+		if v, ok := r.cache.Get(prodKey(id)); ok {
+			results = append(results, v.(*domain.Product))
+		} else {
+			missIDs = append(missIDs, id)
+		}
+	}
+
+	if len(missIDs) == 0 {
+		return results, nil
+	}
+
+	fetched, err := r.inner.BatchGetByIDs(ctx, missIDs)
+	if err != nil {
+		return nil, err
+	}
+	for _, p := range fetched {
+		r.cache.Set(prodKey(p.ID), p, prodItemTTL)
+		results = append(results, p)
+	}
+	return results, nil
 }
 
 func (r *CachedProductRepository) BatchUpdateSortOrder(ctx context.Context, products []*domain.Product) error {
@@ -168,7 +204,16 @@ func (r *CachedProductRepository) BatchUpdateSortOrder(ctx context.Context, prod
 }
 
 func (r *CachedProductRepository) GetByCategoryAll(ctx context.Context, categoryID string) ([]*domain.Product, error) {
-	return r.inner.GetByCategoryAll(ctx, categoryID)
+	key := prodCatAllKey(categoryID)
+	if v, ok := r.cache.Get(key); ok {
+		return v.([]*domain.Product), nil
+	}
+	products, err := r.inner.GetByCategoryAll(ctx, categoryID)
+	if err != nil {
+		return nil, err
+	}
+	r.cache.Set(key, products, prodItemTTL)
+	return products, nil
 }
 
 func (r *CachedProductRepository) GetAttributeFilterOptions(ctx context.Context, categoryID string, attrNames []string) (map[string][]string, error) {
