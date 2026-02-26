@@ -14,7 +14,7 @@ interface PageProps {
 async function getCategory(slug: string): Promise<Category | null> {
   try {
     const res = await fetch(`${API_BASE}/api/v1/store/catalog/categories/${slug}`, {
-      next: { revalidate: 300 },
+      next: { revalidate: 3600 },
     });
     if (!res.ok) return null;
     const json = await res.json();
@@ -28,7 +28,7 @@ async function getCategoryProducts(categoryId: string): Promise<Product[]> {
   try {
     const res = await fetch(
       `${API_BASE}/api/v1/store/catalog/products?category_id=${categoryId}`,
-      { next: { revalidate: 300 } },
+      { next: { revalidate: 3600 } },
     );
     if (!res.ok) return [];
     const json = await res.json();

@@ -14,7 +14,7 @@ interface PageProps {
 async function getProduct(slug: string): Promise<Product | null> {
   try {
     const res = await fetch(`${API_BASE}/api/v1/store/catalog/products/${slug}`, {
-      next: { revalidate: 120 },
+      next: { revalidate: 3600 },
     });
     if (!res.ok) return null;
     const json = await res.json();

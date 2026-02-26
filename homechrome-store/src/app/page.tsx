@@ -11,7 +11,7 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8081';
 async function getCategories(): Promise<Category[]> {
   try {
     const res = await fetch(`${API_BASE}/api/v1/store/catalog/categories`, {
-      next: { revalidate: 300 },
+      next: { revalidate: 3600 },
     });
     if (!res.ok) return [];
     const json = await res.json();
@@ -24,7 +24,7 @@ async function getCategories(): Promise<Category[]> {
 async function getFeaturedProducts(): Promise<Product[]> {
   try {
     const res = await fetch(`${API_BASE}/api/v1/store/catalog/products?limit=8`, {
-      next: { revalidate: 300 },
+      next: { revalidate: 3600 },
     });
     if (!res.ok) return [];
     const json = await res.json();
