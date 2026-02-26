@@ -1,2 +1,2 @@
-ALTER TABLE inventory DROP COLUMN product_sku;
-ALTER TABLE inventory DROP COLUMN product_name;
+ALTER TABLE inventory DROP COLUMN IF EXISTS product_sku;
+ALTER TABLE inventory DROP COLUMN IF EXISTS product_name;
