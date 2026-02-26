@@ -66,8 +66,7 @@ type StoreProduct struct {
 	Description string `json:"description,omitempty"`
 
 	// Relations
-	CategoryID string  `json:"category_id"`
-	ArtisanID  *string `json:"artisan_id,omitempty"`
+	CategoryID string `json:"category_id"`
 
 	// Pricing (in paise) — CostPrice intentionally excluded
 	BasePrice    int64  `json:"base_price"`
@@ -154,7 +153,6 @@ func toStoreProduct(p *domain.Product, inStock bool) *StoreProduct {
 		SKU:                   p.SKU,
 		Description:           p.Description,
 		CategoryID:            p.CategoryID,
-		ArtisanID:             p.ArtisanID,
 		BasePrice:             p.BasePrice,
 		SellingPrice:          p.SellingPrice,
 		Currency:              p.Currency,

@@ -6,12 +6,14 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/georgysavva/scany/v2/pgxscan"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/handloom/admin/internal/domain"
+	"github.com/handloom/admin/internal/repository/postgres/querybuilder"
 	apperrors "github.com/handloom/admin/pkg/errors"
 )
 
@@ -36,23 +38,25 @@ func (r *CategoryRepository) Create(ctx context.Context, category *domain.Catego
 	if err != nil {
 		return apperrors.Internal(err)
 	}
-	defer tx.Rollback(ctx) //nolint:errcheck
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
 
-	_, err = tx.Exec(ctx, `
-		INSERT INTO categories (id, name, slug, description, image_url, status, product_count, created_at, updated_at, created_by, updated_by)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
-		category.ID,
-		category.Name,
-		category.Slug,
-		category.Description,
-		category.ImageURL,
-		string(category.Status),
-		category.ProductCount,
-		category.CreatedAt,
-		category.UpdatedAt,
-		category.CreatedBy,
-		category.UpdatedBy,
-	)
+	qb := querybuilder.Insert("categories").
+		Set(ColID, category.ID).
+		Set(ColName, category.Name).
+		Set(ColSlug, category.Slug).
+		Set(ColDescription, category.Description).
+		Set(ColImageURL, category.ImageURL).
+		Set(ColStatus, string(category.Status)).
+		Set(ColProductCount, category.ProductCount).
+		Set(ColCreatedAt, category.CreatedAt).
+		Set(ColUpdatedAt, category.UpdatedAt).
+		Set(ColCreatedBy, category.CreatedBy).
+		Set(ColUpdatedBy, category.UpdatedBy)
+
+	query, args := qb.Build()
+	_, err = tx.Exec(ctx, query, args...)
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
@@ -61,11 +65,11 @@ func (r *CategoryRepository) Create(ctx context.Context, category *domain.Catego
 		return apperrors.Internal(err)
 	}
 
-	if err := insertAttributes(ctx, tx, category.ID, category.OwnAttributes); err != nil {
+	if err = insertAttributes(ctx, tx, category.ID, category.OwnAttributes); err != nil {
 		return err
 	}
 
-	if err := tx.Commit(ctx); err != nil {
+	if err = tx.Commit(ctx); err != nil {
 		return apperrors.Internal(err)
 	}
 
@@ -74,28 +78,18 @@ func (r *CategoryRepository) Create(ctx context.Context, category *domain.Catego
 
 // GetByID retrieves a category by its ID, including all attributes and their options.
 func (r *CategoryRepository) GetByID(ctx context.Context, id string) (*domain.Category, error) {
-	// 1. Fetch the category row.
+	qb := querybuilder.Select(categoryColumns...).From("categories").Where(ColID, id)
+	query, args := qb.Build()
+
 	cat := &domain.Category{}
-	var status string
-	err := r.pool.QueryRow(ctx, `
-		SELECT id, name, slug, description, image_url, status, product_count,
-		       created_at, updated_at, created_by, updated_by
-		FROM categories WHERE id = $1`, id,
-	).Scan(
-		&cat.ID, &cat.Name, &cat.Slug, &cat.Description, &cat.ImageURL,
-		&status, &cat.ProductCount,
-		&cat.CreatedAt, &cat.UpdatedAt, &cat.CreatedBy, &cat.UpdatedBy,
-	)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+	if err := pgxscan.Get(ctx, r.pool, cat, query, args...); err != nil {
+		if pgxscan.NotFound(err) {
 			return nil, apperrors.New(apperrors.ErrCodeCategoryNotFound, "Category not found")
 		}
 		return nil, apperrors.Internal(err)
 	}
-	cat.Status = domain.CategoryStatus(status)
 
-	// 2. Fetch attributes for this category.
-	attrs, err := r.fetchAttributes(ctx, id)
+	attrs, err := r.fetchAttributes(ctx, cat.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -113,22 +107,22 @@ func (r *CategoryRepository) Update(ctx context.Context, category *domain.Catego
 	if err != nil {
 		return apperrors.Internal(err)
 	}
-	defer tx.Rollback(ctx) //nolint:errcheck
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
 
-	cmdTag, err := tx.Exec(ctx, `
-		UPDATE categories
-		SET name = $2, slug = $3, description = $4, image_url = $5,
-		    status = $6, updated_at = $7, updated_by = $8
-		WHERE id = $1`,
-		category.ID,
-		category.Name,
-		category.Slug,
-		category.Description,
-		category.ImageURL,
-		string(category.Status),
-		category.UpdatedAt,
-		category.UpdatedBy,
-	)
+	qb := querybuilder.Update("categories").
+		Set(ColName, category.Name).
+		Set(ColSlug, category.Slug).
+		Set(ColDescription, category.Description).
+		Set(ColImageURL, category.ImageURL).
+		Set(ColStatus, string(category.Status)).
+		Set(ColUpdatedAt, category.UpdatedAt).
+		Set(ColUpdatedBy, category.UpdatedBy).
+		Where(ColID, category.ID)
+
+	query, args := qb.Build()
+	cmdTag, err := tx.Exec(ctx, query, args...)
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
@@ -175,63 +169,18 @@ func (r *CategoryRepository) Delete(ctx context.Context, id string) error {
 func (r *CategoryRepository) List(ctx context.Context, req domain.ListCategoriesRequest) (*domain.ListCategoriesResponse, error) {
 	limit, offset := pageParams(req.PaginationRequest)
 
-	// Build the dynamic query.
-	query := `SELECT id, name, slug, description, image_url, status, product_count,
-	                 created_at, updated_at, created_by, updated_by
-	          FROM categories`
+	qb := querybuilder.Select(categoryColumns...).
+		From("categories").
+		WithFilter(req.Status != nil, ColStatus, string(deref(req.Status))).
+		WithLike(req.Search != "", ColName, "%"+req.Search+"%").
+		OrderBy(ColCreatedAt + " DESC").
+		Limit(limit + 1).
+		Offset(offset)
 
-	var conditions []string
-	var args []interface{}
-	argIdx := 1
-
-	if req.Status != nil {
-		conditions = append(conditions, fmt.Sprintf("status = $%d", argIdx))
-		args = append(args, string(*req.Status))
-		argIdx++
-	}
-	if req.Search != "" {
-		conditions = append(conditions, fmt.Sprintf("name ILIKE $%d", argIdx))
-		args = append(args, "%"+req.Search+"%")
-		argIdx++
-	}
-
-	if len(conditions) > 0 {
-		query += " WHERE "
-		for i, cond := range conditions {
-			if i > 0 {
-				query += " AND "
-			}
-			query += cond
-		}
-	}
-
-	query += " ORDER BY created_at DESC"
-
-	// Fetch limit+1 to determine HasMore.
-	query += fmt.Sprintf(" LIMIT $%d OFFSET $%d", argIdx, argIdx+1)
-	args = append(args, limit+1, offset)
-
-	rows, err := r.pool.Query(ctx, query, args...)
-	if err != nil {
-		return nil, apperrors.Internal(err)
-	}
-	defer rows.Close()
+	query, args := qb.Build()
 
 	var categories []*domain.Category
-	for rows.Next() {
-		cat := &domain.Category{}
-		var status string
-		if err := rows.Scan(
-			&cat.ID, &cat.Name, &cat.Slug, &cat.Description, &cat.ImageURL,
-			&status, &cat.ProductCount,
-			&cat.CreatedAt, &cat.UpdatedAt, &cat.CreatedBy, &cat.UpdatedBy,
-		); err != nil {
-			return nil, apperrors.Internal(err)
-		}
-		cat.Status = domain.CategoryStatus(status)
-		categories = append(categories, cat)
-	}
-	if err := rows.Err(); err != nil {
+	if err := pgxscan.Select(ctx, r.pool, &categories, query, args...); err != nil {
 		return nil, apperrors.Internal(err)
 	}
 
@@ -251,12 +200,13 @@ func (r *CategoryRepository) List(ctx context.Context, req domain.ListCategories
 // IncrementProductCount atomically increments (or decrements) the product_count
 // for a category and updates the updated_at timestamp.
 func (r *CategoryRepository) IncrementProductCount(ctx context.Context, id string, delta int) error {
-	cmdTag, err := r.pool.Exec(ctx, `
-		UPDATE categories
-		SET product_count = product_count + $2, updated_at = NOW()
-		WHERE id = $1`,
-		id, delta,
-	)
+	qb := querybuilder.Update("categories").
+		SetRaw(ColProductCount, ColProductCount+" + %s", delta).
+		SetRaw(ColUpdatedAt, "NOW()").
+		Where(ColID, id)
+
+	query, args := qb.Build()
+	cmdTag, err := r.pool.Exec(ctx, query, args...)
 	if err != nil {
 		return apperrors.Internal(err)
 	}
@@ -273,18 +223,18 @@ func (r *CategoryRepository) IncrementProductCount(ctx context.Context, id strin
 func insertAttributes(ctx context.Context, tx pgx.Tx, categoryID string, attrs []domain.CategoryAttribute) error {
 	for _, attr := range attrs {
 		attrID := uuid.New().String()
-		_, err := tx.Exec(ctx, `
-			INSERT INTO category_attributes (id, category_id, name, label, type, required, searchable, display_order)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-			attrID,
-			categoryID,
-			attr.Name,
-			attr.Label,
-			string(attr.Type),
-			attr.Required,
-			attr.Searchable,
-			attr.DisplayOrder,
-		)
+		attrQB := querybuilder.Insert("category_attributes").
+			Set(ColID, attrID).
+			Set(ColCategoryID, categoryID).
+			Set(ColName, attr.Name).
+			Set(ColLabel, attr.Label).
+			Set(ColType, string(attr.Type)).
+			Set(ColRequired, attr.Required).
+			Set(ColSearchable, attr.Searchable).
+			Set(ColDisplayOrder, attr.DisplayOrder)
+
+		attrSQL, attrArgs := attrQB.Build()
+		_, err := tx.Exec(ctx, attrSQL, attrArgs...)
 		if err != nil {
 			var pgErr *pgconn.PgError
 			if errors.As(err, &pgErr) && pgErr.Code == "23505" {
@@ -295,15 +245,15 @@ func insertAttributes(ctx context.Context, tx pgx.Tx, categoryID string, attrs [
 
 		for sortOrder, opt := range attr.Options {
 			optID := uuid.New().String()
-			_, err := tx.Exec(ctx, `
-				INSERT INTO category_attribute_options (id, attribute_id, value, label, sort_order)
-				VALUES ($1, $2, $3, $4, $5)`,
-				optID,
-				attrID,
-				opt.Value,
-				opt.Label,
-				sortOrder,
-			)
+			optQB := querybuilder.Insert("category_attribute_options").
+				Set(ColID, optID).
+				Set(ColAttributeID, attrID).
+				Set(ColValue, opt.Value).
+				Set(ColLabel, opt.Label).
+				Set(ColSortOrder, sortOrder)
+
+			optSQL, optArgs := optQB.Build()
+			_, err := tx.Exec(ctx, optSQL, optArgs...)
 			if err != nil {
 				var pgErr *pgconn.PgError
 				if errors.As(err, &pgErr) && pgErr.Code == "23505" {

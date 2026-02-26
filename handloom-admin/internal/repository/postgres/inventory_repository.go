@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/georgysavva/scany/v2/pgxscan"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/handloom/admin/internal/domain"
+	"github.com/handloom/admin/internal/repository/postgres/querybuilder"
 	"github.com/handloom/admin/pkg/errors"
 )
 
@@ -29,18 +31,22 @@ func (r *InventoryRepository) Create(ctx context.Context, inventory *domain.Inve
 	inventory.CreatedAt = now
 	inventory.UpdatedAt = now
 
-	_, err := r.pool.Exec(ctx,
-		`INSERT INTO inventory (
-			id, product_id,
-			quantity, reserved_qty, available_qty,
-			low_stock_threshold, reorder_point, last_restock_at,
-			created_at, updated_at, created_by, updated_by
-		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
-		inventory.ID, inventory.ProductID,
-		inventory.Quantity, inventory.ReservedQty, inventory.AvailableQty,
-		inventory.LowStockThreshold, inventory.ReorderPoint, inventory.LastRestockAt,
-		inventory.CreatedAt, inventory.UpdatedAt, inventory.CreatedBy, inventory.UpdatedBy,
-	)
+	qb := querybuilder.Insert("inventory").
+		Set(ColID, inventory.ID).
+		Set(ColProductID, inventory.ProductID).
+		Set(ColQuantity, inventory.Quantity).
+		Set(ColReservedQty, inventory.ReservedQty).
+		Set(ColAvailableQty, inventory.AvailableQty).
+		Set(ColLowStockThreshold, inventory.LowStockThreshold).
+		Set(ColReorderPoint, inventory.ReorderPoint).
+		Set(ColLastRestockAt, inventory.LastRestockAt).
+		Set(ColCreatedAt, inventory.CreatedAt).
+		Set(ColUpdatedAt, inventory.UpdatedAt).
+		Set(ColCreatedBy, inventory.CreatedBy).
+		Set(ColUpdatedBy, inventory.UpdatedBy)
+
+	query, args := qb.Build()
+	_, err := r.pool.Exec(ctx, query, args...)
 	if err != nil {
 		return errors.Wrap(err, "failed to create inventory")
 	}
@@ -49,22 +55,12 @@ func (r *InventoryRepository) Create(ctx context.Context, inventory *domain.Inve
 
 // GetByProductID retrieves an inventory record by product ID.
 func (r *InventoryRepository) GetByProductID(ctx context.Context, productID string) (*domain.Inventory, error) {
-	row := r.pool.QueryRow(ctx,
-		`SELECT id, product_id,
-			quantity, reserved_qty, available_qty,
-			low_stock_threshold, reorder_point, last_restock_at,
-			created_at, updated_at, created_by, updated_by
-		FROM inventory WHERE product_id = $1`, productID)
+	qb := querybuilder.Select(inventoryColumns...).From("inventory").Where(ColProductID, productID)
+	query, args := qb.Build()
 
 	inv := &domain.Inventory{}
-	err := row.Scan(
-		&inv.ID, &inv.ProductID,
-		&inv.Quantity, &inv.ReservedQty, &inv.AvailableQty,
-		&inv.LowStockThreshold, &inv.ReorderPoint, &inv.LastRestockAt,
-		&inv.CreatedAt, &inv.UpdatedAt, &inv.CreatedBy, &inv.UpdatedBy,
-	)
-	if err != nil {
-		if err == pgx.ErrNoRows {
+	if err := pgxscan.Get(ctx, r.pool, inv, query, args...); err != nil {
+		if pgxscan.NotFound(err) {
 			return nil, errors.NotFound("Inventory not found")
 		}
 		return nil, errors.Wrap(err, "failed to get inventory")
@@ -76,17 +72,19 @@ func (r *InventoryRepository) GetByProductID(ctx context.Context, productID stri
 func (r *InventoryRepository) Update(ctx context.Context, inventory *domain.Inventory) error {
 	inventory.UpdatedAt = time.Now()
 
-	tag, err := r.pool.Exec(ctx,
-		`UPDATE inventory SET
-			quantity = $1, reserved_qty = $2, available_qty = $3,
-			low_stock_threshold = $4, reorder_point = $5, last_restock_at = $6,
-			updated_at = $7, updated_by = $8
-		WHERE product_id = $9`,
-		inventory.Quantity, inventory.ReservedQty, inventory.AvailableQty,
-		inventory.LowStockThreshold, inventory.ReorderPoint, inventory.LastRestockAt,
-		inventory.UpdatedAt, inventory.UpdatedBy,
-		inventory.ProductID,
-	)
+	qb := querybuilder.Update("inventory").
+		Set(ColQuantity, inventory.Quantity).
+		Set(ColReservedQty, inventory.ReservedQty).
+		Set(ColAvailableQty, inventory.AvailableQty).
+		Set(ColLowStockThreshold, inventory.LowStockThreshold).
+		Set(ColReorderPoint, inventory.ReorderPoint).
+		Set(ColLastRestockAt, inventory.LastRestockAt).
+		Set(ColUpdatedAt, inventory.UpdatedAt).
+		Set(ColUpdatedBy, inventory.UpdatedBy).
+		Where(ColProductID, inventory.ProductID)
+
+	query, args := qb.Build()
+	tag, err := r.pool.Exec(ctx, query, args...)
 	if err != nil {
 		return errors.Wrap(err, "failed to update inventory")
 	}
@@ -119,11 +117,16 @@ func (r *InventoryRepository) AddStock(ctx context.Context, productID string, qu
 		newQty := currentQty + quantity
 		availableQty := newQty - reservedQty
 
-		_, err = tx.Exec(ctx,
-			`UPDATE inventory SET quantity = $1, available_qty = $2, last_restock_at = $3, updated_at = $4, updated_by = $5
-			WHERE product_id = $6`,
-			newQty, availableQty, now, now, userID, productID,
-		)
+		updQB := querybuilder.Update("inventory").
+			Set(ColQuantity, newQty).
+			Set(ColAvailableQty, availableQty).
+			Set(ColLastRestockAt, now).
+			Set(ColUpdatedAt, now).
+			Set(ColUpdatedBy, userID).
+			Where(ColProductID, productID)
+
+		updSQL, updArgs := updQB.Build()
+		_, err = tx.Exec(ctx, updSQL, updArgs...)
 		if err != nil {
 			return errors.Wrap(err, "failed to update inventory")
 		}
@@ -142,14 +145,8 @@ func (r *InventoryRepository) AddStock(ctx context.Context, productID string, qu
 			CreatedBy:     userID,
 		}
 
-		_, err = tx.Exec(ctx,
-			`INSERT INTO inventory_transactions (id, product_id, type, quantity, previous_qty, new_qty, reason, reference_type, reference_id, created_at, created_by)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
-			txn.ID, txn.ProductID, string(txn.Type), txn.Quantity, txn.PreviousQty, txn.NewQty,
-			txn.Reason, txn.ReferenceType, txn.ReferenceID, txn.CreatedAt, txn.CreatedBy,
-		)
-		if err != nil {
-			return errors.Wrap(err, "failed to create inventory transaction")
+		if err := insertInventoryTransaction(ctx, tx, txn); err != nil {
+			return err
 		}
 
 		return nil
@@ -187,11 +184,15 @@ func (r *InventoryRepository) RemoveStock(ctx context.Context, productID string,
 		newQty := currentQty - quantity
 		newAvailable := newQty - reservedQty
 
-		_, err = tx.Exec(ctx,
-			`UPDATE inventory SET quantity = $1, available_qty = $2, updated_at = $3, updated_by = $4
-			WHERE product_id = $5`,
-			newQty, newAvailable, now, userID, productID,
-		)
+		updQB := querybuilder.Update("inventory").
+			Set(ColQuantity, newQty).
+			Set(ColAvailableQty, newAvailable).
+			Set(ColUpdatedAt, now).
+			Set(ColUpdatedBy, userID).
+			Where(ColProductID, productID)
+
+		updSQL, updArgs := updQB.Build()
+		_, err = tx.Exec(ctx, updSQL, updArgs...)
 		if err != nil {
 			return errors.Wrap(err, "failed to update inventory")
 		}
@@ -210,14 +211,8 @@ func (r *InventoryRepository) RemoveStock(ctx context.Context, productID string,
 			CreatedBy:     userID,
 		}
 
-		_, err = tx.Exec(ctx,
-			`INSERT INTO inventory_transactions (id, product_id, type, quantity, previous_qty, new_qty, reason, reference_type, reference_id, created_at, created_by)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
-			txn.ID, txn.ProductID, string(txn.Type), txn.Quantity, txn.PreviousQty, txn.NewQty,
-			txn.Reason, txn.ReferenceType, txn.ReferenceID, txn.CreatedAt, txn.CreatedBy,
-		)
-		if err != nil {
-			return errors.Wrap(err, "failed to create inventory transaction")
+		if err := insertInventoryTransaction(ctx, tx, txn); err != nil {
+			return err
 		}
 
 		return nil
@@ -254,11 +249,14 @@ func (r *InventoryRepository) ReserveStock(ctx context.Context, productID string
 		newReserved := reservedQty + quantity
 		newAvailable := currentQty - newReserved
 
-		_, err = tx.Exec(ctx,
-			`UPDATE inventory SET reserved_qty = $1, available_qty = $2, updated_at = $3
-			WHERE product_id = $4`,
-			newReserved, newAvailable, now, productID,
-		)
+		updQB := querybuilder.Update("inventory").
+			Set(ColReservedQty, newReserved).
+			Set(ColAvailableQty, newAvailable).
+			Set(ColUpdatedAt, now).
+			Where(ColProductID, productID)
+
+		updSQL, updArgs := updQB.Build()
+		_, err = tx.Exec(ctx, updSQL, updArgs...)
 		if err != nil {
 			return errors.Wrap(err, "failed to update inventory")
 		}
@@ -276,14 +274,8 @@ func (r *InventoryRepository) ReserveStock(ctx context.Context, productID string
 			CreatedAt:     now,
 		}
 
-		_, err = tx.Exec(ctx,
-			`INSERT INTO inventory_transactions (id, product_id, type, quantity, previous_qty, new_qty, reason, reference_type, reference_id, created_at, created_by)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
-			txn.ID, txn.ProductID, string(txn.Type), txn.Quantity, txn.PreviousQty, txn.NewQty,
-			txn.Reason, txn.ReferenceType, txn.ReferenceID, txn.CreatedAt, txn.CreatedBy,
-		)
-		if err != nil {
-			return errors.Wrap(err, "failed to create inventory transaction")
+		if err := insertInventoryTransaction(ctx, tx, txn); err != nil {
+			return err
 		}
 
 		return nil
@@ -319,11 +311,14 @@ func (r *InventoryRepository) ReleaseStock(ctx context.Context, productID string
 		newReserved := reservedQty - quantity
 		newAvailable := currentQty - newReserved
 
-		_, err = tx.Exec(ctx,
-			`UPDATE inventory SET reserved_qty = $1, available_qty = $2, updated_at = $3
-			WHERE product_id = $4`,
-			newReserved, newAvailable, now, productID,
-		)
+		updQB := querybuilder.Update("inventory").
+			Set(ColReservedQty, newReserved).
+			Set(ColAvailableQty, newAvailable).
+			Set(ColUpdatedAt, now).
+			Where(ColProductID, productID)
+
+		updSQL, updArgs := updQB.Build()
+		_, err = tx.Exec(ctx, updSQL, updArgs...)
 		if err != nil {
 			return errors.Wrap(err, "failed to update inventory")
 		}
@@ -341,14 +336,8 @@ func (r *InventoryRepository) ReleaseStock(ctx context.Context, productID string
 			CreatedAt:     now,
 		}
 
-		_, err = tx.Exec(ctx,
-			`INSERT INTO inventory_transactions (id, product_id, type, quantity, previous_qty, new_qty, reason, reference_type, reference_id, created_at, created_by)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
-			txn.ID, txn.ProductID, string(txn.Type), txn.Quantity, txn.PreviousQty, txn.NewQty,
-			txn.Reason, txn.ReferenceType, txn.ReferenceID, txn.CreatedAt, txn.CreatedBy,
-		)
-		if err != nil {
-			return errors.Wrap(err, "failed to create inventory transaction")
+		if err := insertInventoryTransaction(ctx, tx, txn); err != nil {
+			return err
 		}
 
 		return nil
@@ -379,11 +368,15 @@ func (r *InventoryRepository) AdjustStock(ctx context.Context, productID string,
 		now := time.Now()
 		availableQty := newQuantity - reservedQty
 
-		_, err = tx.Exec(ctx,
-			`UPDATE inventory SET quantity = $1, available_qty = $2, updated_at = $3, updated_by = $4
-			WHERE product_id = $5`,
-			newQuantity, availableQty, now, userID, productID,
-		)
+		updQB := querybuilder.Update("inventory").
+			Set(ColQuantity, newQuantity).
+			Set(ColAvailableQty, availableQty).
+			Set(ColUpdatedAt, now).
+			Set(ColUpdatedBy, userID).
+			Where(ColProductID, productID)
+
+		updSQL, updArgs := updQB.Build()
+		_, err = tx.Exec(ctx, updSQL, updArgs...)
 		if err != nil {
 			return errors.Wrap(err, "failed to update inventory")
 		}
@@ -408,14 +401,8 @@ func (r *InventoryRepository) AdjustStock(ctx context.Context, productID string,
 			CreatedBy:     userID,
 		}
 
-		_, err = tx.Exec(ctx,
-			`INSERT INTO inventory_transactions (id, product_id, type, quantity, previous_qty, new_qty, reason, reference_type, reference_id, created_at, created_by)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
-			txn.ID, txn.ProductID, string(txn.Type), txn.Quantity, txn.PreviousQty, txn.NewQty,
-			txn.Reason, txn.ReferenceType, txn.ReferenceID, txn.CreatedAt, txn.CreatedBy,
-		)
-		if err != nil {
-			return errors.Wrap(err, "failed to create inventory transaction")
+		if err := insertInventoryTransaction(ctx, tx, txn); err != nil {
+			return err
 		}
 
 		return nil
@@ -426,38 +413,45 @@ func (r *InventoryRepository) AdjustStock(ctx context.Context, productID string,
 	return txn, nil
 }
 
+// insertInventoryTransaction inserts a single inventory_transactions row.
+func insertInventoryTransaction(ctx context.Context, tx pgx.Tx, txn *domain.InventoryTransaction) error {
+	qb := querybuilder.Insert("inventory_transactions").
+		Set(ColID, txn.ID).
+		Set(ColProductID, txn.ProductID).
+		Set(ColType, string(txn.Type)).
+		Set(ColQuantity, txn.Quantity).
+		Set(ColPreviousQty, txn.PreviousQty).
+		Set(ColNewQty, txn.NewQty).
+		Set(ColReason, txn.Reason).
+		Set(ColReferenceType, txn.ReferenceType).
+		Set(ColReferenceID, txn.ReferenceID).
+		Set(ColCreatedAt, txn.CreatedAt).
+		Set(ColCreatedBy, txn.CreatedBy)
+
+	query, args := qb.Build()
+	_, err := tx.Exec(ctx, query, args...)
+	if err != nil {
+		return errors.Wrap(err, "failed to create inventory transaction")
+	}
+	return nil
+}
+
 // GetTransactions retrieves inventory transactions for a product, ordered newest first.
 func (r *InventoryRepository) GetTransactions(ctx context.Context, productID string, pagination domain.PaginationRequest) (*domain.ListInventoryTransactionsResponse, error) {
 	limit, offset := pageParams(pagination)
 
-	// Fetch one extra row to determine HasMore.
-	rows, err := r.pool.Query(ctx,
-		`SELECT id, product_id, type, quantity, previous_qty, new_qty,
-			reason, reference_type, reference_id, created_at, created_by
-		FROM inventory_transactions
-		WHERE product_id = $1
-		ORDER BY created_at DESC
-		LIMIT $2 OFFSET $3`,
-		productID, limit+1, offset,
-	)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to query inventory transactions")
-	}
-	defer rows.Close()
+	qb := querybuilder.Select(inventoryTxnColumns...).
+		From("inventory_transactions").
+		Where(ColProductID, productID).
+		OrderBy(ColCreatedAt + " DESC").
+		Limit(limit + 1).
+		Offset(offset)
+
+	query, args := qb.Build()
 
 	var transactions []*domain.InventoryTransaction
-	for rows.Next() {
-		t := &domain.InventoryTransaction{}
-		if err := rows.Scan(
-			&t.ID, &t.ProductID, &t.Type, &t.Quantity, &t.PreviousQty, &t.NewQty,
-			&t.Reason, &t.ReferenceType, &t.ReferenceID, &t.CreatedAt, &t.CreatedBy,
-		); err != nil {
-			return nil, errors.Wrap(err, "failed to scan inventory transaction")
-		}
-		transactions = append(transactions, t)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, errors.Wrap(err, "failed to iterate inventory transactions")
+	if err := pgxscan.Select(ctx, r.pool, &transactions, query, args...); err != nil {
+		return nil, errors.Wrap(err, "failed to query inventory transactions")
 	}
 
 	pg := buildPaginationResponse(limit, offset, len(transactions))
@@ -477,18 +471,21 @@ func (r *InventoryRepository) GetTransactions(ctx context.Context, productID str
 func (r *InventoryRepository) GetLowStockProducts(ctx context.Context, pagination domain.PaginationRequest) (*domain.ListInventoryResponse, error) {
 	limit, offset := pageParams(pagination)
 
-	rows, err := r.pool.Query(ctx,
-		`SELECT i.id, i.product_id, p.sku, p.name,
-			i.quantity, i.reserved_qty, i.available_qty,
-			i.low_stock_threshold, i.reorder_point, i.last_restock_at,
-			i.created_at, i.updated_at, i.created_by, i.updated_by
-		FROM inventory i
-		JOIN products p ON p.id = i.product_id
-		WHERE i.available_qty <= i.low_stock_threshold AND i.low_stock_threshold > 0
-		ORDER BY i.available_qty ASC
-		LIMIT $1 OFFSET $2`,
-		limit+1, offset,
-	)
+	qb := querybuilder.Select(
+		"i.id", "i.product_id", "p.sku", "p.name",
+		"i.quantity", "i.reserved_qty", "i.available_qty",
+		"i.low_stock_threshold", "i.reorder_point", "i.last_restock_at",
+		"i.created_at", "i.updated_at", "i.created_by", "i.updated_by",
+	).
+		From("inventory i").
+		LeftJoin("products p", "p.id = i.product_id").
+		WithRaw(true, "i.available_qty <= i.low_stock_threshold AND i.low_stock_threshold > 0").
+		OrderBy("i.available_qty ASC").
+		Limit(limit + 1).
+		Offset(offset)
+
+	query, args := qb.Build()
+	rows, err := r.pool.Query(ctx, query, args...)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to query low stock inventory")
 	}

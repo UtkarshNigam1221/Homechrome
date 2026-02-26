@@ -224,7 +224,6 @@ type CreateProductRequest struct {
 	WeaveType             string                 `json:"weave_type,omitempty"`
 	Origin                string                 `json:"origin,omitempty"`
 	CraftType             string                 `json:"craft_type,omitempty"`
-	ArtisanID             *string                `json:"artisan_id,omitempty"`
 	Images                []ProductImage         `json:"images,omitempty"`
 	Tags                  []string               `json:"tags,omitempty"`
 	InitialStock          int                    `json:"initial_stock"`
@@ -249,7 +248,6 @@ type UpdateProductRequest struct {
 	WeaveType             *string                `json:"weave_type,omitempty"`
 	Origin                *string                `json:"origin,omitempty"`
 	CraftType             *string                `json:"craft_type,omitempty"`
-	ArtisanID             *string                `json:"artisan_id,omitempty"`
 	Images                []ProductImage         `json:"images,omitempty"`
 	Tags                  []string               `json:"tags,omitempty"`
 	LowStockThreshold     *int                   `json:"low_stock_threshold,omitempty"`

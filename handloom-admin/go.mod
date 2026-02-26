@@ -11,9 +11,11 @@ require (
 	github.com/aws/aws-sdk-go-v2/feature/dynamodb/expression v1.6.16
 	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.27.0
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.96.0
+	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.41.2
 	github.com/aws/aws-sdk-go-v2/service/sns v1.39.11
 	github.com/aws/aws-sdk-go-v2/service/ssm v1.67.8
 	github.com/awslabs/aws-lambda-go-api-proxy v0.16.2
+	github.com/georgysavva/scany/v2 v2.1.4
 	github.com/go-chi/chi/v5 v5.0.11
 	github.com/go-chi/cors v1.2.1
 	github.com/go-chi/httprate v0.8.0
@@ -51,7 +53,6 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/internal/endpoint-discovery v1.8.11 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.13.17 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.19.17 // indirect
-	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.41.2 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sso v1.18.7 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.21.7 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.26.7 // indirect

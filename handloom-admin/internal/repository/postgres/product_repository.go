@@ -2,15 +2,16 @@ package postgres
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"time"
 
+	"github.com/georgysavva/scany/v2/pgxscan"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/handloom/admin/internal/domain"
+	"github.com/handloom/admin/internal/repository/postgres/querybuilder"
 	"github.com/handloom/admin/pkg/errors"
 )
 
@@ -36,6 +37,46 @@ type ProductRepository struct {
 // NewProductRepository creates a new ProductRepository.
 func NewProductRepository(pool *pgxpool.Pool) *ProductRepository {
 	return &ProductRepository{pool: pool}
+}
+
+// productRow is an intermediate scan target that handles the flattened
+// dimension columns (dim_length, dim_width, dim_height, dim_unit) which
+// don't map directly to the domain.Product.Dimensions struct.
+type productRow struct {
+	domain.Product
+	DimLength *float64 `db:"dim_length"`
+	DimWidth  *float64 `db:"dim_width"`
+	DimHeight *float64 `db:"dim_height"`
+	DimUnit   string   `db:"dim_unit"`
+}
+
+// toProduct converts a productRow into a *domain.Product, reconstructing
+// the Dimensions struct from the flat columns.
+func (r *productRow) toProduct() *domain.Product {
+	p := r.Product
+	if r.DimLength != nil || r.DimWidth != nil || r.DimHeight != nil {
+		d := &domain.Dimensions{Unit: r.DimUnit}
+		if r.DimLength != nil {
+			d.Length = *r.DimLength
+		}
+		if r.DimWidth != nil {
+			d.Width = *r.DimWidth
+		}
+		if r.DimHeight != nil {
+			d.Height = *r.DimHeight
+		}
+		p.Dimensions = d
+	}
+	return &p
+}
+
+// scanProductRows converts a slice of productRow into []*domain.Product.
+func scanProductRows(rows []productRow) []*domain.Product {
+	products := make([]*domain.Product, len(rows))
+	for i := range rows {
+		products[i] = rows[i].toProduct()
+	}
+	return products
 }
 
 // ---------------------------------------------------------------------------
@@ -65,29 +106,34 @@ func (r *ProductRepository) Create(ctx context.Context, product *domain.Product,
 	product.CreatedAt = now
 	product.UpdatedAt = now
 
-	_, err = tx.Exec(ctx, `
-		INSERT INTO products (
-			id, name, slug, sku, description, category_id,
-			base_price, selling_price, cost_price, currency,
-			dim_length, dim_width, dim_height, dim_unit,
-			weight, allow_custom_dimensions, pricing_rule_id,
-			tags, status, sort_order,
-			created_at, updated_at, created_by, updated_by
-		) VALUES (
-			$1,$2,$3,$4,$5,$6,
-			$7,$8,$9,$10,
-			$11,$12,$13,$14,
-			$15,$16,$17,
-			$18,$19,$20,
-			$21,$22,$23,$24
-		)`,
-		product.ID, product.Name, product.Slug, product.SKU, product.Description, product.CategoryID,
-		product.BasePrice, product.SellingPrice, product.CostPrice, product.Currency,
-		dimLength, dimWidth, dimHeight, dimUnit,
-		product.Weight, product.AllowCustomDimensions, product.PricingRuleID,
-		product.Tags, string(product.Status), product.SortOrder,
-		product.CreatedAt, product.UpdatedAt, product.CreatedBy, product.UpdatedBy,
-	)
+	qb := querybuilder.Insert("products").
+		Set(ColID, product.ID).
+		Set(ColName, product.Name).
+		Set(ColSlug, product.Slug).
+		Set(ColSKU, product.SKU).
+		Set(ColDescription, product.Description).
+		Set(ColCategoryID, product.CategoryID).
+		Set(ColBasePrice, product.BasePrice).
+		Set(ColSellingPrice, product.SellingPrice).
+		Set(ColCostPrice, product.CostPrice).
+		Set(ColCurrency, product.Currency).
+		Set(ColDimLength, dimLength).
+		Set(ColDimWidth, dimWidth).
+		Set(ColDimHeight, dimHeight).
+		Set(ColDimUnit, dimUnit).
+		Set(ColWeight, product.Weight).
+		Set(ColAllowCustomDimensions, product.AllowCustomDimensions).
+		Set(ColPricingRuleID, product.PricingRuleID).
+		Set(ColTags, product.Tags).
+		Set(ColStatus, string(product.Status)).
+		Set(ColSortOrder, product.SortOrder).
+		Set(ColCreatedAt, product.CreatedAt).
+		Set(ColUpdatedAt, product.UpdatedAt).
+		Set(ColCreatedBy, product.CreatedBy).
+		Set(ColUpdatedBy, product.UpdatedBy)
+
+	query, args := qb.Build()
+	_, err = tx.Exec(ctx, query, args...)
 	if err != nil {
 		if strings.Contains(err.Error(), "duplicate key") {
 			if strings.Contains(err.Error(), "products_sku_key") {
@@ -116,18 +162,22 @@ func (r *ProductRepository) Create(ctx context.Context, product *domain.Product,
 		inventory.CreatedAt = now
 		inventory.UpdatedAt = now
 
-		_, err = tx.Exec(ctx, `
-			INSERT INTO inventory (
-				id, product_id,
-				quantity, reserved_qty, available_qty,
-				low_stock_threshold, reorder_point, last_restock_at,
-				created_at, updated_at, created_by, updated_by
-			) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
-			inventory.ID, inventory.ProductID,
-			inventory.Quantity, inventory.ReservedQty, inventory.AvailableQty,
-			inventory.LowStockThreshold, inventory.ReorderPoint, inventory.LastRestockAt,
-			inventory.CreatedAt, inventory.UpdatedAt, inventory.CreatedBy, inventory.UpdatedBy,
-		)
+		invQB := querybuilder.Insert("inventory").
+			Set(ColID, inventory.ID).
+			Set(ColProductID, inventory.ProductID).
+			Set(ColQuantity, inventory.Quantity).
+			Set(ColReservedQty, inventory.ReservedQty).
+			Set(ColAvailableQty, inventory.AvailableQty).
+			Set(ColLowStockThreshold, inventory.LowStockThreshold).
+			Set(ColReorderPoint, inventory.ReorderPoint).
+			Set(ColLastRestockAt, inventory.LastRestockAt).
+			Set(ColCreatedAt, inventory.CreatedAt).
+			Set(ColUpdatedAt, inventory.UpdatedAt).
+			Set(ColCreatedBy, inventory.CreatedBy).
+			Set(ColUpdatedBy, inventory.UpdatedBy)
+
+		invSQL, invArgs := invQB.Build()
+		_, err = tx.Exec(ctx, invSQL, invArgs...)
 		if err != nil {
 			return errors.Internal(err)
 		}
@@ -145,20 +195,18 @@ func (r *ProductRepository) Create(ctx context.Context, product *domain.Product,
 
 // GetByID retrieves a product by its primary key.
 func (r *ProductRepository) GetByID(ctx context.Context, id string) (*domain.Product, error) {
-	row := r.pool.QueryRow(ctx, `
-		SELECT id, name, slug, sku, description, category_id,
-			base_price, selling_price, cost_price, currency,
-			dim_length, dim_width, dim_height, dim_unit,
-			weight, allow_custom_dimensions, pricing_rule_id,
-			tags, status, sort_order,
-			created_at, updated_at, created_by, updated_by
-		FROM products WHERE id = $1`, id)
+	qb := querybuilder.Select(productColumns...).From("products").Where(ColID, id)
+	query, args := qb.Build()
 
-	product, err := scanProduct(row)
-	if err != nil {
-		return nil, err
+	var row productRow
+	if err := pgxscan.Get(ctx, r.pool, &row, query, args...); err != nil {
+		if pgxscan.NotFound(err) {
+			return nil, errors.New(errors.ErrCodeProductNotFound, "Product not found")
+		}
+		return nil, errors.Internal(err)
 	}
 
+	product := row.toProduct()
 	if err := loadProductRelations(ctx, r.pool, []*domain.Product{product}); err != nil {
 		return nil, err
 	}
@@ -171,20 +219,18 @@ func (r *ProductRepository) GetByID(ctx context.Context, id string) (*domain.Pro
 
 // GetBySKU retrieves a product by its unique SKU.
 func (r *ProductRepository) GetBySKU(ctx context.Context, sku string) (*domain.Product, error) {
-	row := r.pool.QueryRow(ctx, `
-		SELECT id, name, slug, sku, description, category_id,
-			base_price, selling_price, cost_price, currency,
-			dim_length, dim_width, dim_height, dim_unit,
-			weight, allow_custom_dimensions, pricing_rule_id,
-			tags, status, sort_order,
-			created_at, updated_at, created_by, updated_by
-		FROM products WHERE sku = $1`, sku)
+	qb := querybuilder.Select(productColumns...).From("products").Where(ColSKU, sku)
+	query, args := qb.Build()
 
-	product, err := scanProduct(row)
-	if err != nil {
-		return nil, err
+	var row productRow
+	if err := pgxscan.Get(ctx, r.pool, &row, query, args...); err != nil {
+		if pgxscan.NotFound(err) {
+			return nil, errors.New(errors.ErrCodeProductNotFound, "Product not found")
+		}
+		return nil, errors.Internal(err)
 	}
 
+	product := row.toProduct()
 	if err := loadProductRelations(ctx, r.pool, []*domain.Product{product}); err != nil {
 		return nil, err
 	}
@@ -215,23 +261,32 @@ func (r *ProductRepository) Update(ctx context.Context, product *domain.Product)
 
 	product.UpdatedAt = time.Now()
 
-	tag, err := tx.Exec(ctx, `
-		UPDATE products SET
-			name=$1, slug=$2, sku=$3, description=$4, category_id=$5,
-			base_price=$6, selling_price=$7, cost_price=$8, currency=$9,
-			dim_length=$10, dim_width=$11, dim_height=$12, dim_unit=$13,
-			weight=$14, allow_custom_dimensions=$15, pricing_rule_id=$16,
-			tags=$17, status=$18, sort_order=$19,
-			updated_at=$20, updated_by=$21
-		WHERE id = $22`,
-		product.Name, product.Slug, product.SKU, product.Description, product.CategoryID,
-		product.BasePrice, product.SellingPrice, product.CostPrice, product.Currency,
-		dimLength, dimWidth, dimHeight, dimUnit,
-		product.Weight, product.AllowCustomDimensions, product.PricingRuleID,
-		product.Tags, string(product.Status), product.SortOrder,
-		product.UpdatedAt, product.UpdatedBy,
-		product.ID,
-	)
+	qb := querybuilder.Update("products").
+		Set(ColName, product.Name).
+		Set(ColSlug, product.Slug).
+		Set(ColSKU, product.SKU).
+		Set(ColDescription, product.Description).
+		Set(ColCategoryID, product.CategoryID).
+		Set(ColBasePrice, product.BasePrice).
+		Set(ColSellingPrice, product.SellingPrice).
+		Set(ColCostPrice, product.CostPrice).
+		Set(ColCurrency, product.Currency).
+		Set(ColDimLength, dimLength).
+		Set(ColDimWidth, dimWidth).
+		Set(ColDimHeight, dimHeight).
+		Set(ColDimUnit, dimUnit).
+		Set(ColWeight, product.Weight).
+		Set(ColAllowCustomDimensions, product.AllowCustomDimensions).
+		Set(ColPricingRuleID, product.PricingRuleID).
+		Set(ColTags, product.Tags).
+		Set(ColStatus, string(product.Status)).
+		Set(ColSortOrder, product.SortOrder).
+		Set(ColUpdatedAt, product.UpdatedAt).
+		Set(ColUpdatedBy, product.UpdatedBy).
+		Where(ColID, product.ID)
+
+	query, args := qb.Build()
+	tag, err := tx.Exec(ctx, query, args...)
 	if err != nil {
 		return errors.Internal(err)
 	}
@@ -300,103 +355,45 @@ func (r *ProductRepository) List(ctx context.Context, req domain.ListProductsReq
 		attrFilters["color"] = []string{*req.Color}
 	}
 
-	// ---- build query ----
-	var (
-		where []string
-		args  []interface{}
-		argN  int // running $N counter
-	)
+	qb := querybuilder.Select(prefixColumns("p", productColumns)...).
+		From("products p").
+		WithFilter(req.CategoryID != nil, "p.category_id", deref(req.CategoryID)).
+		WithFilter(req.Status != nil, "p.status", string(deref(req.Status))).
+		WithLike(req.Search != "", "p.name", "%"+req.Search+"%").
+		WithRange("p.selling_price", req.MinPrice, req.MaxPrice).
+		OrderBy("p.sort_order, p.id").
+		Limit(limit + 1).
+		Offset(offset)
 
-	nextArg := func(val interface{}) string {
-		argN++
-		args = append(args, val)
-		return fmt.Sprintf("$%d", argN)
-	}
-
-	needInventoryJoin := false
-
-	if req.CategoryID != nil {
-		where = append(where, "p.category_id = "+nextArg(*req.CategoryID))
-	}
-	if req.Status != nil {
-		where = append(where, "p.status = "+nextArg(string(*req.Status)))
-	}
-	if req.Search != "" {
-		where = append(where, "p.name ILIKE "+nextArg("%"+req.Search+"%"))
-	}
-	if req.MinPrice != nil {
-		where = append(where, "p.selling_price >= "+nextArg(*req.MinPrice))
-	}
-	if req.MaxPrice != nil {
-		where = append(where, "p.selling_price <= "+nextArg(*req.MaxPrice))
-	}
 	if req.InStock != nil && *req.InStock {
-		needInventoryJoin = true
-		where = append(where, "i.available_qty > 0")
+		qb.LeftJoin("inventory i", "i.product_id = p.id").
+			WithRaw(true, "i.available_qty > 0")
 	}
 	if req.LowStock != nil && *req.LowStock {
-		needInventoryJoin = true
-		where = append(where, "i.available_qty <= i.low_stock_threshold")
+		qb.LeftJoin("inventory i", "i.product_id = p.id").
+			WithRaw(true, "i.available_qty <= i.low_stock_threshold")
 	}
 
-	// Attribute filters: each key gets an EXISTS subquery.
 	for attrName, values := range attrFilters {
-		if len(values) == 0 {
-			continue
-		}
-		nameArg := nextArg(attrName)
-		valuesArg := nextArg(values)
-		where = append(where, fmt.Sprintf(
-			`EXISTS (SELECT 1 FROM product_attribute_values v WHERE v.product_id = p.id AND v.attribute_name = %s AND v.attribute_value = ANY(%s))`,
-			nameArg, valuesArg,
-		))
+		qb.WithRaw(len(values) > 0,
+			"EXISTS (SELECT 1 FROM product_attribute_values v WHERE v.product_id = p.id AND v.attribute_name = %s AND v.attribute_value = ANY(%s))",
+			attrName, values,
+		)
 	}
 
-	// ---- assemble SQL ----
-	var sb strings.Builder
-	sb.WriteString("SELECT p.id, p.name, p.slug, p.sku, p.description, p.category_id, ")
-	sb.WriteString("p.base_price, p.selling_price, p.cost_price, p.currency, ")
-	sb.WriteString("p.dim_length, p.dim_width, p.dim_height, p.dim_unit, ")
-	sb.WriteString("p.weight, p.allow_custom_dimensions, p.pricing_rule_id, ")
-	sb.WriteString("p.tags, p.status, p.sort_order, ")
-	sb.WriteString("p.created_at, p.updated_at, p.created_by, p.updated_by ")
-	sb.WriteString("FROM products p ")
+	query, args := qb.Build()
 
-	if needInventoryJoin {
-		sb.WriteString("LEFT JOIN inventory i ON i.product_id = p.id ")
-	}
-
-	if len(where) > 0 {
-		sb.WriteString("WHERE ")
-		sb.WriteString(strings.Join(where, " AND "))
-		sb.WriteString(" ")
-	}
-
-	sb.WriteString("ORDER BY p.sort_order, p.id ")
-	sb.WriteString(fmt.Sprintf("LIMIT %s OFFSET %s", nextArg(limit+1), nextArg(offset)))
-
-	rows, err := r.pool.Query(ctx, sb.String(), args...)
-	if err != nil {
+	var rows []productRow
+	if err := pgxscan.Select(ctx, r.pool, &rows, query, args...); err != nil {
 		return nil, errors.Internal(err)
 	}
-	defer rows.Close()
 
-	var products []*domain.Product
-	for rows.Next() {
-		p, scanErr := scanProductFromRows(rows)
-		if scanErr != nil {
-			return nil, scanErr
-		}
-		products = append(products, p)
-	}
-	if rows.Err() != nil {
-		return nil, errors.Internal(rows.Err())
-	}
-
-	fetched := len(products)
+	fetched := len(rows)
 	if fetched > limit {
-		products = products[:limit]
+		rows = rows[:limit]
 	}
+
+	products := scanProductRows(rows)
 
 	if err := loadProductRelations(ctx, r.pool, products); err != nil {
 		return nil, err
@@ -418,30 +415,15 @@ func (r *ProductRepository) BatchGetByIDs(ctx context.Context, ids []string) ([]
 		return []*domain.Product{}, nil
 	}
 
-	rows, err := r.pool.Query(ctx, `
-		SELECT id, name, slug, sku, description, category_id,
-			base_price, selling_price, cost_price, currency,
-			dim_length, dim_width, dim_height, dim_unit,
-			weight, allow_custom_dimensions, pricing_rule_id,
-			tags, status, sort_order,
-			created_at, updated_at, created_by, updated_by
-		FROM products WHERE id = ANY($1)`, ids)
-	if err != nil {
+	qb := querybuilder.Select(productColumns...).From("products").WhereIn(ColID, ids)
+	query, args := qb.Build()
+
+	var rows []productRow
+	if err := pgxscan.Select(ctx, r.pool, &rows, query, args...); err != nil {
 		return nil, errors.Internal(err)
 	}
-	defer rows.Close()
 
-	var products []*domain.Product
-	for rows.Next() {
-		p, scanErr := scanProductFromRows(rows)
-		if scanErr != nil {
-			return nil, scanErr
-		}
-		products = append(products, p)
-	}
-	if rows.Err() != nil {
-		return nil, errors.Internal(rows.Err())
-	}
+	products := scanProductRows(rows)
 
 	if err := loadProductRelations(ctx, r.pool, products); err != nil {
 		return nil, err
@@ -487,31 +469,15 @@ func (r *ProductRepository) BatchUpdateSortOrder(ctx context.Context, products [
 
 // GetByCategoryAll retrieves every product in a category ordered by sort_order.
 func (r *ProductRepository) GetByCategoryAll(ctx context.Context, categoryID string) ([]*domain.Product, error) {
-	rows, err := r.pool.Query(ctx, `
-		SELECT id, name, slug, sku, description, category_id,
-			base_price, selling_price, cost_price, currency,
-			dim_length, dim_width, dim_height, dim_unit,
-			weight, allow_custom_dimensions, pricing_rule_id,
-			tags, status, sort_order,
-			created_at, updated_at, created_by, updated_by
-		FROM products WHERE category_id = $1
-		ORDER BY sort_order, id`, categoryID)
-	if err != nil {
+	qb := querybuilder.Select(productColumns...).From("products").Where(ColCategoryID, categoryID).OrderBy("sort_order, id")
+	query, args := qb.Build()
+
+	var rows []productRow
+	if err := pgxscan.Select(ctx, r.pool, &rows, query, args...); err != nil {
 		return nil, errors.Internal(err)
 	}
-	defer rows.Close()
 
-	var products []*domain.Product
-	for rows.Next() {
-		p, scanErr := scanProductFromRows(rows)
-		if scanErr != nil {
-			return nil, scanErr
-		}
-		products = append(products, p)
-	}
-	if rows.Err() != nil {
-		return nil, errors.Internal(rows.Err())
-	}
+	products := scanProductRows(rows)
 
 	if err := loadProductRelations(ctx, r.pool, products); err != nil {
 		return nil, err
@@ -561,102 +527,6 @@ func (r *ProductRepository) GetAttributeFilterOptions(ctx context.Context, categ
 // ===========================================================================
 // Helpers
 // ===========================================================================
-
-// scanProduct scans a single product row (from QueryRow) into a *domain.Product,
-// reconstructing the Dimensions struct from the flat dim_* columns.
-func scanProduct(row pgx.Row) (*domain.Product, error) {
-	var (
-		p         domain.Product
-		dimLength *float64
-		dimWidth  *float64
-		dimHeight *float64
-		dimUnit   string
-		status    string
-		tags      []string
-	)
-
-	err := row.Scan(
-		&p.ID, &p.Name, &p.Slug, &p.SKU, &p.Description, &p.CategoryID,
-		&p.BasePrice, &p.SellingPrice, &p.CostPrice, &p.Currency,
-		&dimLength, &dimWidth, &dimHeight, &dimUnit,
-		&p.Weight, &p.AllowCustomDimensions, &p.PricingRuleID,
-		&tags, &status, &p.SortOrder,
-		&p.CreatedAt, &p.UpdatedAt, &p.CreatedBy, &p.UpdatedBy,
-	)
-	if err != nil {
-		if err == pgx.ErrNoRows {
-			return nil, errors.New(errors.ErrCodeProductNotFound, "Product not found")
-		}
-		return nil, errors.Internal(err)
-	}
-
-	p.Status = domain.ProductStatus(status)
-	if tags != nil {
-		p.Tags = tags
-	}
-
-	if dimLength != nil || dimWidth != nil || dimHeight != nil {
-		d := &domain.Dimensions{Unit: dimUnit}
-		if dimLength != nil {
-			d.Length = *dimLength
-		}
-		if dimWidth != nil {
-			d.Width = *dimWidth
-		}
-		if dimHeight != nil {
-			d.Height = *dimHeight
-		}
-		p.Dimensions = d
-	}
-
-	return &p, nil
-}
-
-// scanProductFromRows scans a product from an active pgx.Rows iterator.
-func scanProductFromRows(rows pgx.Rows) (*domain.Product, error) {
-	var (
-		p         domain.Product
-		dimLength *float64
-		dimWidth  *float64
-		dimHeight *float64
-		dimUnit   string
-		status    string
-		tags      []string
-	)
-
-	err := rows.Scan(
-		&p.ID, &p.Name, &p.Slug, &p.SKU, &p.Description, &p.CategoryID,
-		&p.BasePrice, &p.SellingPrice, &p.CostPrice, &p.Currency,
-		&dimLength, &dimWidth, &dimHeight, &dimUnit,
-		&p.Weight, &p.AllowCustomDimensions, &p.PricingRuleID,
-		&tags, &status, &p.SortOrder,
-		&p.CreatedAt, &p.UpdatedAt, &p.CreatedBy, &p.UpdatedBy,
-	)
-	if err != nil {
-		return nil, errors.Internal(err)
-	}
-
-	p.Status = domain.ProductStatus(status)
-	if tags != nil {
-		p.Tags = tags
-	}
-
-	if dimLength != nil || dimWidth != nil || dimHeight != nil {
-		d := &domain.Dimensions{Unit: dimUnit}
-		if dimLength != nil {
-			d.Length = *dimLength
-		}
-		if dimWidth != nil {
-			d.Width = *dimWidth
-		}
-		if dimHeight != nil {
-			d.Height = *dimHeight
-		}
-		p.Dimensions = d
-	}
-
-	return &p, nil
-}
 
 // loadProductRelations batch-loads attribute values and images for a slice of
 // products, populating the Attributes map, hardcoded attribute fields (Material,
@@ -841,21 +711,14 @@ func collectHardcodedAttributes(product *domain.Product, rows []attributeRow) []
 
 // buildAttributeBatchInsert constructs a multi-row INSERT statement for product_attribute_values.
 func buildAttributeBatchInsert(productID string, rows []attributeRow) (string, []interface{}) {
-	var query strings.Builder
-	query.WriteString("INSERT INTO product_attribute_values (product_id, attribute_name, attribute_value) VALUES ")
+	qb := querybuilder.InsertBatch("product_attribute_values", "product_id", "attribute_name", "attribute_value").
+		OnConflictDoNothing()
 
-	args := make([]interface{}, 0, len(rows)*3)
-	for i, row := range rows {
-		if i > 0 {
-			query.WriteString(",")
-		}
-		paramOffset := i*3 + 1
-		query.WriteString(fmt.Sprintf("($%d,$%d,$%d)", paramOffset, paramOffset+1, paramOffset+2))
-		args = append(args, productID, row.name, row.value)
+	for _, row := range rows {
+		qb.AddRow(productID, row.name, row.value)
 	}
-	query.WriteString(" ON CONFLICT DO NOTHING")
 
-	return query.String(), args
+	return qb.Build()
 }
 
 // insertImages writes rows into product_images for the product.
@@ -864,19 +727,13 @@ func insertImages(ctx context.Context, tx pgx.Tx, product *domain.Product) error
 		return nil
 	}
 
-	var sb strings.Builder
-	sb.WriteString("INSERT INTO product_images (id, product_id, url, alt_text, sort_order) VALUES ")
-	args := make([]interface{}, 0, len(product.Images)*5)
-	for i, img := range product.Images {
-		if i > 0 {
-			sb.WriteString(",")
-		}
-		base := i*5 + 1
-		sb.WriteString(fmt.Sprintf("($%d,$%d,$%d,$%d,$%d)", base, base+1, base+2, base+3, base+4))
-		args = append(args, uuid.New().String(), product.ID, img.URL, img.AltText, img.SortOrder)
+	qb := querybuilder.InsertBatch("product_images", "id", "product_id", "url", "alt_text", "sort_order")
+	for _, img := range product.Images {
+		qb.AddRow(uuid.New().String(), product.ID, img.URL, img.AltText, img.SortOrder)
 	}
 
-	_, err := tx.Exec(ctx, sb.String(), args...)
+	query, args := qb.Build()
+	_, err := tx.Exec(ctx, query, args...)
 	if err != nil {
 		return errors.Internal(err)
 	}

@@ -21,7 +21,6 @@ type CreateProductRequest struct {
 	WeaveType             string                 `json:"weave_type,omitempty"`
 	Origin                string                 `json:"origin,omitempty"`
 	CraftType             string                 `json:"craft_type,omitempty"`
-	ArtisanID             *string                `json:"artisan_id,omitempty"`
 	Images                []domain.ProductImage  `json:"images,omitempty"`
 	Tags                  []string               `json:"tags,omitempty"`
 	InitialStock          int                    `json:"initial_stock"`
@@ -48,7 +47,6 @@ func (r *CreateProductRequest) ToDomain() domain.CreateProductRequest {
 		WeaveType:             r.WeaveType,
 		Origin:                r.Origin,
 		CraftType:             r.CraftType,
-		ArtisanID:             r.ArtisanID,
 		Images:                r.Images,
 		Tags:                  r.Tags,
 		InitialStock:          r.InitialStock,
@@ -73,7 +71,6 @@ type UpdateProductRequest struct {
 	WeaveType             *string                `json:"weave_type,omitempty"`
 	Origin                *string                `json:"origin,omitempty"`
 	CraftType             *string                `json:"craft_type,omitempty"`
-	ArtisanID             *string                `json:"artisan_id,omitempty"`
 	Images                []domain.ProductImage  `json:"images,omitempty"`
 	Tags                  []string               `json:"tags,omitempty"`
 	LowStockThreshold     *int                   `json:"low_stock_threshold,omitempty"`
@@ -98,7 +95,6 @@ func (r *UpdateProductRequest) ToDomain() domain.UpdateProductRequest {
 		WeaveType:             r.WeaveType,
 		Origin:                r.Origin,
 		CraftType:             r.CraftType,
-		ArtisanID:             r.ArtisanID,
 		Images:                r.Images,
 		Tags:                  r.Tags,
 		LowStockThreshold:     r.LowStockThreshold,
