@@ -2,7 +2,11 @@ package postgres
 
 import (
 	"context"
+	"crypto/md5"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/handloom/admin/internal/cache"
@@ -10,14 +14,66 @@ import (
 )
 
 const (
-	prodItemTTL = 1 * time.Hour
-	prodAttrTTL = 1 * time.Hour
-	prodPrefix  = "prod:"
+	prodItemTTL    = 1 * time.Hour
+	prodAttrTTL    = 1 * time.Hour
+	prodListTTL    = 1 * time.Hour
+	prodPrefix     = "prod:"
+	prodListPrefix = "prod:list:"
 )
 
 func prodKey(id string) string         { return fmt.Sprintf("prod:%s", id) }
 func prodCatPrefix(catID string) string { return fmt.Sprintf("prod:cat:%s:", catID) }
 func prodAttrKey(catID string) string   { return fmt.Sprintf("prod:attr:%s", catID) }
+
+// prodListKey builds a deterministic cache key from a ListProductsRequest by
+// JSON-marshaling a canonical representation of all filter fields and hashing
+// the result with MD5.
+func prodListKey(req domain.ListProductsRequest) string {
+	// Sort attribute filter values for determinism.
+	sortedFilters := make(map[string][]string, len(req.AttributeFilters))
+	for k, v := range req.AttributeFilters {
+		sorted := make([]string, len(v))
+		copy(sorted, v)
+		sort.Strings(sorted)
+		sortedFilters[k] = sorted
+	}
+
+	canonical := struct {
+		Limit            int                 `json:"limit"`
+		Cursor           string              `json:"cursor,omitempty"`
+		SortBy           string              `json:"sort_by,omitempty"`
+		SortDir          string              `json:"sort_dir,omitempty"`
+		CategoryID       *string             `json:"category_id,omitempty"`
+		Status           *domain.ProductStatus `json:"status,omitempty"`
+		Search           string              `json:"search,omitempty"`
+		MinPrice         *int64              `json:"min_price,omitempty"`
+		MaxPrice         *int64              `json:"max_price,omitempty"`
+		InStock          *bool               `json:"in_stock,omitempty"`
+		LowStock         *bool               `json:"low_stock,omitempty"`
+		Material         *string             `json:"material,omitempty"`
+		Color            *string             `json:"color,omitempty"`
+		AttributeFilters map[string][]string `json:"attribute_filters,omitempty"`
+	}{
+		Limit:            req.Limit,
+		Cursor:           req.Cursor,
+		SortBy:           req.SortBy,
+		SortDir:          req.SortDir,
+		CategoryID:       req.CategoryID,
+		Status:           req.Status,
+		Search:           req.Search,
+		MinPrice:         req.MinPrice,
+		MaxPrice:         req.MaxPrice,
+		InStock:          req.InStock,
+		LowStock:         req.LowStock,
+		Material:         req.Material,
+		Color:            req.Color,
+		AttributeFilters: sortedFilters,
+	}
+
+	data, _ := json.Marshal(canonical)
+	hash := md5.Sum(data)
+	return prodListPrefix + hex.EncodeToString(hash[:])
+}
 
 // CachedProductRepository wraps a ProductRepository with an in-process cache.
 type CachedProductRepository struct {
@@ -77,7 +133,16 @@ func (r *CachedProductRepository) Delete(ctx context.Context, id string) error {
 }
 
 func (r *CachedProductRepository) List(ctx context.Context, req domain.ListProductsRequest) (*domain.ListProductsResponse, error) {
-	return r.inner.List(ctx, req)
+	key := prodListKey(req)
+	if v, ok := r.cache.Get(key); ok {
+		return v.(*domain.ListProductsResponse), nil
+	}
+	resp, err := r.inner.List(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	r.cache.Set(key, resp, prodListTTL)
+	return resp, nil
 }
 
 func (r *CachedProductRepository) BatchGetByIDs(ctx context.Context, ids []string) ([]*domain.Product, error) {
@@ -115,4 +180,5 @@ func (r *CachedProductRepository) GetAttributeFilterOptions(ctx context.Context,
 func (r *CachedProductRepository) invalidateForCategory(categoryID string) {
 	r.cache.DeletePrefix(prodCatPrefix(categoryID))
 	r.cache.Delete(prodAttrKey(categoryID))
+	r.cache.DeletePrefix(prodListPrefix)
 }
