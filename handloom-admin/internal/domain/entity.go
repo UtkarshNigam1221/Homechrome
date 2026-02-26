@@ -296,8 +296,7 @@ type Product struct {
 	Description string `json:"description,omitempty" dynamodbav:"description,omitempty"`
 
 	// Relations
-	CategoryID string  `json:"category_id" dynamodbav:"category_id"`
-	ArtisanID  *string `json:"artisan_id,omitempty" dynamodbav:"artisan_id,omitempty"`
+	CategoryID string `json:"category_id" dynamodbav:"category_id"`
 
 	// Pricing (in paise)
 	BasePrice    int64  `json:"base_price" dynamodbav:"base_price"`
@@ -353,7 +352,6 @@ func NewProduct(req CreateProductRequest, id, slug, createdBy string) *Product {
 		SKU:                   req.SKU,
 		Description:           req.Description,
 		CategoryID:            req.CategoryID,
-		ArtisanID:             req.ArtisanID,
 		BasePrice:             req.BasePrice,
 		SellingPrice:          req.SellingPrice,
 		CostPrice:             req.CostPrice,
@@ -433,9 +431,6 @@ func (p *Product) ApplyUpdate(req UpdateProductRequest) {
 	}
 	if req.CraftType != nil {
 		p.CraftType = *req.CraftType
-	}
-	if req.ArtisanID != nil {
-		p.ArtisanID = req.ArtisanID
 	}
 	if req.Images != nil {
 		p.Images = req.Images
@@ -617,8 +612,8 @@ type Inventory struct {
 	ID string `json:"id" dynamodbav:"id"`
 
 	ProductID   string `json:"product_id" dynamodbav:"product_id"`
-	ProductSKU  string `json:"product_sku" dynamodbav:"product_sku"`
-	ProductName string `json:"product_name" dynamodbav:"product_name"`
+	ProductSKU  string `json:"product_sku,omitempty"`
+	ProductName string `json:"product_name,omitempty"`
 
 	Quantity     int `json:"quantity" dynamodbav:"quantity"`
 	ReservedQty  int `json:"reserved_qty" dynamodbav:"reserved_qty"`
