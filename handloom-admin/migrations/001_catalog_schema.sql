@@ -48,7 +48,6 @@ CREATE TABLE products (
     sku                     TEXT NOT NULL UNIQUE,
     description             TEXT NOT NULL DEFAULT '',
     category_id             TEXT NOT NULL REFERENCES categories(id),
-    artisan_id              TEXT,
     base_price              BIGINT NOT NULL,
     selling_price           BIGINT NOT NULL,
     cost_price              BIGINT NOT NULL DEFAULT 0,
@@ -101,8 +100,6 @@ CREATE INDEX idx_product_images_product ON product_images (product_id, sort_orde
 CREATE TABLE inventory (
     id                  TEXT PRIMARY KEY,
     product_id          TEXT NOT NULL UNIQUE REFERENCES products(id) ON DELETE CASCADE,
-    product_sku         TEXT NOT NULL,
-    product_name        TEXT NOT NULL,
     quantity            INT NOT NULL DEFAULT 0,
     reserved_qty        INT NOT NULL DEFAULT 0,
     available_qty       INT NOT NULL DEFAULT 0,
