@@ -70,7 +70,10 @@ func prodListKey(req domain.ListProductsRequest) string {
 		AttributeFilters: sortedFilters,
 	}
 
-	data, _ := json.Marshal(canonical)
+	data, err := json.Marshal(canonical)
+	if err != nil {
+		return "" // empty key signals cache bypass
+	}
 	hash := md5.Sum(data)
 	return prodListPrefix + hex.EncodeToString(hash[:])
 }
@@ -134,14 +137,18 @@ func (r *CachedProductRepository) Delete(ctx context.Context, id string) error {
 
 func (r *CachedProductRepository) List(ctx context.Context, req domain.ListProductsRequest) (*domain.ListProductsResponse, error) {
 	key := prodListKey(req)
-	if v, ok := r.cache.Get(key); ok {
-		return v.(*domain.ListProductsResponse), nil
+	if key != "" {
+		if v, ok := r.cache.Get(key); ok {
+			return v.(*domain.ListProductsResponse), nil
+		}
 	}
 	resp, err := r.inner.List(ctx, req)
 	if err != nil {
 		return nil, err
 	}
-	r.cache.Set(key, resp, prodListTTL)
+	if key != "" {
+		r.cache.Set(key, resp, prodListTTL)
+	}
 	return resp, nil
 }
 
