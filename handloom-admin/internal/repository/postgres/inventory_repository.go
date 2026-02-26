@@ -478,13 +478,14 @@ func (r *InventoryRepository) GetLowStockProducts(ctx context.Context, paginatio
 	limit, offset := pageParams(pagination)
 
 	rows, err := r.pool.Query(ctx,
-		`SELECT id, product_id, product_sku, product_name,
-			quantity, reserved_qty, available_qty,
-			low_stock_threshold, reorder_point, last_restock_at,
-			created_at, updated_at, created_by, updated_by
-		FROM inventory
-		WHERE available_qty <= low_stock_threshold AND low_stock_threshold > 0
-		ORDER BY available_qty ASC
+		`SELECT i.id, i.product_id, p.sku, p.name,
+			i.quantity, i.reserved_qty, i.available_qty,
+			i.low_stock_threshold, i.reorder_point, i.last_restock_at,
+			i.created_at, i.updated_at, i.created_by, i.updated_by
+		FROM inventory i
+		JOIN products p ON p.id = i.product_id
+		WHERE i.available_qty <= i.low_stock_threshold AND i.low_stock_threshold > 0
+		ORDER BY i.available_qty ASC
 		LIMIT $1 OFFSET $2`,
 		limit+1, offset,
 	)
