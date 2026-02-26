@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/handloom/admin/internal/domain"
+	"github.com/handloom/admin/internal/middleware"
 	"github.com/handloom/admin/pkg/errors"
 	"github.com/handloom/admin/pkg/logger"
 	"github.com/handloom/admin/pkg/response"
@@ -42,6 +43,7 @@ func NewCatalogHandler(
 // Routes returns the public catalog routes.
 func (h *CatalogHandler) Routes() chi.Router {
 	r := chi.NewRouter()
+	r.Use(middleware.CatalogCacheControl("public, max-age=3600"))
 
 	r.Get("/categories", h.ListCategories)
 	r.Get("/categories/{idOrSlug}", h.GetCategory)
