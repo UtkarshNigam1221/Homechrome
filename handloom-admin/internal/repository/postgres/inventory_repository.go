@@ -31,12 +31,12 @@ func (r *InventoryRepository) Create(ctx context.Context, inventory *domain.Inve
 
 	_, err := r.pool.Exec(ctx,
 		`INSERT INTO inventory (
-			id, product_id, product_sku, product_name,
+			id, product_id,
 			quantity, reserved_qty, available_qty,
 			low_stock_threshold, reorder_point, last_restock_at,
 			created_at, updated_at, created_by, updated_by
-		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
-		inventory.ID, inventory.ProductID, inventory.ProductSKU, inventory.ProductName,
+		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+		inventory.ID, inventory.ProductID,
 		inventory.Quantity, inventory.ReservedQty, inventory.AvailableQty,
 		inventory.LowStockThreshold, inventory.ReorderPoint, inventory.LastRestockAt,
 		inventory.CreatedAt, inventory.UpdatedAt, inventory.CreatedBy, inventory.UpdatedBy,
@@ -50,7 +50,7 @@ func (r *InventoryRepository) Create(ctx context.Context, inventory *domain.Inve
 // GetByProductID retrieves an inventory record by product ID.
 func (r *InventoryRepository) GetByProductID(ctx context.Context, productID string) (*domain.Inventory, error) {
 	row := r.pool.QueryRow(ctx,
-		`SELECT id, product_id, product_sku, product_name,
+		`SELECT id, product_id,
 			quantity, reserved_qty, available_qty,
 			low_stock_threshold, reorder_point, last_restock_at,
 			created_at, updated_at, created_by, updated_by
@@ -58,7 +58,7 @@ func (r *InventoryRepository) GetByProductID(ctx context.Context, productID stri
 
 	inv := &domain.Inventory{}
 	err := row.Scan(
-		&inv.ID, &inv.ProductID, &inv.ProductSKU, &inv.ProductName,
+		&inv.ID, &inv.ProductID,
 		&inv.Quantity, &inv.ReservedQty, &inv.AvailableQty,
 		&inv.LowStockThreshold, &inv.ReorderPoint, &inv.LastRestockAt,
 		&inv.CreatedAt, &inv.UpdatedAt, &inv.CreatedBy, &inv.UpdatedBy,
@@ -78,12 +78,10 @@ func (r *InventoryRepository) Update(ctx context.Context, inventory *domain.Inve
 
 	tag, err := r.pool.Exec(ctx,
 		`UPDATE inventory SET
-			product_sku = $1, product_name = $2,
-			quantity = $3, reserved_qty = $4, available_qty = $5,
-			low_stock_threshold = $6, reorder_point = $7, last_restock_at = $8,
-			updated_at = $9, updated_by = $10
-		WHERE product_id = $11`,
-		inventory.ProductSKU, inventory.ProductName,
+			quantity = $1, reserved_qty = $2, available_qty = $3,
+			low_stock_threshold = $4, reorder_point = $5, last_restock_at = $6,
+			updated_at = $7, updated_by = $8
+		WHERE product_id = $9`,
 		inventory.Quantity, inventory.ReservedQty, inventory.AvailableQty,
 		inventory.LowStockThreshold, inventory.ReorderPoint, inventory.LastRestockAt,
 		inventory.UpdatedAt, inventory.UpdatedBy,
