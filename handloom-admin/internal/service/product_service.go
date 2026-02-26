@@ -71,8 +71,6 @@ func (s *ProductService) Create(ctx context.Context, req domain.CreateProductReq
 	inventory := &domain.Inventory{
 		ID:                product.ID,
 		ProductID:         product.ID,
-		ProductSKU:        product.SKU,
-		ProductName:       product.Name,
 		Quantity:          req.InitialStock,
 		AvailableQty:      req.InitialStock,
 		LowStockThreshold: req.LowStockThreshold,

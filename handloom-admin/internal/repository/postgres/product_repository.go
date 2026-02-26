@@ -67,21 +67,21 @@ func (r *ProductRepository) Create(ctx context.Context, product *domain.Product,
 
 	_, err = tx.Exec(ctx, `
 		INSERT INTO products (
-			id, name, slug, sku, description, category_id, artisan_id,
+			id, name, slug, sku, description, category_id,
 			base_price, selling_price, cost_price, currency,
 			dim_length, dim_width, dim_height, dim_unit,
 			weight, allow_custom_dimensions, pricing_rule_id,
 			tags, status, sort_order,
 			created_at, updated_at, created_by, updated_by
 		) VALUES (
-			$1,$2,$3,$4,$5,$6,$7,
-			$8,$9,$10,$11,
-			$12,$13,$14,$15,
-			$16,$17,$18,
-			$19,$20,$21,
-			$22,$23,$24,$25
+			$1,$2,$3,$4,$5,$6,
+			$7,$8,$9,$10,
+			$11,$12,$13,$14,
+			$15,$16,$17,
+			$18,$19,$20,
+			$21,$22,$23,$24
 		)`,
-		product.ID, product.Name, product.Slug, product.SKU, product.Description, product.CategoryID, product.ArtisanID,
+		product.ID, product.Name, product.Slug, product.SKU, product.Description, product.CategoryID,
 		product.BasePrice, product.SellingPrice, product.CostPrice, product.Currency,
 		dimLength, dimWidth, dimHeight, dimUnit,
 		product.Weight, product.AllowCustomDimensions, product.PricingRuleID,
@@ -118,12 +118,12 @@ func (r *ProductRepository) Create(ctx context.Context, product *domain.Product,
 
 		_, err = tx.Exec(ctx, `
 			INSERT INTO inventory (
-				id, product_id, product_sku, product_name,
+				id, product_id,
 				quantity, reserved_qty, available_qty,
 				low_stock_threshold, reorder_point, last_restock_at,
 				created_at, updated_at, created_by, updated_by
-			) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
-			inventory.ID, inventory.ProductID, inventory.ProductSKU, inventory.ProductName,
+			) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+			inventory.ID, inventory.ProductID,
 			inventory.Quantity, inventory.ReservedQty, inventory.AvailableQty,
 			inventory.LowStockThreshold, inventory.ReorderPoint, inventory.LastRestockAt,
 			inventory.CreatedAt, inventory.UpdatedAt, inventory.CreatedBy, inventory.UpdatedBy,
@@ -146,7 +146,7 @@ func (r *ProductRepository) Create(ctx context.Context, product *domain.Product,
 // GetByID retrieves a product by its primary key.
 func (r *ProductRepository) GetByID(ctx context.Context, id string) (*domain.Product, error) {
 	row := r.pool.QueryRow(ctx, `
-		SELECT id, name, slug, sku, description, category_id, artisan_id,
+		SELECT id, name, slug, sku, description, category_id,
 			base_price, selling_price, cost_price, currency,
 			dim_length, dim_width, dim_height, dim_unit,
 			weight, allow_custom_dimensions, pricing_rule_id,
@@ -172,7 +172,7 @@ func (r *ProductRepository) GetByID(ctx context.Context, id string) (*domain.Pro
 // GetBySKU retrieves a product by its unique SKU.
 func (r *ProductRepository) GetBySKU(ctx context.Context, sku string) (*domain.Product, error) {
 	row := r.pool.QueryRow(ctx, `
-		SELECT id, name, slug, sku, description, category_id, artisan_id,
+		SELECT id, name, slug, sku, description, category_id,
 			base_price, selling_price, cost_price, currency,
 			dim_length, dim_width, dim_height, dim_unit,
 			weight, allow_custom_dimensions, pricing_rule_id,
@@ -217,14 +217,14 @@ func (r *ProductRepository) Update(ctx context.Context, product *domain.Product)
 
 	tag, err := tx.Exec(ctx, `
 		UPDATE products SET
-			name=$1, slug=$2, sku=$3, description=$4, category_id=$5, artisan_id=$6,
-			base_price=$7, selling_price=$8, cost_price=$9, currency=$10,
-			dim_length=$11, dim_width=$12, dim_height=$13, dim_unit=$14,
-			weight=$15, allow_custom_dimensions=$16, pricing_rule_id=$17,
-			tags=$18, status=$19, sort_order=$20,
-			updated_at=$21, updated_by=$22
-		WHERE id = $23`,
-		product.Name, product.Slug, product.SKU, product.Description, product.CategoryID, product.ArtisanID,
+			name=$1, slug=$2, sku=$3, description=$4, category_id=$5,
+			base_price=$6, selling_price=$7, cost_price=$8, currency=$9,
+			dim_length=$10, dim_width=$11, dim_height=$12, dim_unit=$13,
+			weight=$14, allow_custom_dimensions=$15, pricing_rule_id=$16,
+			tags=$17, status=$18, sort_order=$19,
+			updated_at=$20, updated_by=$21
+		WHERE id = $22`,
+		product.Name, product.Slug, product.SKU, product.Description, product.CategoryID,
 		product.BasePrice, product.SellingPrice, product.CostPrice, product.Currency,
 		dimLength, dimWidth, dimHeight, dimUnit,
 		product.Weight, product.AllowCustomDimensions, product.PricingRuleID,
@@ -354,7 +354,7 @@ func (r *ProductRepository) List(ctx context.Context, req domain.ListProductsReq
 
 	// ---- assemble SQL ----
 	var sb strings.Builder
-	sb.WriteString("SELECT p.id, p.name, p.slug, p.sku, p.description, p.category_id, p.artisan_id, ")
+	sb.WriteString("SELECT p.id, p.name, p.slug, p.sku, p.description, p.category_id, ")
 	sb.WriteString("p.base_price, p.selling_price, p.cost_price, p.currency, ")
 	sb.WriteString("p.dim_length, p.dim_width, p.dim_height, p.dim_unit, ")
 	sb.WriteString("p.weight, p.allow_custom_dimensions, p.pricing_rule_id, ")
@@ -419,7 +419,7 @@ func (r *ProductRepository) BatchGetByIDs(ctx context.Context, ids []string) ([]
 	}
 
 	rows, err := r.pool.Query(ctx, `
-		SELECT id, name, slug, sku, description, category_id, artisan_id,
+		SELECT id, name, slug, sku, description, category_id,
 			base_price, selling_price, cost_price, currency,
 			dim_length, dim_width, dim_height, dim_unit,
 			weight, allow_custom_dimensions, pricing_rule_id,
@@ -488,7 +488,7 @@ func (r *ProductRepository) BatchUpdateSortOrder(ctx context.Context, products [
 // GetByCategoryAll retrieves every product in a category ordered by sort_order.
 func (r *ProductRepository) GetByCategoryAll(ctx context.Context, categoryID string) ([]*domain.Product, error) {
 	rows, err := r.pool.Query(ctx, `
-		SELECT id, name, slug, sku, description, category_id, artisan_id,
+		SELECT id, name, slug, sku, description, category_id,
 			base_price, selling_price, cost_price, currency,
 			dim_length, dim_width, dim_height, dim_unit,
 			weight, allow_custom_dimensions, pricing_rule_id,
@@ -576,7 +576,7 @@ func scanProduct(row pgx.Row) (*domain.Product, error) {
 	)
 
 	err := row.Scan(
-		&p.ID, &p.Name, &p.Slug, &p.SKU, &p.Description, &p.CategoryID, &p.ArtisanID,
+		&p.ID, &p.Name, &p.Slug, &p.SKU, &p.Description, &p.CategoryID,
 		&p.BasePrice, &p.SellingPrice, &p.CostPrice, &p.Currency,
 		&dimLength, &dimWidth, &dimHeight, &dimUnit,
 		&p.Weight, &p.AllowCustomDimensions, &p.PricingRuleID,
@@ -625,7 +625,7 @@ func scanProductFromRows(rows pgx.Rows) (*domain.Product, error) {
 	)
 
 	err := rows.Scan(
-		&p.ID, &p.Name, &p.Slug, &p.SKU, &p.Description, &p.CategoryID, &p.ArtisanID,
+		&p.ID, &p.Name, &p.Slug, &p.SKU, &p.Description, &p.CategoryID,
 		&p.BasePrice, &p.SellingPrice, &p.CostPrice, &p.Currency,
 		&dimLength, &dimWidth, &dimHeight, &dimUnit,
 		&p.Weight, &p.AllowCustomDimensions, &p.PricingRuleID,
@@ -778,64 +778,84 @@ func loadProductRelations(ctx context.Context, pool *pgxpool.Pool, products []*d
 
 // insertAttributeValues writes rows into product_attribute_values for both the
 // flexible Attributes map and the hardcoded fields (Material, Color, etc.).
+// attributeRow holds a single name-value pair destined for the product_attribute_values table.
+type attributeRow struct {
+	name  string
+	value string
+}
+
 func insertAttributeValues(ctx context.Context, tx pgx.Tx, product *domain.Product) error {
-	// Collect all (name, value) pairs to insert.
-	type pair struct{ name, value string }
-	var pairs []pair
+	var rows []attributeRow
 
-	// From product.Attributes map.
-	for key, val := range product.Attributes {
-		switch v := val.(type) {
-		case string:
-			if v != "" {
-				pairs = append(pairs, pair{key, v})
-			}
-		case []interface{}:
-			for _, elem := range v {
-				if s, ok := elem.(string); ok && s != "" {
-					pairs = append(pairs, pair{key, s})
-				}
-			}
-		case []string:
-			for _, s := range v {
-				if s != "" {
-					pairs = append(pairs, pair{key, s})
-				}
-			}
-		}
-	}
+	rows = collectDynamicAttributes(product.Attributes, rows)
+	rows = collectHardcodedAttributes(product, rows)
 
-	// From hardcoded fields.
-	for _, h := range hardcodedAttrFields {
-		val := h.Field(product)
-		if val != "" {
-			pairs = append(pairs, pair{h.Name, val})
-		}
-	}
-
-	if len(pairs) == 0 {
+	if len(rows) == 0 {
 		return nil
 	}
 
-	// Use a single batch INSERT via COPY-like approach with manual multi-row VALUES.
-	var sb strings.Builder
-	sb.WriteString("INSERT INTO product_attribute_values (product_id, attribute_name, attribute_value) VALUES ")
-	args := make([]interface{}, 0, len(pairs)*3)
-	for i, p := range pairs {
-		if i > 0 {
-			sb.WriteString(",")
-		}
-		base := i*3 + 1
-		sb.WriteString(fmt.Sprintf("($%d,$%d,$%d)", base, base+1, base+2))
-		args = append(args, product.ID, p.name, p.value)
-	}
-	sb.WriteString(" ON CONFLICT DO NOTHING")
-
-	_, err := tx.Exec(ctx, sb.String(), args...)
-	if err != nil {
+	query, args := buildAttributeBatchInsert(product.ID, rows)
+	if _, err := tx.Exec(ctx, query, args...); err != nil {
 		return errors.Internal(err)
 	}
 	return nil
+}
+
+// collectDynamicAttributes extracts attribute rows from the flexible Attributes map.
+// Values can be a single string, []string, or []interface{} (from JSON unmarshalling).
+func collectDynamicAttributes(attributes map[string]interface{}, rows []attributeRow) []attributeRow {
+	for attrName, attrVal := range attributes {
+		switch typedVal := attrVal.(type) {
+		case string:
+			if typedVal != "" {
+				rows = append(rows, attributeRow{attrName, typedVal})
+			}
+		case []interface{}:
+			for _, elem := range typedVal {
+				if strVal, ok := elem.(string); ok && strVal != "" {
+					rows = append(rows, attributeRow{attrName, strVal})
+				}
+			}
+		case []string:
+			for _, strVal := range typedVal {
+				if strVal != "" {
+					rows = append(rows, attributeRow{attrName, strVal})
+				}
+			}
+		}
+	}
+	return rows
+}
+
+// collectHardcodedAttributes extracts attribute rows from fixed product fields
+// like Material, Color, etc.
+func collectHardcodedAttributes(product *domain.Product, rows []attributeRow) []attributeRow {
+	for _, field := range hardcodedAttrFields {
+		fieldVal := field.Field(product)
+		if fieldVal != "" {
+			rows = append(rows, attributeRow{field.Name, fieldVal})
+		}
+	}
+	return rows
+}
+
+// buildAttributeBatchInsert constructs a multi-row INSERT statement for product_attribute_values.
+func buildAttributeBatchInsert(productID string, rows []attributeRow) (string, []interface{}) {
+	var query strings.Builder
+	query.WriteString("INSERT INTO product_attribute_values (product_id, attribute_name, attribute_value) VALUES ")
+
+	args := make([]interface{}, 0, len(rows)*3)
+	for i, row := range rows {
+		if i > 0 {
+			query.WriteString(",")
+		}
+		paramOffset := i*3 + 1
+		query.WriteString(fmt.Sprintf("($%d,$%d,$%d)", paramOffset, paramOffset+1, paramOffset+2))
+		args = append(args, productID, row.name, row.value)
+	}
+	query.WriteString(" ON CONFLICT DO NOTHING")
+
+	return query.String(), args
 }
 
 // insertImages writes rows into product_images for the product.
