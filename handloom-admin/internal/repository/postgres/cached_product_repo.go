@@ -10,8 +10,8 @@ import (
 )
 
 const (
-	prodItemTTL = 2 * time.Minute
-	prodAttrTTL = 5 * time.Minute
+	prodItemTTL = 1 * time.Hour
+	prodAttrTTL = 1 * time.Hour
 	prodPrefix  = "prod:"
 )
 

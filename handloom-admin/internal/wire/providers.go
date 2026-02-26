@@ -51,7 +51,7 @@ func ProvidePostgresPool(ctx context.Context, cfg *config.Config) (*pgxpool.Pool
 
 // ProvideCatalogCache creates an in-process cache for catalog data
 func ProvideCatalogCache() *cache.Cache {
-	return cache.New(5*time.Minute, 10*time.Minute)
+	return cache.New(1*time.Hour, 2*time.Hour)
 }
 
 // CoreSet contains core providers used by all services

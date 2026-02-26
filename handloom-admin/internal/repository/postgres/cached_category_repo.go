@@ -10,10 +10,10 @@ import (
 )
 
 const (
-	catListKey    = "cat:list"
-	catListTTL    = 5 * time.Minute
-	catItemTTL    = 2 * time.Minute
-	catKeyPrefix  = "cat:"
+	catListKey   = "cat:list"
+	catListTTL   = 1 * time.Hour
+	catItemTTL   = 1 * time.Hour
+	catKeyPrefix = "cat:"
 )
 
 func catKey(id string) string { return fmt.Sprintf("cat:%s", id) }
