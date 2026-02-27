@@ -200,3 +200,45 @@ func TestWhereIn(t *testing.T) {
 		t.Errorf("args = %v, want [ids slice]", args)
 	}
 }
+
+func TestWithSearch(t *testing.T) {
+	sql, args := querybuilder.Select("id").From("products p").
+		WithSearch(true, "p.search_vector", "p.name", "cotton bedsheet").
+		Build()
+
+	wantSQL := "SELECT id FROM products p WHERE (p.search_vector @@ websearch_to_tsquery('english', $1) OR p.name ILIKE $2)"
+	if sql != wantSQL {
+		t.Errorf("sql = %q, want %q", sql, wantSQL)
+	}
+	if len(args) != 2 || args[0] != "cotton bedsheet" || args[1] != "%cotton bedsheet%" {
+		t.Errorf("args = %v, want [cotton bedsheet %%cotton bedsheet%%]", args)
+	}
+}
+
+func TestWithSearchSkipped(t *testing.T) {
+	sql, args := querybuilder.Select("id").From("t").
+		WithSearch(false, "t.search_vector", "t.name", "ignored").
+		Build()
+
+	if sql != "SELECT id FROM t" {
+		t.Errorf("sql = %q, want no WHERE", sql)
+	}
+	if len(args) != 0 {
+		t.Errorf("args should be empty, got %v", args)
+	}
+}
+
+func TestOrderByRaw(t *testing.T) {
+	sql, args := querybuilder.Select("id").From("products p").
+		OrderByRaw("ts_rank(p.search_vector, websearch_to_tsquery('english', %s)) DESC, p.sort_order, p.id", "silk").
+		Limit(20).
+		Build()
+
+	wantSQL := "SELECT id FROM products p ORDER BY ts_rank(p.search_vector, websearch_to_tsquery('english', $1)) DESC, p.sort_order, p.id LIMIT $2"
+	if sql != wantSQL {
+		t.Errorf("sql = %q, want %q", sql, wantSQL)
+	}
+	if len(args) != 2 || args[0] != "silk" || args[1] != 20 {
+		t.Errorf("args = %v, want [silk 20]", args)
+	}
+}

@@ -54,6 +54,25 @@ func (b *Builder) WithLike(cond bool, col string, val string) *Builder {
 	return b
 }
 
+// WithSearch adds a full-text search condition combined with an ILIKE fallback.
+// When cond is true it emits:
+//
+//	(vectorCol @@ websearch_to_tsquery('english', $N) OR likeCol ILIKE $N+1)
+//
+// The ILIKE uses a wrapping wildcard (%term%) so partial matches are still found.
+func (b *Builder) WithSearch(cond bool, vectorCol, likeCol, term string) *Builder {
+	if !cond {
+		return b
+	}
+	tsArg := b.nextArg(term)
+	likeArg := b.nextArg("%" + term + "%")
+	b.where = append(b.where, fmt.Sprintf(
+		"(%s @@ websearch_to_tsquery('english', %s) OR %s ILIKE %s)",
+		vectorCol, tsArg, likeCol, likeArg,
+	))
+	return b
+}
+
 // WithRange adds ">= $N" and/or "<= $N" conditions for non-nil bounds.
 func (b *Builder) WithRange(col string, min, max *int64) *Builder {
 	if min != nil {
@@ -83,6 +102,17 @@ func (b *Builder) WithRaw(cond bool, clause string, args ...interface{}) *Builde
 // OrderBy sets the ORDER BY clause (e.g. "p.sort_order, p.id").
 func (b *Builder) OrderBy(clause string) *Builder {
 	b.orderBy = clause
+	return b
+}
+
+// OrderByRaw sets the ORDER BY clause with parameterized arguments.
+// Each %s in the clause is replaced with the next $N placeholder.
+func (b *Builder) OrderByRaw(clause string, args ...interface{}) *Builder {
+	placeholders := make([]interface{}, len(args))
+	for i, arg := range args {
+		placeholders[i] = b.nextArg(arg)
+	}
+	b.orderBy = fmt.Sprintf(clause, placeholders...)
 	return b
 }
 
