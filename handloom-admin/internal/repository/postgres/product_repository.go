@@ -355,15 +355,22 @@ func (r *ProductRepository) List(ctx context.Context, req domain.ListProductsReq
 		attrFilters["color"] = []string{*req.Color}
 	}
 
+	searching := req.Search != ""
+
 	qb := querybuilder.Select(prefixColumns("p", productColumns)...).
 		From("products p").
 		WithFilter(req.CategoryID != nil, "p.category_id", deref(req.CategoryID)).
 		WithFilter(req.Status != nil, "p.status", string(deref(req.Status))).
-		WithLike(req.Search != "", "p.name", "%"+req.Search+"%").
+		WithSearch(searching, "p.search_vector", "p.name", req.Search).
 		WithRange("p.selling_price", req.MinPrice, req.MaxPrice).
-		OrderBy("p.sort_order, p.id").
 		Limit(limit + 1).
 		Offset(offset)
+
+	if searching {
+		qb.OrderByRaw("ts_rank(p.search_vector, websearch_to_tsquery('english', %s)) DESC, p.sort_order, p.id", req.Search)
+	} else {
+		qb.OrderBy("p.sort_order, p.id")
+	}
 
 	if req.InStock != nil && *req.InStock {
 		qb.LeftJoin("inventory i", "i.product_id = p.id").
