@@ -105,7 +105,7 @@ Categories, products, inventory stored in PostgreSQL (RDS). Schema: `migrations/
 
 **Key patterns:**
 - **Attribute filtering**: Dynamic `EXISTS` subqueries on `product_attribute_values` table (EAV pattern). Hardcoded fields (material, color) also stored as attribute rows for uniform filtering.
-- **Full-text search**: GIN trigram index on `products.name` (`pg_trgm` extension) for `ILIKE` queries.
+- **Full-text search**: `tsvector` generated column (`search_vector`) on products combining `name` (weight A) and `description` (weight B) with a GIN index. Queries use `websearch_to_tsquery` for relevance-ranked `ts_rank` ordering, with an `ILIKE` fallback for partial/substring matches. Trigram index on `name` kept for the ILIKE path.
 - **Inventory locking**: `SELECT ... FOR UPDATE` within transactions to prevent race conditions on stock changes. Every mutation creates an `inventory_transaction` audit record.
 - **Caching**: In-process TTL cache (`internal/cache/`, go-cache) wraps category (2-5 min) and product (2 min) repos. Invalidated on writes. Product lists are NOT cached.
 - **Pagination**: Base64-encoded integer offset cursors. Fetch `LIMIT+1` to detect HasMore.

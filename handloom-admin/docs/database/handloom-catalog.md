@@ -1,6 +1,6 @@
 # Catalog Data (PostgreSQL)
 
-Catalog data (categories, products, inventory) lives in **PostgreSQL** (RDS in production, Docker locally). This provides relational querying, ACID transactions with row-level locking, full-text search via trigram indexes, and normalized attribute filtering.
+Catalog data (categories, products, inventory) lives in **PostgreSQL** (RDS in production, Docker locally). This provides relational querying, ACID transactions with row-level locking, full-text search via tsvector with ts_rank ordering, and normalized attribute filtering.
 
 Schema: `migrations/001_catalog_schema.sql` (auto-applied on first `docker-compose up`).
 Repository: `internal/repository/postgres/`
@@ -131,7 +131,8 @@ CREATE TABLE products (
 | `idx_products_category_price` | B-tree | `(category_id, selling_price)` | Price-sorted category browsing |
 | `idx_products_status` | B-tree | `(status)` | Filter by status |
 | `idx_products_slug` | B-tree | `(slug)` | Lookup by URL slug |
-| `idx_products_name_trgm` | GIN (trigram) | `name gin_trgm_ops` | Full-text search on product names |
+| `idx_products_name_trgm` | GIN (trigram) | `name gin_trgm_ops` | ILIKE fallback for partial/substring matches |
+| `idx_products_search_vector` | GIN | `search_vector` | Full-text search via tsvector (ts_rank ordering) |
 
 ### 5. product_attribute_values
 
@@ -175,8 +176,6 @@ One row per product. Stock levels updated atomically with row-level locking.
 CREATE TABLE inventory (
     id                  TEXT PRIMARY KEY,
     product_id          TEXT NOT NULL UNIQUE REFERENCES products(id) ON DELETE CASCADE,
-    product_sku         TEXT NOT NULL,         -- Denormalized for display
-    product_name        TEXT NOT NULL,         -- Denormalized for display
     quantity            INT NOT NULL DEFAULT 0,
     reserved_qty        INT NOT NULL DEFAULT 0,
     available_qty       INT NOT NULL DEFAULT 0, -- = quantity - reserved_qty
@@ -245,7 +244,7 @@ CREATE INDEX idx_inv_txn_product_time ON inventory_transactions (product_id, cre
 | Filter by price range | `WHERE p.selling_price BETWEEN $1 AND $2` | Dynamic WHERE clause |
 | Filter by attributes | `EXISTS (SELECT 1 FROM product_attribute_values v WHERE v.product_id = p.id AND v.attribute_name = $N AND v.attribute_value = ANY($M))` | Dynamic EXISTS per attribute |
 | Filter by stock level | `LEFT JOIN inventory i ... WHERE i.available_qty > 0` or `<= i.low_stock_threshold` | Optional JOIN |
-| Full-text search | `WHERE p.name ILIKE '%' \|\| $1 \|\| '%'` (uses GIN trigram index) | Dynamic WHERE clause |
+| Full-text search | `WHERE (p.search_vector @@ websearch_to_tsquery('english', $1) OR p.name ILIKE $2)` ordered by `ts_rank()` | tsvector + ILIKE fallback |
 | Get filter options | `SELECT DISTINCT attribute_value FROM product_attribute_values WHERE attribute_name = $1` scoped to category | `ProductRepository.GetAttributeFilterOptions` |
 | Create | Transaction: INSERT product + batch INSERT attributes + batch INSERT images + INSERT inventory | `ProductRepository.Create` |
 | Update | Transaction: UPDATE product + DELETE/re-INSERT attributes + DELETE/re-INSERT images | `ProductRepository.Update` |

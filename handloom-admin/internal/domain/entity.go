@@ -367,7 +367,7 @@ func NewProduct(req CreateProductRequest, id, slug, createdBy string) *Product {
 		Origin:                req.Origin,
 		CraftType:             req.CraftType,
 		Images:                req.Images,
-		Tags:                  req.Tags,
+		Tags:                  emptyIfNil(req.Tags),
 		Quantity:              req.InitialStock,
 		AvailableQty:          req.InitialStock,
 		LowStockThreshold:     req.LowStockThreshold,
@@ -375,6 +375,14 @@ func NewProduct(req CreateProductRequest, id, slug, createdBy string) *Product {
 	}
 	p.CreatedBy = createdBy
 	return p
+}
+
+// emptyIfNil returns s if non-nil, otherwise an empty slice.
+func emptyIfNil(s []string) []string {
+	if s == nil {
+		return []string{}
+	}
+	return s
 }
 
 // productStatusOrDefault returns the given status or DRAFT if nil.

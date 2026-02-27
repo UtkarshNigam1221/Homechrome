@@ -185,11 +185,7 @@ All inventory mutations use `SELECT ... FOR UPDATE` within a transaction to prev
 
 ### 4. Full-Text Search
 
-Product name search uses a **GIN trigram index** (`pg_trgm` extension):
-```sql
-CREATE INDEX idx_products_name_trgm ON products USING GIN (name gin_trgm_ops);
-```
-Enables fast `ILIKE '%term%'` queries without full table scans.
+Products have a `search_vector` generated column combining `name` (weight A) and `description` (weight B) with a GIN index. Queries use `websearch_to_tsquery('english', ...)` for relevance-ranked results via `ts_rank()`, with an `ILIKE` fallback for partial/substring matches. The trigram index on `name` is kept for the ILIKE path.
 
 ### 5. Dynamic Attribute Filtering
 
