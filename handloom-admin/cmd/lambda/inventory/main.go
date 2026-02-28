@@ -58,7 +58,7 @@ func main() {
 		cfg.JWT.RefreshTokenDuration,
 		cfg.JWT.Issuer,
 	)
-	inventoryService := service.NewInventoryService(inventoryRepo, publisher, log)
+	inventoryService := service.NewInventoryService(inventoryRepo, nil, publisher, log)
 
 	// Initialize handler
 	inventoryHandler := handler.NewInventoryHandler(inventoryService, log)

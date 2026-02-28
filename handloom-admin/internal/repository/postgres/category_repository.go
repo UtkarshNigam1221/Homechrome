@@ -172,6 +172,7 @@ func (r *CategoryRepository) List(ctx context.Context, req domain.ListCategories
 	qb := querybuilder.Select(categoryColumns...).
 		From("categories").
 		WithFilter(req.Status != nil, ColStatus, string(deref(req.Status))).
+		WithFilter(req.Slug != "", "slug", req.Slug).
 		WithLike(req.Search != "", ColName, "%"+req.Search+"%").
 		OrderBy(ColCreatedAt + " DESC").
 		Limit(limit + 1).

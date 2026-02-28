@@ -220,10 +220,11 @@ func ProvideProductService(
 // ProvideInventoryService creates a new InventoryService
 func ProvideInventoryService(
 	inventoryRepo domain.InventoryRepository,
+	c *cache.Cache,
 	publisher event.EventPublisher,
 	log *logger.Logger,
 ) *service.InventoryService {
-	return service.NewInventoryService(inventoryRepo, publisher, log)
+	return service.NewInventoryService(inventoryRepo, c, publisher, log)
 }
 
 // ProvidePricingService creates a new PricingService

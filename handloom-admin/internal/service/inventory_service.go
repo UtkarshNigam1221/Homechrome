@@ -9,9 +9,15 @@ import (
 	"github.com/handloom/admin/pkg/logger"
 )
 
+// CacheInvalidator allows services to invalidate cached product data after mutations.
+type CacheInvalidator interface {
+	DeletePrefix(prefix string)
+}
+
 // InventoryService implements domain.InventoryService
 type InventoryService struct {
 	inventoryRepo domain.InventoryRepository
+	cache         CacheInvalidator
 	publisher     event.EventPublisher
 	logger        *logger.Logger
 }
@@ -19,13 +25,23 @@ type InventoryService struct {
 // NewInventoryService creates a new InventoryService
 func NewInventoryService(
 	inventoryRepo domain.InventoryRepository,
+	cache CacheInvalidator,
 	publisher event.EventPublisher,
 	logger *logger.Logger,
 ) *InventoryService {
 	return &InventoryService{
 		inventoryRepo: inventoryRepo,
+		cache:         cache,
 		publisher:     publisher,
 		logger:        logger,
+	}
+}
+
+// invalidateProductCache clears cached product lists/items so the next read
+// picks up the latest inventory data from the JOIN.
+func (s *InventoryService) invalidateProductCache() {
+	if s.cache != nil {
+		s.cache.DeletePrefix("prod:")
 	}
 }
 
@@ -49,6 +65,7 @@ func (s *InventoryService) AddStock(ctx context.Context, productID string, req d
 		s.logger.WithContext(ctx).WithError(pubErr).Error("failed to publish inventory.restocked event")
 	}
 
+	s.invalidateProductCache()
 	s.logger.WithContext(ctx).Infof("Added stock to product %s: +%d", productID, req.Quantity)
 
 	return &domain.InventoryTransactionResult{
@@ -89,6 +106,7 @@ func (s *InventoryService) RemoveStock(ctx context.Context, productID string, re
 		}
 	}
 
+	s.invalidateProductCache()
 	s.logger.WithContext(ctx).Infof("Removed stock from product %s: -%d", productID, req.Quantity)
 
 	return &domain.InventoryTransactionResult{
@@ -108,6 +126,7 @@ func (s *InventoryService) AdjustStock(ctx context.Context, productID string, re
 		return nil, err
 	}
 
+	s.invalidateProductCache()
 	s.logger.WithContext(ctx).Infof("Adjusted stock for product %s: %d -> %d", productID, txn.PreviousQty, txn.NewQty)
 
 	return &domain.InventoryTransactionResult{

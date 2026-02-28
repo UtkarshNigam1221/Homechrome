@@ -33,6 +33,7 @@ const productSchema = z.object({
   height: z.number().min(0).optional(),
   dimension_unit: z.string().optional(),
   initial_stock: z.number().min(0, 'Initial stock must be positive').optional(),
+  stock_quantity: z.number().min(0, 'Stock must be positive').optional(),
   low_stock_threshold: z.number().min(0, 'Threshold must be positive'),
   status: z.enum(['ACTIVE', 'INACTIVE', 'DRAFT']),
   tags: z.string().optional(),
@@ -91,6 +92,7 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
       height: 0,
       dimension_unit: 'cm',
       initial_stock: 0,
+      stock_quantity: 0,
       low_stock_threshold: 5,
       status: 'DRAFT',
       tags: '',
@@ -157,6 +159,7 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
           width: product.dimensions?.width || 0,
           height: product.dimensions?.height || 0,
           dimension_unit: product.dimensions?.unit || 'cm',
+          stock_quantity: product.quantity ?? 0,
           low_stock_threshold: product.low_stock_threshold,
           status: product.status,
           tags: product.tags?.join(', ') || '',
@@ -210,10 +213,17 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
 
   // Update mutation
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: Partial<CreateProductRequest> }) =>
-      productsApi.update(id, data),
+    mutationFn: async ({ id, data, newStockQty }: { id: string; data: Partial<CreateProductRequest>; newStockQty?: number }) => {
+      const result = await productsApi.update(id, data);
+      // If stock quantity changed, adjust it via inventory endpoint
+      if (newStockQty !== undefined && product && newStockQty !== product.quantity) {
+        await productsApi.adjustStock(id, newStockQty, 'Stock adjusted via product edit');
+      }
+      return result;
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['products'] });
+      queryClient.invalidateQueries({ queryKey: ['inventory'] });
       toast.success('Product updated successfully');
       onClose();
     },
@@ -313,7 +323,7 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
     if (isEditing && product?.id) {
       // SKU is immutable after creation — strip it from update payload
       const { sku: _, ...updateData } = requestData;
-      updateMutation.mutate({ id: product.id, data: updateData });
+      updateMutation.mutate({ id: product.id, data: updateData, newStockQty: data.stock_quantity });
     } else {
       createMutation.mutate(requestData);
     }
@@ -545,6 +555,20 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
                 error={errors.initial_stock?.message}
                 {...register('initial_stock', { valueAsNumber: true })}
               />
+            )}
+
+            {isEditing && (
+              <>
+                <Input
+                  label="Stock Quantity"
+                  type="number"
+                  min="0"
+                  placeholder="0"
+                  hint={`Available: ${product?.available_qty ?? 0} · Reserved: ${product?.reserved_qty ?? 0}`}
+                  error={errors.stock_quantity?.message}
+                  {...register('stock_quantity', { valueAsNumber: true })}
+                />
+              </>
             )}
 
             <Input

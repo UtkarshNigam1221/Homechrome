@@ -10,6 +10,7 @@ import { useScrollDepth } from '@/hooks/useScrollDepth';
 import { track } from '@/lib/analytics';
 import { formatPrice } from '@/lib/utils';
 import { useAuthStore } from '@/stores/auth';
+import { useCartStore } from '@/stores/cart';
 import { Product, ProductImage } from '@/types';
 
 interface ProductDetailViewProps {
@@ -27,9 +28,10 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
     sortedImages[0] || null,
   );
   const [quantity, setQuantity] = useState(1);
-  const [adding, setAdding] = useState(false);
-  const { addItem } = useCart();
+  const [loading, setLoading] = useState(false);
+  const { addItem, updateQuantity, removeItem } = useCart();
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const cartQty = useCartStore((s) => s.getQuantity(product.id));
 
   useEffect(() => {
     track('product_viewed', {
@@ -52,7 +54,7 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
       window.location.href = '/login?redirect=' + encodeURIComponent(`/p/${product.slug}`);
       return;
     }
-    setAdding(true);
+    setLoading(true);
     try {
       await addItem(product.id, quantity);
       track('add_to_cart', {
@@ -65,7 +67,33 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
     } catch {
       // ignore
     } finally {
-      setAdding(false);
+      setLoading(false);
+    }
+  };
+
+  const handleCartIncrement = async () => {
+    setLoading(true);
+    try {
+      await updateQuantity(product.id, cartQty + 1);
+    } catch {
+      // ignore
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCartDecrement = async () => {
+    setLoading(true);
+    try {
+      if (cartQty <= 1) {
+        await removeItem(product.id);
+      } else {
+        await updateQuantity(product.id, cartQty - 1);
+      }
+    } catch {
+      // ignore
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -224,64 +252,81 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
 
           {/* Quantity + Add to Cart */}
           <div className="mt-8 border-t border-border pt-6">
-            <div className="flex items-center gap-4">
-              {/* Quantity selector */}
-              <div className="flex items-center rounded-lg border border-border">
-                <button
-                  type="button"
-                  onClick={() => setQuantity((q) => Math.max(1, q - 1))}
-                  disabled={quantity <= 1}
-                  className="px-3 py-2 text-foreground transition-colors hover:bg-background disabled:opacity-40"
-                  aria-label="Decrease quantity"
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    strokeWidth={2}
-                    stroke="currentColor"
-                    className="h-4 w-4"
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14" />
-                  </svg>
-                </button>
-                <span className="w-12 text-center text-sm font-medium text-foreground">
-                  {quantity}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setQuantity((q) => q + 1)}
-                  className="px-3 py-2 text-foreground transition-colors hover:bg-background"
-                  aria-label="Increase quantity"
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    strokeWidth={2}
-                    stroke="currentColor"
-                    className="h-4 w-4"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M12 4.5v15m7.5-7.5h-15"
-                    />
-                  </svg>
-                </button>
+            {cartQty > 0 ? (
+              <div>
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center rounded-lg border border-primary bg-primary/5">
+                    <button
+                      type="button"
+                      onClick={handleCartDecrement}
+                      disabled={loading}
+                      className="px-4 py-2.5 text-primary transition-colors hover:bg-primary/10 disabled:opacity-40"
+                      aria-label="Decrease quantity"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="h-4 w-4">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14" />
+                      </svg>
+                    </button>
+                    <span className="w-12 text-center text-sm font-bold text-primary">
+                      {cartQty}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleCartIncrement}
+                      disabled={loading}
+                      className="px-4 py-2.5 text-primary transition-colors hover:bg-primary/10 disabled:opacity-40"
+                      aria-label="Increase quantity"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="h-4 w-4">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                      </svg>
+                    </button>
+                  </div>
+                  <span className="text-sm text-muted">in your cart</span>
+                </div>
               </div>
+            ) : (
+              <div className="flex items-center gap-4">
+                {/* Quantity selector */}
+                <div className="flex items-center rounded-lg border border-border">
+                  <button
+                    type="button"
+                    onClick={() => setQuantity((q) => Math.max(1, q - 1))}
+                    disabled={quantity <= 1}
+                    className="px-3 py-2 text-foreground transition-colors hover:bg-background disabled:opacity-40"
+                    aria-label="Decrease quantity"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="h-4 w-4">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14" />
+                    </svg>
+                  </button>
+                  <span className="w-12 text-center text-sm font-medium text-foreground">
+                    {quantity}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setQuantity((q) => q + 1)}
+                    className="px-3 py-2 text-foreground transition-colors hover:bg-background"
+                    aria-label="Increase quantity"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="h-4 w-4">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                    </svg>
+                  </button>
+                </div>
 
-              <Button
-                variant="primary"
-                size="lg"
-                className="flex-1"
-                onClick={handleAddToCart}
-                loading={adding}
-                disabled={!product.in_stock}
-              >
-                {product.in_stock ? 'Add to Cart' : 'Out of Stock'}
-              </Button>
-            </div>
+                <Button
+                  variant="primary"
+                  size="lg"
+                  className="flex-1"
+                  onClick={handleAddToCart}
+                  loading={loading}
+                  disabled={!product.in_stock}
+                >
+                  {product.in_stock ? 'Add to Cart' : 'Out of Stock'}
+                </Button>
+              </div>
+            )}
           </div>
         </div>
       </div>

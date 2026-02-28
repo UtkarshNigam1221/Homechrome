@@ -195,7 +195,15 @@ func (r *ProductRepository) Create(ctx context.Context, product *domain.Product,
 
 // GetByID retrieves a product by its primary key.
 func (r *ProductRepository) GetByID(ctx context.Context, id string) (*domain.Product, error) {
-	qb := querybuilder.Select(productColumns...).From("products").Where(ColID, id)
+	selectCols := append(prefixColumns("p", productColumns),
+		"COALESCE(i.quantity, 0) AS inv_quantity",
+		"COALESCE(i.reserved_qty, 0) AS inv_reserved_qty",
+		"COALESCE(i.available_qty, 0) AS inv_available_qty",
+		"COALESCE(i.low_stock_threshold, 0) AS inv_low_stock_threshold",
+	)
+	qb := querybuilder.Select(selectCols...).From("products p").
+		LeftJoin("inventory i", "i.product_id = p.id").
+		Where("p.id", id)
 	query, args := qb.Build()
 
 	var row productRow
@@ -219,7 +227,15 @@ func (r *ProductRepository) GetByID(ctx context.Context, id string) (*domain.Pro
 
 // GetBySKU retrieves a product by its unique SKU.
 func (r *ProductRepository) GetBySKU(ctx context.Context, sku string) (*domain.Product, error) {
-	qb := querybuilder.Select(productColumns...).From("products").Where(ColSKU, sku)
+	selectCols := append(prefixColumns("p", productColumns),
+		"COALESCE(i.quantity, 0) AS inv_quantity",
+		"COALESCE(i.reserved_qty, 0) AS inv_reserved_qty",
+		"COALESCE(i.available_qty, 0) AS inv_available_qty",
+		"COALESCE(i.low_stock_threshold, 0) AS inv_low_stock_threshold",
+	)
+	qb := querybuilder.Select(selectCols...).From("products p").
+		LeftJoin("inventory i", "i.product_id = p.id").
+		Where("p.sku", sku)
 	query, args := qb.Build()
 
 	var row productRow
@@ -357,10 +373,20 @@ func (r *ProductRepository) List(ctx context.Context, req domain.ListProductsReq
 
 	searching := req.Search != ""
 
-	qb := querybuilder.Select(prefixColumns("p", productColumns)...).
+	// Always LEFT JOIN inventory so product rows include live stock data.
+	selectCols := append(prefixColumns("p", productColumns),
+		"COALESCE(i.quantity, 0) AS inv_quantity",
+		"COALESCE(i.reserved_qty, 0) AS inv_reserved_qty",
+		"COALESCE(i.available_qty, 0) AS inv_available_qty",
+		"COALESCE(i.low_stock_threshold, 0) AS inv_low_stock_threshold",
+	)
+
+	qb := querybuilder.Select(selectCols...).
 		From("products p").
+		LeftJoin("inventory i", "i.product_id = p.id").
 		WithFilter(req.CategoryID != nil, "p.category_id", deref(req.CategoryID)).
 		WithFilter(req.Status != nil, "p.status", string(deref(req.Status))).
+		WithFilter(req.Slug != "", "p.slug", req.Slug).
 		WithSearch(searching, "p.search_vector", "p.name", req.Search).
 		WithRange("p.selling_price", req.MinPrice, req.MaxPrice).
 		Limit(limit + 1).
@@ -373,12 +399,10 @@ func (r *ProductRepository) List(ctx context.Context, req domain.ListProductsReq
 	}
 
 	if req.InStock != nil && *req.InStock {
-		qb.LeftJoin("inventory i", "i.product_id = p.id").
-			WithRaw(true, "i.available_qty > 0")
+		qb.WithRaw(true, "i.available_qty > 0")
 	}
 	if req.LowStock != nil && *req.LowStock {
-		qb.LeftJoin("inventory i", "i.product_id = p.id").
-			WithRaw(true, "i.available_qty <= i.low_stock_threshold")
+		qb.WithRaw(true, "i.available_qty <= i.low_stock_threshold")
 	}
 
 	for attrName, values := range attrFilters {
@@ -422,7 +446,15 @@ func (r *ProductRepository) BatchGetByIDs(ctx context.Context, ids []string) ([]
 		return []*domain.Product{}, nil
 	}
 
-	qb := querybuilder.Select(productColumns...).From("products").WhereIn(ColID, ids)
+	selectCols := append(prefixColumns("p", productColumns),
+		"COALESCE(i.quantity, 0) AS inv_quantity",
+		"COALESCE(i.reserved_qty, 0) AS inv_reserved_qty",
+		"COALESCE(i.available_qty, 0) AS inv_available_qty",
+		"COALESCE(i.low_stock_threshold, 0) AS inv_low_stock_threshold",
+	)
+	qb := querybuilder.Select(selectCols...).From("products p").
+		LeftJoin("inventory i", "i.product_id = p.id").
+		WhereIn("p.id", ids)
 	query, args := qb.Build()
 
 	var rows []productRow
@@ -476,7 +508,15 @@ func (r *ProductRepository) BatchUpdateSortOrder(ctx context.Context, products [
 
 // GetByCategoryAll retrieves every product in a category ordered by sort_order.
 func (r *ProductRepository) GetByCategoryAll(ctx context.Context, categoryID string) ([]*domain.Product, error) {
-	qb := querybuilder.Select(productColumns...).From("products").Where(ColCategoryID, categoryID).OrderBy("sort_order, id")
+	selectCols := append(prefixColumns("p", productColumns),
+		"COALESCE(i.quantity, 0) AS inv_quantity",
+		"COALESCE(i.reserved_qty, 0) AS inv_reserved_qty",
+		"COALESCE(i.available_qty, 0) AS inv_available_qty",
+		"COALESCE(i.low_stock_threshold, 0) AS inv_low_stock_threshold",
+	)
+	qb := querybuilder.Select(selectCols...).From("products p").
+		LeftJoin("inventory i", "i.product_id = p.id").
+		Where("p.category_id", categoryID).OrderBy("p.sort_order, p.id")
 	query, args := qb.Build()
 
 	var rows []productRow

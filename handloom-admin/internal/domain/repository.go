@@ -90,6 +90,7 @@ type CategoryRepository interface {
 type ListCategoriesRequest struct {
 	PaginationRequest
 	Status *CategoryStatus `json:"status,omitempty"`
+	Slug   string          `json:"slug,omitempty"`
 	Search string          `json:"search,omitempty"`
 }
 
@@ -139,6 +140,7 @@ type ListProductsRequest struct {
 	PaginationRequest
 	CategoryID       *string             `json:"category_id,omitempty"`
 	Status           *ProductStatus      `json:"status,omitempty"`
+	Slug             string              `json:"slug,omitempty"`
 	Search           string              `json:"search,omitempty"`
 	MinPrice         *int64              `json:"min_price,omitempty"`
 	MaxPrice         *int64              `json:"max_price,omitempty"`

@@ -16,11 +16,11 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/ssm v1.67.8
 	github.com/awslabs/aws-lambda-go-api-proxy v0.16.2
 	github.com/georgysavva/scany/v2 v2.1.4
-	github.com/go-chi/chi/v5 v5.0.11
+	github.com/go-chi/chi/v5 v5.2.4
 	github.com/go-chi/cors v1.2.1
 	github.com/go-chi/httprate v0.8.0
 	github.com/go-playground/validator/v10 v10.14.0
-	github.com/golang-jwt/jwt/v5 v5.2.0
+	github.com/golang-jwt/jwt/v5 v5.2.2
 	github.com/google/uuid v1.6.0
 	github.com/google/wire v0.5.0
 	github.com/jackc/pgx/v5 v5.8.0

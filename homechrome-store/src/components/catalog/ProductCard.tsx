@@ -8,6 +8,7 @@ import Button from '@/components/common/Button';
 import { useCart } from '@/hooks/useCart';
 import { formatPrice } from '@/lib/utils';
 import { useAuthStore } from '@/stores/auth';
+import { useCartStore } from '@/stores/cart';
 import { Product } from '@/types';
 
 interface ProductCardProps {
@@ -15,9 +16,10 @@ interface ProductCardProps {
 }
 
 export default function ProductCard({ product }: ProductCardProps) {
-  const [adding, setAdding] = useState(false);
-  const { addItem } = useCart();
+  const [loading, setLoading] = useState(false);
+  const { addItem, updateQuantity, removeItem } = useCart();
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const cartQty = useCartStore((s) => s.getQuantity(product.id));
 
   const primaryImage = product.images?.find((img) => img.is_primary) || product.images?.[0];
   const hasDiscount = product.mrp > product.selling_price;
@@ -32,13 +34,43 @@ export default function ProductCard({ product }: ProductCardProps) {
       window.location.href = '/login?redirect=' + encodeURIComponent(window.location.pathname);
       return;
     }
-    setAdding(true);
+    setLoading(true);
     try {
       await addItem(product.id, 1);
     } catch {
       // ignore
     } finally {
-      setAdding(false);
+      setLoading(false);
+    }
+  };
+
+  const handleIncrement = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setLoading(true);
+    try {
+      await updateQuantity(product.id, cartQty + 1);
+    } catch {
+      // ignore
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDecrement = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setLoading(true);
+    try {
+      if (cartQty <= 1) {
+        await removeItem(product.id);
+      } else {
+        await updateQuantity(product.id, cartQty - 1);
+      }
+    } catch {
+      // ignore
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -104,16 +136,44 @@ export default function ProductCard({ product }: ProductCardProps) {
         </div>
 
         <div className="mt-auto pt-3">
-          <Button
-            variant="primary"
-            size="sm"
-            className="w-full"
-            onClick={handleAddToCart}
-            loading={adding}
-            disabled={!product.in_stock}
-          >
-            {product.in_stock ? 'Add to Cart' : 'Out of Stock'}
-          </Button>
+          {cartQty > 0 ? (
+            <div className="flex items-center justify-between rounded-lg border border-primary bg-primary/5">
+              <button
+                type="button"
+                onClick={handleDecrement}
+                disabled={loading}
+                className="px-3 py-2 text-primary transition-colors hover:bg-primary/10 disabled:opacity-40"
+                aria-label="Decrease quantity"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="h-4 w-4">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14" />
+                </svg>
+              </button>
+              <span className="text-sm font-semibold text-primary">{cartQty}</span>
+              <button
+                type="button"
+                onClick={handleIncrement}
+                disabled={loading}
+                className="px-3 py-2 text-primary transition-colors hover:bg-primary/10 disabled:opacity-40"
+                aria-label="Increase quantity"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="h-4 w-4">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                </svg>
+              </button>
+            </div>
+          ) : (
+            <Button
+              variant="primary"
+              size="sm"
+              className="w-full"
+              onClick={handleAddToCart}
+              loading={loading}
+              disabled={!product.in_stock}
+            >
+              {product.in_stock ? 'Add to Cart' : 'Out of Stock'}
+            </Button>
+          )}
         </div>
       </div>
     </div>

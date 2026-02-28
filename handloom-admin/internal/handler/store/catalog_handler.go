@@ -4,6 +4,7 @@ package store
 import (
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"strconv"
 	"time"
 
@@ -48,12 +49,18 @@ func (h *CatalogHandler) Routes() chi.Router {
 	r.Get("/categories", h.ListCategories)
 	r.Get("/categories/{idOrSlug}", h.GetCategory)
 	r.Get("/products", h.ListProducts)
-	r.Get("/products/search", h.SearchProducts)
 	r.Get("/products/{idOrSlug}", h.GetProduct)
 	r.Get("/products/{id}/availability", h.CheckAvailability)
 
 	return r
 }
+
+// Package-level active status pointers used by every handler to restrict
+// storefront results to published entities.
+var (
+	activeCategoryStatus = domain.CategoryStatusActive
+	activeProductStatus  = domain.ProductStatusActive
+)
 
 // ==================== Response Types ====================
 
@@ -111,16 +118,16 @@ type StoreProduct struct {
 
 // StoreCategory is the public-facing category response.
 type StoreCategory struct {
-	ID            string                   `json:"id"`
-	Name          string                   `json:"name"`
-	Slug          string                   `json:"slug"`
-	Description   string                   `json:"description,omitempty"`
-	ImageURL      string                   `json:"image_url,omitempty"`
+	ID            string                     `json:"id"`
+	Name          string                     `json:"name"`
+	Slug          string                     `json:"slug"`
+	Description   string                     `json:"description,omitempty"`
+	ImageURL      string                     `json:"image_url,omitempty"`
 	OwnAttributes []domain.CategoryAttribute `json:"own_attributes,omitempty"`
-	ProductCount  int                      `json:"product_count"`
-	Status        domain.CategoryStatus    `json:"status"`
-	CreatedAt     time.Time                `json:"created_at"`
-	UpdatedAt     time.Time                `json:"updated_at"`
+	ProductCount  int                        `json:"product_count"`
+	Status        domain.CategoryStatus      `json:"status"`
+	CreatedAt     time.Time                  `json:"created_at"`
+	UpdatedAt     time.Time                  `json:"updated_at"`
 }
 
 // AvailabilityResponse is returned by the CheckAvailability endpoint.
@@ -129,23 +136,11 @@ type AvailabilityResponse struct {
 	AvailableQuantity int  `json:"available_quantity"`
 }
 
-// StoreListProductsResponse wraps the public product list.
-type StoreListProductsResponse struct {
-	Products   []*StoreProduct          `json:"products"`
-	Pagination domain.PaginationResponse `json:"pagination"`
-}
-
-// StoreCategoriesResponse wraps the public category list.
-type StoreCategoriesResponse struct {
-	Categories []*StoreCategory          `json:"categories"`
-	Pagination domain.PaginationResponse `json:"pagination"`
-}
-
 // ==================== Conversion Helpers ====================
 
 // toStoreProduct converts a domain Product to a public StoreProduct, stripping
 // CostPrice and replacing raw inventory numbers with a simple InStock boolean.
-func toStoreProduct(p *domain.Product, inStock bool) *StoreProduct {
+func toStoreProduct(p *domain.Product) *StoreProduct {
 	return &StoreProduct{
 		ID:                    p.ID,
 		Name:                  p.Name,
@@ -168,7 +163,7 @@ func toStoreProduct(p *domain.Product, inStock bool) *StoreProduct {
 		CraftType:             p.CraftType,
 		Images:                p.Images,
 		Tags:                  p.Tags,
-		InStock:               inStock,
+		InStock:               p.AvailableQty > 0,
 		CreatedAt:             p.CreatedAt,
 		UpdatedAt:             p.UpdatedAt,
 	}
@@ -176,8 +171,7 @@ func toStoreProduct(p *domain.Product, inStock bool) *StoreProduct {
 
 // toStoreProductFromRelations converts a ProductWithRelations to a StoreProduct.
 func toStoreProductFromRelations(pwr *domain.ProductWithRelations) *StoreProduct {
-	inStock := pwr.AvailableQty > 0
-	sp := toStoreProduct(pwr.Product, inStock)
+	sp := toStoreProduct(pwr.Product)
 	sp.Category = pwr.Category
 	return sp
 }
@@ -210,11 +204,9 @@ func isUUID(s string) bool {
 func (h *CatalogHandler) ListCategories(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	// Only show active categories in the store.
-	activeStatus := domain.CategoryStatusActive
 	req := domain.ListCategoriesRequest{
 		PaginationRequest: parsePagination(r),
-		Status:            &activeStatus,
+		Status:            &activeCategoryStatus,
 	}
 
 	if search := r.URL.Query().Get("search"); search != "" {
@@ -232,11 +224,7 @@ func (h *CatalogHandler) ListCategories(w http.ResponseWriter, r *http.Request) 
 		cats = append(cats, toStoreCategory(c))
 	}
 
-	response.SuccessWithMeta(w, cats, &response.Meta{
-		Limit:      result.Pagination.Limit,
-		NextCursor: result.Pagination.NextCursor,
-		HasMore:    result.Pagination.HasMore,
-	})
+	response.SuccessWithMeta(w, cats, paginationMeta(result.Pagination))
 }
 
 // GetCategory handles GET /store/categories/{idOrSlug}
@@ -279,11 +267,10 @@ func (h *CatalogHandler) GetCategory(w http.ResponseWriter, r *http.Request) {
 // error response if not found.
 func (h *CatalogHandler) findCategoryBySlug(w http.ResponseWriter, r *http.Request, slug string) *domain.Category {
 	ctx := r.Context()
-	activeStatus := domain.CategoryStatusActive
 	req := domain.ListCategoriesRequest{
-		PaginationRequest: domain.PaginationRequest{Limit: 100},
-		Status:            &activeStatus,
-		Search:            slug,
+		PaginationRequest: domain.PaginationRequest{Limit: 1},
+		Status:            &activeCategoryStatus,
+		Slug:              slug,
 	}
 
 	result, err := h.categoryService.List(ctx, req)
@@ -292,10 +279,8 @@ func (h *CatalogHandler) findCategoryBySlug(w http.ResponseWriter, r *http.Reque
 		return nil
 	}
 
-	for _, c := range result.Categories {
-		if c.Slug == slug {
-			return c
-		}
+	if len(result.Categories) > 0 {
+		return result.Categories[0]
 	}
 
 	response.NotFound(w, "Category")
@@ -306,40 +291,23 @@ func (h *CatalogHandler) findCategoryBySlug(w http.ResponseWriter, r *http.Reque
 func (h *CatalogHandler) ListProducts(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	// Hardcode ACTIVE status filter for the storefront.
-	activeStatus := domain.ProductStatusActive
 	req := domain.ListProductsRequest{
 		PaginationRequest: parsePagination(r),
-		Status:            &activeStatus,
+		Status:            &activeProductStatus,
 	}
 
 	// Parse optional query params.
-	if categoryID := r.URL.Query().Get("category_id"); categoryID != "" {
-		req.CategoryID = &categoryID
-	}
-	if search := r.URL.Query().Get("search"); search != "" {
-		req.Search = search
-	}
-	if minPrice := r.URL.Query().Get("min_price"); minPrice != "" {
-		if val, err := strconv.ParseInt(minPrice, 10, 64); err == nil {
-			req.MinPrice = &val
-		}
-	}
-	if maxPrice := r.URL.Query().Get("max_price"); maxPrice != "" {
-		if val, err := strconv.ParseInt(maxPrice, 10, 64); err == nil {
-			req.MaxPrice = &val
-		}
-	}
-	if material := r.URL.Query().Get("material"); material != "" {
-		req.Material = &material
-	}
-	if color := r.URL.Query().Get("color"); color != "" {
-		req.Color = &color
-	}
-	if attrFiltersJSON := r.URL.Query().Get("attribute_filters"); attrFiltersJSON != "" {
-		var attrFilters map[string][]string
-		if err := json.Unmarshal([]byte(attrFiltersJSON), &attrFilters); err == nil {
-			req.AttributeFilters = attrFilters
+	q := r.URL.Query()
+	req.CategoryID = queryStr(q, "category_id")
+	req.Search = q.Get("search")
+	req.MinPrice = queryInt64(q, "min_price")
+	req.MaxPrice = queryInt64(q, "max_price")
+	req.Material = queryStr(q, "material")
+	req.Color = queryStr(q, "color")
+	if attrJSON := q.Get("attribute_filters"); attrJSON != "" {
+		var af map[string][]string
+		if err := json.Unmarshal([]byte(attrJSON), &af); err == nil {
+			req.AttributeFilters = af
 		}
 	}
 
@@ -351,21 +319,10 @@ func (h *CatalogHandler) ListProducts(w http.ResponseWriter, r *http.Request) {
 
 	products := make([]*StoreProduct, 0, len(result.Products))
 	for _, p := range result.Products {
-		inStock := p.AvailableQty > 0
-		products = append(products, toStoreProduct(p, inStock))
+		products = append(products, toStoreProduct(p))
 	}
 
-	response.SuccessWithMeta(w, products, &response.Meta{
-		Limit:      result.Pagination.Limit,
-		NextCursor: result.Pagination.NextCursor,
-		HasMore:    result.Pagination.HasMore,
-	})
-}
-
-// SearchProducts handles GET /store/products/search
-// This is a convenience alias for ListProducts with the search parameter.
-func (h *CatalogHandler) SearchProducts(w http.ResponseWriter, r *http.Request) {
-	h.ListProducts(w, r)
+	response.SuccessWithMeta(w, products, paginationMeta(result.Pagination))
 }
 
 // GetProduct handles GET /store/products/{idOrSlug}
@@ -414,11 +371,10 @@ func (h *CatalogHandler) GetProduct(w http.ResponseWriter, r *http.Request) {
 // writes an error response if not found.
 func (h *CatalogHandler) findProductBySlug(w http.ResponseWriter, r *http.Request, slug string) *domain.Product {
 	ctx := r.Context()
-	activeStatus := domain.ProductStatusActive
 	req := domain.ListProductsRequest{
-		PaginationRequest: domain.PaginationRequest{Limit: 100},
-		Status:            &activeStatus,
-		Search:            slug,
+		PaginationRequest: domain.PaginationRequest{Limit: 1},
+		Status:            &activeProductStatus,
+		Slug:              slug,
 	}
 
 	result, err := h.productService.List(ctx, req)
@@ -427,10 +383,8 @@ func (h *CatalogHandler) findProductBySlug(w http.ResponseWriter, r *http.Reques
 		return nil
 	}
 
-	for _, p := range result.Products {
-		if p.Slug == slug {
-			return p
-		}
+	if len(result.Products) > 0 {
+		return result.Products[0]
 	}
 
 	response.NotFound(w, "Product")
@@ -483,30 +437,50 @@ func (h *CatalogHandler) CheckAvailability(w http.ResponseWriter, r *http.Reques
 
 // parsePagination parses cursor-based pagination parameters from the request.
 func parsePagination(r *http.Request) domain.PaginationRequest {
+	q := r.URL.Query()
 	limit := 20
-	sortBy := ""
-	sortDir := "desc"
-
-	if l := r.URL.Query().Get("limit"); l != "" {
+	if l := q.Get("limit"); l != "" {
 		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 && parsed <= 100 {
 			limit = parsed
 		}
 	}
 
-	cursor := r.URL.Query().Get("cursor")
-
-	if sb := r.URL.Query().Get("sort_by"); sb != "" {
-		sortBy = sb
-	}
-
-	if sd := r.URL.Query().Get("sort_order"); sd == "asc" || sd == "desc" {
+	sortDir := "desc"
+	if sd := q.Get("sort_order"); sd == "asc" || sd == "desc" {
 		sortDir = sd
 	}
 
 	return domain.PaginationRequest{
 		Limit:   limit,
-		Cursor:  cursor,
-		SortBy:  sortBy,
+		Cursor:  q.Get("cursor"),
+		SortBy:  q.Get("sort_by"),
 		SortDir: sortDir,
 	}
+}
+
+// paginationMeta converts a domain PaginationResponse to a response.Meta.
+func paginationMeta(p domain.PaginationResponse) *response.Meta {
+	return &response.Meta{
+		Limit:      p.Limit,
+		NextCursor: p.NextCursor,
+		HasMore:    p.HasMore,
+	}
+}
+
+// queryStr returns a *string if the key is present and non-empty, nil otherwise.
+func queryStr(q url.Values, key string) *string {
+	if v := q.Get(key); v != "" {
+		return &v
+	}
+	return nil
+}
+
+// queryInt64 returns a *int64 if the key is a valid integer, nil otherwise.
+func queryInt64(q url.Values, key string) *int64 {
+	if v := q.Get(key); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
+			return &n
+		}
+	}
+	return nil
 }

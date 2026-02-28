@@ -330,11 +330,11 @@ type Product struct {
 	// Tags & SEO
 	Tags []string `json:"tags,omitempty" db:"tags"`
 
-	// Inventory (from inventory table, not stored on products)
-	Quantity          int `json:"quantity"`
-	ReservedQty       int `json:"reserved_qty"`
-	AvailableQty      int `json:"available_qty"`
-	LowStockThreshold int `json:"low_stock_threshold"`
+	// Inventory (LEFT JOINed from inventory table during List/Get queries)
+	Quantity          int `json:"quantity" db:"inv_quantity"`
+	ReservedQty       int `json:"reserved_qty" db:"inv_reserved_qty"`
+	AvailableQty      int `json:"available_qty" db:"inv_available_qty"`
+	LowStockThreshold int `json:"low_stock_threshold" db:"inv_low_stock_threshold"`
 
 	Status    ProductStatus `json:"status" db:"status"`
 	SortOrder int           `json:"sort_order" db:"sort_order"`

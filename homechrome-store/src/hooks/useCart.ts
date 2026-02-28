@@ -4,25 +4,35 @@ import { useCallback, useEffect, useState } from 'react';
 
 import api from '@/lib/api';
 import { useAuthStore } from '@/stores/auth';
+import { useCartStore } from '@/stores/cart';
 import { CartWithItems } from '@/types';
 
 export function useCart() {
   const [cart, setCart] = useState<CartWithItems | null>(null);
   const [loading, setLoading] = useState(false);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const setCartStore = useCartStore((s) => s.setCart);
+
+  const updateCart = useCallback(
+    (data: CartWithItems | null) => {
+      setCart(data);
+      setCartStore(data?.items ?? []);
+    },
+    [setCartStore],
+  );
 
   const fetchCart = useCallback(async () => {
     if (!isAuthenticated) return;
     setLoading(true);
     try {
       const { data } = await api.get<CartWithItems>('/api/v1/store/cart');
-      setCart(data);
+      updateCart(data);
     } catch {
       /* ignore */
     } finally {
       setLoading(false);
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, updateCart]);
 
   useEffect(() => {
     fetchCart();
@@ -33,7 +43,7 @@ export function useCart() {
       product_id: productId,
       quantity,
     });
-    setCart(data);
+    updateCart(data);
     return data;
   };
 
@@ -42,7 +52,7 @@ export function useCart() {
       `/api/v1/store/cart/items/${productId}`,
       { quantity },
     );
-    setCart(data);
+    updateCart(data);
     return data;
   };
 
@@ -50,13 +60,13 @@ export function useCart() {
     const { data } = await api.delete<CartWithItems>(
       `/api/v1/store/cart/items/${productId}`,
     );
-    setCart(data);
+    updateCart(data);
     return data;
   };
 
   const clearCart = async () => {
     await api.delete('/api/v1/store/cart');
-    setCart(null);
+    updateCart(null);
   };
 
   return {

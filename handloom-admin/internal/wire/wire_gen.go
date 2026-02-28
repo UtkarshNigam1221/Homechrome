@@ -53,7 +53,7 @@ func InitializeApiDeps(ctx context.Context, cfg *config.Config) (*ApiDeps, error
 		return nil, err
 	}
 	productService := ProvideProductService(productRepository, categoryRepository, inventoryRepository, assetService, eventPublisher, logger)
-	inventoryService := ProvideInventoryService(inventoryRepository, eventPublisher, logger)
+	inventoryService := ProvideInventoryService(inventoryRepository, cache, eventPublisher, logger)
 	productHandler := ProvideProductHandler(productService, inventoryService, logger, validation)
 	inventoryHandler := ProvideInventoryHandler(inventoryService, logger)
 	pricingRuleRepository := ProvidePricingRuleRepository(client)
@@ -179,7 +179,7 @@ func InitializeCatalogDeps(ctx context.Context, cfg *config.Config) (*CatalogDep
 		return nil, err
 	}
 	productService := ProvideProductService(productRepository, categoryRepository, inventoryRepository, assetService, eventPublisher, logger)
-	inventoryService := ProvideInventoryService(inventoryRepository, eventPublisher, logger)
+	inventoryService := ProvideInventoryService(inventoryRepository, cache, eventPublisher, logger)
 	productHandler := ProvideProductHandler(productService, inventoryService, logger, validation)
 	client, err := ProvideDynamoDBClient(ctx, cfg)
 	if err != nil {
@@ -280,11 +280,12 @@ func InitializeInventoryDeps(ctx context.Context, cfg *config.Config) (*Inventor
 		return nil, err
 	}
 	inventoryRepository := ProvideInventoryRepository(pool)
+	cache := ProvideCatalogCache()
 	eventPublisher, err := ProvideEventPublisher(ctx, cfg, logger)
 	if err != nil {
 		return nil, err
 	}
-	inventoryService := ProvideInventoryService(inventoryRepository, eventPublisher, logger)
+	inventoryService := ProvideInventoryService(inventoryRepository, cache, eventPublisher, logger)
 	inventoryHandler := ProvideInventoryHandler(inventoryService, logger)
 	client, err := ProvideDynamoDBClient(ctx, cfg)
 	if err != nil {
@@ -445,7 +446,7 @@ func InitializeReportDeps(ctx context.Context, cfg *config.Config) (*ReportDeps,
 	}
 	productService := ProvideProductService(productRepository, categoryRepository, inventoryRepository, assetService, eventPublisher, logger)
 	customerService := ProvideCustomerService(customerRepository, orderRepository, logger)
-	inventoryService := ProvideInventoryService(inventoryRepository, eventPublisher, logger)
+	inventoryService := ProvideInventoryService(inventoryRepository, cache, eventPublisher, logger)
 	analyticsRepository := ProvideAnalyticsRepository(client)
 	analyticsService := ProvideAnalyticsService(analyticsRepository, orderRepository, productRepository, inventoryRepository, logger)
 	reportService := ProvideReportService(reportRepository, orderService, productService, customerService, inventoryService, analyticsService, logger)
@@ -538,7 +539,7 @@ func InitializeStoreCatalogDeps(ctx context.Context, cfg *config.Config) (*Store
 	}
 	productService := ProvideProductService(productRepository, categoryRepository, inventoryRepository, assetService, eventPublisher, logger)
 	categoryService := ProvideCategoryService(categoryRepository, productRepository, assetService, logger)
-	inventoryService := ProvideInventoryService(inventoryRepository, eventPublisher, logger)
+	inventoryService := ProvideInventoryService(inventoryRepository, cache, eventPublisher, logger)
 	catalogHandler := ProvideStoreCatalogHandler(productService, categoryService, inventoryService, logger)
 	storeCatalogDeps := &StoreCatalogDeps{
 		Config:  cfg,

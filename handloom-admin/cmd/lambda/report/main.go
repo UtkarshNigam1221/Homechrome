@@ -75,7 +75,7 @@ func main() {
 		cfg.JWT.Issuer,
 	)
 	assetService := service.NewAssetService(log, s3c, cfg.AWS.S3Bucket, cfg.AWS.Endpoint)
-	inventoryService := service.NewInventoryService(inventoryRepo, publisher, log)
+	inventoryService := service.NewInventoryService(inventoryRepo, nil, publisher, log)
 	productService := service.NewProductService(
 		productRepo,
 		categoryRepo,

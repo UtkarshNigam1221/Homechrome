@@ -1,25 +1,28 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
+import { api } from '@/lib/api';
 import { useAuthStore } from '@/stores/auth';
+import { Category } from '@/types';
 
 interface MobileNavProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
-const categories = [
-  { name: 'Sarees', href: '/categories/sarees' },
-  { name: 'Dupattas', href: '/categories/dupattas' },
-  { name: 'Fabrics', href: '/categories/fabrics' },
-  { name: 'Stoles', href: '/categories/stoles' },
-  { name: 'Home Textiles', href: '/categories/home-textiles' },
-];
-
 export default function MobileNav({ isOpen, onClose }: MobileNavProps) {
   const { isAuthenticated, customer, logout } = useAuthStore();
+  const [categories, setCategories] = useState<Category[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    api.get<Category[]>('/api/v1/store/catalog/categories').then((res) => {
+      if (!cancelled) setCategories(res.data);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
 
   // Prevent body scroll when menu is open
   useEffect(() => {
@@ -94,8 +97,8 @@ export default function MobileNav({ isOpen, onClose }: MobileNavProps) {
               <div className="mt-2 space-y-1">
                 {categories.map((category) => (
                   <Link
-                    key={category.href}
-                    href={category.href}
+                    key={category.id}
+                    href={`/c/${category.slug}`}
                     onClick={onClose}
                     className="block rounded-lg px-3 py-2.5 text-base text-foreground transition-colors hover:bg-background"
                   >
