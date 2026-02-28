@@ -19,6 +19,7 @@
     "zustand": "^5.0.11"
   },
   "devDependencies": {
+    "@opennextjs/aws": "^3.9.16",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",

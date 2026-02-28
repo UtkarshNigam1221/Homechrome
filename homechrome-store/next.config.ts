@@ -5,6 +5,7 @@ const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8081';
 const isDev = process.env.NODE_ENV === 'development';
 
 const nextConfig: NextConfig = {
+  output: 'standalone',
   images: {
     remotePatterns: [
       { protocol: 'https', hostname: '*.s3.amazonaws.com' },
