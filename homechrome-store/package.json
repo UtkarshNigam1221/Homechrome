@@ -7,8 +7,17 @@
     "dev:local": "next dev --port 3000",
     "dev:lambda": "cp .env.local-lambda .env.local && next dev --port 3000",
     "build": "next build",
+    "build:dev": "NEXT_PUBLIC_API_URL=https://dev-api.homechrome.lldlab.com NEXT_PUBLIC_SITE_URL=https://dev-store.homechrome.lldlab.com next build",
+    "build:prod": "NEXT_PUBLIC_API_URL=https://api.homechrome.lldlab.com NEXT_PUBLIC_SITE_URL=https://homechrome.lldlab.com next build",
+    "open-next:build": "npx @opennextjs/aws build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "cdk:synth:dev": "cd infra && cdk synth -c environment=dev",
+    "cdk:synth:prod": "cd infra && cdk synth -c environment=prod",
+    "cdk:deploy:dev": "npm run build:dev && npm run open-next:build && cd infra && cdk deploy --all --require-approval never -c environment=dev -c certArn=arn:aws:acm:us-east-1:163053486005:certificate/a8dca48d-5992-4e6e-94c9-fffc7f3ac447",
+    "cdk:deploy:prod": "npm run build:prod && npm run open-next:build && cd infra && cdk deploy --all --require-approval never -c environment=prod -c certArn=arn:aws:acm:us-east-1:163053486005:certificate/a8dca48d-5992-4e6e-94c9-fffc7f3ac447",
+    "cdk:destroy:dev": "cd infra && cdk destroy --all -c environment=dev",
+    "cdk:destroy:prod": "cd infra && cdk destroy --all -c environment=prod"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.90.21",
