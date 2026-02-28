@@ -37,6 +37,29 @@ func setupProductTest(t *testing.T) (
 	return svc, mockProdRepo, mockCatRepo, mockInvRepo, mockFinalizer, context.Background()
 }
 
+func setupProductTestWithSpy(t *testing.T) (
+	*ProductService,
+	*mocks.MockProductRepository,
+	*mocks.MockCategoryRepository,
+	*mocks.MockInventoryRepository,
+	*mocks.MockAssetFinalizer,
+	*spyPublisher,
+	context.Context,
+) {
+	ctrl := gomock.NewController(t)
+	t.Cleanup(func() { ctrl.Finish() })
+
+	mockProdRepo := mocks.NewMockProductRepository(ctrl)
+	mockCatRepo := mocks.NewMockCategoryRepository(ctrl)
+	mockInvRepo := mocks.NewMockInventoryRepository(ctrl)
+	mockFinalizer := mocks.NewMockAssetFinalizer(ctrl)
+	log := logger.NewNoop()
+
+	spy := newSpyPublisher()
+	svc := NewProductService(mockProdRepo, mockCatRepo, mockInvRepo, mockFinalizer, spy, log)
+	return svc, mockProdRepo, mockCatRepo, mockInvRepo, mockFinalizer, spy, context.Background()
+}
+
 func TestProductService_Create(t *testing.T) {
 	t.Run("successful creation", func(t *testing.T) {
 		svc, mockProdRepo, mockCatRepo, _, _, ctx := setupProductTest(t)
@@ -726,5 +749,375 @@ func TestValidateRequiredAttributes(t *testing.T) {
 		}
 		err := validateRequiredAttributes(attrs, categoryAttrs)
 		require.Error(t, err)
+	})
+}
+
+func TestProductService_Create_EventPublishing(t *testing.T) {
+	t.Run("publishes PRODUCT_CREATED event", func(t *testing.T) {
+		svc, mockProdRepo, mockCatRepo, _, _, spy, ctx := setupProductTestWithSpy(t)
+
+		category := &domain.Category{ID: "cat_123"}
+
+		mockCatRepo.EXPECT().GetByID(ctx, "cat_123").Return(category, nil)
+		mockProdRepo.EXPECT().Create(ctx, gomock.Any(), gomock.Any()).Return(nil)
+		mockCatRepo.EXPECT().IncrementProductCount(ctx, "cat_123", 1).Return(nil)
+
+		_, err := svc.Create(ctx, domain.CreateProductRequest{
+			Name: "Test", SKU: "TST-001", CategoryID: "cat_123",
+		}, "admin_1")
+
+		require.NoError(t, err)
+		assert.True(t, spy.hasEvent(event.ProductCreated))
+	})
+
+	t.Run("event failure is non-fatal", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		t.Cleanup(func() { ctrl.Finish() })
+
+		mockProdRepo := mocks.NewMockProductRepository(ctrl)
+		mockCatRepo := mocks.NewMockCategoryRepository(ctrl)
+		mockInvRepo := mocks.NewMockInventoryRepository(ctrl)
+		mockFinalizer := mocks.NewMockAssetFinalizer(ctrl)
+		log := logger.NewNoop()
+
+		failPub := newFailingPublisher(errors.Internal("SNS down"))
+		svc := NewProductService(mockProdRepo, mockCatRepo, mockInvRepo, mockFinalizer, failPub, log)
+		ctx := context.Background()
+
+		mockCatRepo.EXPECT().GetByID(ctx, "cat_123").Return(&domain.Category{ID: "cat_123"}, nil)
+		mockProdRepo.EXPECT().Create(ctx, gomock.Any(), gomock.Any()).Return(nil)
+		mockCatRepo.EXPECT().IncrementProductCount(ctx, "cat_123", 1).Return(nil)
+
+		product, err := svc.Create(ctx, domain.CreateProductRequest{
+			Name: "Test", SKU: "TST-001", CategoryID: "cat_123",
+		}, "admin_1")
+
+		require.NoError(t, err) // non-fatal
+		assert.NotNil(t, product)
+	})
+}
+
+func TestProductService_Update_EventPublishing(t *testing.T) {
+	t.Run("publishes PRODUCT_UPDATED event", func(t *testing.T) {
+		svc, mockProdRepo, mockCatRepo, _, _, spy, ctx := setupProductTestWithSpy(t)
+
+		existing := &domain.Product{ID: "prod_123", CategoryID: "cat_123", Material: "silk"}
+		category := &domain.Category{ID: "cat_123"}
+		newName := "Updated Name"
+
+		mockProdRepo.EXPECT().GetByID(ctx, "prod_123").Return(existing, nil)
+		mockCatRepo.EXPECT().GetByID(ctx, "cat_123").Return(category, nil)
+		mockProdRepo.EXPECT().Update(ctx, gomock.Any()).Return(nil)
+
+		_, err := svc.Update(ctx, "prod_123", domain.UpdateProductRequest{
+			Name: &newName,
+		}, "admin_1")
+
+		require.NoError(t, err)
+		assert.True(t, spy.hasEvent(event.ProductUpdated))
+	})
+}
+
+func TestProductService_Delete_EventPublishing(t *testing.T) {
+	t.Run("publishes PRODUCT_DELETED event", func(t *testing.T) {
+		svc, mockProdRepo, mockCatRepo, _, _, spy, ctx := setupProductTestWithSpy(t)
+
+		mockProdRepo.EXPECT().GetByID(ctx, "prod_123").Return(&domain.Product{
+			ID: "prod_123", CategoryID: "cat_123",
+		}, nil)
+		mockProdRepo.EXPECT().Delete(ctx, "prod_123").Return(nil)
+		mockCatRepo.EXPECT().IncrementProductCount(ctx, "cat_123", -1).Return(nil)
+
+		err := svc.Delete(ctx, "prod_123")
+
+		require.NoError(t, err)
+		assert.True(t, spy.hasEvent(event.ProductDeleted))
+	})
+}
+
+func TestProductService_Create_ErrorCodes(t *testing.T) {
+	t.Run("missing category returns NOT_FOUND error code", func(t *testing.T) {
+		svc, _, mockCatRepo, _, _, ctx := setupProductTest(t)
+
+		mockCatRepo.EXPECT().GetByID(ctx, "cat_999").Return(nil, errors.NotFound("Category"))
+
+		_, err := svc.Create(ctx, domain.CreateProductRequest{
+			Name: "Test", CategoryID: "cat_999",
+		}, "admin_1")
+
+		require.Error(t, err)
+		var appErr *errors.AppError
+		require.ErrorAs(t, err, &appErr)
+		assert.Equal(t, errors.ErrCodeNotFound, appErr.Code)
+	})
+
+	t.Run("missing required attr returns VALIDATION error code", func(t *testing.T) {
+		svc, _, mockCatRepo, _, _, ctx := setupProductTest(t)
+
+		category := &domain.Category{
+			ID: "cat_123",
+			OwnAttributes: []domain.CategoryAttribute{
+				{Name: "pattern", Label: "Pattern", Searchable: true, Required: true},
+			},
+		}
+
+		mockCatRepo.EXPECT().GetByID(ctx, "cat_123").Return(category, nil)
+
+		_, err := svc.Create(ctx, domain.CreateProductRequest{
+			Name: "Test", CategoryID: "cat_123",
+		}, "admin_1")
+
+		require.Error(t, err)
+		var appErr *errors.AppError
+		require.ErrorAs(t, err, &appErr)
+		assert.Equal(t, errors.ErrCodeValidation, appErr.Code)
+	})
+}
+
+func TestProductService_Create_Atomicity(t *testing.T) {
+	t.Run("inventory created alongside product", func(t *testing.T) {
+		svc, mockProdRepo, mockCatRepo, _, _, ctx := setupProductTest(t)
+
+		category := &domain.Category{ID: "cat_123"}
+
+		mockCatRepo.EXPECT().GetByID(ctx, "cat_123").Return(category, nil)
+		mockProdRepo.EXPECT().
+			Create(ctx, gomock.Any(), gomock.Any()).
+			DoAndReturn(func(ctx context.Context, product *domain.Product, inv *domain.Inventory) error {
+				// Both product and inventory must be created
+				assert.NotNil(t, product)
+				assert.NotNil(t, inv)
+				assert.Equal(t, product.ID, inv.ProductID)
+				assert.Equal(t, 25, inv.Quantity)
+				assert.Equal(t, 25, inv.AvailableQty)
+				assert.Equal(t, 5, inv.LowStockThreshold)
+				assert.Equal(t, "admin_1", inv.CreatedBy)
+				return nil
+			})
+		mockCatRepo.EXPECT().IncrementProductCount(ctx, "cat_123", 1).Return(nil)
+
+		_, err := svc.Create(ctx, domain.CreateProductRequest{
+			Name: "Test", SKU: "TST-001", CategoryID: "cat_123",
+			InitialStock: 25, LowStockThreshold: 5,
+		}, "admin_1")
+
+		require.NoError(t, err)
+	})
+
+	t.Run("category count increment failure propagates", func(t *testing.T) {
+		svc, mockProdRepo, mockCatRepo, _, _, ctx := setupProductTest(t)
+
+		category := &domain.Category{ID: "cat_123"}
+
+		mockCatRepo.EXPECT().GetByID(ctx, "cat_123").Return(category, nil)
+		mockProdRepo.EXPECT().Create(ctx, gomock.Any(), gomock.Any()).Return(nil)
+		mockCatRepo.EXPECT().IncrementProductCount(ctx, "cat_123", 1).Return(errors.Internal("db error"))
+
+		_, err := svc.Create(ctx, domain.CreateProductRequest{
+			Name: "Test", CategoryID: "cat_123",
+		}, "admin_1")
+
+		require.Error(t, err) // should propagate
+	})
+}
+
+func TestProductService_Delete_Cascade(t *testing.T) {
+	t.Run("decrements category count", func(t *testing.T) {
+		svc, mockProdRepo, mockCatRepo, _, _, ctx := setupProductTest(t)
+
+		mockProdRepo.EXPECT().GetByID(ctx, "prod_123").Return(&domain.Product{
+			ID: "prod_123", CategoryID: "cat_123",
+		}, nil)
+		mockProdRepo.EXPECT().Delete(ctx, "prod_123").Return(nil)
+		mockCatRepo.EXPECT().
+			IncrementProductCount(ctx, "cat_123", -1).
+			Return(nil) // if this wasn't called, gomock would fail
+
+		err := svc.Delete(ctx, "prod_123")
+		require.NoError(t, err)
+	})
+}
+
+func TestProductService_Update_EdgeCases(t *testing.T) {
+	t.Run("slug regenerated when name changes", func(t *testing.T) {
+		svc, mockProdRepo, mockCatRepo, _, _, ctx := setupProductTest(t)
+
+		existing := &domain.Product{
+			ID: "prod_123", Name: "Old Name", Slug: "old-name", CategoryID: "cat_123",
+		}
+		category := &domain.Category{ID: "cat_123"}
+		newName := "Brand New Name"
+
+		mockProdRepo.EXPECT().GetByID(ctx, "prod_123").Return(existing, nil)
+		mockCatRepo.EXPECT().GetByID(ctx, "cat_123").Return(category, nil)
+		mockProdRepo.EXPECT().Update(ctx, gomock.Any()).DoAndReturn(func(ctx context.Context, p *domain.Product) error {
+			assert.Equal(t, "brand-new-name", p.Slug)
+			return nil
+		})
+
+		product, err := svc.Update(ctx, "prod_123", domain.UpdateProductRequest{Name: &newName}, "admin_1")
+
+		require.NoError(t, err)
+		assert.Equal(t, "brand-new-name", product.Slug)
+	})
+
+	t.Run("slug unchanged when name not provided", func(t *testing.T) {
+		svc, mockProdRepo, mockCatRepo, _, _, ctx := setupProductTest(t)
+
+		existing := &domain.Product{
+			ID: "prod_123", Name: "Original", Slug: "original", CategoryID: "cat_123",
+		}
+		category := &domain.Category{ID: "cat_123"}
+
+		mockProdRepo.EXPECT().GetByID(ctx, "prod_123").Return(existing, nil)
+		mockCatRepo.EXPECT().GetByID(ctx, "cat_123").Return(category, nil)
+		mockProdRepo.EXPECT().Update(ctx, gomock.Any()).DoAndReturn(func(ctx context.Context, p *domain.Product) error {
+			assert.Equal(t, "original", p.Slug) // unchanged
+			return nil
+		})
+
+		newDesc := "updated desc"
+		_, err := svc.Update(ctx, "prod_123", domain.UpdateProductRequest{Description: &newDesc}, "admin_1")
+
+		require.NoError(t, err)
+	})
+}
+
+func TestProductService_GetAttributeFilterOptions_EdgeCases(t *testing.T) {
+	t.Run("only searchable attributes included", func(t *testing.T) {
+		svc, mockProdRepo, mockCatRepo, _, _, ctx := setupProductTest(t)
+
+		category := &domain.Category{
+			ID: "cat_123",
+			OwnAttributes: []domain.CategoryAttribute{
+				{Name: "color", Searchable: true},
+				{Name: "internal_code", Searchable: false},
+				{Name: "pattern", Searchable: true},
+				{Name: "notes", Searchable: false},
+			},
+		}
+
+		mockCatRepo.EXPECT().GetByID(ctx, "cat_123").Return(category, nil)
+		mockProdRepo.EXPECT().
+			GetAttributeFilterOptions(ctx, "cat_123", gomock.InAnyOrder([]string{"color", "pattern"})).
+			Return(map[string][]string{
+				"color":   {"red"},
+				"pattern": {"floral"},
+			}, nil)
+
+		result, err := svc.GetAttributeFilterOptions(ctx, "cat_123")
+
+		require.NoError(t, err)
+		assert.Len(t, result, 2)
+		assert.Contains(t, result, "color")
+		assert.Contains(t, result, "pattern")
+		assert.NotContains(t, result, "internal_code")
+		assert.NotContains(t, result, "notes")
+	})
+
+	t.Run("empty category returns empty map not nil", func(t *testing.T) {
+		svc, _, mockCatRepo, _, _, ctx := setupProductTest(t)
+
+		category := &domain.Category{
+			ID:            "cat_123",
+			OwnAttributes: nil, // no attributes at all
+		}
+
+		mockCatRepo.EXPECT().GetByID(ctx, "cat_123").Return(category, nil)
+
+		result, err := svc.GetAttributeFilterOptions(ctx, "cat_123")
+
+		require.NoError(t, err)
+		assert.NotNil(t, result) // should be empty map, not nil
+		assert.Len(t, result, 0)
+	})
+
+	t.Run("no searchable attributes returns empty map", func(t *testing.T) {
+		svc, _, mockCatRepo, _, _, ctx := setupProductTest(t)
+
+		category := &domain.Category{
+			ID: "cat_123",
+			OwnAttributes: []domain.CategoryAttribute{
+				{Name: "notes", Searchable: false},
+			},
+		}
+
+		mockCatRepo.EXPECT().GetByID(ctx, "cat_123").Return(category, nil)
+
+		result, err := svc.GetAttributeFilterOptions(ctx, "cat_123")
+
+		require.NoError(t, err)
+		assert.NotNil(t, result)
+		assert.Len(t, result, 0)
+	})
+}
+
+func TestProductService_ReorderProducts_EdgeCases(t *testing.T) {
+	t.Run("duplicate IDs rejected", func(t *testing.T) {
+		svc, mockProdRepo, mockCatRepo, _, _, ctx := setupProductTest(t)
+
+		category := &domain.Category{ID: "cat_123"}
+		products := []*domain.Product{
+			{ID: "prod_a", CategoryID: "cat_123"},
+			{ID: "prod_b", CategoryID: "cat_123"},
+		}
+
+		mockCatRepo.EXPECT().GetByID(ctx, "cat_123").Return(category, nil)
+		mockProdRepo.EXPECT().GetByCategoryAll(ctx, "cat_123").Return(products, nil)
+
+		_, err := svc.ReorderProducts(ctx, "cat_123", []string{"prod_a", "prod_a"})
+
+		require.Error(t, err)
+		var appErr *errors.AppError
+		require.ErrorAs(t, err, &appErr)
+		assert.Equal(t, errors.ErrCodeValidation, appErr.Code)
+		assert.Contains(t, err.Error(), "Duplicate")
+	})
+
+	t.Run("partial reorder assigns sequential to unranked", func(t *testing.T) {
+		svc, mockProdRepo, mockCatRepo, _, _, ctx := setupProductTest(t)
+
+		category := &domain.Category{ID: "cat_123"}
+		products := []*domain.Product{
+			{ID: "prod_a", CategoryID: "cat_123"},
+			{ID: "prod_b", CategoryID: "cat_123"},
+			{ID: "prod_c", CategoryID: "cat_123"},
+		}
+
+		mockCatRepo.EXPECT().GetByID(ctx, "cat_123").Return(category, nil)
+		mockProdRepo.EXPECT().GetByCategoryAll(ctx, "cat_123").Return(products, nil)
+		mockProdRepo.EXPECT().
+			BatchUpdateSortOrder(ctx, gomock.Any()).
+			DoAndReturn(func(ctx context.Context, prods []*domain.Product) error {
+				assert.Len(t, prods, 3) // all 3 updated even though only 1 was ranked
+				// prod_c requested first
+				for _, p := range prods {
+					if p.ID == "prod_c" {
+						assert.Equal(t, 1, p.SortOrder)
+					}
+				}
+				return nil
+			})
+
+		count, err := svc.ReorderProducts(ctx, "cat_123", []string{"prod_c"})
+		require.NoError(t, err)
+		assert.Equal(t, 3, count) // all products updated
+	})
+}
+
+func TestValidateRequiredAttributes_EdgeCases(t *testing.T) {
+	t.Run("non-searchable required attribute is NOT enforced", func(t *testing.T) {
+		categoryAttrs := []domain.CategoryAttribute{
+			{Name: "internal_notes", Label: "Notes", Searchable: false, Required: true},
+		}
+
+		// No attributes provided, but the required attr is non-searchable
+		err := validateRequiredAttributes(nil, categoryAttrs)
+		assert.NoError(t, err) // should pass: only searchable+required is enforced
+	})
+
+	t.Run("interface slice with empty strings filtered", func(t *testing.T) {
+		result := normalizeToStringSlice([]interface{}{"a", "", "b"})
+		assert.Equal(t, []string{"a", "b"}, result) // empty strings filtered
 	})
 }

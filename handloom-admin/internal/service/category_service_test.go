@@ -697,3 +697,205 @@ func TestGenerateSlug(t *testing.T) {
 		})
 	}
 }
+
+func TestCategoryService_Create_EdgeCases(t *testing.T) {
+	t.Run("image finalization failure prevents repo create", func(t *testing.T) {
+		svc, _, _, mockFinalizer, ctx := setupCategoryTest(t)
+
+		req := domain.CreateCategoryRequest{
+			Name:     "Test",
+			ImageURL: "tmp/category/bad.jpg",
+		}
+
+		mockFinalizer.EXPECT().
+			FinalizeIfTemp(ctx, "tmp/category/bad.jpg").
+			Return("", errors.Internal("S3 error"))
+
+		// mockCatRepo.Create should NOT be called
+		// (gomock will fail if unexpected call happens)
+
+		cat, err := svc.Create(ctx, req, "admin_1")
+
+		assert.Nil(t, cat)
+		require.Error(t, err)
+	})
+}
+
+func TestCategoryService_Delete_ErrorCodes(t *testing.T) {
+	t.Run("products exist returns CATEGORY_HAS_PRODUCTS error code", func(t *testing.T) {
+		svc, mockCatRepo, _, _, ctx := setupCategoryTest(t)
+
+		existing := &domain.Category{
+			ID:           "cat_123",
+			ProductCount: 5,
+		}
+
+		mockCatRepo.EXPECT().
+			GetByID(ctx, "cat_123").
+			Return(existing, nil)
+
+		err := svc.Delete(ctx, "cat_123")
+
+		require.Error(t, err)
+		var appErr *errors.AppError
+		require.ErrorAs(t, err, &appErr)
+		assert.Equal(t, errors.ErrCodeCategoryHasProducts, appErr.Code)
+	})
+}
+
+func TestCategoryService_AddAttribute_EdgeCases(t *testing.T) {
+	t.Run("repo update failure returns error", func(t *testing.T) {
+		svc, mockCatRepo, _, _, ctx := setupCategoryTest(t)
+
+		existing := &domain.Category{
+			ID:            "cat_123",
+			OwnAttributes: []domain.CategoryAttribute{},
+		}
+
+		mockCatRepo.EXPECT().
+			GetByID(ctx, "cat_123").
+			Return(existing, nil)
+
+		mockCatRepo.EXPECT().
+			Update(ctx, gomock.Any()).
+			Return(errors.Internal("db error"))
+
+		cat, err := svc.AddAttribute(ctx, "cat_123", domain.CategoryAttribute{
+			Name: "color", Label: "Color",
+		}, "admin_1")
+
+		assert.Nil(t, cat)
+		require.Error(t, err)
+	})
+}
+
+func TestCategoryService_UpdateAttribute_EdgeCases(t *testing.T) {
+	t.Run("preserves other attributes unchanged", func(t *testing.T) {
+		svc, mockCatRepo, _, _, ctx := setupCategoryTest(t)
+
+		existing := &domain.Category{
+			ID: "cat_123",
+			OwnAttributes: []domain.CategoryAttribute{
+				{Name: "color", Label: "Color", Type: "SELECT", Required: true},
+				{Name: "size", Label: "Size", Type: "TEXT", Required: false},
+				{Name: "pattern", Label: "Pattern", Type: "TEXT", Required: true},
+			},
+		}
+
+		updatedAttr := domain.CategoryAttribute{
+			Name: "size", Label: "Size Updated", Type: "SELECT", Required: true,
+		}
+
+		mockCatRepo.EXPECT().
+			GetByID(ctx, "cat_123").
+			Return(existing, nil)
+
+		mockCatRepo.EXPECT().
+			Update(ctx, gomock.Any()).
+			DoAndReturn(func(ctx context.Context, cat *domain.Category) error {
+				assert.Len(t, cat.OwnAttributes, 3)
+				// First and third should be unchanged
+				assert.Equal(t, "color", cat.OwnAttributes[0].Name)
+				assert.Equal(t, "Color", cat.OwnAttributes[0].Label)
+				assert.Equal(t, domain.AttributeType("SELECT"), cat.OwnAttributes[0].Type)
+				// Second should be updated
+				assert.Equal(t, "Size Updated", cat.OwnAttributes[1].Label)
+				assert.Equal(t, domain.AttributeType("SELECT"), cat.OwnAttributes[1].Type)
+				assert.True(t, cat.OwnAttributes[1].Required)
+				// Third unchanged
+				assert.Equal(t, "pattern", cat.OwnAttributes[2].Name)
+				assert.Equal(t, "Pattern", cat.OwnAttributes[2].Label)
+				return nil
+			})
+
+		cat, err := svc.UpdateAttribute(ctx, "cat_123", "size", updatedAttr, "admin_1")
+
+		require.NoError(t, err)
+		assert.NotNil(t, cat)
+	})
+}
+
+func TestCategoryService_DeleteAttribute_EdgeCases(t *testing.T) {
+	t.Run("first attribute deletion works", func(t *testing.T) {
+		svc, mockCatRepo, _, _, ctx := setupCategoryTest(t)
+
+		existing := &domain.Category{
+			ID: "cat_123",
+			OwnAttributes: []domain.CategoryAttribute{
+				{Name: "first", Label: "First"},
+				{Name: "second", Label: "Second"},
+				{Name: "third", Label: "Third"},
+			},
+		}
+
+		mockCatRepo.EXPECT().
+			GetByID(ctx, "cat_123").
+			Return(existing, nil)
+
+		mockCatRepo.EXPECT().
+			Update(ctx, gomock.Any()).
+			DoAndReturn(func(ctx context.Context, cat *domain.Category) error {
+				assert.Len(t, cat.OwnAttributes, 2)
+				assert.Equal(t, "second", cat.OwnAttributes[0].Name)
+				assert.Equal(t, "third", cat.OwnAttributes[1].Name)
+				return nil
+			})
+
+		err := svc.DeleteAttribute(ctx, "cat_123", "first", "admin_1")
+		require.NoError(t, err)
+	})
+
+	t.Run("preserves remaining attributes", func(t *testing.T) {
+		svc, mockCatRepo, _, _, ctx := setupCategoryTest(t)
+
+		existing := &domain.Category{
+			ID: "cat_123",
+			OwnAttributes: []domain.CategoryAttribute{
+				{Name: "a", Label: "A", Type: "TEXT"},
+				{Name: "b", Label: "B", Type: "SELECT"},
+				{Name: "c", Label: "C", Type: "NUMBER"},
+			},
+		}
+
+		mockCatRepo.EXPECT().
+			GetByID(ctx, "cat_123").
+			Return(existing, nil)
+
+		mockCatRepo.EXPECT().
+			Update(ctx, gomock.Any()).
+			DoAndReturn(func(ctx context.Context, cat *domain.Category) error {
+				assert.Len(t, cat.OwnAttributes, 2)
+				// Verify full integrity of remaining attributes
+				assert.Equal(t, "a", cat.OwnAttributes[0].Name)
+				assert.Equal(t, domain.AttributeType("TEXT"), cat.OwnAttributes[0].Type)
+				assert.Equal(t, "c", cat.OwnAttributes[1].Name)
+				assert.Equal(t, domain.AttributeType("NUMBER"), cat.OwnAttributes[1].Type)
+				return nil
+			})
+
+		err := svc.DeleteAttribute(ctx, "cat_123", "b", "admin_1")
+		require.NoError(t, err)
+	})
+}
+
+func TestGenerateSlug_EdgeCases(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{"consecutive dashes from special chars", "A--B--C", "a-b-c"},
+		{"special chars creating dashes", "Hello!!!World", "helloworld"},
+		{"mixed special and spaces", "Silk & Cotton Blend", "silk-cotton-blend"},
+		{"unicode stripped", "Café Mocha", "caf-mocha"},
+		{"only dashes", "---", ""},
+		{"empty string", "", ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := generateSlug(tt.input)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
