@@ -71,6 +71,7 @@ func NewStorefrontStack(scope constructs.Construct, id string, props *Storefront
 	})
 
 	// ─── Image Optimization Lambda ───
+	// 256MB is the cost-optimized minimum for Sharp. Increase to 512 if images fail to optimize.
 	imageFn := awslambda.NewFunction(stack, jsii.String("ImageFunction"), &awslambda.FunctionProps{
 		FunctionName: jsii.String(fmt.Sprintf("homechrome-store-image-%s", env)),
 		Runtime:      awslambda.Runtime_NODEJS_20_X(),
@@ -104,18 +105,22 @@ func NewStorefrontStack(scope constructs.Construct, id string, props *Storefront
 	})
 
 	// Server Lambda origin (via Function URL)
+	// Function URL format: https://xxxxx.lambda-url.region.on.aws/
+	// Split by "/" → ["https:", "", "xxxxx.lambda-url.region.on.aws"] → select index 2
 	serverDomain := awscdk.Fn_Select(jsii.Number(2), awscdk.Fn_Split(jsii.String("/"), serverUrl.Url(), nil))
 	serverOrigin := awscloudfrontorigins.NewHttpOrigin(serverDomain, &awscloudfrontorigins.HttpOriginProps{
 		ProtocolPolicy: awscloudfront.OriginProtocolPolicy_HTTPS_ONLY,
 	})
 
-	// Image Lambda origin (via Function URL)
+	// Image Lambda origin (via Function URL) — same extraction pattern
 	imageDomain := awscdk.Fn_Select(jsii.Number(2), awscdk.Fn_Split(jsii.String("/"), imageUrl.Url(), nil))
 	imageOrigin := awscloudfrontorigins.NewHttpOrigin(imageDomain, &awscloudfrontorigins.HttpOriginProps{
 		ProtocolPolicy: awscloudfront.OriginProtocolPolicy_HTTPS_ONLY,
 	})
 
 	// ─── CloudFront Function (inject x-forwarded-host) ───
+	// CloudFront replaces the Host header when forwarding to origins.
+	// Next.js needs the original host for canonical URLs and redirects.
 	cfFunction := awscloudfront.NewFunction(stack, jsii.String("ForwardHostFunction"), &awscloudfront.FunctionProps{
 		FunctionName: jsii.String(fmt.Sprintf("homechrome-store-fwd-host-%s", env)),
 		Code: awscloudfront.FunctionCode_FromInline(jsii.String(
