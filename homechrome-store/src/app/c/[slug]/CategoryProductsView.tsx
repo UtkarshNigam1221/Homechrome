@@ -1,29 +1,85 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import FilterSidebar, { FilterValues } from '@/components/catalog/FilterSidebar';
 import ProductGrid from '@/components/catalog/ProductGrid';
 import { useScrollDepth } from '@/hooks/useScrollDepth';
 import { track } from '@/lib/analytics';
-import { Category, Product } from '@/types';
+import api from '@/lib/api';
+import { Category, CategoryAttribute, Product } from '@/types';
 
 interface CategoryProductsViewProps {
   category: Category;
   products: Product[];
 }
 
+function parseFiltersFromParams(params: URLSearchParams): FilterValues {
+  const minPrice = params.get('min_price');
+  const maxPrice = params.get('max_price');
+  const inStock = params.get('in_stock');
+
+  const attributeFilters: Record<string, string[]> = {};
+  for (const [key, value] of params.entries()) {
+    if (key.startsWith('af_') && value) {
+      attributeFilters[key.slice(3)] = value.split(',').filter(Boolean);
+    }
+  }
+
+  return {
+    minPrice: minPrice ? Number(minPrice) : null,
+    maxPrice: maxPrice ? Number(maxPrice) : null,
+    inStockOnly: inStock === 'true',
+    attributeFilters,
+  };
+}
+
+function filtersToParams(filters: FilterValues): URLSearchParams {
+  const params = new URLSearchParams();
+  if (filters.minPrice !== null) params.set('min_price', String(filters.minPrice));
+  if (filters.maxPrice !== null) params.set('max_price', String(filters.maxPrice));
+  if (filters.inStockOnly) params.set('in_stock', 'true');
+  for (const [name, values] of Object.entries(filters.attributeFilters)) {
+    if (values.length > 0) {
+      params.set(`af_${name}`, values.join(','));
+    }
+  }
+  return params;
+}
+
+const emptyFilters: FilterValues = {
+  minPrice: null,
+  maxPrice: null,
+  inStockOnly: false,
+  attributeFilters: {},
+};
+
+function hasActiveFilters(filters: FilterValues): boolean {
+  return (
+    filters.minPrice !== null ||
+    filters.maxPrice !== null ||
+    filters.inStockOnly ||
+    Object.keys(filters.attributeFilters).length > 0
+  );
+}
+
 export default function CategoryProductsView({
   category,
-  products,
+  products: initialProducts,
 }: CategoryProductsViewProps) {
-  const [filters, setFilters] = useState<FilterValues>({
-    minPrice: null,
-    maxPrice: null,
-    inStockOnly: false,
-  });
+  const searchParams = useSearchParams();
+  const [filters, setFilters] = useState<FilterValues>(() =>
+    parseFiltersFromParams(searchParams),
+  );
+  const [products, setProducts] = useState<Product[]>(initialProducts);
+  const [loading, setLoading] = useState(false);
+  const [filterOptions, setFilterOptions] = useState<Record<string, string[]>>({});
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
+  const isInitialMount = useRef(true);
+  const isProgrammaticNav = useRef(false);
+  const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -38,14 +94,89 @@ export default function CategoryProductsView({
 
   useScrollDepth('category');
 
-  const filteredProducts = useMemo(() => {
-    return products.filter((product) => {
-      if (filters.inStockOnly && !product.in_stock) return false;
-      if (filters.minPrice !== null && product.selling_price < filters.minPrice) return false;
-      if (filters.maxPrice !== null && product.selling_price > filters.maxPrice) return false;
-      return true;
-    });
-  }, [products, filters]);
+  // Fetch filter options on mount
+  useEffect(() => {
+    api
+      .get<Record<string, string[]>>(
+        `/api/v1/store/catalog/products/filter-options/${category.id}`,
+      )
+      .then((res) => setFilterOptions(res.data))
+      .catch(() => {
+        // silently ignore — filters just won't show attribute options
+      });
+  }, [category.id]);
+
+  // Sync URL → filter state only on browser back/forward (not programmatic pushes)
+  useEffect(() => {
+    if (isProgrammaticNav.current) {
+      isProgrammaticNav.current = false;
+      return;
+    }
+    const parsed = parseFiltersFromParams(searchParams);
+    setFilters(parsed);
+  }, [searchParams]);
+
+  // Re-fetch products when filters change (debounced, with abort)
+  useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      return;
+    }
+
+    const controller = new AbortController();
+    abortRef.current?.abort();
+    abortRef.current = controller;
+
+    const timer = setTimeout(() => {
+      const params = new URLSearchParams();
+      params.set('category_id', category.id);
+      if (filters.minPrice !== null) params.set('min_price', String(filters.minPrice));
+      if (filters.maxPrice !== null) params.set('max_price', String(filters.maxPrice));
+      if (filters.inStockOnly) params.set('in_stock', 'true');
+      for (const [name, values] of Object.entries(filters.attributeFilters)) {
+        if (values.length > 0) {
+          params.set(`af_${name}`, values.join(','));
+        }
+      }
+
+      setLoading(true);
+      api
+        .get<Product[]>(`/api/v1/store/catalog/products?${params.toString()}`)
+        .then((res) => {
+          if (!controller.signal.aborted) {
+            setProducts(Array.isArray(res.data) ? res.data : []);
+          }
+        })
+        .catch(() => {
+          // keep existing products on error
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) {
+            setLoading(false);
+          }
+        });
+    }, 300);
+
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [category.id, filters]);
+
+  const handleFiltersChange = useCallback(
+    (newFilters: FilterValues) => {
+      isProgrammaticNav.current = true;
+      setFilters(newFilters);
+      // Update URL without triggering a Next.js navigation (avoids duplicate server request)
+      const urlParams = filtersToParams(newFilters);
+      const qs = urlParams.toString();
+      const newUrl = `/c/${category.slug}${qs ? `?${qs}` : ''}`;
+      window.history.pushState(null, '', newUrl);
+    },
+    [category.slug],
+  );
+
+  const categoryAttributes: CategoryAttribute[] = category.own_attributes || [];
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
@@ -75,7 +206,7 @@ export default function CategoryProductsView({
           <p className="mt-2 text-muted">{category.description}</p>
         )}
         <p className="mt-1 text-sm text-muted">
-          {filteredProducts.length} {filteredProducts.length === 1 ? 'product' : 'products'}
+          {products.length} {products.length === 1 ? 'product' : 'products'}
         </p>
       </div>
 
@@ -101,6 +232,13 @@ export default function CategoryProductsView({
             />
           </svg>
           Filters
+          {hasActiveFilters(filters) && (
+            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary text-xs text-white">
+              {Object.keys(filters.attributeFilters).length +
+                (filters.minPrice !== null || filters.maxPrice !== null ? 1 : 0) +
+                (filters.inStockOnly ? 1 : 0)}
+            </span>
+          )}
         </button>
       </div>
 
@@ -108,7 +246,12 @@ export default function CategoryProductsView({
         {/* Sidebar - desktop */}
         <div className="hidden w-64 shrink-0 lg:block">
           <div className="sticky top-32 rounded-xl bg-white p-5 shadow-sm">
-            <FilterSidebar filters={filters} onFiltersChange={setFilters} />
+            <FilterSidebar
+              filters={filters}
+              onFiltersChange={handleFiltersChange}
+              filterOptions={filterOptions}
+              categoryAttributes={categoryAttributes}
+            />
           </div>
         </div>
 
@@ -144,14 +287,25 @@ export default function CategoryProductsView({
                   </svg>
                 </button>
               </div>
-              <FilterSidebar filters={filters} onFiltersChange={setFilters} />
+              <FilterSidebar
+                filters={filters}
+                onFiltersChange={handleFiltersChange}
+                filterOptions={filterOptions}
+                categoryAttributes={categoryAttributes}
+              />
             </div>
           </div>
         )}
 
         {/* Products grid */}
         <div className="flex-1">
-          <ProductGrid products={filteredProducts} />
+          {loading ? (
+            <div className="flex items-center justify-center py-20">
+              <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+            </div>
+          ) : (
+            <ProductGrid products={products} />
+          )}
         </div>
       </div>
     </div>

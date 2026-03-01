@@ -258,14 +258,15 @@ func NewStorefrontStack(scope constructs.Construct, id string, props *Storefront
 	}))
 
 	// ─── Deploy static assets to S3 ───
+	// NOTE: CloudFront invalidation is handled by the deploy script after `cdk deploy`.
+	// Including it here caused the custom resource Lambda's invalidation waiter to
+	// exceed max attempts on slow distributions, failing the entire deployment.
 	awss3deployment.NewBucketDeployment(stack, jsii.String("DeployAssets"), &awss3deployment.BucketDeploymentProps{
 		Sources: &[]awss3deployment.ISource{
 			awss3deployment.Source_Asset(jsii.String("../.open-next/assets"), nil),
 		},
 		DestinationBucket:    bucket,
 		DestinationKeyPrefix: jsii.String("_assets"),
-		Distribution:         distribution,
-		DistributionPaths:    jsii.Strings("/*"),
 		Prune:                jsii.Bool(true),
 	})
 

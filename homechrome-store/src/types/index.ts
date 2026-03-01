@@ -29,6 +29,22 @@ export interface Address {
 }
 
 // Product & Category
+export interface AttributeOption {
+  value: string;
+  label: string;
+  surcharge?: number;
+}
+
+export interface CategoryAttribute {
+  name: string;
+  label: string;
+  type: string;
+  required: boolean;
+  searchable: boolean;
+  display_order: number;
+  options?: AttributeOption[];
+}
+
 export interface Category {
   id: string;
   name: string;
@@ -36,6 +52,7 @@ export interface Category {
   description: string;
   image_url: string;
   parent_id?: string;
+  own_attributes?: CategoryAttribute[];
   status: 'ACTIVE' | 'INACTIVE';
   product_count: number;
 }
@@ -52,6 +69,8 @@ export interface Product {
   images: ProductImage[];
   status: 'ACTIVE' | 'DRAFT' | 'ARCHIVED';
   in_stock: boolean;
+  color?: string;
+  material?: string;
   attributes: Record<string, string>;
   allow_custom_dimensions: boolean;
 }

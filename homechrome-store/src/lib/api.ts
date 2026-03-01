@@ -22,6 +22,12 @@ const client: AxiosInstance = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
+// 429 retry configuration
+const MAX_429_RETRIES = 3;
+const BASE_BACKOFF_MS = 1000;
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 // Response interceptor to unwrap envelope
 client.interceptors.response.use(
   (response) => {
@@ -33,7 +39,27 @@ client.interceptors.response.use(
   async (error: AxiosError<ApiResponse<unknown>>) => {
     const originalRequest = error.config as InternalAxiosRequestConfig & {
       _retry?: boolean;
+      _retryCount?: number;
     };
+
+    // 429 Too Many Requests — retry with exponential backoff
+    if (error.response?.status === 429) {
+      const retryCount = originalRequest._retryCount ?? 0;
+      if (retryCount < MAX_429_RETRIES) {
+        originalRequest._retryCount = retryCount + 1;
+
+        const retryAfterHeader = error.response.headers['retry-after'];
+        const parsed = retryAfterHeader ? Number(retryAfterHeader) : NaN;
+        const baseDelay =
+          Number.isFinite(parsed) && parsed > 0
+            ? parsed * 1000
+            : BASE_BACKOFF_MS * Math.pow(2, retryCount);
+        const delayMs = baseDelay + Math.random() * baseDelay * 0.1;
+
+        await sleep(delayMs);
+        return client(originalRequest);
+      }
+    }
 
     if (error.response?.status === 401 && !originalRequest._retry) {
       // Skip refresh for auth-check calls — just let them fail quietly

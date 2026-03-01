@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -50,6 +51,7 @@ func (h *CatalogHandler) Routes() chi.Router {
 	r.Get("/categories/{idOrSlug}", h.GetCategory)
 	r.Get("/products", h.ListProducts)
 	r.Get("/products/{idOrSlug}", h.GetProduct)
+	r.Get("/products/filter-options/{categoryId}", h.GetFilterOptions)
 	r.Get("/products/{id}/availability", h.CheckAvailability)
 
 	return r
@@ -248,10 +250,17 @@ func (h *CatalogHandler) GetCategory(w http.ResponseWriter, r *http.Request) {
 		cat = c
 	} else {
 		// Slug lookup: list with search and find exact slug match.
-		cat = h.findCategoryBySlug(w, r, idOrSlug)
-		if cat == nil {
+		found := h.findCategoryBySlug(w, r, idOrSlug)
+		if found == nil {
 			return // response already written
 		}
+		// Re-fetch by ID to include attributes.
+		c, err := h.categoryService.GetByID(ctx, found.ID)
+		if err != nil {
+			response.Error(w, err)
+			return
+		}
+		cat = c
 	}
 
 	// Only expose active categories on the storefront.
@@ -302,9 +311,32 @@ func (h *CatalogHandler) ListProducts(w http.ResponseWriter, r *http.Request) {
 	req.Search = q.Get("search")
 	req.MinPrice = queryInt64(q, "min_price")
 	req.MaxPrice = queryInt64(q, "max_price")
+	if inStock := q.Get("in_stock"); inStock == "true" {
+		t := true
+		req.InStock = &t
+	}
 	req.Material = queryStr(q, "material")
 	req.Color = queryStr(q, "color")
-	if attrJSON := q.Get("attribute_filters"); attrJSON != "" {
+
+	// Parse attribute filters: prefer af_<name>=val1,val2 format (avoids JSON
+	// encoding issues in query strings). Falls back to legacy JSON format.
+	attrFilters := make(map[string][]string)
+	for key, values := range q {
+		if strings.HasPrefix(key, "af_") {
+			attrName := strings.TrimPrefix(key, "af_")
+			for _, v := range values {
+				for _, sv := range strings.Split(v, ",") {
+					sv = strings.TrimSpace(sv)
+					if sv != "" {
+						attrFilters[attrName] = append(attrFilters[attrName], sv)
+					}
+				}
+			}
+		}
+	}
+	if len(attrFilters) > 0 {
+		req.AttributeFilters = attrFilters
+	} else if attrJSON := q.Get("attribute_filters"); attrJSON != "" {
 		var af map[string][]string
 		if err := json.Unmarshal([]byte(attrJSON), &af); err == nil {
 			req.AttributeFilters = af
@@ -431,6 +463,23 @@ func (h *CatalogHandler) CheckAvailability(w http.ResponseWriter, r *http.Reques
 		InStock:           inv.AvailableQty > 0,
 		AvailableQuantity: inv.AvailableQty,
 	})
+}
+
+// GetFilterOptions handles GET /store/products/filter-options/{categoryId}
+func (h *CatalogHandler) GetFilterOptions(w http.ResponseWriter, r *http.Request) {
+	categoryID := chi.URLParam(r, "categoryId")
+	if categoryID == "" {
+		response.BadRequest(w, "Category ID is required")
+		return
+	}
+
+	options, err := h.productService.GetAttributeFilterOptions(r.Context(), categoryID)
+	if err != nil {
+		response.Error(w, err)
+		return
+	}
+
+	response.Success(w, options)
 }
 
 // ==================== Internal Helpers ====================

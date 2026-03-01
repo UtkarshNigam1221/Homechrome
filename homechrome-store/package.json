@@ -14,8 +14,8 @@
     "lint": "eslint",
     "cdk:synth:dev": "cd infra && cdk synth -c environment=dev",
     "cdk:synth:prod": "cd infra && cdk synth -c environment=prod",
-    "cdk:deploy:dev": "NEXT_PUBLIC_API_URL=https://dev-api.homechrome.lldlab.com NEXT_PUBLIC_SITE_URL=https://dev-store.homechrome.lldlab.com npx @opennextjs/aws build && cd infra && cdk deploy --all --require-approval never -c environment=dev -c certArn=arn:aws:acm:us-east-1:163053486005:certificate/a8dca48d-5992-4e6e-94c9-fffc7f3ac447",
-    "cdk:deploy:prod": "NEXT_PUBLIC_API_URL=https://api.homechrome.lldlab.com NEXT_PUBLIC_SITE_URL=https://homechrome.lldlab.com npx @opennextjs/aws build && cd infra && cdk deploy --all --require-approval never -c environment=prod -c certArn=arn:aws:acm:us-east-1:163053486005:certificate/a8dca48d-5992-4e6e-94c9-fffc7f3ac447",
+    "cdk:deploy:dev": "NEXT_PUBLIC_API_URL=https://dev-api.homechrome.lldlab.com NEXT_PUBLIC_SITE_URL=https://dev-store.homechrome.lldlab.com npx @opennextjs/aws build && cd infra && cdk deploy --all --require-approval never -c environment=dev -c certArn=arn:aws:acm:us-east-1:163053486005:certificate/a8dca48d-5992-4e6e-94c9-fffc7f3ac447 && aws cloudfront create-invalidation --distribution-id $(aws cloudformation describe-stacks --stack-name HomechromeStoreStack-dev --query \"Stacks[0].Outputs[?OutputKey=='DistributionId'].OutputValue\" --output text) --paths '/*'",
+    "cdk:deploy:prod": "NEXT_PUBLIC_API_URL=https://api.homechrome.lldlab.com NEXT_PUBLIC_SITE_URL=https://homechrome.lldlab.com npx @opennextjs/aws build && cd infra && cdk deploy --all --require-approval never -c environment=prod -c certArn=arn:aws:acm:us-east-1:163053486005:certificate/a8dca48d-5992-4e6e-94c9-fffc7f3ac447 && aws cloudfront create-invalidation --distribution-id $(aws cloudformation describe-stacks --stack-name HomechromeStoreStack-prod --query \"Stacks[0].Outputs[?OutputKey=='DistributionId'].OutputValue\" --output text) --paths '/*'",
     "cdk:destroy:dev": "cd infra && cdk destroy --all -c environment=dev",
     "cdk:destroy:prod": "cd infra && cdk destroy --all -c environment=prod"
   },

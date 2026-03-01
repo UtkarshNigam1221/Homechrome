@@ -41,59 +41,26 @@ export default function Footer() {
             </ul>
           </div>
 
-          {/* Company */}
+          {/* Customer */}
           <div>
             <h3 className="text-sm font-semibold uppercase tracking-wider text-foreground">
-              Company
+              Customer
             </h3>
             <ul className="mt-3 space-y-2">
               <li>
                 <Link
-                  href="/about"
+                  href="/track"
                   className="text-sm text-muted transition-colors hover:text-primary"
                 >
-                  About Us
+                  Track Order
                 </Link>
               </li>
               <li>
                 <Link
-                  href="/contact"
+                  href="/account"
                   className="text-sm text-muted transition-colors hover:text-primary"
                 >
-                  Contact
-                </Link>
-              </li>
-            </ul>
-          </div>
-
-          {/* Legal */}
-          <div>
-            <h3 className="text-sm font-semibold uppercase tracking-wider text-foreground">
-              Legal
-            </h3>
-            <ul className="mt-3 space-y-2">
-              <li>
-                <Link
-                  href="/terms"
-                  className="text-sm text-muted transition-colors hover:text-primary"
-                >
-                  Terms of Service
-                </Link>
-              </li>
-              <li>
-                <Link
-                  href="/privacy"
-                  className="text-sm text-muted transition-colors hover:text-primary"
-                >
-                  Privacy Policy
-                </Link>
-              </li>
-              <li>
-                <Link
-                  href="/refund-policy"
-                  className="text-sm text-muted transition-colors hover:text-primary"
-                >
-                  Refund Policy
+                  My Account
                 </Link>
               </li>
             </ul>

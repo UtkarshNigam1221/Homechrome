@@ -54,6 +54,7 @@ func prodListKey(req domain.ListProductsRequest) string {
 		LowStock         *bool               `json:"low_stock,omitempty"`
 		Material         *string             `json:"material,omitempty"`
 		Color            *string             `json:"color,omitempty"`
+		Slug             string              `json:"slug,omitempty"`
 		AttributeFilters map[string][]string `json:"attribute_filters,omitempty"`
 	}{
 		Limit:            req.Limit,
@@ -69,6 +70,7 @@ func prodListKey(req domain.ListProductsRequest) string {
 		LowStock:         req.LowStock,
 		Material:         req.Material,
 		Color:            req.Color,
+		Slug:             req.Slug,
 		AttributeFilters: sortedFilters,
 	}
 

@@ -15,11 +15,15 @@ interface PageProps {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }
 
-async function searchProducts(query: string): Promise<Product[]> {
+async function searchProducts(
+  query: string,
+  filterParams: Record<string, string>,
+): Promise<Product[]> {
   try {
     const url = new URL(`${API_BASE}/api/v1/store/catalog/products`);
-    if (query) {
-      url.searchParams.set('search', query);
+    if (query) url.searchParams.set('search', query);
+    for (const [key, value] of Object.entries(filterParams)) {
+      if (value) url.searchParams.set(key, value);
     }
     const res = await fetch(url.toString(), {
       next: { revalidate: 60 },
@@ -35,7 +39,13 @@ async function searchProducts(query: string): Promise<Product[]> {
 export default async function ProductsPage({ searchParams }: PageProps) {
   const params = await searchParams;
   const search = typeof params.search === 'string' ? params.search : '';
-  const products = await searchProducts(search);
+
+  const filterParams: Record<string, string> = {};
+  if (typeof params.min_price === 'string') filterParams.min_price = params.min_price;
+  if (typeof params.max_price === 'string') filterParams.max_price = params.max_price;
+  if (typeof params.in_stock === 'string') filterParams.in_stock = params.in_stock;
+
+  const products = await searchProducts(search, filterParams);
 
   return <ProductsView products={products} initialSearch={search} />;
 }

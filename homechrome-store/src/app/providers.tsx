@@ -20,7 +20,12 @@ export function Providers({ children }: { children: React.ReactNode }) {
         defaultOptions: {
           queries: {
             staleTime: 60 * 1000,
-            retry: 1,
+            retry: (failureCount, error) => {
+              // Don't retry 429s at React Query level — axios interceptor handles backoff
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              if ((error as any)?.response?.status === 429) return false;
+              return failureCount < 1;
+            },
           },
         },
       }),

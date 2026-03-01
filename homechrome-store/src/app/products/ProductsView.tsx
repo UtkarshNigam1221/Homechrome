@@ -1,13 +1,14 @@
 'use client';
 
 import Link from 'next/link';
-import { useRouter, useSearchParams } from 'next/navigation';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import FilterSidebar, { FilterValues } from '@/components/catalog/FilterSidebar';
 import ProductGrid from '@/components/catalog/ProductGrid';
 import { useScrollDepth } from '@/hooks/useScrollDepth';
 import { track } from '@/lib/analytics';
+import api from '@/lib/api';
 import { Product } from '@/types';
 
 interface ProductsViewProps {
@@ -15,16 +16,31 @@ interface ProductsViewProps {
   initialSearch: string;
 }
 
-export default function ProductsView({ products, initialSearch }: ProductsViewProps) {
-  const router = useRouter();
+function parseFiltersFromParams(params: URLSearchParams): FilterValues {
+  const minPrice = params.get('min_price');
+  const maxPrice = params.get('max_price');
+  const inStock = params.get('in_stock');
+
+  return {
+    minPrice: minPrice ? Number(minPrice) : null,
+    maxPrice: maxPrice ? Number(maxPrice) : null,
+    inStockOnly: inStock === 'true',
+    attributeFilters: {},
+  };
+}
+
+export default function ProductsView({ products: initialProducts, initialSearch }: ProductsViewProps) {
   const searchParams = useSearchParams();
   const [searchQuery, setSearchQuery] = useState(initialSearch);
-  const [filters, setFilters] = useState<FilterValues>({
-    minPrice: null,
-    maxPrice: null,
-    inStockOnly: false,
-  });
+  const [filters, setFilters] = useState<FilterValues>(() =>
+    parseFiltersFromParams(searchParams),
+  );
+  const [products, setProducts] = useState<Product[]>(initialProducts);
+  const [loading, setLoading] = useState(false);
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
+  const isInitialMount = useRef(true);
+  const isProgrammaticNav = useRef(false);
+  const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     track('page_view', {
@@ -38,30 +54,90 @@ export default function ProductsView({ products, initialSearch }: ProductsViewPr
   const handleSearch = useCallback(
     (e: React.FormEvent) => {
       e.preventDefault();
+      isProgrammaticNav.current = true;
       const q = searchQuery.trim();
-      if (q) {
-        router.push(`/products?search=${encodeURIComponent(q)}`);
-      } else {
-        router.push('/products');
-      }
+      const params = new URLSearchParams();
+      if (q) params.set('search', q);
+      if (filters.minPrice !== null) params.set('min_price', String(filters.minPrice));
+      if (filters.maxPrice !== null) params.set('max_price', String(filters.maxPrice));
+      if (filters.inStockOnly) params.set('in_stock', 'true');
+      const qs = params.toString();
+      const newUrl = `/products${qs ? `?${qs}` : ''}`;
+      window.history.pushState(null, '', newUrl);
+      // Trigger re-fetch by updating filters (search change triggers effect via searchQuery state)
+      setFilters({ ...filters });
     },
-    [searchQuery, router],
+    [searchQuery, filters],
   );
 
-  // Sync input with URL changes
+  // Sync input with URL changes (only on browser back/forward)
   useEffect(() => {
+    if (isProgrammaticNav.current) {
+      isProgrammaticNav.current = false;
+      return;
+    }
     const urlSearch = searchParams.get('search') || '';
     setSearchQuery(urlSearch);
+    setFilters(parseFiltersFromParams(searchParams));
   }, [searchParams]);
 
-  const filteredProducts = useMemo(() => {
-    return products.filter((product) => {
-      if (filters.inStockOnly && !product.in_stock) return false;
-      if (filters.minPrice !== null && product.selling_price < filters.minPrice) return false;
-      if (filters.maxPrice !== null && product.selling_price > filters.maxPrice) return false;
-      return true;
-    });
-  }, [products, filters]);
+  // Re-fetch products when filters change (debounced, with abort)
+  useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      return;
+    }
+
+    const controller = new AbortController();
+    abortRef.current?.abort();
+    abortRef.current = controller;
+
+    const timer = setTimeout(() => {
+      const params = new URLSearchParams();
+      if (searchQuery.trim()) params.set('search', searchQuery.trim());
+      if (filters.minPrice !== null) params.set('min_price', String(filters.minPrice));
+      if (filters.maxPrice !== null) params.set('max_price', String(filters.maxPrice));
+      if (filters.inStockOnly) params.set('in_stock', 'true');
+
+      setLoading(true);
+      api
+        .get<Product[]>(`/api/v1/store/catalog/products?${params.toString()}`)
+        .then((res) => {
+          if (!controller.signal.aborted) {
+            setProducts(Array.isArray(res.data) ? res.data : []);
+          }
+        })
+        .catch(() => {
+          // keep existing products on error
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) {
+            setLoading(false);
+          }
+        });
+    }, 300);
+
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [filters, searchQuery]);
+
+  const handleFiltersChange = useCallback(
+    (newFilters: FilterValues) => {
+      isProgrammaticNav.current = true;
+      setFilters(newFilters);
+      // Update URL without triggering a Next.js navigation (avoids duplicate server request)
+      const params = new URLSearchParams();
+      if (searchQuery.trim()) params.set('search', searchQuery.trim());
+      if (newFilters.minPrice !== null) params.set('min_price', String(newFilters.minPrice));
+      if (newFilters.maxPrice !== null) params.set('max_price', String(newFilters.maxPrice));
+      if (newFilters.inStockOnly) params.set('in_stock', 'true');
+      const qs = params.toString();
+      window.history.pushState(null, '', `/products${qs ? `?${qs}` : ''}`);
+    },
+    [searchQuery],
+  );
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
@@ -86,7 +162,7 @@ export default function ProductsView({ products, initialSearch }: ProductsViewPr
           {initialSearch ? `Results for "${initialSearch}"` : 'All Products'}
         </h1>
         <p className="mt-1 text-sm text-muted">
-          {filteredProducts.length} {filteredProducts.length === 1 ? 'product' : 'products'}
+          {products.length} {products.length === 1 ? 'product' : 'products'}
           {initialSearch ? ' found' : ''}
         </p>
 
@@ -153,7 +229,7 @@ export default function ProductsView({ products, initialSearch }: ProductsViewPr
         {/* Sidebar - desktop */}
         <div className="hidden w-64 shrink-0 lg:block">
           <div className="sticky top-32 rounded-xl bg-white p-5 shadow-sm">
-            <FilterSidebar filters={filters} onFiltersChange={setFilters} />
+            <FilterSidebar filters={filters} onFiltersChange={handleFiltersChange} />
           </div>
         </div>
 
@@ -189,14 +265,20 @@ export default function ProductsView({ products, initialSearch }: ProductsViewPr
                   </svg>
                 </button>
               </div>
-              <FilterSidebar filters={filters} onFiltersChange={setFilters} />
+              <FilterSidebar filters={filters} onFiltersChange={handleFiltersChange} />
             </div>
           </div>
         )}
 
         {/* Products grid */}
         <div className="flex-1">
-          <ProductGrid products={filteredProducts} />
+          {loading ? (
+            <div className="flex items-center justify-center py-20">
+              <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+            </div>
+          ) : (
+            <ProductGrid products={products} />
+          )}
         </div>
       </div>
     </div>
