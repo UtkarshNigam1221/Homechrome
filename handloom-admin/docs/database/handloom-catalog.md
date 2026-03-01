@@ -2,7 +2,7 @@
 
 Catalog data (categories, products, inventory) lives in **PostgreSQL** (RDS in production, Docker locally). This provides relational querying, ACID transactions with row-level locking, full-text search via tsvector with ts_rank ordering, and normalized attribute filtering.
 
-Schema: `migrations/001_catalog_schema.sql` (auto-applied on first `docker-compose up`).
+Schema: `migrations/*.sql` (auto-applied by migrator Lambda on `cdk deploy`; locally via Docker init scripts). See [migrations.md](./migrations.md).
 Repository: `internal/repository/postgres/`
 Cache: `internal/cache/` (in-process TTL-based via go-cache)
 

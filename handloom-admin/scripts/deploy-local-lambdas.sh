@@ -9,7 +9,7 @@ set -e
 ENDPOINT="${AWS_ENDPOINT:-http://localhost:4566}"
 REGION="${AWS_REGION:-ap-south-1}"
 LAMBDA_DIR="./bin/lambda"
-ACTIVE_SERVICES="auth user catalog asset"
+ACTIVE_SERVICES="auth user catalog asset store-auth store-catalog store-cart store-checkout store-orders store-tracking store-profile store-events store-webhooks"
 
 # Env vars injected into each Lambda
 LAMBDA_ENV='{
@@ -25,7 +25,10 @@ LAMBDA_ENV='{
     "DYNAMODB_AUDIT_TABLE": "handloom-audit",
     "DYNAMODB_ANALYTICS_TABLE": "handloom-analytics",
     "DYNAMODB_NOTIFICATIONS_TABLE": "handloom-notifications",
+    "DYNAMODB_SESSIONS_TABLE": "handloom-sessions",
+    "DYNAMODB_EVENTS_TABLE": "handloom-events",
     "POSTGRES_DSN": "postgres://handloom:handloom@host.docker.internal:5432/handloom?sslmode=disable",
+    "CUSTOMER_JWT_SECRET": "customer-secret-change-in-production",
     "JWT_SECRET_KEY": "dev-secret-key-change-in-production",
     "S3_ASSETS_BUCKET": "handloom-assets",
     "QUOTE_VALIDITY_HRS": "24"
@@ -239,6 +242,17 @@ create_proxy_route "/admin/categories" "handloom-catalog"
 create_proxy_route "/admin/products" "handloom-catalog"
 create_proxy_route "/admin/assets" "handloom-asset"
 
+# Store routes (B2C storefront)
+create_proxy_route "/api/v1/store/auth"     "handloom-store-auth"
+create_proxy_route "/api/v1/store/catalog"  "handloom-store-catalog"
+create_proxy_route "/api/v1/store/cart"     "handloom-store-cart"
+create_proxy_route "/api/v1/store/checkout" "handloom-store-checkout"
+create_proxy_route "/api/v1/store/orders"   "handloom-store-orders"
+create_proxy_route "/api/v1/store/me"       "handloom-store-profile"
+create_proxy_route "/api/v1/store/track"    "handloom-store-tracking"
+create_proxy_route "/api/v1/store/events"   "handloom-store-events"
+create_proxy_route "/api/v1/store/webhooks" "handloom-store-webhooks"
+
 # Add health check on root
 aws apigateway put-method \
     --endpoint-url "$ENDPOINT" \
@@ -274,6 +288,7 @@ done
 echo ""
 echo "  Save this API Gateway URL for frontend .env.local-lambda:"
 echo "  VITE_API_URL=$INVOKE_URL"
+echo "  NEXT_PUBLIC_API_URL=$INVOKE_URL"
 echo ""
 
 # Save the API ID for redeploy reference
@@ -286,5 +301,13 @@ if [ -f "$FRONTEND_ENV" ]; then
     sed -i.bak "s|^VITE_API_URL=.*|VITE_API_URL=$INVOKE_URL|" "$FRONTEND_ENV"
     rm -f "${FRONTEND_ENV}.bak"
     echo "  Updated $FRONTEND_ENV with API Gateway URL"
-    echo ""
 fi
+
+# Auto-update storefront .env.local-lambda if it exists
+STORE_ENV="../homechrome-store/.env.local-lambda"
+if [ -f "$STORE_ENV" ]; then
+    sed -i.bak "s|^NEXT_PUBLIC_API_URL=.*|NEXT_PUBLIC_API_URL=$INVOKE_URL|" "$STORE_ENV"
+    rm -f "${STORE_ENV}.bak"
+    echo "  Updated $STORE_ENV with API Gateway URL"
+fi
+echo ""

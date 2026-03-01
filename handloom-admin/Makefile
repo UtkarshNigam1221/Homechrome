@@ -5,12 +5,13 @@
 	build-lambda-report build-lambda-audit \
 	build-lambda-store-auth build-lambda-store-catalog build-lambda-store-cart \
 	build-lambda-store-checkout build-lambda-store-orders build-lambda-store-tracking \
-	build-lambda-store-profile build-lambda-store-webhooks \
+	build-lambda-store-profile build-lambda-store-events build-lambda-store-webhooks \
 	build-workers build-lambda-worker-notification build-lambda-worker-report \
 	build-lambda-worker-analytics build-lambda-worker-audit \
 	create-events \
 	cdk-synth cdk-deploy-dev cdk-deploy-prod cdk-destroy \
-	init-s3 deploy-local redeploy-local teardown-local
+	init-s3 deploy-local redeploy-local teardown-local \
+	logs logs-lambda
 
 # ACM certificate ARN for custom domain (*.lldlab.com) - must be in us-east-1
 CERT_ARN ?= arn:aws:acm:us-east-1:163053486005:certificate/a8dca48d-5992-4e6e-94c9-fffc7f3ac447
@@ -28,11 +29,12 @@ BINARY_PATH=./bin/$(BINARY_NAME)
 LAMBDA_BUILD_FLAGS=CGO_ENABLED=0 GOOS=linux GOARCH=arm64
 LAMBDA_OUT_DIR=./bin/lambda
 LAMBDA_SERVICES=auth user catalog order pricing inventory analytics notification coupon asset report audit \
-	store-auth store-catalog store-cart store-checkout store-orders store-tracking store-profile store-webhooks \
-	worker-notification worker-report worker-analytics worker-audit
+	store-auth store-catalog store-cart store-checkout store-orders store-tracking store-profile store-events store-webhooks \
+	worker-notification worker-report worker-analytics worker-audit \
+	migrator
 
 # Active services for deployment
-LAMBDA_SERVICES_ACTIVE=auth user catalog asset
+LAMBDA_SERVICES_ACTIVE=auth user catalog asset store-auth store-catalog store-cart store-checkout store-orders store-tracking store-profile store-events store-webhooks migrator
 
 # Main package path
 MAIN_PKG=./cmd/api
@@ -220,6 +222,21 @@ teardown-local:
 	docker-compose down -v
 	@echo "Local environment torn down."
 
+## Tail all LocalStack logs (Lambda invocations, API Gateway, etc.)
+logs:
+	docker logs -f handloom-localstack 2>&1
+
+## Tail logs for a specific Lambda function (requires SVC=<name>)
+## Usage: make logs-lambda SVC=catalog
+##        make logs-lambda SVC=store-catalog
+logs-lambda:
+ifndef SVC
+	$(error Usage: make logs-lambda SVC=<service-name>  (e.g., SVC=catalog, SVC=store-cart))
+endif
+	@echo "Tailing logs for handloom-$(SVC)..."
+	@echo "(Press Ctrl+C to stop)"
+	awslocal --region ap-south-1 logs tail /aws/lambda/handloom-$(SVC) --follow
+
 ## Install development tools
 install-tools:
 	@echo "Installing development tools..."
@@ -293,7 +310,7 @@ build-lambdas:
 
 ## Build only active Lambda functions (auth, user, catalog, asset)
 build-lambdas-active:
-	@echo "Building active Lambda functions (auth, user, catalog, asset)..."
+	@echo "Building active Lambda functions (admin + store)..."
 	@mkdir -p $(LAMBDA_OUT_DIR)
 	@for service in $(LAMBDA_SERVICES_ACTIVE); do \
 		echo "Building $$service Lambda..."; \
@@ -397,6 +414,11 @@ build-lambda-store-profile:
 	@echo "Building store-profile Lambda..."
 	@mkdir -p $(LAMBDA_OUT_DIR)/store-profile
 	$(LAMBDA_BUILD_FLAGS) $(GOBUILD) -ldflags="-s -w" -o $(LAMBDA_OUT_DIR)/store-profile/bootstrap ./cmd/lambda/store-profile
+
+build-lambda-store-events:
+	@echo "Building store-events Lambda..."
+	@mkdir -p $(LAMBDA_OUT_DIR)/store-events
+	$(LAMBDA_BUILD_FLAGS) $(GOBUILD) -ldflags="-s -w" -o $(LAMBDA_OUT_DIR)/store-events/bootstrap ./cmd/lambda/store-events
 
 build-lambda-store-webhooks:
 	@echo "Building store-webhooks Lambda..."
@@ -522,6 +544,8 @@ help:
 	@echo "  make deploy-local       - Deploy Lambdas to LocalStack"
 	@echo "  make redeploy-local     - Redeploy Lambda code only"
 	@echo "  make teardown-local     - Tear down all Docker services"
+	@echo "  make logs               - Tail all LocalStack logs"
+	@echo "  make logs-lambda SVC=x  - Tail logs for a specific Lambda (e.g., SVC=catalog)"
 	@echo ""
 	@echo "Testing & Debug:"
 	@echo "  make health             - Check health of local services"
@@ -539,7 +563,7 @@ help:
 	@echo ""
 	@echo "Lambda & Deployment:"
 	@echo "  make build-lambdas        - Build all Lambda functions"
-	@echo "  make build-lambdas-active - Build active Lambdas only (auth, user, catalog, asset)"
+	@echo "  make build-lambdas-active - Build active Lambdas (admin + store)"
 	@echo "  make build-lambda-<svc>   - Build specific Lambda (auth, user, etc.)"
 	@echo ""
 	@echo "  make cdk-bootstrap        - Bootstrap CDK (once per account/region)"

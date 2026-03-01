@@ -34,6 +34,14 @@ func createEnvironmentStack(app awscdk.App, environment string, env *awscdk.Envi
 		}
 	}
 
+	var backendApiUrl string
+	switch environment {
+	case "prod":
+		backendApiUrl = "https://api.homechrome.lldlab.com"
+	default:
+		backendApiUrl = "https://dev-api.homechrome.lldlab.com"
+	}
+
 	stacks.NewStorefrontStack(app, "HomechromeStoreStack-"+environment, &stacks.StorefrontStackProps{
 		StackProps: awscdk.StackProps{
 			Env:         env,
@@ -44,9 +52,10 @@ func createEnvironmentStack(app awscdk.App, environment string, env *awscdk.Envi
 				"ManagedBy":   jsii.String("cdk"),
 			},
 		},
-		Environment: environment,
-		DomainName:  domainName,
-		CertArn:     certArn,
+		Environment:   environment,
+		DomainName:    domainName,
+		CertArn:       certArn,
+		BackendApiUrl: backendApiUrl,
 	})
 }
 

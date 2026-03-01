@@ -6,7 +6,9 @@ import (
 	"github.com/aws/aws-cdk-go/awscdk/v2"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awsdynamodb"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awsec2"
+	"github.com/aws/aws-cdk-go/awscdk/v2/awslambda"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awsrds"
+	"github.com/aws/aws-cdk-go/awscdk/v2/triggers"
 	"github.com/aws/constructs-go/constructs/v10"
 	"github.com/aws/jsii-runtime-go"
 )
@@ -354,6 +356,33 @@ func NewDatabaseStack(scope constructs.Construct, id string, props *DatabaseStac
 		MonitoringInterval:        awscdk.Duration_Seconds(jsii.Number(0)),
 		EnablePerformanceInsights: jsii.Bool(false),
 		StorageEncrypted:          jsii.Bool(true),
+	})
+
+	// --- Schema Migrator Lambda ---
+	// Runs embedded SQL migrations against RDS during CDK deploy.
+	// CDK Trigger invokes this after RDS is ready, before API Lambdas need the schema.
+	migratorFn := awslambda.NewFunction(stack, jsii.String("MigratorFunction"), &awslambda.FunctionProps{
+		FunctionName: jsii.String(fmt.Sprintf("handloom-migrator-%s", props.Environment)),
+		Runtime:      awslambda.Runtime_PROVIDED_AL2023(),
+		Handler:      jsii.String("bootstrap"),
+		Code:         awslambda.Code_FromAsset(jsii.String("../bin/lambda/migrator"), nil),
+		Architecture: awslambda.Architecture_ARM_64(),
+		MemorySize:   jsii.Number(128),
+		Timeout:      awscdk.Duration_Seconds(jsii.Number(60)),
+		Environment: &map[string]*string{
+			"RDS_SECRET_ARN": catalogDBSecret.SecretArn(),
+			"RDS_ENDPOINT":   catalogDB.DbInstanceEndpointAddress(),
+			"RDS_PORT":       jsii.String("5432"),
+			"RDS_DATABASE":   jsii.String("handloom"),
+			"APP_ENV":        jsii.String(props.Environment),
+		},
+	})
+	catalogDBSecret.GrantRead(migratorFn, nil)
+
+	triggers.NewTrigger(stack, jsii.String("MigratorTrigger"), &triggers.TriggerProps{
+		Handler:                migratorFn,
+		ExecuteAfter:           &[]constructs.Construct{catalogDB},
+		ExecuteOnHandlerChange: jsii.Bool(true),
 	})
 
 	// Outputs

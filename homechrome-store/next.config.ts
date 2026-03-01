@@ -9,7 +9,9 @@ const nextConfig: NextConfig = {
   images: {
     remotePatterns: [
       { protocol: 'https', hostname: '*.s3.amazonaws.com' },
-      { protocol: 'http', hostname: 'localhost', port: '4566' },
+      ...(isDev
+        ? [{ protocol: 'http' as const, hostname: 'localhost', port: '4566' }]
+        : []),
     ],
     // Next.js blocks images resolving to private IPs — skip optimization locally
     unoptimized: isDev,

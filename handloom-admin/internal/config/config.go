@@ -78,7 +78,7 @@ type AWSConfig struct {
 	Region          string
 	AccessKeyID     string
 	SecretAccessKey string
-	Endpoint        string // For local development
+	Endpoint        string // For local development (empty in production)
 	S3Bucket        string
 	CDNUrl          string
 }

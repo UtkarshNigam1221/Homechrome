@@ -17,9 +17,10 @@ import (
 
 type StorefrontStackProps struct {
 	awscdk.StackProps
-	Environment string
-	DomainName  string
-	CertArn     string
+	Environment   string
+	DomainName    string
+	CertArn       string
+	BackendApiUrl string // e.g. https://dev-api.homechrome.lldlab.com
 }
 
 type StorefrontStack struct {
@@ -61,13 +62,19 @@ func NewStorefrontStack(scope constructs.Construct, id string, props *Storefront
 			"CACHE_BUCKET_NAME":       bucket.BucketName(),
 			"CACHE_BUCKET_KEY_PREFIX": jsii.String("_cache"),
 			"CACHE_BUCKET_REGION":     stack.Region(),
+			"NEXT_PUBLIC_API_URL":     jsii.String(props.BackendApiUrl),
 		},
 	})
 	bucket.GrantReadWrite(serverFn, nil)
 
 	serverUrl := serverFn.AddFunctionUrl(&awslambda.FunctionUrlOptions{
 		AuthType:   awslambda.FunctionUrlAuthType_NONE,
-		InvokeMode: awslambda.InvokeMode_RESPONSE_STREAM,
+		InvokeMode: awslambda.InvokeMode_BUFFERED,
+	})
+	// Since Oct 2025, new Function URLs require lambda:InvokeFunction in addition to lambda:InvokeFunctionUrl
+	serverFn.AddPermission(jsii.String("PublicInvoke"), &awslambda.Permission{
+		Principal: awsiam.NewAnyPrincipal(),
+		Action:    jsii.String("lambda:InvokeFunction"),
 	})
 
 	// ─── Image Optimization Lambda ───
@@ -89,6 +96,10 @@ func NewStorefrontStack(scope constructs.Construct, id string, props *Storefront
 
 	imageUrl := imageFn.AddFunctionUrl(&awslambda.FunctionUrlOptions{
 		AuthType: awslambda.FunctionUrlAuthType_NONE,
+	})
+	imageFn.AddPermission(jsii.String("PublicInvoke"), &awslambda.Permission{
+		Principal: awsiam.NewAnyPrincipal(),
+		Action:    jsii.String("lambda:InvokeFunction"),
 	})
 
 	// ─── CloudFront Origins ───

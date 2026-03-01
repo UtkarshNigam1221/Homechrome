@@ -42,3 +42,6 @@ next-env.d.ts
 
 # OpenNext build output
 .open-next/
+
+# CDK
+infra/cdk.out/

@@ -280,7 +280,7 @@ func getRemovalPolicy(isProd bool) awscdk.RemovalPolicy {
 
 func getPriceClass(isProd bool) awscloudfront.PriceClass {
 	if isProd {
-		return awscloudfront.PriceClass_PRICE_CLASS_ALL
+		return awscloudfront.PriceClass_PRICE_CLASS_100
 	}
 	return awscloudfront.PriceClass_PRICE_CLASS_100
 }

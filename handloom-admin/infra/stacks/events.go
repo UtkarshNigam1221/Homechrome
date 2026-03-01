@@ -9,10 +9,10 @@ import (
 	"github.com/aws/aws-cdk-go/awscdk/v2/awslambda"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awslambdaeventsources"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awslogs"
+	"github.com/aws/aws-cdk-go/awscdk/v2/awss3assets"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awssns"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awssnssubscriptions"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awssqs"
-	"github.com/aws/aws-cdk-go/awscdk/v2/awss3assets"
 	"github.com/aws/constructs-go/constructs/v10"
 	"github.com/aws/jsii-runtime-go"
 )
@@ -77,7 +77,6 @@ func NewEventStack(scope constructs.Construct, id string, props *EventStackProps
 			batchSize:      10,
 			visibilityTmot: 60,
 			dlqMaxReceive:  3,
-			concurrency:    5,
 			filterPrefixes: []string{"order.", "payment.", "shipment."},
 			filterExact:    []string{"customer.registered"},
 		},
@@ -86,7 +85,6 @@ func NewEventStack(scope constructs.Construct, id string, props *EventStackProps
 			batchSize:      1,
 			visibilityTmot: 120,
 			dlqMaxReceive:  3,
-			concurrency:    2,
 			filterPrefixes: []string{"order.", "payment."},
 		},
 		{
@@ -94,7 +92,6 @@ func NewEventStack(scope constructs.Construct, id string, props *EventStackProps
 			batchSize:      10,
 			visibilityTmot: 60,
 			dlqMaxReceive:  3,
-			concurrency:    5,
 			filterPrefixes: []string{"order.", "payment.", "product.", "inventory.", "customer."},
 		},
 		{
@@ -102,7 +99,6 @@ func NewEventStack(scope constructs.Construct, id string, props *EventStackProps
 			batchSize:      10,
 			visibilityTmot: 60,
 			dlqMaxReceive:  5,
-			concurrency:    10,
 			filterAll:      true,
 		},
 	}
@@ -168,19 +164,19 @@ func NewEventStack(scope constructs.Construct, id string, props *EventStackProps
 		// Worker Lambda
 		workerName := fmt.Sprintf("worker-%s", w.name)
 		env := map[string]*string{
-			"APP_ENV":                  jsii.String(props.Environment),
-			"APP_DEBUG":                jsii.String(fmt.Sprintf("%t", !isProd)),
+			"APP_ENV":                      jsii.String(props.Environment),
+			"APP_DEBUG":                    jsii.String(fmt.Sprintf("%t", !isProd)),
 			"DYNAMODB_CORE_TABLE":          props.DatabaseStack.CoreTable.TableName(),
 			"DYNAMODB_ORDERS_TABLE":        props.DatabaseStack.OrdersTable.TableName(),
 			"DYNAMODB_AUDIT_TABLE":         props.DatabaseStack.AuditTable.TableName(),
 			"DYNAMODB_ANALYTICS_TABLE":     props.DatabaseStack.AnalyticsTable.TableName(),
 			"DYNAMODB_NOTIFICATIONS_TABLE": props.DatabaseStack.NotificationsTable.TableName(),
 			"DYNAMODB_EVENTS_TABLE":        props.DatabaseStack.EventsTable.TableName(),
-			"RDS_SECRET_ARN": props.DatabaseStack.CatalogDBSecret.SecretArn(),
-			"RDS_ENDPOINT":   props.DatabaseStack.CatalogDB.DbInstanceEndpointAddress(),
-			"RDS_PORT":       jsii.String("5432"),
-			"RDS_DATABASE":   jsii.String("handloom"),
-			"SERVICE_NAME":             jsii.String(workerName),
+			"RDS_SECRET_ARN":               props.DatabaseStack.CatalogDBSecret.SecretArn(),
+			"RDS_ENDPOINT":                 props.DatabaseStack.CatalogDB.DbInstanceEndpointAddress(),
+			"RDS_PORT":                     jsii.String("5432"),
+			"RDS_DATABASE":                 jsii.String("handloom"),
+			"SERVICE_NAME":                 jsii.String(workerName),
 		}
 
 		// Explicit log group (replaces deprecated LogRetention on Lambda)
@@ -191,17 +187,16 @@ func NewEventStack(scope constructs.Construct, id string, props *EventStackProps
 		})
 
 		lambdaFn := awslambda.NewFunction(stack, jsii.String(fmt.Sprintf("%sFunction", capitalize(workerName))), &awslambda.FunctionProps{
-			FunctionName:                 jsii.String(fmt.Sprintf("handloom-%s-%s", workerName, props.Environment)),
-			Runtime:                      awslambda.Runtime_PROVIDED_AL2023(),
-			Handler:                      jsii.String("bootstrap"),
-			Code:                         awslambda.Code_FromAsset(jsii.String(fmt.Sprintf("../bin/lambda/%s", workerName)), &awss3assets.AssetOptions{}),
-			Architecture:                 awslambda.Architecture_ARM_64(),
-			MemorySize:                   jsii.Number(memorySize),
-			Timeout:                      awscdk.Duration_Seconds(jsii.Number(60)),
-			Environment:                  &env,
-			LogGroup:                     workerLogGroup,
-			Tracing:                      awslambda.Tracing_DISABLED,
-			ReservedConcurrentExecutions: jsii.Number(w.concurrency),
+			FunctionName: jsii.String(fmt.Sprintf("handloom-%s-%s", workerName, props.Environment)),
+			Runtime:      awslambda.Runtime_PROVIDED_AL2023(),
+			Handler:      jsii.String("bootstrap"),
+			Code:         awslambda.Code_FromAsset(jsii.String(fmt.Sprintf("../bin/lambda/%s", workerName)), &awss3assets.AssetOptions{}),
+			Architecture: awslambda.Architecture_ARM_64(),
+			MemorySize:   jsii.Number(memorySize),
+			Timeout:      awscdk.Duration_Seconds(jsii.Number(60)),
+			Environment:  &env,
+			LogGroup:     workerLogGroup,
+			Tracing:      awslambda.Tracing_DISABLED,
 		})
 
 		// SQS event source
@@ -233,7 +228,7 @@ func NewEventStack(scope constructs.Construct, id string, props *EventStackProps
 		awsevents.NewRule(stack, jsii.String("DailyAggregationRule"), &awsevents.RuleProps{
 			RuleName:    jsii.String(fmt.Sprintf("handloom-daily-aggregation-%s", props.Environment)),
 			Description: jsii.String("Trigger daily analytics aggregation at 00:30 UTC"),
-			Schedule:    awsevents.Schedule_Cron(&awsevents.CronOptions{
+			Schedule: awsevents.Schedule_Cron(&awsevents.CronOptions{
 				Minute: jsii.String("30"),
 				Hour:   jsii.String("0"),
 			}),

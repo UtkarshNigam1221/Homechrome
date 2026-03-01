@@ -2,6 +2,7 @@ package stacks
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/aws/aws-cdk-go/awscdk/v2"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awsapigateway"
@@ -58,13 +59,21 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 		Tier:          awsssm.ParameterTier_STANDARD,
 	})
 
+	// Customer JWT Secret parameter (B2C store token signing)
+	customerJwtSecret := awsssm.NewStringParameter(stack, jsii.String("CustomerJwtSecret"), &awsssm.StringParameterProps{
+		ParameterName: jsii.String(fmt.Sprintf("/handloom/%s/customer-jwt-secret", props.Environment)),
+		StringValue:   jsii.String("CHANGE_ME_IN_PRODUCTION"),
+		Description:   jsii.String("Customer JWT Secret for B2C store token signing"),
+		Tier:          awsssm.ParameterTier_STANDARD,
+	})
+
 	// S3 buckets from StorageStack
 	assetsBucket := props.StorageStack.AssetsBucket
 
 	// Common environment variables for all Lambdas
 	commonEnv := map[string]*string{
-		"APP_ENV":                    jsii.String(props.Environment),
-		"APP_DEBUG":                  jsii.String(fmt.Sprintf("%t", !isProd)),
+		"APP_ENV":                      jsii.String(props.Environment),
+		"APP_DEBUG":                    jsii.String(fmt.Sprintf("%t", !isProd)),
 		"DYNAMODB_CORE_TABLE":          props.DatabaseStack.CoreTable.TableName(),
 		"DYNAMODB_ORDERS_TABLE":        props.DatabaseStack.OrdersTable.TableName(),
 		"DYNAMODB_SESSIONS_TABLE":      props.DatabaseStack.SessionsTable.TableName(),
@@ -72,16 +81,17 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 		"DYNAMODB_ANALYTICS_TABLE":     props.DatabaseStack.AnalyticsTable.TableName(),
 		"DYNAMODB_NOTIFICATIONS_TABLE": props.DatabaseStack.NotificationsTable.TableName(),
 		"DYNAMODB_EVENTS_TABLE":        props.DatabaseStack.EventsTable.TableName(),
-		"RDS_SECRET_ARN": props.DatabaseStack.CatalogDBSecret.SecretArn(),
-		"RDS_ENDPOINT":   props.DatabaseStack.CatalogDB.DbInstanceEndpointAddress(),
-		"RDS_PORT":       jsii.String("5432"),
-		"RDS_DATABASE":   jsii.String("handloom"),
-		"S3_ASSETS_BUCKET":           assetsBucket.BucketName(),
-		"JWT_SECRET_PARAM":           jwtSecret.ParameterName(),
-		"JWT_ISSUER":                 jsii.String("handloom-admin"),
-		"JWT_ACCESS_TOKEN_DURATION":  jsii.String("15m"),
-		"JWT_REFRESH_TOKEN_DURATION": jsii.String("168h"),
-		"QUOTE_VALIDITY_HRS":         jsii.String("24"),
+		"RDS_SECRET_ARN":               props.DatabaseStack.CatalogDBSecret.SecretArn(),
+		"RDS_ENDPOINT":                 props.DatabaseStack.CatalogDB.DbInstanceEndpointAddress(),
+		"RDS_PORT":                     jsii.String("5432"),
+		"RDS_DATABASE":                 jsii.String("handloom"),
+		"S3_ASSETS_BUCKET":             assetsBucket.BucketName(),
+		"JWT_SECRET_PARAM":             jwtSecret.ParameterName(),
+		"CUSTOMER_JWT_SECRET_PARAM":    jsii.String(fmt.Sprintf("/handloom/%s/customer-jwt-secret", props.Environment)),
+		"JWT_ISSUER":                   jsii.String("handloom-admin"),
+		"JWT_ACCESS_TOKEN_DURATION":    jsii.String("15m"),
+		"JWT_REFRESH_TOKEN_DURATION":   jsii.String("168h"),
+		"QUOTE_VALIDITY_HRS":           jsii.String("24"),
 	}
 
 	// Add custom domain env vars when configured
@@ -120,13 +130,21 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 		"user",
 		"catalog",
 		"asset",
+		"store-auth",
+		"store-catalog",
+		"store-cart",
+		"store-checkout",
+		"store-orders",
+		"store-tracking",
+		"store-profile",
+		"store-events",
+		"store-webhooks",
 		// "order",
 		// "pricing",
 		// "inventory",
 		// "analytics",
 		// "notification",
 		// "coupon",
-		// "artisan",
 		// "report",
 		// "audit",
 	}
@@ -149,6 +167,7 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 		props.DatabaseStack.EventsTable.GrantReadWriteData(lambdaFn)
 		assetsBucket.GrantReadWrite(lambdaFn, nil)
 		jwtSecret.GrantRead(lambdaFn)
+		customerJwtSecret.GrantRead(lambdaFn)
 		props.DatabaseStack.CatalogDBSecret.GrantRead(lambdaFn, nil)
 
 		// Grant SNS publish permission when EventStack is available
@@ -185,9 +204,9 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 		cert := awscertificatemanager.Certificate_FromCertificateArn(stack, jsii.String("ApiCertificate"), jsii.String(props.CertArn))
 
 		customDomain := awsapigateway.NewDomainName(stack, jsii.String("ApiCustomDomain"), &awsapigateway.DomainNameProps{
-			DomainName:  jsii.String(props.DomainName),
-			Certificate: cert,
-			EndpointType: awsapigateway.EndpointType_EDGE,
+			DomainName:     jsii.String(props.DomainName),
+			Certificate:    cert,
+			EndpointType:   awsapigateway.EndpointType_EDGE,
 			SecurityPolicy: awsapigateway.SecurityPolicy_TLS_1_2,
 		})
 
@@ -241,8 +260,8 @@ func createServiceLambda(
 
 	// Explicit log group (replaces deprecated LogRetention on Lambda)
 	logGroup := awslogs.NewLogGroup(stack, jsii.String(fmt.Sprintf("%sLogGroup", capitalize(serviceName))), &awslogs.LogGroupProps{
-		LogGroupName: jsii.String(fmt.Sprintf("/aws/lambda/handloom-%s-%s", serviceName, environment)),
-		Retention:    logRetention,
+		LogGroupName:  jsii.String(fmt.Sprintf("/aws/lambda/handloom-%s-%s", serviceName, environment)),
+		Retention:     logRetention,
 		RemovalPolicy: awscdk.RemovalPolicy_DESTROY,
 	})
 
@@ -379,6 +398,49 @@ func setupAPIRoutes(api awsapigateway.RestApi, lambdas map[string]*ServiceLambda
 		})
 	}
 
+	// Store routes (B2C storefront) — /api/v1/store/*
+	apiV1Store := api.Root().
+		AddResource(jsii.String("api"), nil).
+		AddResource(jsii.String("v1"), nil).
+		AddResource(jsii.String("store"), nil)
+
+	storeRoutes := map[string]string{
+		"auth":     "store-auth",
+		"catalog":  "store-catalog",
+		"cart":     "store-cart",
+		"checkout": "store-checkout",
+		"orders":   "store-orders",
+		"me":       "store-profile",
+		"track":    "store-tracking",
+		"events":   "store-events",
+		"webhooks": "store-webhooks",
+	}
+
+	for path, svcName := range storeRoutes {
+		if svcLambda, ok := lambdas[svcName]; ok {
+			svcLambda.Function.AddPermission(jsii.String(fmt.Sprintf("%sApiInvoke", capitalize(svcName))), &awslambda.Permission{
+				Principal: awsiam.NewServicePrincipal(jsii.String("apigateway.amazonaws.com"), nil),
+				Action:    jsii.String("lambda:InvokeFunction"),
+				SourceArn: jsii.String(fmt.Sprintf("arn:aws:execute-api:%s:%s:%s/*",
+					*awscdk.Aws_REGION(),
+					*awscdk.Aws_ACCOUNT_ID(),
+					*api.RestApiId(),
+				)),
+			})
+
+			integration := awsapigateway.NewLambdaIntegration(svcLambda.Function, &awsapigateway.LambdaIntegrationOptions{
+				Proxy: jsii.Bool(true),
+			})
+
+			resource := apiV1Store.AddResource(jsii.String(path), nil)
+			resource.AddMethod(jsii.String("ANY"), integration, nil)
+			resource.AddProxy(&awsapigateway.ProxyResourceOptions{
+				AnyMethod:          jsii.Bool(true),
+				DefaultIntegration: integration,
+			})
+		}
+	}
+
 	// TODO: Uncomment routes as services are implemented
 	/*
 		// API v1 - public routes
@@ -463,8 +525,11 @@ func addResourceRoutes(resource awsapigateway.Resource, integration awsapigatewa
 }
 
 func capitalize(s string) string {
-	if len(s) == 0 {
-		return s
+	var result string
+	for _, part := range strings.Split(s, "-") {
+		if len(part) > 0 {
+			result += string(part[0]-32) + part[1:]
+		}
 	}
-	return string(s[0]-32) + s[1:]
+	return result
 }

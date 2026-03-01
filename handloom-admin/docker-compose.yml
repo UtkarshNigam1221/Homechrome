@@ -6,7 +6,7 @@ services:
     ports:
       - "4566:4566"           # LocalStack gateway
     environment:
-      SERVICES: dynamodb,s3,lambda,apigateway,iam,sns,sqs
+      SERVICES: dynamodb,s3,lambda,apigateway,iam,sns,sqs,logs
       DEBUG: 0
     volumes:
       - localstack-data:/var/lib/localstack

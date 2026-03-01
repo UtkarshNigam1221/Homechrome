@@ -16,6 +16,7 @@ All projects deploy to AWS via CDK (written in Go). Domain: `*.homechrome.lldlab
 - **Node.js 20+** and npm
 - **Docker** and Docker Compose
 - **AWS CLI v2** (for LocalStack commands)
+- **awscli-local** (for LocalStack shortcuts: `pip install awscli-local`)
 - **AWS CDK CLI** (for deployment: `npm install -g aws-cdk`)
 - **jq** (optional, for JSON formatting)
 
@@ -85,6 +86,23 @@ After code changes, redeploy without recreating API Gateway:
 make redeploy-local     # Rebuild + update Lambda code only (faster)
 ```
 
+### Viewing Lambda Logs
+
+```bash
+cd handloom-admin
+
+# Tail all LocalStack logs (Lambda invocations, API Gateway, errors)
+make logs
+
+# Tail logs for a specific Lambda function
+make logs-lambda SVC=catalog        # Admin catalog service
+make logs-lambda SVC=store-catalog  # B2C store catalog
+make logs-lambda SVC=store-cart     # B2C cart service
+make logs-lambda SVC=auth           # Admin auth service
+```
+
+Requires `awscli-local` (`pip install awscli-local`) for per-service logs.
+
 ### Admin Frontend Dev Modes
 
 | Script | Target | Env File | Use Case |
@@ -130,6 +148,8 @@ make run-watch            # Hot reload via air
 make deploy-local         # Build + deploy Lambdas to LocalStack
 make redeploy-local       # Redeploy Lambda code only (faster)
 make teardown-local       # Stop all Docker services and remove volumes
+make logs                 # Tail all LocalStack logs
+make logs-lambda SVC=x    # Tail logs for a specific Lambda (e.g., SVC=catalog)
 
 # Database & Infrastructure
 make create-tables        # Create DynamoDB tables in LocalStack

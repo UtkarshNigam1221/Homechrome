@@ -26,6 +26,7 @@ The Handloom Admin system uses a **hybrid database architecture**:
 | Documentation | Purpose | Key Tables |
 |---------------|---------|------------|
 | [Catalog Schema](./handloom-catalog.md) | Product catalog | categories, products, inventory, product_images, product_attribute_values, inventory_transactions |
+| [Migrations](./migrations.md) | Automated schema migrations | schema_migrations (tracking table) |
 
 ## Configuration
 
@@ -311,6 +312,7 @@ See [scripts/init-local-db.sh](../../scripts/init-local-db.sh) for table creatio
 
 - [handloom-core.md](./handloom-core.md) - Core table (DynamoDB): Users, Pricing Rules, Coupons
 - [handloom-catalog.md](./handloom-catalog.md) - Catalog schema (PostgreSQL): Categories, Products, Inventory
+- [migrations.md](./migrations.md) - Automated PostgreSQL schema migrations (Lambda + CDK Trigger)
 - [handloom-orders.md](./handloom-orders.md) - Orders table (DynamoDB): Orders, Customers, Payments, Shipments, Carts
 - [handloom-sessions.md](./handloom-sessions.md) - Sessions table (DynamoDB): Tokens, OTP, Password Reset
 - [handloom-notifications.md](./handloom-notifications.md) - Notifications table (DynamoDB)

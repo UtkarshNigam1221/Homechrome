@@ -47,10 +47,10 @@ type AssetService struct {
 	s3Client s3Ops
 	logger   *logger.Logger
 	bucket   string
-	endpoint string
+	endpoint string // AWS_ENDPOINT for local dev (empty in production)
 }
 
-// NewAssetService creates a new AssetService
+// NewAssetService creates a new AssetService.
 func NewAssetService(
 	logger *logger.Logger,
 	s3Client *s3client.S3Client,
@@ -69,7 +69,7 @@ func NewAssetService(
 // When endpoint is set (local dev), it uses path-style URLs pointing at LocalStack.
 func (s *AssetService) s3URL(key string) string {
 	if s.endpoint != "" {
-		return fmt.Sprintf("%s/%s/%s", s.endpoint, s.bucket, key)
+		return fmt.Sprintf("%s/%s/%s", toBrowserEndpoint(s.endpoint), s.bucket, key)
 	}
 	return fmt.Sprintf("https://%s.s3.amazonaws.com/%s", s.bucket, key)
 }
@@ -96,6 +96,10 @@ func (s *AssetService) GetUploadURL(ctx context.Context, req domain.UploadAssetR
 	if err != nil {
 		return nil, errors.Wrap(err, "Failed to generate presigned URL")
 	}
+
+	// In Lambda local mode the SDK uses host.docker.internal which browsers can't reach.
+	// Replace with localhost so presigned URLs work in the browser.
+	uploadURL = toBrowserURL(uploadURL)
 
 	return &domain.UploadURLResponse{
 		UploadURL: uploadURL,
@@ -196,4 +200,15 @@ func getMaxSize(assetType domain.AssetType) int64 {
 		return maxDocumentSize
 	}
 	return maxDocumentSize
+}
+
+// toBrowserURL rewrites Docker-internal hostnames in URLs so browsers can reach them.
+// e.g. http://host.docker.internal:4566/... → http://localhost:4566/...
+func toBrowserURL(u string) string {
+	return strings.Replace(u, "host.docker.internal", "localhost", 1)
+}
+
+// toBrowserEndpoint rewrites a Docker-internal endpoint for browser use.
+func toBrowserEndpoint(endpoint string) string {
+	return strings.Replace(endpoint, "host.docker.internal", "localhost", 1)
 }

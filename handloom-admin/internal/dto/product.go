@@ -23,6 +23,7 @@ type CreateProductRequest struct {
 	CraftType             string                 `json:"craft_type,omitempty"`
 	Images                []domain.ProductImage  `json:"images,omitempty"`
 	Tags                  []string               `json:"tags,omitempty"`
+	Status                *domain.ProductStatus  `json:"status,omitempty" validate:"omitempty,oneof=ACTIVE INACTIVE DRAFT"`
 	InitialStock          int                    `json:"initial_stock"`
 	LowStockThreshold     int                    `json:"low_stock_threshold"`
 }
@@ -49,6 +50,7 @@ func (r *CreateProductRequest) ToDomain() domain.CreateProductRequest {
 		CraftType:             r.CraftType,
 		Images:                r.Images,
 		Tags:                  r.Tags,
+		Status:                r.Status,
 		InitialStock:          r.InitialStock,
 		LowStockThreshold:     r.LowStockThreshold,
 	}
