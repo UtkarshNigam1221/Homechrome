@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowUpDown, Edit, Eye, Filter, Package, Plus, Search, Trash2, X } from 'lucide-react';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 
 import { categoriesApi } from '@/features/categories/api';
@@ -56,6 +56,12 @@ export function ProductsPage() {
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [showRankingModal, setShowRankingModal] = useState(false);
 
+  // Stabilize attributeFilters for queryKey to avoid refetches on object identity change
+  const stableAttributeFilters = useMemo(
+    () => JSON.stringify(attributeFilters),
+    [attributeFilters]
+  );
+
   // Fetch products
   const { data: productsData, isLoading } = useQuery({
     queryKey: [
@@ -66,7 +72,7 @@ export function ProductsPage() {
         search: debouncedSearch,
         status: statusFilter,
         category_id: categoryFilter,
-        attribute_filters: attributeFilters,
+        attribute_filters: stableAttributeFilters,
       },
     ],
     queryFn: () =>
@@ -82,7 +88,7 @@ export function ProductsPage() {
 
   // Fetch categories for filter
   const { data: categoriesData } = useQuery({
-    queryKey: ['categories-list'],
+    queryKey: ['categories-list', { limit: 100 }],
     queryFn: () => categoriesApi.list({ limit: 100 }),
   });
 

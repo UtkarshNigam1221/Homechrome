@@ -8,7 +8,7 @@ const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://homechrome.lldlab.
 async function getAllCategories(): Promise<Category[]> {
   try {
     const res = await fetch(`${API_BASE}/api/v1/store/catalog/categories`, {
-      next: { revalidate: 60 },
+      next: { revalidate: 3600 },
     });
     if (!res.ok) return [];
     const json = await res.json();
@@ -21,7 +21,7 @@ async function getAllCategories(): Promise<Category[]> {
 async function getAllProducts(): Promise<Product[]> {
   try {
     const res = await fetch(`${API_BASE}/api/v1/store/catalog/products`, {
-      next: { revalidate: 60 },
+      next: { revalidate: 3600 },
     });
     if (!res.ok) return [];
     const json = await res.json();

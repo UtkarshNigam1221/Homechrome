@@ -1,8 +1,11 @@
 import type { Metadata } from 'next';
+import { cache } from 'react';
 
 import ProductDetailView from './ProductDetailView';
 
 import { Product } from '@/types';
+
+export const revalidate = 3600;
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8081';
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://homechrome.lldlab.com';
@@ -11,16 +14,27 @@ interface PageProps {
   params: Promise<{ slug: string }>;
 }
 
-async function getProduct(slug: string): Promise<Product | null> {
+const getProduct = cache(async function getProduct(slug: string): Promise<Product | null> {
   try {
     const res = await fetch(`${API_BASE}/api/v1/store/catalog/products/${slug}`, {
-      next: { revalidate: 60 },
+      next: { revalidate: 3600 },
     });
     if (!res.ok) return null;
     const json = await res.json();
     return json.data || null;
   } catch {
     return null;
+  }
+});
+
+export async function generateStaticParams() {
+  try {
+    const res = await fetch(`${API_BASE}/api/v1/store/catalog/products`);
+    if (!res.ok) return [];
+    const json = await res.json();
+    return (json.data || []).map((p: Product) => ({ slug: p.slug }));
+  } catch {
+    return [];
   }
 }
 

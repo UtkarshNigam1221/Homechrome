@@ -172,10 +172,7 @@ func NewEventStack(scope constructs.Construct, id string, props *EventStackProps
 			"DYNAMODB_ANALYTICS_TABLE":     props.DatabaseStack.AnalyticsTable.TableName(),
 			"DYNAMODB_NOTIFICATIONS_TABLE": props.DatabaseStack.NotificationsTable.TableName(),
 			"DYNAMODB_EVENTS_TABLE":        props.DatabaseStack.EventsTable.TableName(),
-			"RDS_SECRET_ARN":               props.DatabaseStack.CatalogDBSecret.SecretArn(),
-			"RDS_ENDPOINT":                 props.DatabaseStack.CatalogDB.DbInstanceEndpointAddress(),
-			"RDS_PORT":                     jsii.String("5432"),
-			"RDS_DATABASE":                 jsii.String("handloom"),
+			"POSTGRES_DSN":                 props.DatabaseStack.PostgresDSN,
 			"SERVICE_NAME":                 jsii.String(workerName),
 		}
 
@@ -213,8 +210,6 @@ func NewEventStack(scope constructs.Construct, id string, props *EventStackProps
 		props.DatabaseStack.AnalyticsTable.GrantReadWriteData(lambdaFn)
 		props.DatabaseStack.NotificationsTable.GrantReadWriteData(lambdaFn)
 		props.DatabaseStack.EventsTable.GrantReadWriteData(lambdaFn)
-		props.DatabaseStack.CatalogDBSecret.GrantRead(lambdaFn, nil)
-
 		// Capture analytics Lambda for EventBridge schedule
 		if w.name == "analytics" {
 			analyticsLambda = lambdaFn

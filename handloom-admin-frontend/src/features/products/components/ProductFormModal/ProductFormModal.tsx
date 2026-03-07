@@ -57,7 +57,7 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
 
   // Fetch categories (flat list - no hierarchy)
   const { data: categoriesData } = useQuery({
-    queryKey: ['categories-list'],
+    queryKey: ['categories-list', { limit: 100 }],
     queryFn: () => categoriesApi.list({ limit: 100 }),
     enabled: isOpen,
   });
@@ -173,7 +173,7 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
           sku: '',
           description: '',
           category_id: '',
-    
+
           base_price: 0,
           selling_price: 0,
           cost_price: 0,
@@ -213,7 +213,15 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
 
   // Update mutation
   const updateMutation = useMutation({
-    mutationFn: async ({ id, data, newStockQty }: { id: string; data: Partial<CreateProductRequest>; newStockQty?: number }) => {
+    mutationFn: async ({
+      id,
+      data,
+      newStockQty,
+    }: {
+      id: string;
+      data: Partial<CreateProductRequest>;
+      newStockQty?: number;
+    }) => {
       const result = await productsApi.update(id, data);
       // If stock quantity changed, adjust it via inventory endpoint
       if (newStockQty !== undefined && product && newStockQty !== product.quantity) {
@@ -223,7 +231,7 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['products'] });
-      queryClient.invalidateQueries({ queryKey: ['inventory'] });
+      queryClient.invalidateQueries({ queryKey: ['products-inventory'] });
       toast.success('Product updated successfully');
       onClose();
     },
@@ -484,7 +492,6 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
               placeholder="e.g., Handloom, Powerloom"
               {...register('craft_type')}
             />
-
           </div>
         </div>
 

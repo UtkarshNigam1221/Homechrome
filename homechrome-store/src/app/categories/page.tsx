@@ -13,7 +13,7 @@ export const metadata: Metadata = {
 async function getCategories(): Promise<Category[]> {
   try {
     const res = await fetch(`${API_BASE}/api/v1/store/catalog/categories`, {
-      next: { revalidate: 60 },
+      next: { revalidate: 3600 },
     });
     if (!res.ok) return [];
     const json = await res.json();

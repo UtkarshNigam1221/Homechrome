@@ -21,7 +21,7 @@ import {
   TableLoading,
   TableRow,
 } from '@/shared/components/ui';
-import { useCursorPagination } from '@/shared/hooks';
+import { useCursorPagination, useDebounce } from '@/shared/hooks';
 import { formatCurrency } from '@/shared/utils/currency';
 
 import type { PricingRule } from '../types';
@@ -39,6 +39,7 @@ export function PricingRulesPage() {
     changeLimit,
   } = useCursorPagination(10);
   const [searchQuery, setSearchQuery] = useState('');
+  const debouncedSearch = useDebounce(searchQuery, 300);
   const [showFormModal, setShowFormModal] = useState(false);
   const [editingRule, setEditingRule] = useState<PricingRule | null>(null);
   const [deleteRule, setDeleteRule] = useState<PricingRule | null>(null);
@@ -75,8 +76,8 @@ export function PricingRulesPage() {
   };
 
   // Filter by search (client-side for now)
-  const filteredRules = searchQuery
-    ? rules.filter((r) => r.name.toLowerCase().includes(searchQuery.toLowerCase()))
+  const filteredRules = debouncedSearch
+    ? rules.filter((r) => r.name.toLowerCase().includes(debouncedSearch.toLowerCase()))
     : rules;
 
   return (

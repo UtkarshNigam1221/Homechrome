@@ -96,14 +96,19 @@ export default function CategoryProductsView({
 
   // Fetch filter options on mount
   useEffect(() => {
+    const controller = new AbortController();
     api
       .get<Record<string, string[]>>(
         `/api/v1/store/catalog/products/filter-options/${category.id}`,
+        { signal: controller.signal },
       )
-      .then((res) => setFilterOptions(res.data))
+      .then((res) => {
+        if (!controller.signal.aborted) setFilterOptions(res.data);
+      })
       .catch(() => {
         // silently ignore — filters just won't show attribute options
       });
+    return () => controller.abort();
   }, [category.id]);
 
   // Sync URL → filter state only on browser back/forward (not programmatic pushes)
@@ -117,10 +122,12 @@ export default function CategoryProductsView({
   }, [searchParams]);
 
   // Re-fetch products when filters change (debounced, with abort)
+  // On initial mount: skip if no active filters (server already provided unfiltered products),
+  // but fetch immediately if URL has filters (server doesn't know about them).
   useEffect(() => {
     if (isInitialMount.current) {
       isInitialMount.current = false;
-      return;
+      if (!hasActiveFilters(filters)) return;
     }
 
     const controller = new AbortController();

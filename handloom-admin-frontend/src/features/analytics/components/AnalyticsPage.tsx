@@ -34,7 +34,7 @@ export function AnalyticsPage() {
   });
 
   const { data: topProducts } = useQuery({
-    queryKey: ['analytics-top-products'],
+    queryKey: ['analytics-top-products', { limit: 10 }],
     queryFn: () => analyticsApi.getTopProducts({ limit: 10 }),
   });
 

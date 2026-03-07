@@ -101,6 +101,7 @@ export function CategoryFormModal({ isOpen, onClose, category }: Readonly<Catego
 
   // Reset form when modal opens/closes or category changes
   useEffect(() => {
+    let cancelled = false;
     if (isOpen) {
       setActiveTab('basic');
       if (category?.id) {
@@ -111,10 +112,15 @@ export function CategoryFormModal({ isOpen, onClose, category }: Readonly<Catego
           status: category.status,
           own_attributes: [],
         });
-        categoriesApi.getAttributes(category.id).then((data) => {
-          const attributes = (data as { own_attributes?: CategoryAttribute[] }).own_attributes || [];
-          replaceAttributes(attributes);
-        });
+        categoriesApi
+          .getAttributes(category.id)
+          .then((data) => {
+            if (cancelled) return;
+            replaceAttributes(data.own_attributes || []);
+          })
+          .catch((error) => {
+            if (!cancelled) toast.error(getErrorMessage(error));
+          });
       } else {
         reset({
           name: '',
@@ -125,6 +131,9 @@ export function CategoryFormModal({ isOpen, onClose, category }: Readonly<Catego
         });
       }
     }
+    return () => {
+      cancelled = true;
+    };
   }, [isOpen, category, reset, replaceAttributes]);
 
   // Create mutation

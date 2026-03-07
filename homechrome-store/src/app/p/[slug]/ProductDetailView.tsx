@@ -40,7 +40,7 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
       category_id: product.category_id,
       price: product.selling_price,
     });
-  }, [product.id, product.name, product.category_id, product.selling_price]);
+  }, [product.id]);
 
   useScrollDepth('product');
 
@@ -64,8 +64,8 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
         price: product.selling_price,
         quantity,
       });
-    } catch {
-      // ignore
+    } catch (err) {
+      console.error('Failed to add to cart:', err);
     } finally {
       setLoading(false);
     }
@@ -75,8 +75,8 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
     setLoading(true);
     try {
       await updateQuantity(product.id, cartQty + 1);
-    } catch {
-      // ignore
+    } catch (err) {
+      console.error('Failed to update cart:', err);
     } finally {
       setLoading(false);
     }
@@ -90,8 +90,8 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
       } else {
         await updateQuantity(product.id, cartQty - 1);
       }
-    } catch {
-      // ignore
+    } catch (err) {
+      console.error('Failed to update cart:', err);
     } finally {
       setLoading(false);
     }

@@ -1,3 +1,147 @@
+# Neon Postgres Migration Implementation Plan
+
+> **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
+
+**Goal:** Replace AWS RDS PostgreSQL with Neon Postgres to eliminate ~$21/month infrastructure costs.
+
+**Architecture:** Remove VPC, RDS instance, and Secrets Manager from CDK stacks. Replace with a single `POSTGRES_DSN` env var pointing to Neon's pooled endpoint. No changes to Go application code except removing the Secrets Manager credential resolution in the Postgres client.
+
+**Tech Stack:** Go CDK (aws-cdk-go), pgx/v5, Neon Postgres (ap-southeast-1)
+
+---
+
+### Task 1: Simplify Postgres client — remove Secrets Manager resolution
+
+**Files:**
+- Modify: `internal/repository/postgres/client.go`
+
+**Step 1: Replace client.go with simplified version**
+
+Remove the `resolveDSNFromSecret` function and all Secrets Manager imports. `NewPool` should only use `pgCfg.DSN`.
+
+```go
+// Package postgres provides PostgreSQL-backed repository implementations
+// for catalog data (categories, products, inventory).
+package postgres
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	appconfig "github.com/handloom/admin/internal/config"
+)
+
+// NewPool creates a PostgreSQL connection pool.
+// Uses POSTGRES_DSN environment variable in all environments.
+func NewPool(ctx context.Context, pgCfg *appconfig.PostgresConfig) (*pgxpool.Pool, error) {
+	if pgCfg.DSN == "" {
+		return nil, fmt.Errorf("no postgres DSN configured (set POSTGRES_DSN)")
+	}
+
+	cfg, err := pgxpool.ParseConfig(pgCfg.DSN)
+	if err != nil {
+		return nil, fmt.Errorf("parse postgres DSN: %w", err)
+	}
+
+	pool, err := pgxpool.NewWithConfig(ctx, cfg)
+	if err != nil {
+		return nil, fmt.Errorf("create postgres pool: %w", err)
+	}
+
+	if err := pool.Ping(ctx); err != nil {
+		pool.Close()
+		return nil, fmt.Errorf("ping postgres: %w", err)
+	}
+
+	return pool, nil
+}
+```
+
+**Step 2: Verify it compiles**
+
+Run: `cd /Users/utkarsh.nigam/Desktop/CP/Homechrome/handloom-admin && go build ./internal/repository/postgres/...`
+Expected: SUCCESS (no errors)
+
+**Step 3: Commit**
+
+```bash
+git add internal/repository/postgres/client.go
+git commit -m "refactor(postgres): remove Secrets Manager resolution, use DSN directly"
+```
+
+---
+
+### Task 2: Clean up PostgresConfig in config.go
+
+**Files:**
+- Modify: `internal/config/config.go`
+
+**Step 1: Remove unused PostgresConfig fields**
+
+Change the `PostgresConfig` struct and its loading in `Load()`. Remove `SecretARN`, `Endpoint`, `Port`, `DatabaseName` since all environments now use `POSTGRES_DSN`.
+
+In the struct (lines 27-33), replace with:
+
+```go
+// PostgresConfig holds PostgreSQL connection configuration
+type PostgresConfig struct {
+	DSN string // Connection string: env POSTGRES_DSN
+}
+```
+
+In `Load()` (lines 149-155), replace the `Postgres:` block with:
+
+```go
+		Postgres: PostgresConfig{
+			DSN: getEnv("POSTGRES_DSN", ""),
+		},
+```
+
+**Step 2: Verify it compiles**
+
+Run: `cd /Users/utkarsh.nigam/Desktop/CP/Homechrome/handloom-admin && go build ./...`
+Expected: SUCCESS
+
+**Step 3: Commit**
+
+```bash
+git add internal/config/config.go
+git commit -m "refactor(config): simplify PostgresConfig to DSN-only"
+```
+
+---
+
+### Task 3: Update CDK database stack — remove RDS, VPC, Secrets Manager
+
+**Files:**
+- Modify: `infra/stacks/database.go`
+
+**Step 1: Remove RDS/VPC/Secrets Manager resources and add DSN parameter**
+
+Remove these from the `DatabaseStack` struct:
+- `CatalogVPC`, `CatalogDB`, `CatalogDBSecret` fields
+
+Remove from `NewDatabaseStack`:
+- VPC creation (lines 303-315)
+- Security group (lines 317-329)
+- Secrets Manager secret (lines 331-335)
+- RDS instance (lines 337-359)
+- `catalogDBSecret.GrantRead(migratorFn, nil)` (line 380)
+- `ExecuteAfter: &[]constructs.Construct{catalogDB}` in trigger (line 384)
+- CfnOutputs for `CatalogDBEndpoint` and `CatalogDBSecretARN`
+- References to `catalogVPC`, `catalogDB`, `catalogDBSecret` in the return statement
+
+Remove unused imports: `awsec2`, `awsrds`
+
+Add a `PostgresDSN` field to `DatabaseStack` that reads from CDK context.
+
+Updated migrator env vars — replace RDS vars with `POSTGRES_DSN`.
+
+The full updated file:
+
+```go
 package stacks
 
 import (
@@ -15,10 +159,10 @@ import (
 type DatabaseStackProps struct {
 	awscdk.StackProps
 	Environment string
-	PostgresDSN string
+	PostgresDSN string // Neon Postgres pooled connection string
 }
 
-// DatabaseStack contains the DynamoDB tables and the Postgres DSN for catalog data
+// DatabaseStack contains the DynamoDB tables and Neon Postgres DSN
 type DatabaseStack struct {
 	awscdk.Stack
 	CoreTable          awsdynamodb.Table
@@ -28,7 +172,7 @@ type DatabaseStack struct {
 	AnalyticsTable     awsdynamodb.Table
 	NotificationsTable awsdynamodb.Table
 	EventsTable        awsdynamodb.Table
-	// External PostgreSQL (Neon) connection string
+	// Neon Postgres DSN (passed to API/Event stacks for Lambda env vars)
 	PostgresDSN *string
 }
 
@@ -296,7 +440,8 @@ func NewDatabaseStack(scope constructs.Construct, id string, props *DatabaseStac
 	})
 
 	// --- Schema Migrator Lambda ---
-	// Runs embedded SQL migrations against external Postgres (Neon) during CDK deploy.
+	// Runs embedded SQL migrations against Neon Postgres during CDK deploy.
+	// CDK Trigger invokes this on handler change, before API Lambdas need the schema.
 	postgresDSN := jsii.String(props.PostgresDSN)
 
 	migratorFn := awslambda.NewFunction(stack, jsii.String("MigratorFunction"), &awslambda.FunctionProps{
@@ -361,3 +506,225 @@ func NewDatabaseStack(scope constructs.Construct, id string, props *DatabaseStac
 		PostgresDSN:        postgresDSN,
 	}
 }
+```
+
+**Step 2: Verify CDK compiles**
+
+Run: `cd /Users/utkarsh.nigam/Desktop/CP/Homechrome/handloom-admin && go build ./infra/...`
+Expected: FAIL — `api.go` and `events.go` still reference removed fields. That's expected, we fix those next.
+
+**Step 3: Commit (partial — will fix compilation in subsequent tasks)**
+
+```bash
+git add infra/stacks/database.go
+git commit -m "infra(database): remove RDS, VPC, Secrets Manager; use Neon Postgres DSN"
+```
+
+---
+
+### Task 4: Update CDK API stack — replace RDS env vars with POSTGRES_DSN
+
+**Files:**
+- Modify: `infra/stacks/api.go`
+
+**Step 1: Replace RDS env vars in commonEnv**
+
+In `commonEnv` (lines 74-95), remove these 4 lines:
+```go
+"RDS_SECRET_ARN":               props.DatabaseStack.CatalogDBSecret.SecretArn(),
+"RDS_ENDPOINT":                 props.DatabaseStack.CatalogDB.DbInstanceEndpointAddress(),
+"RDS_PORT":                     jsii.String("5432"),
+"RDS_DATABASE":                 jsii.String("handloom"),
+```
+
+Replace with:
+```go
+"POSTGRES_DSN": props.DatabaseStack.PostgresDSN,
+```
+
+**Step 2: Remove CatalogDBSecret.GrantRead call**
+
+Remove line 171:
+```go
+props.DatabaseStack.CatalogDBSecret.GrantRead(lambdaFn, nil)
+```
+
+**Step 3: Verify CDK compiles**
+
+Run: `cd /Users/utkarsh.nigam/Desktop/CP/Homechrome/handloom-admin && go build ./infra/...`
+Expected: FAIL — `events.go` still references removed fields. Fix in next task.
+
+**Step 4: Commit**
+
+```bash
+git add infra/stacks/api.go
+git commit -m "infra(api): replace RDS env vars with POSTGRES_DSN for all Lambdas"
+```
+
+---
+
+### Task 5: Update CDK event stack — replace RDS env vars with POSTGRES_DSN
+
+**Files:**
+- Modify: `infra/stacks/events.go`
+
+**Step 1: Replace RDS env vars in worker env**
+
+In the worker loop env map (lines 166-180), remove:
+```go
+"RDS_SECRET_ARN":               props.DatabaseStack.CatalogDBSecret.SecretArn(),
+"RDS_ENDPOINT":                 props.DatabaseStack.CatalogDB.DbInstanceEndpointAddress(),
+"RDS_PORT":                     jsii.String("5432"),
+"RDS_DATABASE":                 jsii.String("handloom"),
+```
+
+Replace with:
+```go
+"POSTGRES_DSN": props.DatabaseStack.PostgresDSN,
+```
+
+**Step 2: Remove CatalogDBSecret.GrantRead call**
+
+Remove line 216:
+```go
+props.DatabaseStack.CatalogDBSecret.GrantRead(lambdaFn, nil)
+```
+
+**Step 3: Verify CDK compiles**
+
+Run: `cd /Users/utkarsh.nigam/Desktop/CP/Homechrome/handloom-admin && go build ./infra/...`
+Expected: FAIL — `main.go` still needs update for `PostgresDSN` prop.
+
+**Step 4: Commit**
+
+```bash
+git add infra/stacks/events.go
+git commit -m "infra(events): replace RDS env vars with POSTGRES_DSN for workers"
+```
+
+---
+
+### Task 6: Update CDK entry point — pass PostgresDSN from context
+
+**Files:**
+- Modify: `infra/cmd/main.go`
+
+**Step 1: Add PostgresDSN resolution and pass to DatabaseStack**
+
+Add a `getPostgresDSN` helper that reads from CDK context (`-c postgresDsn=...`) or `POSTGRES_DSN` env var.
+
+Add to `createEnvironmentStacks`, passing to `DatabaseStackProps`:
+
+```go
+func getPostgresDSN(app constructs.Construct) string {
+	if dsn := app.Node().TryGetContext(jsii.String("postgresDsn")); dsn != nil {
+		return dsn.(string)
+	}
+	if dsn := os.Getenv("POSTGRES_DSN"); dsn != "" {
+		return dsn
+	}
+	return ""
+}
+```
+
+In `createEnvironmentStacks`, add `PostgresDSN` to `DatabaseStackProps`:
+
+```go
+postgresDSN := getPostgresDSN(app)
+
+databaseStack := stacks.NewDatabaseStack(app, "HandloomDatabaseStack-"+environment, &stacks.DatabaseStackProps{
+	StackProps: awscdk.StackProps{
+		Env:         env,
+		Description: jsii.String("Handloom Admin - Database resources (" + environment + ")"),
+		Tags: &map[string]*string{
+			"Environment": jsii.String(environment),
+			"Project":     jsii.String("handloom-admin"),
+			"ManagedBy":   jsii.String("cdk"),
+		},
+	},
+	Environment: environment,
+	PostgresDSN: postgresDSN,
+})
+```
+
+**Step 2: Verify full CDK compiles**
+
+Run: `cd /Users/utkarsh.nigam/Desktop/CP/Homechrome/handloom-admin && go build ./infra/...`
+Expected: SUCCESS
+
+**Step 3: Verify Go application compiles**
+
+Run: `cd /Users/utkarsh.nigam/Desktop/CP/Homechrome/handloom-admin && go build ./...`
+Expected: SUCCESS
+
+**Step 4: Commit**
+
+```bash
+git add infra/cmd/main.go
+git commit -m "infra(main): pass Neon Postgres DSN from CDK context to stacks"
+```
+
+---
+
+### Task 7: Run tests to verify no regressions
+
+**Step 1: Run unit tests**
+
+Run: `cd /Users/utkarsh.nigam/Desktop/CP/Homechrome/handloom-admin && make test-unit`
+Expected: All tests pass. No test should reference `SecretARN`, `Endpoint`, `Port`, or `DatabaseName` fields on `PostgresConfig` since tests use `POSTGRES_DSN` (or mock the pool directly).
+
+**Step 2: Run lint**
+
+Run: `cd /Users/utkarsh.nigam/Desktop/CP/Homechrome/handloom-admin && golangci-lint run`
+Expected: No new lint issues (removed unused imports should clear any warnings)
+
+**Step 3: Commit any fixes if needed**
+
+---
+
+### Task 8: Update local dev docker-compose (if needed)
+
+**Files:**
+- Check: `docker-compose.yml` or `docker-compose.yaml` for local PostgreSQL container
+
+**Step 1: Verify local dev still works**
+
+The local dev setup uses `POSTGRES_DSN` env var already (per `config.go` line 150). Check that `make run` or docker-compose sets `POSTGRES_DSN` correctly for the local PostgreSQL container.
+
+Run: `grep -r "POSTGRES_DSN" /Users/utkarsh.nigam/Desktop/CP/Homechrome/handloom-admin/` to find all references.
+
+**Step 2: Update any .env files if they reference RDS_* vars**
+
+If `.env.local` or similar files reference `RDS_SECRET_ARN`, `RDS_ENDPOINT`, etc., replace with `POSTGRES_DSN`.
+
+**Step 3: Commit if changes were needed**
+
+---
+
+### Task 9: Verify deployment readiness
+
+**Step 1: Build all Lambda binaries**
+
+Run: `cd /Users/utkarsh.nigam/Desktop/CP/Homechrome/handloom-admin && make build-lambdas-active`
+Expected: SUCCESS — all active Lambda binaries build
+
+**Step 2: Build migrator**
+
+Run: `cd /Users/utkarsh.nigam/Desktop/CP/Homechrome/handloom-admin && GOOS=linux GOARCH=arm64 go build -o bin/lambda/migrator/bootstrap ./cmd/lambda/migrator`
+Expected: SUCCESS
+
+**Step 3: Dry-run CDK diff (optional, requires AWS credentials)**
+
+Run: `cd /Users/utkarsh.nigam/Desktop/CP/Homechrome/handloom-admin/infra && POSTGRES_DSN="placeholder" cdk diff -c environment=dev -c postgresDsn="placeholder"`
+Expected: Shows removal of RDS, VPC, Secrets Manager resources and addition of POSTGRES_DSN env var
+
+---
+
+## Deployment Checklist (Manual Steps After Code Changes)
+
+1. Create Neon project at console.neon.tech (Singapore, Postgres 16)
+2. Copy pooled connection string
+3. Run migrations: `psql "<neon-dsn>" -f migrations/001_catalog_schema.sql` (repeat for each migration file)
+4. Deploy: `POSTGRES_DSN="<neon-dsn>" make cdk-deploy-dev` (or pass via `-c postgresDsn=...`)
+5. Verify: hit `https://dev-store.homechrome.lldlab.com` — categories and products load
+6. After 48h stable: delete RDS instance manually via AWS console

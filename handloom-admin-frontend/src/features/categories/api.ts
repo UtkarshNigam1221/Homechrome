@@ -50,8 +50,13 @@ export const categoriesApi = {
     await apiClient.delete(`/admin/categories/${id}/attributes/${attrName}`);
   },
 
-  getAttributes: async (id: string) => {
-    const response = await apiClient.get(`/admin/categories/${id}/attributes`);
+  getAttributes: async (
+    id: string
+  ): Promise<{ own_attributes: CategoryAttribute[]; total_count: number }> => {
+    const response = await apiClient.get<{
+      own_attributes: CategoryAttribute[];
+      total_count: number;
+    }>(`/admin/categories/${id}/attributes`);
     return response.data;
   },
 };

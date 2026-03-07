@@ -7,20 +7,42 @@ import { api } from '@/lib/api';
 import { useAuthStore } from '@/stores/auth';
 import { Category } from '@/types';
 
+let categoriesCache: Category[] | null = null;
+let categoriesPromise: Promise<Category[]> | null = null;
+
+function fetchCategories(): Promise<Category[]> {
+  if (categoriesCache) return Promise.resolve(categoriesCache);
+  if (!categoriesPromise) {
+    categoriesPromise = api
+      .get<Category[]>('/api/v1/store/catalog/categories')
+      .then((res) => {
+        categoriesCache = res.data;
+        return res.data;
+      })
+      .catch(() => {
+        categoriesPromise = null;
+        return [];
+      });
+  }
+  return categoriesPromise;
+}
+
 interface MobileNavProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
 export default function MobileNav({ isOpen, onClose }: MobileNavProps) {
-  const { isAuthenticated, customer, logout } = useAuthStore();
-  const [categories, setCategories] = useState<Category[]>([]);
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const customer = useAuthStore((s) => s.customer);
+  const logout = useAuthStore((s) => s.logout);
+  const [categories, setCategories] = useState<Category[]>(categoriesCache || []);
 
   useEffect(() => {
     let cancelled = false;
-    api.get<Category[]>('/api/v1/store/catalog/categories').then((res) => {
-      if (!cancelled) setCategories(res.data);
-    }).catch(() => {});
+    fetchCategories().then((data) => {
+      if (!cancelled) setCategories(data);
+    });
     return () => { cancelled = true; };
   }, []);
 

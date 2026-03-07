@@ -42,7 +42,7 @@ export function InventoryPage() {
   const [showAdjustmentModal, setShowAdjustmentModal] = useState(false);
 
   const { data: lowStockData } = useQuery({
-    queryKey: ['low-stock', { limit, cursor }],
+    queryKey: ['low-stock-inventory', { limit, cursor }],
     queryFn: () => inventoryApi.getLowStock({ limit, cursor }),
   });
 

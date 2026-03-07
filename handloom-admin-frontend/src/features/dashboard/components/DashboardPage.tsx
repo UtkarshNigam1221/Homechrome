@@ -47,19 +47,19 @@ function CardSkeleton() {
 export function DashboardPage() {
   // Fetch dashboard stats
   const { data: stats, isLoading: statsLoading } = useQuery({
-    queryKey: ['dashboard-stats'],
+    queryKey: ['analytics-dashboard'],
     queryFn: analyticsApi.getDashboard,
   });
 
   // Fetch sales analytics
   const { data: salesData } = useQuery({
-    queryKey: ['sales-analytics'],
+    queryKey: ['analytics-sales'],
     queryFn: () => analyticsApi.getSales({ period: 'last_30_days' }),
   });
 
   // Fetch top products
   const { data: topProducts, isLoading: topProductsLoading } = useQuery({
-    queryKey: ['top-products'],
+    queryKey: ['analytics-top-products', { limit: 5 }],
     queryFn: () => analyticsApi.getTopProducts({ limit: 5 }),
   });
 
@@ -71,7 +71,7 @@ export function DashboardPage() {
 
   // Fetch low stock items
   const { data: lowStockItems, isLoading: lowStockLoading } = useQuery({
-    queryKey: ['low-stock'],
+    queryKey: ['low-stock', { limit: 5 }],
     queryFn: () => inventoryApi.getLowStock({ limit: 5 }),
   });
 

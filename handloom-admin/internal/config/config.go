@@ -25,11 +25,7 @@ type Config struct {
 
 // PostgresConfig holds PostgreSQL connection configuration
 type PostgresConfig struct {
-	DSN          string // Direct DSN (local dev): env POSTGRES_DSN
-	SecretARN    string // Secrets Manager ARN (Lambda): env RDS_SECRET_ARN
-	Endpoint     string // RDS endpoint (Lambda): env RDS_ENDPOINT
-	Port         string // RDS port (Lambda): env RDS_PORT
-	DatabaseName string // RDS database name (Lambda): env RDS_DATABASE
+	DSN string // Connection string: env POSTGRES_DSN
 }
 
 // StoreConfig holds B2C storefront configuration
@@ -147,11 +143,7 @@ func Load() *Config {
 			QuoteValidityHrs: getIntEnv("QUOTE_VALIDITY_HRS", 24),
 		},
 		Postgres: PostgresConfig{
-			DSN:          getEnv("POSTGRES_DSN", ""),
-			SecretARN:    getEnv("RDS_SECRET_ARN", ""),
-			Endpoint:     getEnv("RDS_ENDPOINT", ""),
-			Port:         getEnv("RDS_PORT", "5432"),
-			DatabaseName: getEnv("RDS_DATABASE", "handloom"),
+			DSN: getEnv("POSTGRES_DSN", ""),
 		},
 		Event: EventConfig{
 			SNSTopicARN: getEnv("SNS_TOPIC_ARN", ""),

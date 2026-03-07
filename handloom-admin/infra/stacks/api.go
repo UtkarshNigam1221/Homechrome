@@ -81,10 +81,7 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 		"DYNAMODB_ANALYTICS_TABLE":     props.DatabaseStack.AnalyticsTable.TableName(),
 		"DYNAMODB_NOTIFICATIONS_TABLE": props.DatabaseStack.NotificationsTable.TableName(),
 		"DYNAMODB_EVENTS_TABLE":        props.DatabaseStack.EventsTable.TableName(),
-		"RDS_SECRET_ARN":               props.DatabaseStack.CatalogDBSecret.SecretArn(),
-		"RDS_ENDPOINT":                 props.DatabaseStack.CatalogDB.DbInstanceEndpointAddress(),
-		"RDS_PORT":                     jsii.String("5432"),
-		"RDS_DATABASE":                 jsii.String("handloom"),
+		"POSTGRES_DSN":                 props.DatabaseStack.PostgresDSN,
 		"S3_ASSETS_BUCKET":             assetsBucket.BucketName(),
 		"JWT_SECRET_PARAM":             jwtSecret.ParameterName(),
 		"CUSTOMER_JWT_SECRET_PARAM":    jsii.String(fmt.Sprintf("/handloom/%s/customer-jwt-secret", props.Environment)),
@@ -168,8 +165,6 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 		assetsBucket.GrantReadWrite(lambdaFn, nil)
 		jwtSecret.GrantRead(lambdaFn)
 		customerJwtSecret.GrantRead(lambdaFn)
-		props.DatabaseStack.CatalogDBSecret.GrantRead(lambdaFn, nil)
-
 		// Grant SNS publish permission when EventStack is available
 		if props.EventStack != nil {
 			props.EventStack.Topic.GrantPublish(lambdaFn)

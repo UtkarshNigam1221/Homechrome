@@ -33,23 +33,26 @@ function LoginForm() {
     }
   }, [isAuthenticated, redirect, router]);
 
-  // Countdown timer
+  // Countdown timer — start interval only once, let it self-clear at 0
+  const startCountdown = useCallback((seconds: number) => {
+    setCountdown(seconds);
+    if (countdownRef.current) clearInterval(countdownRef.current);
+    countdownRef.current = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev <= 1) {
+          if (countdownRef.current) clearInterval(countdownRef.current);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  }, []);
+
   useEffect(() => {
-    if (countdown > 0) {
-      countdownRef.current = setInterval(() => {
-        setCountdown((prev) => {
-          if (prev <= 1) {
-            if (countdownRef.current) clearInterval(countdownRef.current);
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    }
     return () => {
       if (countdownRef.current) clearInterval(countdownRef.current);
     };
-  }, [countdown]);
+  }, []);
 
   const handleSendOTP = useCallback(async () => {
     const cleaned = phone.replace(/\D/g, '');
@@ -62,13 +65,13 @@ function LoginForm() {
     try {
       await sendOTP(`+91${cleaned}`);
       setStep('otp');
-      setCountdown(OTP_RESEND_SECONDS);
+      startCountdown(OTP_RESEND_SECONDS);
     } catch {
       setError('Failed to send OTP. Please try again.');
     } finally {
       setSending(false);
     }
-  }, [phone, sendOTP]);
+  }, [phone, sendOTP, startCountdown]);
 
   const handleVerifyOTP = useCallback(async () => {
     if (otp.length !== 6) {
@@ -95,13 +98,13 @@ function LoginForm() {
     const cleaned = phone.replace(/\D/g, '');
     try {
       await sendOTP(`+91${cleaned}`);
-      setCountdown(OTP_RESEND_SECONDS);
+      startCountdown(OTP_RESEND_SECONDS);
     } catch {
       setError('Failed to resend OTP. Please try again.');
     } finally {
       setSending(false);
     }
-  }, [countdown, phone, sendOTP]);
+  }, [countdown, phone, sendOTP, startCountdown]);
 
   return (
     <div className="flex min-h-[60vh] items-center justify-center px-4 py-16">

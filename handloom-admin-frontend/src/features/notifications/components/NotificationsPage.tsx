@@ -47,7 +47,7 @@ export function NotificationsPage() {
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
 
   const { data, isLoading } = useQuery({
-    queryKey: ['my-notifications'],
+    queryKey: ['my-notifications', { limit: 50 }],
     queryFn: () => notificationsApi.getMy({ limit: 50 }),
   });
 

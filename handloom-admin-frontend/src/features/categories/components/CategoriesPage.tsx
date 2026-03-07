@@ -7,7 +7,7 @@ import { categoriesApi } from '@/features/categories/api';
 import { getErrorMessage } from '@/shared/api/client';
 import { PageLoading } from '@/shared/components/loading';
 import { Badge, Button, Card, ConfirmModal, Input, Pagination } from '@/shared/components/ui';
-import { useCursorPagination } from '@/shared/hooks';
+import { useCursorPagination, useDebounce } from '@/shared/hooks';
 import { getStatusBadgeVariant } from '@/shared/utils/badge';
 
 import type { Category } from '../types';
@@ -16,6 +16,7 @@ import { CategoryFormModal } from './CategoryFormModal';
 export function CategoriesPage() {
   const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState('');
+  const debouncedSearch = useDebounce(searchQuery, 300);
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -71,11 +72,11 @@ export function CategoriesPage() {
   const categories = data?.items ?? [];
   const pagination = data?.pagination;
 
-  const filteredCategories = searchQuery
+  const filteredCategories = debouncedSearch
     ? categories.filter(
         (cat: Category) =>
-          cat.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          cat.slug.toLowerCase().includes(searchQuery.toLowerCase())
+          cat.name.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
+          cat.slug.toLowerCase().includes(debouncedSearch.toLowerCase())
       )
     : categories;
 

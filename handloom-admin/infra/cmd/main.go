@@ -35,6 +35,8 @@ func main() {
 
 // createEnvironmentStacks creates all stacks for a given environment
 func createEnvironmentStacks(app awscdk.App, environment string, env *awscdk.Environment) {
+	postgresDSN := getPostgresDSN(app)
+
 	// Database stack
 	databaseStack := stacks.NewDatabaseStack(app, "HandloomDatabaseStack-"+environment, &stacks.DatabaseStackProps{
 		StackProps: awscdk.StackProps{
@@ -47,6 +49,7 @@ func createEnvironmentStacks(app awscdk.App, environment string, env *awscdk.Env
 			},
 		},
 		Environment: environment,
+		PostgresDSN: postgresDSN,
 	})
 
 	// Storage stack
@@ -149,6 +152,16 @@ func getCertArn(app constructs.Construct) string {
 	}
 	if arn := os.Getenv("ACM_CERT_ARN"); arn != "" {
 		return arn
+	}
+	return ""
+}
+
+func getPostgresDSN(app constructs.Construct) string {
+	if dsn := app.Node().TryGetContext(jsii.String("postgresDsn")); dsn != nil {
+		return dsn.(string)
+	}
+	if dsn := os.Getenv("POSTGRES_DSN"); dsn != "" {
+		return dsn
 	}
 	return ""
 }

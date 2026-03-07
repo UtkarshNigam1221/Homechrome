@@ -7,18 +7,8 @@ import { useCallback, useEffect, useState } from 'react';
 
 import Button from '@/components/common/Button';
 import api from '@/lib/api';
+import { formatDateTime as formatDate, formatPrice, statusColors } from '@/lib/utils';
 import { Order, OrderStatus } from '@/types';
-
-const statusColors: Record<OrderStatus, string> = {
-  PENDING: 'bg-yellow-100 text-yellow-800',
-  CONFIRMED: 'bg-blue-100 text-blue-800',
-  PROCESSING: 'bg-indigo-100 text-indigo-800',
-  SHIPPED: 'bg-purple-100 text-purple-800',
-  DELIVERED: 'bg-green-100 text-green-800',
-  CANCELLED: 'bg-red-100 text-red-800',
-  RETURNED: 'bg-orange-100 text-orange-800',
-  REFUNDED: 'bg-gray-100 text-gray-800',
-};
 
 const statusTimeline: OrderStatus[] = [
   'PENDING',
@@ -27,20 +17,6 @@ const statusTimeline: OrderStatus[] = [
   'SHIPPED',
   'DELIVERED',
 ];
-
-function formatPrice(paise: number): string {
-  return `₹${(paise / 100).toLocaleString('en-IN')}`;
-}
-
-function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString('en-IN', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
 
 function getStatusIndex(status: OrderStatus): number {
   const idx = statusTimeline.indexOf(status);

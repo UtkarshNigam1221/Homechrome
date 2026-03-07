@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 
 import { useAuthStore } from '@/stores/auth';
 import { useCartStore } from '@/stores/cart';
@@ -11,14 +11,11 @@ import MobileNav from './MobileNav';
 
 export default function Header() {
   const router = useRouter();
-  const { isAuthenticated, customer, checkAuth } = useAuthStore();
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const customer = useAuthStore((s) => s.customer);
   const cartCount = useCartStore((s) => s.itemCount);
   const [searchQuery, setSearchQuery] = useState('');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-
-  useEffect(() => {
-    checkAuth();
-  }, [checkAuth]);
 
   const handleSearch = useCallback(
     (e: React.FormEvent) => {

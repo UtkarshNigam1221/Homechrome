@@ -4,6 +4,15 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 
 import { initAnalytics, stopAnalytics } from '@/lib/analytics';
+import { useAuthStore } from '@/stores/auth';
+
+function AuthInit() {
+  const checkAuth = useAuthStore((s) => s.checkAuth);
+  useEffect(() => {
+    checkAuth();
+  }, [checkAuth]);
+  return null;
+}
 
 function AnalyticsProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
@@ -33,6 +42,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
 
   return (
     <QueryClientProvider client={queryClient}>
+      <AuthInit />
       <AnalyticsProvider>{children}</AnalyticsProvider>
     </QueryClientProvider>
   );

@@ -5,6 +5,7 @@ import { useState } from 'react';
 import Button from '@/components/common/Button';
 import Input from '@/components/common/Input';
 import api from '@/lib/api';
+import { formatDateTime as formatDate } from '@/lib/utils';
 
 interface StatusHistoryEntry {
   status: string;
@@ -20,16 +21,6 @@ interface TrackingResult {
   tracking_number?: string;
   tracking_url?: string;
   estimated_delivery?: string;
-}
-
-function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString('en-IN', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
 }
 
 export default function TrackOrderPage() {
