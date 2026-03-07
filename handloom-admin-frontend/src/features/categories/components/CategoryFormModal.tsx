@@ -63,7 +63,7 @@ const ATTRIBUTE_TYPES: { value: AttributeType; label: string }[] = [
   { value: 'BOOLEAN', label: 'Yes/No' },
 ];
 
-export function CategoryFormModal({ isOpen, onClose, category }: CategoryFormModalProps) {
+export function CategoryFormModal({ isOpen, onClose, category }: Readonly<CategoryFormModalProps>) {
   const queryClient = useQueryClient();
   const isEditing = !!category?.id;
   const [activeTab, setActiveTab] = useState<'basic' | 'attributes'>('basic');
@@ -91,6 +91,7 @@ export function CategoryFormModal({ isOpen, onClose, category }: CategoryFormMod
     fields: attributeFields,
     append: appendAttribute,
     remove: removeAttribute,
+    replace: replaceAttributes,
   } = useFieldArray({
     control,
     name: 'own_attributes',
@@ -108,7 +109,11 @@ export function CategoryFormModal({ isOpen, onClose, category }: CategoryFormMod
           description: category.description || '',
           image_url: category.image_url || '',
           status: category.status,
-          own_attributes: category.own_attributes || [],
+          own_attributes: [],
+        });
+        categoriesApi.getAttributes(category.id).then((data) => {
+          const attributes = (data as { own_attributes?: CategoryAttribute[] }).own_attributes || [];
+          replaceAttributes(attributes);
         });
       } else {
         reset({
@@ -120,7 +125,7 @@ export function CategoryFormModal({ isOpen, onClose, category }: CategoryFormMod
         });
       }
     }
-  }, [isOpen, category, reset]);
+  }, [isOpen, category, reset, replaceAttributes]);
 
   // Create mutation
   const createMutation = useMutation({
