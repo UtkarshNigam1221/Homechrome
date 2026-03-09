@@ -1,0 +1,116 @@
+name: Deploy Storefront
+
+on:
+  pull_request:
+    branches: [main]
+    paths: ['homechrome-store/**']
+
+  push:
+    branches: [main]
+    paths: ['homechrome-store/**']
+
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy'
+        required: true
+        type: choice
+        options: [dev, prod]
+        default: dev
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  CERT_ARN: arn:aws:acm:us-east-1:163053486005:certificate/a8dca48d-5992-4e6e-94c9-fffc7f3ac447
+
+jobs:
+  check:
+    name: Lint
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: homechrome-store
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: homechrome-store/package-lock.json
+
+      - run: npm ci
+      - run: npm run lint
+      - name: Build check
+        run: npm run build
+
+  deploy:
+    name: Deploy
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: homechrome-store
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: homechrome-store/package-lock.json
+
+      - name: Install CDK
+        run: npm install -g aws-cdk
+
+      - name: Determine environment
+        id: env
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "env=${{ inputs.environment }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "env=dev" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set environment URLs
+        id: urls
+        run: |
+          if [ "${{ steps.env.outputs.env }}" = "prod" ]; then
+            echo "api_url=https://api.homechrome.lldlab.com" >> "$GITHUB_OUTPUT"
+            echo "site_url=https://homechrome.lldlab.com" >> "$GITHUB_OUTPUT"
+            echo "stack_name=HomechromeStoreStack-prod" >> "$GITHUB_OUTPUT"
+          else
+            echo "api_url=https://dev-api.homechrome.lldlab.com" >> "$GITHUB_OUTPUT"
+            echo "site_url=https://dev-store.homechrome.lldlab.com" >> "$GITHUB_OUTPUT"
+            echo "stack_name=HomechromeStoreStack-dev" >> "$GITHUB_OUTPUT"
+          fi
+
+      - run: npm ci
+
+      - name: Build with OpenNext
+        env:
+          NEXT_PUBLIC_API_URL: ${{ steps.urls.outputs.api_url }}
+          NEXT_PUBLIC_SITE_URL: ${{ steps.urls.outputs.site_url }}
+        run: npx @opennextjs/aws build
+
+      - name: CDK Deploy
+        run: |
+          cd infra && cdk deploy --all --require-approval never \
+            -c environment=${{ steps.env.outputs.env }} \
+            -c certArn=${{ env.CERT_ARN }}
+
+      - name: Invalidate CloudFront Cache
+        run: |
+          DIST_ID=$(aws cloudformation describe-stacks \
+            --stack-name ${{ steps.urls.outputs.stack_name }} \
+            --query "Stacks[0].Outputs[?OutputKey=='DistributionId'].OutputValue" \
+            --output text)
+          aws cloudfront create-invalidation --distribution-id "$DIST_ID" --paths '/*'

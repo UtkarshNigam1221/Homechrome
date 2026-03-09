@@ -1,0 +1,92 @@
+name: Deploy Admin Frontend
+
+on:
+  pull_request:
+    branches: [main]
+    paths: ['handloom-admin-frontend/**']
+
+  push:
+    branches: [main]
+    paths: ['handloom-admin-frontend/**']
+
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy'
+        required: true
+        type: choice
+        options: [dev, prod]
+        default: dev
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  CERT_ARN: arn:aws:acm:us-east-1:163053486005:certificate/a8dca48d-5992-4e6e-94c9-fffc7f3ac447
+
+jobs:
+  check:
+    name: Typecheck, Lint & Format
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: handloom-admin-frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: handloom-admin-frontend/package-lock.json
+
+      - run: npm ci
+      - run: npm run check
+      - name: Build check
+        run: npm run build:dev
+
+  deploy:
+    name: Deploy
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: handloom-admin-frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: handloom-admin-frontend/package-lock.json
+
+      - name: Install CDK
+        run: npm install -g aws-cdk
+
+      - name: Determine environment
+        id: env
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "env=${{ inputs.environment }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "env=dev" >> "$GITHUB_OUTPUT"
+          fi
+
+      - run: npm ci
+
+      - name: Build
+        run: npm run build:${{ steps.env.outputs.env }}
+
+      - name: CDK Deploy
+        run: |
+          cd infra && cdk deploy --all --require-approval never \
+            -c environment=${{ steps.env.outputs.env }} \
+            -c certArn=${{ env.CERT_ARN }}

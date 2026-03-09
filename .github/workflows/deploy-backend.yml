@@ -1,0 +1,107 @@
+name: Deploy Backend
+
+on:
+  pull_request:
+    branches: [main]
+    paths: ['handloom-admin/**']
+
+  push:
+    branches: [main]
+    paths: ['handloom-admin/**']
+
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy'
+        required: true
+        type: choice
+        options: [dev, prod]
+        default: dev
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  CERT_ARN: arn:aws:acm:us-east-1:163053486005:certificate/a8dca48d-5992-4e6e-94c9-fffc7f3ac447
+
+jobs:
+  check:
+    name: Lint & Test
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: handloom-admin
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache-dependency-path: handloom-admin/go.sum
+
+      - name: Lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          working-directory: handloom-admin
+
+      - name: Test
+        run: make test
+
+      - name: Build check
+        run: make build-lambdas-active
+
+  deploy:
+    name: Deploy
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: handloom-admin
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache-dependency-path: handloom-admin/go.sum
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install CDK
+        run: npm install -g aws-cdk
+
+      - name: Determine environment
+        id: env
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "env=${{ inputs.environment }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "env=dev" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Write .env file
+        run: |
+          if [ "${{ steps.env.outputs.env }}" = "prod" ]; then
+            echo "${{ secrets.BACKEND_ENV_PROD }}" > .env.deploy
+          else
+            echo "${{ secrets.BACKEND_ENV_DEV }}" > .env.deploy
+          fi
+
+      - name: Build Lambdas
+        run: make build-lambdas-active
+
+      - name: CDK Deploy
+        run: |
+          set -a && . ./.env.deploy && set +a
+          cd infra && cdk deploy --all --require-approval never \
+            -c environment=${{ steps.env.outputs.env }} \
+            -c certArn=${{ env.CERT_ARN }}

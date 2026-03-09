@@ -1,0 +1,29 @@
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /handloom-admin
+    schedule:
+      interval: weekly
+    labels: [dependencies, go]
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: npm
+    directory: /handloom-admin-frontend
+    schedule:
+      interval: weekly
+    labels: [dependencies, npm]
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: npm
+    directory: /homechrome-store
+    schedule:
+      interval: weekly
+    labels: [dependencies, npm]
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    labels: [dependencies, ci]
+    open-pull-requests-limit: 5

@@ -473,11 +473,11 @@ cdk-synth-all:
 
 cdk-deploy-dev: build-lambdas-active
 	@echo "Deploying to development environment..."
-	cd infra && cdk deploy --all --require-approval never -c environment=dev -c certArn=$(CERT_ARN)
+	set -a && . ./.env.dev && set +a && cd infra && cdk deploy --all --require-approval never -c environment=dev -c certArn=$(CERT_ARN)
 
 cdk-deploy-prod: build-lambdas-active
 	@echo "Deploying to production environment..."
-	cd infra && cdk deploy --all --require-approval broadening -c environment=prod -c certArn=$(CERT_ARN)
+	set -a && . ./.env.prod && set +a && cd infra && cdk deploy --all --require-approval broadening -c environment=prod -c certArn=$(CERT_ARN)
 
 cdk-deploy-all: build-lambdas-active
 	@echo "Deploying to all environments..."
