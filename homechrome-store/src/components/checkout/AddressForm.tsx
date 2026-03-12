@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 
 import Button from '@/components/common/Button';
 import Input from '@/components/common/Input';
@@ -45,25 +45,23 @@ export default function AddressForm({
   onCancel,
   loading = false,
 }: AddressFormProps) {
-  const [form, setForm] = useState<AddressFormData>(EMPTY_FORM);
+  const [form, setForm] = useState<AddressFormData>(() =>
+    initialData
+      ? {
+          first_name: initialData.first_name,
+          last_name: initialData.last_name,
+          phone: initialData.phone,
+          address_line1: initialData.address_line1,
+          address_line2: initialData.address_line2 || '',
+          city: initialData.city,
+          state: initialData.state,
+          postal_code: initialData.postal_code,
+          country: initialData.country || 'India',
+          is_default: initialData.is_default || false,
+        }
+      : EMPTY_FORM,
+  );
   const [errors, setErrors] = useState<Partial<Record<keyof AddressFormData, string>>>({});
-
-  useEffect(() => {
-    if (initialData) {
-      setForm({
-        first_name: initialData.first_name,
-        last_name: initialData.last_name,
-        phone: initialData.phone,
-        address_line1: initialData.address_line1,
-        address_line2: initialData.address_line2 || '',
-        city: initialData.city,
-        state: initialData.state,
-        postal_code: initialData.postal_code,
-        country: initialData.country || 'India',
-        is_default: initialData.is_default || false,
-      });
-    }
-  }, [initialData]);
 
   const validate = (): boolean => {
     const newErrors: Partial<Record<keyof AddressFormData, string>> = {};

@@ -39,7 +39,6 @@ export default function ProductsView({ products: initialProducts, initialSearch 
   const [loading, setLoading] = useState(false);
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const isInitialMount = useRef(true);
-  const isProgrammaticNav = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
@@ -54,7 +53,6 @@ export default function ProductsView({ products: initialProducts, initialSearch 
   const handleSearch = useCallback(
     (e: React.FormEvent) => {
       e.preventDefault();
-      isProgrammaticNav.current = true;
       const q = searchQuery.trim();
       const params = new URLSearchParams();
       if (q) params.set('search', q);
@@ -70,16 +68,16 @@ export default function ProductsView({ products: initialProducts, initialSearch 
     [searchQuery, filters],
   );
 
-  // Sync input with URL changes (only on browser back/forward)
+  // Sync input with URL changes on browser back/forward (popstate)
   useEffect(() => {
-    if (isProgrammaticNav.current) {
-      isProgrammaticNav.current = false;
-      return;
-    }
-    const urlSearch = searchParams.get('search') || '';
-    setSearchQuery(urlSearch);
-    setFilters(parseFiltersFromParams(searchParams));
-  }, [searchParams]);
+    const handlePopState = () => {
+      const params = new URLSearchParams(window.location.search);
+      setSearchQuery(params.get('search') || '');
+      setFilters(parseFiltersFromParams(params));
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   // Re-fetch products when filters change (debounced, with abort)
   useEffect(() => {
@@ -125,7 +123,6 @@ export default function ProductsView({ products: initialProducts, initialSearch 
 
   const handleFiltersChange = useCallback(
     (newFilters: FilterValues) => {
-      isProgrammaticNav.current = true;
       setFilters(newFilters);
       // Update URL without triggering a Next.js navigation (avoids duplicate server request)
       const params = new URLSearchParams();

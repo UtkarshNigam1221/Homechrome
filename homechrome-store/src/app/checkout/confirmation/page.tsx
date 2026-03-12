@@ -69,13 +69,12 @@ function ConfirmationContent() {
   useEffect(() => {
     if (!orderId) return;
 
-    // Initial check
-    checkPaymentStatus();
-
-    // Poll every 3 seconds
+    // Initial check (deferred) + poll every 3 seconds
+    const initialTimer = setTimeout(checkPaymentStatus, 0);
     intervalRef.current = setInterval(checkPaymentStatus, 3000);
 
     return () => {
+      clearTimeout(initialTimer);
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
       }
