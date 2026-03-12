@@ -3,11 +3,6 @@ name: Deploy Admin Frontend
 on:
   pull_request:
     branches: [main]
-    paths: ['handloom-admin-frontend/**']
-
-  push:
-    branches: [main]
-    paths: ['handloom-admin-frontend/**']
 
   workflow_dispatch:
     inputs:
@@ -49,7 +44,7 @@ jobs:
 
   deploy:
     name: Deploy
-    if: github.event_name != 'pull_request'
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -71,22 +66,13 @@ jobs:
       - name: Install CDK
         run: npm install -g aws-cdk
 
-      - name: Determine environment
-        id: env
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "env=${{ inputs.environment }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "env=dev" >> "$GITHUB_OUTPUT"
-          fi
-
       - run: npm ci
 
       - name: Build
-        run: npm run build:${{ steps.env.outputs.env }}
+        run: npm run build:${{ inputs.environment }}
 
       - name: CDK Deploy
         run: |
           cd infra && cdk deploy --all --require-approval never \
-            -c environment=${{ steps.env.outputs.env }} \
+            -c environment=${{ inputs.environment }} \
             -c certArn=${{ env.CERT_ARN }}

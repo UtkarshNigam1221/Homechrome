@@ -3,11 +3,6 @@ name: Deploy Backend
 on:
   pull_request:
     branches: [main]
-    paths: ['handloom-admin/**']
-
-  push:
-    branches: [main]
-    paths: ['handloom-admin/**']
 
   workflow_dispatch:
     inputs:
@@ -55,7 +50,7 @@ jobs:
 
   deploy:
     name: Deploy
-    if: github.event_name != 'pull_request'
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -80,18 +75,9 @@ jobs:
       - name: Install CDK
         run: npm install -g aws-cdk
 
-      - name: Determine environment
-        id: env
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "env=${{ inputs.environment }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "env=dev" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Write .env file
         run: |
-          if [ "${{ steps.env.outputs.env }}" = "prod" ]; then
+          if [ "${{ inputs.environment }}" = "prod" ]; then
             echo "${{ secrets.BACKEND_ENV_PROD }}" > .env.deploy
           else
             echo "${{ secrets.BACKEND_ENV_DEV }}" > .env.deploy
@@ -104,5 +90,5 @@ jobs:
         run: |
           set -a && . ./.env.deploy && set +a
           cd infra && cdk deploy --all --require-approval never \
-            -c environment=${{ steps.env.outputs.env }} \
+            -c environment=${{ inputs.environment }} \
             -c certArn=${{ env.CERT_ARN }}

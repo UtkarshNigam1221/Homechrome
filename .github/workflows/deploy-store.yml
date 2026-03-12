@@ -3,11 +3,6 @@ name: Deploy Storefront
 on:
   pull_request:
     branches: [main]
-    paths: ['homechrome-store/**']
-
-  push:
-    branches: [main]
-    paths: ['homechrome-store/**']
 
   workflow_dispatch:
     inputs:
@@ -49,7 +44,7 @@ jobs:
 
   deploy:
     name: Deploy
-    if: github.event_name != 'pull_request'
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -71,19 +66,10 @@ jobs:
       - name: Install CDK
         run: npm install -g aws-cdk
 
-      - name: Determine environment
-        id: env
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "env=${{ inputs.environment }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "env=dev" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Set environment URLs
         id: urls
         run: |
-          if [ "${{ steps.env.outputs.env }}" = "prod" ]; then
+          if [ "${{ inputs.environment }}" = "prod" ]; then
             echo "api_url=https://api.homechrome.lldlab.com" >> "$GITHUB_OUTPUT"
             echo "site_url=https://homechrome.lldlab.com" >> "$GITHUB_OUTPUT"
             echo "stack_name=HomechromeStoreStack-prod" >> "$GITHUB_OUTPUT"
