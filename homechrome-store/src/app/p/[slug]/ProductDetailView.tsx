@@ -40,7 +40,7 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
       category_id: product.category_id,
       price: product.selling_price,
     });
-  }, [product.id]);
+  }, [product.id, product.name, product.category_id, product.selling_price]);
 
   useScrollDepth('product');
 

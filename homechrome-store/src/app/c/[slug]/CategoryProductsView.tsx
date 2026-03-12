@@ -49,13 +49,6 @@ function filtersToParams(filters: FilterValues): URLSearchParams {
   return params;
 }
 
-const emptyFilters: FilterValues = {
-  minPrice: null,
-  maxPrice: null,
-  inStockOnly: false,
-  attributeFilters: {},
-};
-
 function hasActiveFilters(filters: FilterValues): boolean {
   return (
     filters.minPrice !== null ||
@@ -78,7 +71,6 @@ export default function CategoryProductsView({
   const [filterOptions, setFilterOptions] = useState<Record<string, string[]>>({});
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const isInitialMount = useRef(true);
-  const isProgrammaticNav = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
@@ -111,15 +103,15 @@ export default function CategoryProductsView({
     return () => controller.abort();
   }, [category.id]);
 
-  // Sync URL → filter state only on browser back/forward (not programmatic pushes)
+  // Sync URL → filter state on browser back/forward (popstate)
   useEffect(() => {
-    if (isProgrammaticNav.current) {
-      isProgrammaticNav.current = false;
-      return;
-    }
-    const parsed = parseFiltersFromParams(searchParams);
-    setFilters(parsed);
-  }, [searchParams]);
+    const handlePopState = () => {
+      const params = new URLSearchParams(window.location.search);
+      setFilters(parseFiltersFromParams(params));
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   // Re-fetch products when filters change (debounced, with abort)
   // On initial mount: skip if no active filters (server already provided unfiltered products),
@@ -172,7 +164,6 @@ export default function CategoryProductsView({
 
   const handleFiltersChange = useCallback(
     (newFilters: FilterValues) => {
-      isProgrammaticNav.current = true;
       setFilters(newFilters);
       // Update URL without triggering a Next.js navigation (avoids duplicate server request)
       const urlParams = filtersToParams(newFilters);
