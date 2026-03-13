@@ -11,6 +11,9 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
 )
 
+// defaultJWTSecret is the fallback JWT secret used for local development.
+const defaultJWTSecret = "your-super-secret-key-change-in-production"
+
 // Config holds all application configuration
 type Config struct {
 	Server   ServerConfig
@@ -243,7 +246,7 @@ func getJWTSecret() string {
 	paramName := os.Getenv("JWT_SECRET_PARAM")
 	if paramName == "" {
 		// Default for local development
-		return "your-super-secret-key-change-in-production"
+		return defaultJWTSecret
 	}
 
 	// Fetch from SSM Parameter Store
@@ -251,7 +254,7 @@ func getJWTSecret() string {
 	cfg, err := config.LoadDefaultConfig(ctx)
 	if err != nil {
 		// Fall back to default if we can't load AWS config
-		return "your-super-secret-key-change-in-production"
+		return defaultJWTSecret
 	}
 
 	ssmClient := ssm.NewFromConfig(cfg)
@@ -261,14 +264,14 @@ func getJWTSecret() string {
 	})
 	if err != nil {
 		// Fall back to default if parameter fetch fails
-		return "your-super-secret-key-change-in-production"
+		return defaultJWTSecret
 	}
 
 	if result.Parameter != nil && result.Parameter.Value != nil {
 		return *result.Parameter.Value
 	}
 
-	return "your-super-secret-key-change-in-production"
+	return defaultJWTSecret
 }
 
 func boolPtr(b bool) *bool {

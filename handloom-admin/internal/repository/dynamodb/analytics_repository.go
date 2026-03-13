@@ -266,11 +266,10 @@ func (r *AnalyticsRepository) GetCustomerAnalytics(ctx context.Context, startDat
 // the dashboard live counters for low_stock_count and out_of_stock_count, and
 // returns empty/zero values for fields that are not yet aggregated.
 func (r *AnalyticsRepository) GetInventoryAnalytics(ctx context.Context) (*domain.InventoryAnalytics, error) {
-	// Read current dashboard stats for inventory counters
-	stats, err := r.GetDashboardStats(ctx)
-	if err != nil {
-		// Return empty defaults rather than propagating the error
-		return &domain.InventoryAnalytics{}, nil
+	// Read current dashboard stats for inventory counters — return empty defaults on failure.
+	stats, _ := r.GetDashboardStats(ctx)
+	if stats == nil {
+		return emptyInventoryAnalytics(), nil
 	}
 
 	return &domain.InventoryAnalytics{
@@ -278,6 +277,10 @@ func (r *AnalyticsRepository) GetInventoryAnalytics(ctx context.Context) (*domai
 		LowStockCount:   stats.LowStockCount,
 		OutOfStockCount: stats.OutOfStockCount,
 	}, nil
+}
+
+func emptyInventoryAnalytics() *domain.InventoryAnalytics {
+	return &domain.InventoryAnalytics{}
 }
 
 // RecordPageView records a page view for analytics
@@ -331,7 +334,7 @@ func (r *AnalyticsRepository) IncrementDashboardCounter(ctx context.Context, fie
 }
 
 // PutDailyAggregate writes a pre-computed daily aggregate record to the analytics table.
-// The data struct is marshalled and the PK/SK keys are set explicitly.
+// The data struct is marshaled and the PK/SK keys are set explicitly.
 func (r *AnalyticsRepository) PutDailyAggregate(ctx context.Context, pk string, sk string, data interface{}) error {
 	item, err := attributevalue.MarshalMap(data)
 	if err != nil {

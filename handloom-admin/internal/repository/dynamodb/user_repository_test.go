@@ -5,9 +5,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/handloom/admin/internal/domain"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/handloom/admin/internal/domain"
 )
 
 func TestUserRepository_Create(t *testing.T) {
@@ -82,7 +83,7 @@ func TestUserRepository_Create(t *testing.T) {
 
 		// Note: In real implementation, we'd check email uniqueness via GSI query
 		// This test demonstrates the Create flow
-		err = repo.Create(ctx, user2)
+		_ = repo.Create(ctx, user2)
 		// This may or may not error depending on implementation
 		// The service layer should handle email uniqueness check
 	})

@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/internal/middleware"
 	"github.com/handloom/admin/internal/service"
@@ -51,7 +52,7 @@ func (h *CustomerHandler) Routes() chi.Router {
 func (h *CustomerHandler) Create(w http.ResponseWriter, r *http.Request) {
 	req := middleware.MustGetValidatedBody[domain.CreateCustomerRequest](r.Context())
 
-	userID := r.Context().Value("user_id").(string)
+	userID, _ := r.Context().Value("user_id").(string)
 	customer, err := h.customerService.Create(r.Context(), *req, userID)
 	if err != nil {
 		response.Error(w, err)
@@ -90,7 +91,7 @@ func (h *CustomerHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 	req := middleware.MustGetValidatedBody[domain.UpdateCustomerRequest](r.Context())
 
-	userID := r.Context().Value("user_id").(string)
+	userID, _ := r.Context().Value("user_id").(string)
 	customer, err := h.customerService.Update(r.Context(), id, *req, userID)
 	if err != nil {
 		response.Error(w, err)
@@ -191,7 +192,7 @@ func (h *CustomerHandler) AddAddress(w http.ResponseWriter, r *http.Request) {
 
 	address := middleware.MustGetValidatedBody[domain.Address](r.Context())
 
-	userID := r.Context().Value("user_id").(string)
+	userID, _ := r.Context().Value("user_id").(string)
 	customer, err := h.customerService.AddAddress(r.Context(), id, *address, userID)
 	if err != nil {
 		response.Error(w, err)
@@ -213,7 +214,7 @@ func (h *CustomerHandler) UpdateAddress(w http.ResponseWriter, r *http.Request) 
 
 	address := middleware.MustGetValidatedBody[domain.Address](r.Context())
 
-	userID := r.Context().Value("user_id").(string)
+	userID, _ := r.Context().Value("user_id").(string)
 	customer, err := h.customerService.UpdateAddress(r.Context(), customerID, addressID, *address, userID)
 	if err != nil {
 		response.Error(w, err)
@@ -233,7 +234,7 @@ func (h *CustomerHandler) RemoveAddress(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	userID := r.Context().Value("user_id").(string)
+	userID, _ := r.Context().Value("user_id").(string)
 	customer, err := h.customerService.RemoveAddress(r.Context(), customerID, addressID, userID)
 	if err != nil {
 		response.Error(w, err)

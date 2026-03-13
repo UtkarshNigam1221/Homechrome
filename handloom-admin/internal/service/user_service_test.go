@@ -4,14 +4,15 @@ import (
 	"context"
 	"testing"
 
-	"github.com/handloom/admin/internal/domain"
-	"github.com/handloom/admin/internal/mocks"
-	"github.com/handloom/admin/pkg/errors"
-	"github.com/handloom/admin/pkg/logger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 	"golang.org/x/crypto/bcrypt"
+
+	"github.com/handloom/admin/internal/domain"
+	"github.com/handloom/admin/internal/mocks"
+	"github.com/handloom/admin/pkg/errors"
+	"github.com/handloom/admin/pkg/logger"
 )
 
 func TestUserService_Create(t *testing.T) {

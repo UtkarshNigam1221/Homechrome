@@ -154,11 +154,11 @@ type CreateOrderRequest struct {
 
 // OrderItemInput represents an item in an order creation request
 type OrderItemInput struct {
-	ProductID    string                 `json:"product_id" validate:"required"`
-	Quantity     int                    `json:"quantity" validate:"required,gt=0"`
-	CustomDimensions *Dimensions        `json:"custom_dimensions,omitempty"`
-	Attributes   map[string]interface{} `json:"attributes,omitempty"`
-	QuoteID      *string                `json:"quote_id,omitempty"`
+	ProductID        string                 `json:"product_id" validate:"required"`
+	Quantity         int                    `json:"quantity" validate:"required,gt=0"`
+	CustomDimensions *Dimensions            `json:"custom_dimensions,omitempty"`
+	Attributes       map[string]interface{} `json:"attributes,omitempty"`
+	QuoteID          *string                `json:"quote_id,omitempty"`
 }
 
 // OrderWithDetails contains an order with related details
@@ -171,7 +171,7 @@ type OrderWithDetails struct {
 // OrderItemDetails contains order item with product details
 type OrderItemDetails struct {
 	OrderItem
-	ProductName   string `json:"product_name"`
-	ProductSKU    string `json:"product_sku"`
+	ProductName   string         `json:"product_name"`
+	ProductSKU    string         `json:"product_sku"`
 	ProductImages []ProductImage `json:"product_images,omitempty"`
 }

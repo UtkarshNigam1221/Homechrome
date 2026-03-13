@@ -7,12 +7,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/handloom/admin/internal/domain"
-	"github.com/handloom/admin/pkg/errors"
-	"github.com/handloom/admin/pkg/logger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+
+	"github.com/handloom/admin/internal/domain"
+	"github.com/handloom/admin/pkg/errors"
+	"github.com/handloom/admin/pkg/logger"
 )
 
 // ---------------------------------------------------------------------------

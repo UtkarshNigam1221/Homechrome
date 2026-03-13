@@ -391,12 +391,12 @@ func TestPricingService_CreateRule(t *testing.T) {
 	pricingRuleRepo.On("Create", ctx, mock.AnythingOfType("*domain.PricingRule")).Return(nil)
 
 	req := domain.CreatePricingRuleRequest{
-		Name:         "Test Rule",
-		ScopeType:    domain.PricingRuleScopeGlobal,
-		PricingType:  domain.PricingTypeFixed,
-		BasePrice:    100000,
-		Priority:     10,
-		IsActive:     true,
+		Name:        "Test Rule",
+		ScopeType:   domain.PricingRuleScopeGlobal,
+		PricingType: domain.PricingTypeFixed,
+		BasePrice:   100000,
+		Priority:    10,
+		IsActive:    true,
 	}
 
 	rule, err := svc.CreateRule(ctx, req, "user_123")

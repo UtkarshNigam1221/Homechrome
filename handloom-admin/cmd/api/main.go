@@ -14,6 +14,8 @@ import (
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 	"github.com/go-chi/httprate"
+
+	"github.com/handloom/admin/internal/cache"
 	"github.com/handloom/admin/internal/config"
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/internal/event"
@@ -21,7 +23,6 @@ import (
 	"github.com/handloom/admin/internal/gateway/phonepe"
 	"github.com/handloom/admin/internal/gateway/shiprocket"
 	"github.com/handloom/admin/internal/gateway/sms"
-	"github.com/handloom/admin/internal/cache"
 	"github.com/handloom/admin/internal/handler"
 	"github.com/handloom/admin/internal/handler/store"
 	"github.com/handloom/admin/internal/middleware"
@@ -476,4 +477,3 @@ func analyticsRoutes(h *handler.AnalyticsHandler) chi.Router {
 	r.Get("/inventory", h.GetInventoryAnalytics)
 	return r
 }
-

@@ -65,11 +65,11 @@ func (r *CategoryRepository) Create(ctx context.Context, category *domain.Catego
 		return apperrors.Internal(err)
 	}
 
-	if err = insertAttributes(ctx, tx, category.ID, category.OwnAttributes); err != nil {
+	if err := insertAttributes(ctx, tx, category.ID, category.OwnAttributes); err != nil {
 		return err
 	}
 
-	if err = tx.Commit(ctx); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return apperrors.Internal(err)
 	}
 

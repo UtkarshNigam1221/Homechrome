@@ -26,28 +26,28 @@ const (
 
 // Coupon represents a discount coupon
 type Coupon struct {
-	ID              string       `json:"id" dynamodbav:"id"`
-	PK              string       `json:"-" dynamodbav:"PK"`
-	SK              string       `json:"-" dynamodbav:"SK"`
-	GSI1PK          string       `json:"-" dynamodbav:"GSI1PK"`
-	GSI1SK          string       `json:"-" dynamodbav:"GSI1SK"`
-	EntityType      string       `json:"-" dynamodbav:"entity_type"`
+	ID         string `json:"id" dynamodbav:"id"`
+	PK         string `json:"-" dynamodbav:"PK"`
+	SK         string `json:"-" dynamodbav:"SK"`
+	GSI1PK     string `json:"-" dynamodbav:"GSI1PK"`
+	GSI1SK     string `json:"-" dynamodbav:"GSI1SK"`
+	EntityType string `json:"-" dynamodbav:"entity_type"`
 
-	Code            string       `json:"code" dynamodbav:"code"`
-	Name            string       `json:"name" dynamodbav:"name"`
-	Description     string       `json:"description,omitempty" dynamodbav:"description,omitempty"`
+	Code        string `json:"code" dynamodbav:"code"`
+	Name        string `json:"name" dynamodbav:"name"`
+	Description string `json:"description,omitempty" dynamodbav:"description,omitempty"`
 
-	Type            CouponType   `json:"type" dynamodbav:"type"`
-	Value           int64        `json:"value" dynamodbav:"value"` // percentage * 100 or fixed amount in paise
+	Type  CouponType `json:"type" dynamodbav:"type"`
+	Value int64      `json:"value" dynamodbav:"value"` // percentage * 100 or fixed amount in paise
 
 	// Constraints
-	MinOrderValue   int64        `json:"min_order_value" dynamodbav:"min_order_value"`
-	MaxDiscount     int64        `json:"max_discount,omitempty" dynamodbav:"max_discount,omitempty"` // for percentage type
+	MinOrderValue int64 `json:"min_order_value" dynamodbav:"min_order_value"`
+	MaxDiscount   int64 `json:"max_discount,omitempty" dynamodbav:"max_discount,omitempty"` // for percentage type
 
 	// Usage limits
-	UsageLimit      int          `json:"usage_limit" dynamodbav:"usage_limit"`           // 0 = unlimited
-	UsagePerUser    int          `json:"usage_per_user" dynamodbav:"usage_per_user"`     // 0 = unlimited
-	UsageCount      int          `json:"usage_count" dynamodbav:"usage_count"`
+	UsageLimit   int `json:"usage_limit" dynamodbav:"usage_limit"`       // 0 = unlimited
+	UsagePerUser int `json:"usage_per_user" dynamodbav:"usage_per_user"` // 0 = unlimited
+	UsageCount   int `json:"usage_count" dynamodbav:"usage_count"`
 
 	// Applicability
 	ApplicableCategories []string `json:"applicable_categories,omitempty" dynamodbav:"applicable_categories,omitempty"`
@@ -56,22 +56,22 @@ type Coupon struct {
 	ExcludedProducts     []string `json:"excluded_products,omitempty" dynamodbav:"excluded_products,omitempty"`
 
 	// Validity
-	ValidFrom       time.Time    `json:"valid_from" dynamodbav:"valid_from"`
-	ValidUntil      time.Time    `json:"valid_until" dynamodbav:"valid_until"`
-	Status          CouponStatus `json:"status" dynamodbav:"status"`
+	ValidFrom  time.Time    `json:"valid_from" dynamodbav:"valid_from"`
+	ValidUntil time.Time    `json:"valid_until" dynamodbav:"valid_until"`
+	Status     CouponStatus `json:"status" dynamodbav:"status"`
 
 	BaseEntity
 }
 
 // TableName returns the DynamoDB table name for Coupon
 func (c *Coupon) TableName() string {
-	return "handloom-core"
+	return TableCore
 }
 
 // SetKeys sets the DynamoDB keys for Coupon
 func (c *Coupon) SetKeys() {
 	c.PK = "COUPON#" + c.ID
-	c.SK = "METADATA"
+	c.SK = SKMetadata
 	c.GSI1PK = "COUPON_CODE"
 	c.GSI1SK = c.Code
 	c.EntityType = "COUPON"
@@ -79,23 +79,23 @@ func (c *Coupon) SetKeys() {
 
 // CouponUsage tracks coupon usage
 type CouponUsage struct {
-	ID         string    `json:"id" dynamodbav:"id"`
-	PK         string    `json:"-" dynamodbav:"PK"`
-	SK         string    `json:"-" dynamodbav:"SK"`
-	EntityType string    `json:"-" dynamodbav:"entity_type"`
+	ID         string `json:"id" dynamodbav:"id"`
+	PK         string `json:"-" dynamodbav:"PK"`
+	SK         string `json:"-" dynamodbav:"SK"`
+	EntityType string `json:"-" dynamodbav:"entity_type"`
 
-	CouponID   string    `json:"coupon_id" dynamodbav:"coupon_id"`
-	CouponCode string    `json:"coupon_code" dynamodbav:"coupon_code"`
-	OrderID    string    `json:"order_id" dynamodbav:"order_id"`
-	CustomerID string    `json:"customer_id" dynamodbav:"customer_id"`
-	Discount   int64     `json:"discount" dynamodbav:"discount"` // actual discount applied
+	CouponID   string `json:"coupon_id" dynamodbav:"coupon_id"`
+	CouponCode string `json:"coupon_code" dynamodbav:"coupon_code"`
+	OrderID    string `json:"order_id" dynamodbav:"order_id"`
+	CustomerID string `json:"customer_id" dynamodbav:"customer_id"`
+	Discount   int64  `json:"discount" dynamodbav:"discount"` // actual discount applied
 
-	CreatedAt  time.Time `json:"created_at" dynamodbav:"created_at"`
+	CreatedAt time.Time `json:"created_at" dynamodbav:"created_at"`
 }
 
 // TableName returns the DynamoDB table name for CouponUsage
 func (u *CouponUsage) TableName() string {
-	return "handloom-core"
+	return TableCore
 }
 
 // SetKeys sets the DynamoDB keys for CouponUsage
@@ -180,37 +180,37 @@ type CouponService interface {
 
 // CreateCouponRequest contains data for creating a coupon
 type CreateCouponRequest struct {
-	Code                 string    `json:"code" validate:"required"`
-	Name                 string    `json:"name" validate:"required"`
-	Description          string    `json:"description,omitempty"`
+	Code                 string     `json:"code" validate:"required"`
+	Name                 string     `json:"name" validate:"required"`
+	Description          string     `json:"description,omitempty"`
 	Type                 CouponType `json:"type" validate:"required"`
-	Value                int64     `json:"value" validate:"required,gt=0"`
-	MinOrderValue        int64     `json:"min_order_value"`
-	MaxDiscount          int64     `json:"max_discount,omitempty"`
-	UsageLimit           int       `json:"usage_limit"`
-	UsagePerUser         int       `json:"usage_per_user"`
-	ApplicableCategories []string  `json:"applicable_categories,omitempty"`
-	ApplicableProducts   []string  `json:"applicable_products,omitempty"`
-	ExcludedCategories   []string  `json:"excluded_categories,omitempty"`
-	ExcludedProducts     []string  `json:"excluded_products,omitempty"`
-	ValidFrom            time.Time `json:"valid_from" validate:"required"`
-	ValidUntil           time.Time `json:"valid_until" validate:"required"`
-}
-
-// UpdateCouponRequest contains data for updating a coupon
-type UpdateCouponRequest struct {
-	Name                 *string    `json:"name,omitempty"`
-	Description          *string    `json:"description,omitempty"`
-	MinOrderValue        *int64     `json:"min_order_value,omitempty"`
-	MaxDiscount          *int64     `json:"max_discount,omitempty"`
-	UsageLimit           *int       `json:"usage_limit,omitempty"`
-	UsagePerUser         *int       `json:"usage_per_user,omitempty"`
+	Value                int64      `json:"value" validate:"required,gt=0"`
+	MinOrderValue        int64      `json:"min_order_value"`
+	MaxDiscount          int64      `json:"max_discount,omitempty"`
+	UsageLimit           int        `json:"usage_limit"`
+	UsagePerUser         int        `json:"usage_per_user"`
 	ApplicableCategories []string   `json:"applicable_categories,omitempty"`
 	ApplicableProducts   []string   `json:"applicable_products,omitempty"`
 	ExcludedCategories   []string   `json:"excluded_categories,omitempty"`
 	ExcludedProducts     []string   `json:"excluded_products,omitempty"`
-	ValidFrom            *time.Time `json:"valid_from,omitempty"`
-	ValidUntil           *time.Time `json:"valid_until,omitempty"`
+	ValidFrom            time.Time  `json:"valid_from" validate:"required"`
+	ValidUntil           time.Time  `json:"valid_until" validate:"required"`
+}
+
+// UpdateCouponRequest contains data for updating a coupon
+type UpdateCouponRequest struct {
+	Name                 *string       `json:"name,omitempty"`
+	Description          *string       `json:"description,omitempty"`
+	MinOrderValue        *int64        `json:"min_order_value,omitempty"`
+	MaxDiscount          *int64        `json:"max_discount,omitempty"`
+	UsageLimit           *int          `json:"usage_limit,omitempty"`
+	UsagePerUser         *int          `json:"usage_per_user,omitempty"`
+	ApplicableCategories []string      `json:"applicable_categories,omitempty"`
+	ApplicableProducts   []string      `json:"applicable_products,omitempty"`
+	ExcludedCategories   []string      `json:"excluded_categories,omitempty"`
+	ExcludedProducts     []string      `json:"excluded_products,omitempty"`
+	ValidFrom            *time.Time    `json:"valid_from,omitempty"`
+	ValidUntil           *time.Time    `json:"valid_until,omitempty"`
 	Status               *CouponStatus `json:"status,omitempty"`
 }
 

@@ -18,7 +18,7 @@ func extractBearerToken(r *http.Request, cookieName string) (string, error) {
 	}
 
 	parts := strings.SplitN(authHeader, " ", 2)
-	if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
+	if len(parts) != 2 || !strings.EqualFold(parts[0], "bearer") {
 		return "", fmt.Errorf("invalid authorization header format")
 	}
 

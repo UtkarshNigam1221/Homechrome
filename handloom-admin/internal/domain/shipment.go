@@ -39,7 +39,7 @@ type Shipment struct {
 
 // TableName returns the DynamoDB table name for Shipment
 func (s *Shipment) TableName() string {
-	return "handloom-orders"
+	return TableOrders
 }
 
 // SetKeys sets the DynamoDB keys for Shipment (co-located with order)

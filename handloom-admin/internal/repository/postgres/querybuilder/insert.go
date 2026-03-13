@@ -41,7 +41,7 @@ func (b *InsertBuilder) Build() (string, []interface{}) {
 		if i > 0 {
 			sb.WriteString(", ")
 		}
-		sb.WriteString(fmt.Sprintf("$%d", i+1))
+		fmt.Fprintf(&sb, "$%d", i+1)
 	}
 
 	sb.WriteString(")")

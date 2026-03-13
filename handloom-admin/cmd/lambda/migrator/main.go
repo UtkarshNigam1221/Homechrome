@@ -64,7 +64,7 @@ func (m *migrator) withAdvisoryLock(ctx context.Context, fn func() error) error 
 	if _, err := conn.Exec(ctx, "SELECT pg_advisory_lock($1)", advisoryLockID); err != nil {
 		return fmt.Errorf("acquire advisory lock: %w", err)
 	}
-	defer conn.Exec(ctx, "SELECT pg_advisory_unlock($1)", advisoryLockID) //nolint:errcheck
+	defer func() { _, _ = conn.Exec(ctx, "SELECT pg_advisory_unlock($1)", advisoryLockID) }()
 
 	return fn()
 }
@@ -138,7 +138,7 @@ func (m *migrator) exec(ctx context.Context, filename string) error {
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
 	}
-	defer tx.Rollback(ctx) //nolint:errcheck
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	if _, err := tx.Exec(ctx, string(sql)); err != nil {
 		return fmt.Errorf("execute SQL: %w", err)

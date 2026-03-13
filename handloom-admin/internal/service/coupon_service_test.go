@@ -5,13 +5,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
+
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/internal/mocks"
 	"github.com/handloom/admin/pkg/errors"
 	"github.com/handloom/admin/pkg/logger"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-	"go.uber.org/mock/gomock"
 )
 
 func TestCouponService_Create(t *testing.T) {
@@ -489,7 +490,7 @@ func TestCouponService_Validate(t *testing.T) {
 			Code:          "PERCENT50",
 			Status:        domain.CouponStatusActive,
 			Type:          domain.CouponTypePercentage,
-			Value:         5000, // 50% * 100
+			Value:         5000,   // 50% * 100
 			MaxDiscount:   200000, // Max 2000 INR
 			ValidFrom:     time.Now().Add(-24 * time.Hour),
 			ValidUntil:    time.Now().Add(24 * time.Hour),

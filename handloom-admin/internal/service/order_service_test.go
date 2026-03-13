@@ -4,13 +4,14 @@ import (
 	"context"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
+
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/internal/mocks"
 	"github.com/handloom/admin/pkg/errors"
 	"github.com/handloom/admin/pkg/logger"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-	"go.uber.org/mock/gomock"
 )
 
 func TestOrderService_Create(t *testing.T) {
@@ -269,7 +270,7 @@ func TestOrderService_GetByID(t *testing.T) {
 
 		require.NoError(t, err)
 		assert.NotNil(t, result)
-		assert.Equal(t, "order_123", result.Order.ID)
+		assert.Equal(t, "order_123", result.ID)
 		assert.NotNil(t, result.Customer)
 		assert.Len(t, result.ItemDetails, 1)
 	})
@@ -418,7 +419,7 @@ func TestOrderService_UpdateStatus(t *testing.T) {
 		require.Error(t, err)
 	})
 
-	t.Run("status transition to cancelled releases stock", func(t *testing.T) {
+	t.Run("status transition to canceled releases stock", func(t *testing.T) {
 		order := &domain.Order{
 			ID:     "order_123",
 			Status: domain.OrderStatusPending,
@@ -656,7 +657,7 @@ func TestOrderService_CancelOrder(t *testing.T) {
 		err := service.CancelOrder(ctx, "order_123", "Customer requested", "admin_123")
 
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "cannot be cancelled")
+		assert.Contains(t, err.Error(), "cannot be canceled")
 	})
 }
 
@@ -847,16 +848,16 @@ func TestIsValidStatusTransition(t *testing.T) {
 		expected bool
 	}{
 		{"pending to confirmed", domain.OrderStatusPending, domain.OrderStatusConfirmed, true},
-		{"pending to cancelled", domain.OrderStatusPending, domain.OrderStatusCancelled, true},
+		{"pending to canceled", domain.OrderStatusPending, domain.OrderStatusCancelled, true},
 		{"pending to shipped", domain.OrderStatusPending, domain.OrderStatusShipped, false},
 		{"confirmed to processing", domain.OrderStatusConfirmed, domain.OrderStatusProcessing, true},
-		{"confirmed to cancelled", domain.OrderStatusConfirmed, domain.OrderStatusCancelled, true},
+		{"confirmed to canceled", domain.OrderStatusConfirmed, domain.OrderStatusCancelled, true},
 		{"processing to shipped", domain.OrderStatusProcessing, domain.OrderStatusShipped, true},
 		{"shipped to delivered", domain.OrderStatusShipped, domain.OrderStatusDelivered, true},
 		{"shipped to returned", domain.OrderStatusShipped, domain.OrderStatusReturned, true},
 		{"delivered to returned", domain.OrderStatusDelivered, domain.OrderStatusReturned, true},
 		{"delivered to pending", domain.OrderStatusDelivered, domain.OrderStatusPending, false},
-		{"cancelled to confirmed", domain.OrderStatusCancelled, domain.OrderStatusConfirmed, false},
+		{"canceled to confirmed", domain.OrderStatusCancelled, domain.OrderStatusConfirmed, false},
 	}
 
 	for _, tt := range tests {

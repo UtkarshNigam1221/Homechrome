@@ -4,14 +4,15 @@ import (
 	"context"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
+
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/internal/event"
 	"github.com/handloom/admin/internal/mocks"
 	"github.com/handloom/admin/pkg/errors"
 	"github.com/handloom/admin/pkg/logger"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-	"go.uber.org/mock/gomock"
 )
 
 // noopCache is a no-op CacheInvalidator for tests.
@@ -30,10 +31,10 @@ func TestInventoryService_GetByProductID(t *testing.T) {
 
 	t.Run("successful get inventory", func(t *testing.T) {
 		expectedInventory := &domain.Inventory{
-			ProductID:    "prod_123",
-			Quantity:     100,
-			ReservedQty:  10,
-			AvailableQty: 90,
+			ProductID:         "prod_123",
+			Quantity:          100,
+			ReservedQty:       10,
+			AvailableQty:      90,
 			LowStockThreshold: 20,
 		}
 

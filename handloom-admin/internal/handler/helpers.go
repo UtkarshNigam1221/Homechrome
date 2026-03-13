@@ -7,7 +7,6 @@ import (
 
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/internal/middleware"
-	"github.com/handloom/admin/pkg/logger"
 )
 
 // getUserIDFromContext retrieves the user ID from context
@@ -56,32 +55,6 @@ func parsePagination(r *http.Request) domain.PaginationRequest {
 	}
 }
 
-// parseIntParam parses an integer parameter
-func parseIntParam(value string, target *int) (bool, error) {
-	if value == "" {
-		return false, nil
-	}
-	parsed, err := strconv.Atoi(value)
-	if err != nil {
-		return false, err
-	}
-	*target = parsed
-	return true, nil
-}
-
-// parseInt64Param parses an int64 parameter
-func parseInt64Param(value string, target *int64) (bool, error) {
-	if value == "" {
-		return false, nil
-	}
-	parsed, err := strconv.ParseInt(value, 10, 64)
-	if err != nil {
-		return false, err
-	}
-	*target = parsed
-	return true, nil
-}
-
 // parseStringPtr returns a pointer to the value, or nil if empty.
 func parseStringPtr(value string) *string {
 	if value == "" {
@@ -109,9 +82,4 @@ func parseBoolParam(value string) *bool {
 	}
 	b := value == "true" || value == "1"
 	return &b
-}
-
-// getLogger retrieves logger from context
-func getLogger(ctx context.Context) *logger.Logger {
-	return logger.FromContext(ctx)
 }

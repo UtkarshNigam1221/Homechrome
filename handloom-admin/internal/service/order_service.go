@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/pkg/errors"
 	"github.com/handloom/admin/pkg/logger"
@@ -14,13 +15,13 @@ import (
 
 // OrderService implements domain.OrderService
 type OrderService struct {
-	orderRepo     domain.OrderRepository
-	customerRepo  domain.CustomerRepository
-	productRepo   domain.ProductRepository
-	inventoryRepo domain.InventoryRepository
+	orderRepo      domain.OrderRepository
+	customerRepo   domain.CustomerRepository
+	productRepo    domain.ProductRepository
+	inventoryRepo  domain.InventoryRepository
 	priceQuoteRepo domain.PriceQuoteRepository
 	pricingService domain.PricingService
-	logger        *logger.Logger
+	logger         *logger.Logger
 }
 
 // NewOrderService creates a new OrderService
@@ -72,7 +73,8 @@ func (s *OrderService) Create(ctx context.Context, req domain.CreateOrderRequest
 		// Calculate price
 		if itemInput.QuoteID != nil {
 			// Use existing quote
-			quote, err := s.pricingService.GetQuote(ctx, *itemInput.QuoteID)
+			var quote *domain.PriceQuote
+			quote, err = s.pricingService.GetQuote(ctx, *itemInput.QuoteID)
 			if err != nil {
 				return nil, errors.New(errors.ErrCodeQuoteExpired, fmt.Sprintf("Invalid or expired quote for item %d", i+1))
 			}
@@ -90,7 +92,8 @@ func (s *OrderService) Create(ctx context.Context, req domain.CreateOrderRequest
 				Attributes: itemInput.Attributes,
 				Quantity:   itemInput.Quantity,
 			}
-			calcResp, err := s.pricingService.CalculatePrice(ctx, calcReq)
+			var calcResp *domain.CalculatePriceResponse
+			calcResp, err = s.pricingService.CalculatePrice(ctx, calcReq)
 			if err != nil {
 				return nil, errors.Wrap(err, fmt.Sprintf("Failed to calculate price for item %d", i+1))
 			}
@@ -243,21 +246,21 @@ func (s *OrderService) UpdateStatus(ctx context.Context, id string, status domai
 	}
 
 	// Handle status-specific logic
-	if status == domain.OrderStatusShipped {
+	switch status {
+	case domain.OrderStatusShipped:
 		// Update shipped date
 		now := time.Now()
 		order.ShippedAt = &now
-	} else if status == domain.OrderStatusDelivered {
+	case domain.OrderStatusDelivered:
 		now := time.Now()
 		order.DeliveredAt = &now
 		// Release reserved stock (it's now sold)
 		// In real app, this would decrement actual stock
-	} else if status == domain.OrderStatusCancelled {
+	case domain.OrderStatusCancelled:
 		// Release reserved stock
 		for _, item := range order.Items {
-			_, err := s.inventoryRepo.ReleaseStock(ctx, item.ProductID, item.Quantity, order.ID)
-			if err != nil {
-				s.logger.WithContext(ctx).WithError(err).Errorf("Failed to release stock for product %s", item.ProductID)
+			if _, releaseErr := s.inventoryRepo.ReleaseStock(ctx, item.ProductID, item.Quantity, order.ID); releaseErr != nil {
+				s.logger.WithContext(ctx).WithError(releaseErr).Errorf("Failed to release stock for product %s", item.ProductID)
 			}
 		}
 	}
@@ -302,7 +305,7 @@ func (s *OrderService) CancelOrder(ctx context.Context, id string, reason string
 
 	// Can only cancel pending or confirmed orders
 	if order.Status != domain.OrderStatusPending && order.Status != domain.OrderStatusConfirmed {
-		return errors.BadRequest("Order cannot be cancelled in current status")
+		return errors.BadRequest("Order cannot be canceled in current status")
 	}
 
 	// Update status
@@ -323,7 +326,7 @@ func (s *OrderService) CancelOrder(ctx context.Context, id string, reason string
 		}
 	}
 
-	s.logger.WithContext(ctx).Infof("Cancelled order: %s", id)
+	s.logger.WithContext(ctx).Infof("Canceled order: %s", id)
 	return nil
 }
 

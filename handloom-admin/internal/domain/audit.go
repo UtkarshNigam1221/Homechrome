@@ -19,37 +19,37 @@ const (
 
 // AuditLog represents an audit log entry
 type AuditLog struct {
-	ID           string                 `json:"id" dynamodbav:"id"`
-	PK           string                 `json:"-" dynamodbav:"PK"`
-	SK           string                 `json:"-" dynamodbav:"SK"`
-	GSI1PK       string                 `json:"-" dynamodbav:"GSI1PK"`
-	GSI1SK       string                 `json:"-" dynamodbav:"GSI1SK"`
-	GSI2PK       string                 `json:"-" dynamodbav:"GSI2PK"`
-	GSI2SK       string                 `json:"-" dynamodbav:"GSI2SK"`
-	EntityType   string                 `json:"-" dynamodbav:"entity_type"`
-	TTL          int64                  `json:"-" dynamodbav:"ttl"` // 90 days
+	ID         string `json:"id" dynamodbav:"id"`
+	PK         string `json:"-" dynamodbav:"PK"`
+	SK         string `json:"-" dynamodbav:"SK"`
+	GSI1PK     string `json:"-" dynamodbav:"GSI1PK"`
+	GSI1SK     string `json:"-" dynamodbav:"GSI1SK"`
+	GSI2PK     string `json:"-" dynamodbav:"GSI2PK"`
+	GSI2SK     string `json:"-" dynamodbav:"GSI2SK"`
+	EntityType string `json:"-" dynamodbav:"entity_type"`
+	TTL        int64  `json:"-" dynamodbav:"ttl"` // 90 days
 
 	// User info
-	UserID       string                 `json:"user_id" dynamodbav:"user_id"`
-	UserEmail    string                 `json:"user_email" dynamodbav:"user_email"`
-	UserRole     UserRole               `json:"user_role" dynamodbav:"user_role"`
+	UserID    string   `json:"user_id" dynamodbav:"user_id"`
+	UserEmail string   `json:"user_email" dynamodbav:"user_email"`
+	UserRole  UserRole `json:"user_role" dynamodbav:"user_role"`
 
 	// Action info
-	Action       AuditAction            `json:"action" dynamodbav:"action"`
-	EntityTypeAudit string              `json:"entity_type_audit" dynamodbav:"entity_type_audit"` // e.g., ORDER, PRODUCT
-	EntityID     string                 `json:"entity_id" dynamodbav:"entity_id"`
+	Action          AuditAction `json:"action" dynamodbav:"action"`
+	EntityTypeAudit string      `json:"entity_type_audit" dynamodbav:"entity_type_audit"` // e.g., ORDER, PRODUCT
+	EntityID        string      `json:"entity_id" dynamodbav:"entity_id"`
 
 	// Changes
-	Changes      map[string]FieldChange `json:"changes,omitempty" dynamodbav:"changes,omitempty"`
-	OldValues    map[string]interface{} `json:"old_values,omitempty" dynamodbav:"old_values,omitempty"`
-	NewValues    map[string]interface{} `json:"new_values,omitempty" dynamodbav:"new_values,omitempty"`
+	Changes   map[string]FieldChange `json:"changes,omitempty" dynamodbav:"changes,omitempty"`
+	OldValues map[string]interface{} `json:"old_values,omitempty" dynamodbav:"old_values,omitempty"`
+	NewValues map[string]interface{} `json:"new_values,omitempty" dynamodbav:"new_values,omitempty"`
 
 	// Request info
-	IPAddress    string                 `json:"ip_address,omitempty" dynamodbav:"ip_address,omitempty"`
-	UserAgent    string                 `json:"user_agent,omitempty" dynamodbav:"user_agent,omitempty"`
-	RequestID    string                 `json:"request_id,omitempty" dynamodbav:"request_id,omitempty"`
+	IPAddress string `json:"ip_address,omitempty" dynamodbav:"ip_address,omitempty"`
+	UserAgent string `json:"user_agent,omitempty" dynamodbav:"user_agent,omitempty"`
+	RequestID string `json:"request_id,omitempty" dynamodbav:"request_id,omitempty"`
 
-	CreatedAt    time.Time              `json:"created_at" dynamodbav:"created_at"`
+	CreatedAt time.Time `json:"created_at" dynamodbav:"created_at"`
 }
 
 // TableName returns the DynamoDB table name for AuditLog

@@ -90,7 +90,7 @@ func (r *ProductRepository) Create(ctx context.Context, product *domain.Product,
 	if err != nil {
 		return errors.Internal(err)
 	}
-	defer tx.Rollback(ctx) //nolint:errcheck
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	// --- product ---
 	var dimLength, dimWidth, dimHeight *float64
@@ -145,13 +145,13 @@ func (r *ProductRepository) Create(ctx context.Context, product *domain.Product,
 	}
 
 	// --- attribute values ---
-	if err := insertAttributeValues(ctx, tx, product); err != nil {
-		return err
+	if attrErr := insertAttributeValues(ctx, tx, product); attrErr != nil {
+		return attrErr
 	}
 
 	// --- images ---
-	if err := insertImages(ctx, tx, product); err != nil {
-		return err
+	if imgErr := insertImages(ctx, tx, product); imgErr != nil {
+		return imgErr
 	}
 
 	// --- inventory ---
@@ -264,7 +264,7 @@ func (r *ProductRepository) Update(ctx context.Context, product *domain.Product)
 	if err != nil {
 		return errors.Internal(err)
 	}
-	defer tx.Rollback(ctx) //nolint:errcheck
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	var dimLength, dimWidth, dimHeight *float64
 	dimUnit := "cm"
@@ -482,7 +482,7 @@ func (r *ProductRepository) BatchUpdateSortOrder(ctx context.Context, products [
 	if err != nil {
 		return errors.Internal(err)
 	}
-	defer tx.Rollback(ctx) //nolint:errcheck
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	now := time.Now()
 	for _, p := range products {
@@ -588,12 +588,22 @@ func loadProductRelations(ctx context.Context, pool *pgxpool.Pool, products []*d
 	for i, p := range products {
 		ids[i] = p.ID
 		productsByID[p.ID] = p
-		// Initialise maps/slices so callers always get non-nil values.
+		// Initialize maps/slices so callers always get non-nil values.
 		p.Attributes = make(map[string]interface{})
 		p.Images = nil
 	}
 
-	// --- attribute values ---
+	if err := loadProductAttributes(ctx, pool, ids, productsByID); err != nil {
+		return err
+	}
+	return loadProductImages(ctx, pool, ids, productsByID)
+}
+
+type attrPair struct{ name, value string }
+
+// loadProductAttributes batch-loads attribute values for products and populates
+// the Attributes map and hardcoded fields (Material, Color, etc.).
+func loadProductAttributes(ctx context.Context, pool *pgxpool.Pool, ids []string, productsByID map[string]*domain.Product) error {
 	attrRows, err := pool.Query(ctx, `
 		SELECT product_id, attribute_name, attribute_value
 		FROM product_attribute_values
@@ -606,13 +616,12 @@ func loadProductRelations(ctx context.Context, pool *pgxpool.Pool, products []*d
 
 	// Collect all (name, value) pairs per product so we can build proper
 	// multi-value entries in the Attributes map.
-	type attrPair struct{ name, value string }
 	productAttrs := make(map[string][]attrPair)
 
 	for attrRows.Next() {
 		var productID, attrName, attrValue string
-		if err := attrRows.Scan(&productID, &attrName, &attrValue); err != nil {
-			return errors.Internal(err)
+		if scanErr := attrRows.Scan(&productID, &attrName, &attrValue); scanErr != nil {
+			return errors.Internal(scanErr)
 		}
 		productAttrs[productID] = append(productAttrs[productID], attrPair{attrName, attrValue})
 	}
@@ -621,47 +630,55 @@ func loadProductRelations(ctx context.Context, pool *pgxpool.Pool, products []*d
 	}
 
 	// Build the Attributes map and set hardcoded fields.
-	hardcodedNames := make(map[string]bool, len(hardcodedAttrFields))
-	for _, h := range hardcodedAttrFields {
-		hardcodedNames[h.Name] = true
-	}
-
 	for pid, pairs := range productAttrs {
 		p := productsByID[pid]
 		if p == nil {
 			continue
 		}
+		applyAttributePairs(p, pairs)
+	}
+	return nil
+}
 
-		// Group values by attribute name.
-		grouped := make(map[string][]string)
-		for _, ap := range pairs {
-			grouped[ap.name] = append(grouped[ap.name], ap.value)
+// applyAttributePairs groups attribute pairs by name and populates the product's
+// Attributes map and hardcoded fields.
+func applyAttributePairs(p *domain.Product, pairs []attrPair) {
+	hardcodedNames := make(map[string]bool, len(hardcodedAttrFields))
+	for _, h := range hardcodedAttrFields {
+		hardcodedNames[h.Name] = true
+	}
+
+	// Group values by attribute name.
+	grouped := make(map[string][]string)
+	for _, ap := range pairs {
+		grouped[ap.name] = append(grouped[ap.name], ap.value)
+	}
+
+	for name, vals := range grouped {
+		// Set hardcoded fields (take first value).
+		for _, h := range hardcodedAttrFields {
+			if h.Name == name && len(vals) > 0 {
+				h.Set(p, vals[0])
+			}
 		}
 
-		for name, vals := range grouped {
-			// Set hardcoded fields (take first value).
-			for _, h := range hardcodedAttrFields {
-				if h.Name == name && len(vals) > 0 {
-					h.Set(p, vals[0])
+		// Populate Attributes map: single value as string, multiple as []interface{}.
+		if !hardcodedNames[name] {
+			if len(vals) == 1 {
+				p.Attributes[name] = vals[0]
+			} else {
+				iface := make([]interface{}, len(vals))
+				for i, v := range vals {
+					iface[i] = v
 				}
-			}
-
-			// Populate Attributes map: single value as string, multiple as []interface{}.
-			if !hardcodedNames[name] {
-				if len(vals) == 1 {
-					p.Attributes[name] = vals[0]
-				} else {
-					iface := make([]interface{}, len(vals))
-					for i, v := range vals {
-						iface[i] = v
-					}
-					p.Attributes[name] = iface
-				}
+				p.Attributes[name] = iface
 			}
 		}
 	}
+}
 
-	// --- images ---
+// loadProductImages batch-loads images for products and populates the Images slice.
+func loadProductImages(ctx context.Context, pool *pgxpool.Pool, ids []string, productsByID map[string]*domain.Product) error {
 	imgRows, err := pool.Query(ctx, `
 		SELECT product_id, url, alt_text, sort_order
 		FROM product_images
@@ -675,8 +692,8 @@ func loadProductRelations(ctx context.Context, pool *pgxpool.Pool, products []*d
 	for imgRows.Next() {
 		var productID string
 		var img domain.ProductImage
-		if err := imgRows.Scan(&productID, &img.URL, &img.AltText, &img.SortOrder); err != nil {
-			return errors.Internal(err)
+		if scanErr := imgRows.Scan(&productID, &img.URL, &img.AltText, &img.SortOrder); scanErr != nil {
+			return errors.Internal(scanErr)
 		}
 		if p, ok := productsByID[productID]; ok {
 			// The first image (lowest sort_order) is treated as primary.

@@ -33,7 +33,7 @@ type Payment struct {
 	EntityType            string          `json:"-" dynamodbav:"entity_type"`
 	OrderID               string          `json:"order_id" dynamodbav:"order_id"`
 	CustomerID            string          `json:"customer_id" dynamodbav:"customer_id"`
-	Amount                int64           `json:"amount" dynamodbav:"amount"`     // in paise
+	Amount                int64           `json:"amount" dynamodbav:"amount"` // in paise
 	Currency              string          `json:"currency" dynamodbav:"currency"`
 	Status                PaymentStatus   `json:"status" dynamodbav:"status"`
 	Provider              PaymentProvider `json:"provider" dynamodbav:"provider"`
@@ -50,13 +50,13 @@ type Payment struct {
 
 // TableName returns the DynamoDB table name for Payment
 func (p *Payment) TableName() string {
-	return "handloom-orders"
+	return TableOrders
 }
 
 // SetKeys sets the DynamoDB keys for Payment
 func (p *Payment) SetKeys() {
 	p.PK = "PAYMENT#" + p.ID
-	p.SK = "METADATA"
+	p.SK = SKMetadata
 	p.GSI1PK = "ORDER#" + p.OrderID
 	p.GSI1SK = "PAYMENT#" + p.InitiatedAt.Format("2006-01-02T15:04:05Z")
 	p.GSI2PK = "PAYMENT_TXN"

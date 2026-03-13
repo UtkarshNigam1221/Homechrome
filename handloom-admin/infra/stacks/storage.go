@@ -69,7 +69,7 @@ func NewStorageStack(scope constructs.Construct, id string, props *StorageStackP
 		},
 		LifecycleRules: &[]*awss3.LifecycleRule{
 			{
-				Id:                          jsii.String("CleanupIncompleteUploads"),
+				Id:                                  jsii.String("CleanupIncompleteUploads"),
 				AbortIncompleteMultipartUploadAfter: awscdk.Duration_Days(jsii.Number(1)),
 			},
 			{

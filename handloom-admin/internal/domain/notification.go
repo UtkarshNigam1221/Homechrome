@@ -41,51 +41,51 @@ const (
 
 // Notification represents a notification sent to a user/customer
 type Notification struct {
-	ID              string                 `json:"id" dynamodbav:"id"`
-	PK              string                 `json:"-" dynamodbav:"PK"`
-	SK              string                 `json:"-" dynamodbav:"SK"`
-	GSI1PK          string                 `json:"-" dynamodbav:"GSI1PK"`
-	GSI1SK          string                 `json:"-" dynamodbav:"GSI1SK"`
-	EntityType      string                 `json:"-" dynamodbav:"entity_type"`
+	ID         string `json:"id" dynamodbav:"id"`
+	PK         string `json:"-" dynamodbav:"PK"`
+	SK         string `json:"-" dynamodbav:"SK"`
+	GSI1PK     string `json:"-" dynamodbav:"GSI1PK"`
+	GSI1SK     string `json:"-" dynamodbav:"GSI1SK"`
+	EntityType string `json:"-" dynamodbav:"entity_type"`
 
-	Type            NotificationType       `json:"type" dynamodbav:"type"`
-	Status          NotificationStatus     `json:"status" dynamodbav:"status"`
+	Type   NotificationType   `json:"type" dynamodbav:"type"`
+	Status NotificationStatus `json:"status" dynamodbav:"status"`
 
 	// Recipient
-	RecipientID     string                 `json:"recipient_id" dynamodbav:"recipient_id"`
-	RecipientEmail  string                 `json:"recipient_email,omitempty" dynamodbav:"recipient_email,omitempty"`
-	RecipientPhone  string                 `json:"recipient_phone,omitempty" dynamodbav:"recipient_phone,omitempty"`
+	RecipientID    string `json:"recipient_id" dynamodbav:"recipient_id"`
+	RecipientEmail string `json:"recipient_email,omitempty" dynamodbav:"recipient_email,omitempty"`
+	RecipientPhone string `json:"recipient_phone,omitempty" dynamodbav:"recipient_phone,omitempty"`
 
 	// Content
-	Subject         string                 `json:"subject,omitempty" dynamodbav:"subject,omitempty"`
-	Body            string                 `json:"body" dynamodbav:"body"`
-	TemplateID      string                 `json:"template_id,omitempty" dynamodbav:"template_id,omitempty"`
-	TemplateData    map[string]interface{} `json:"template_data,omitempty" dynamodbav:"template_data,omitempty"`
+	Subject      string                 `json:"subject,omitempty" dynamodbav:"subject,omitempty"`
+	Body         string                 `json:"body" dynamodbav:"body"`
+	TemplateID   string                 `json:"template_id,omitempty" dynamodbav:"template_id,omitempty"`
+	TemplateData map[string]interface{} `json:"template_data,omitempty" dynamodbav:"template_data,omitempty"`
 
 	// Trigger
-	TriggerType     NotificationTrigger    `json:"trigger_type" dynamodbav:"trigger_type"`
-	ReferenceType   string                 `json:"reference_type,omitempty" dynamodbav:"reference_type,omitempty"`
-	ReferenceID     string                 `json:"reference_id,omitempty" dynamodbav:"reference_id,omitempty"`
+	TriggerType   NotificationTrigger `json:"trigger_type" dynamodbav:"trigger_type"`
+	ReferenceType string              `json:"reference_type,omitempty" dynamodbav:"reference_type,omitempty"`
+	ReferenceID   string              `json:"reference_id,omitempty" dynamodbav:"reference_id,omitempty"`
 
 	// Status tracking
-	SentAt          *time.Time             `json:"sent_at,omitempty" dynamodbav:"sent_at,omitempty"`
-	DeliveredAt     *time.Time             `json:"delivered_at,omitempty" dynamodbav:"delivered_at,omitempty"`
-	FailedAt        *time.Time             `json:"failed_at,omitempty" dynamodbav:"failed_at,omitempty"`
-	FailureReason   string                 `json:"failure_reason,omitempty" dynamodbav:"failure_reason,omitempty"`
+	SentAt        *time.Time `json:"sent_at,omitempty" dynamodbav:"sent_at,omitempty"`
+	DeliveredAt   *time.Time `json:"delivered_at,omitempty" dynamodbav:"delivered_at,omitempty"`
+	FailedAt      *time.Time `json:"failed_at,omitempty" dynamodbav:"failed_at,omitempty"`
+	FailureReason string     `json:"failure_reason,omitempty" dynamodbav:"failure_reason,omitempty"`
 
-	CreatedAt       time.Time              `json:"created_at" dynamodbav:"created_at"`
-	CreatedBy       string                 `json:"created_by" dynamodbav:"created_by"`
+	CreatedAt time.Time `json:"created_at" dynamodbav:"created_at"`
+	CreatedBy string    `json:"created_by" dynamodbav:"created_by"`
 }
 
 // TableName returns the DynamoDB table name for Notification
 func (n *Notification) TableName() string {
-	return "handloom-core"
+	return TableCore
 }
 
 // SetKeys sets the DynamoDB keys for Notification
 func (n *Notification) SetKeys() {
 	n.PK = "NOTIFICATION#" + n.ID
-	n.SK = "METADATA"
+	n.SK = SKMetadata
 	n.GSI1PK = "RECIPIENT#" + n.RecipientID
 	n.GSI1SK = n.CreatedAt.Format("2006-01-02T15:04:05Z")
 	n.EntityType = "NOTIFICATION"
@@ -93,30 +93,30 @@ func (n *Notification) SetKeys() {
 
 // NotificationTemplate represents a notification template
 type NotificationTemplate struct {
-	ID           string           `json:"id" dynamodbav:"id"`
-	PK           string           `json:"-" dynamodbav:"PK"`
-	SK           string           `json:"-" dynamodbav:"SK"`
-	EntityType   string           `json:"-" dynamodbav:"entity_type"`
+	ID         string `json:"id" dynamodbav:"id"`
+	PK         string `json:"-" dynamodbav:"PK"`
+	SK         string `json:"-" dynamodbav:"SK"`
+	EntityType string `json:"-" dynamodbav:"entity_type"`
 
-	Name         string           `json:"name" dynamodbav:"name"`
-	Type         NotificationType `json:"type" dynamodbav:"type"`
-	Subject      string           `json:"subject,omitempty" dynamodbav:"subject,omitempty"`
-	Body         string           `json:"body" dynamodbav:"body"`
-	Variables    []string         `json:"variables" dynamodbav:"variables"`
-	IsActive     bool             `json:"is_active" dynamodbav:"is_active"`
+	Name      string           `json:"name" dynamodbav:"name"`
+	Type      NotificationType `json:"type" dynamodbav:"type"`
+	Subject   string           `json:"subject,omitempty" dynamodbav:"subject,omitempty"`
+	Body      string           `json:"body" dynamodbav:"body"`
+	Variables []string         `json:"variables" dynamodbav:"variables"`
+	IsActive  bool             `json:"is_active" dynamodbav:"is_active"`
 
 	BaseEntity
 }
 
 // TableName returns the DynamoDB table name for NotificationTemplate
 func (t *NotificationTemplate) TableName() string {
-	return "handloom-core"
+	return TableCore
 }
 
 // SetKeys sets the DynamoDB keys for NotificationTemplate
 func (t *NotificationTemplate) SetKeys() {
 	t.PK = "NOTIFICATION_TEMPLATE#" + t.ID
-	t.SK = "METADATA"
+	t.SK = SKMetadata
 	t.EntityType = "NOTIFICATION_TEMPLATE"
 }
 
@@ -146,9 +146,9 @@ type NotificationRepository interface {
 // ListNotificationsRequest contains parameters for listing notifications
 type ListNotificationsRequest struct {
 	PaginationRequest
-	UserID      *string             `json:"user_id,omitempty"`
-	Type        *NotificationType   `json:"type,omitempty"`
-	Status      *NotificationStatus `json:"status,omitempty"`
+	UserID      *string              `json:"user_id,omitempty"`
+	Type        *NotificationType    `json:"type,omitempty"`
+	Status      *NotificationStatus  `json:"status,omitempty"`
 	TriggerType *NotificationTrigger `json:"trigger_type,omitempty"`
 }
 

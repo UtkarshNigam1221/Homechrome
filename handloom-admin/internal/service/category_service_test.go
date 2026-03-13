@@ -501,7 +501,7 @@ func TestCategoryService_UpdateAttribute(t *testing.T) {
 
 		updatedAttr := domain.CategoryAttribute{
 			Name:     "color",
-			Label:    "Colour",
+			Label:    "Color",
 			Type:     "MULTI_SELECT",
 			Required: true,
 		}
@@ -513,7 +513,7 @@ func TestCategoryService_UpdateAttribute(t *testing.T) {
 		mockCatRepo.EXPECT().
 			Update(ctx, gomock.Any()).
 			DoAndReturn(func(ctx context.Context, cat *domain.Category) error {
-				assert.Equal(t, "Colour", cat.OwnAttributes[0].Label)
+				assert.Equal(t, "Color", cat.OwnAttributes[0].Label)
 				assert.Equal(t, domain.AttributeType("MULTI_SELECT"), cat.OwnAttributes[0].Type)
 				assert.True(t, cat.OwnAttributes[0].Required)
 				// Second attribute unchanged

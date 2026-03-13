@@ -51,31 +51,31 @@ type DashboardStats struct {
 
 // SalesAnalytics contains sales analytics data
 type SalesAnalytics struct {
-	Period           string           `json:"period"` // daily, weekly, monthly
-	StartDate        time.Time        `json:"start_date"`
-	EndDate          time.Time        `json:"end_date"`
-	TotalSales       float64          `json:"total_sales"`
-	TotalOrders      int              `json:"total_orders"`
-	AverageOrderValue float64         `json:"average_order_value"`
-	DataPoints       []SalesDataPoint `json:"data_points"`
-	SalesByDay       []DailySales     `json:"sales_by_day,omitempty"`
-	TopSellingItems  []TopProduct     `json:"top_selling_items,omitempty"`
+	Period            string           `json:"period"` // daily, weekly, monthly
+	StartDate         time.Time        `json:"start_date"`
+	EndDate           time.Time        `json:"end_date"`
+	TotalSales        float64          `json:"total_sales"`
+	TotalOrders       int              `json:"total_orders"`
+	AverageOrderValue float64          `json:"average_order_value"`
+	DataPoints        []SalesDataPoint `json:"data_points"`
+	SalesByDay        []DailySales     `json:"sales_by_day,omitempty"`
+	TopSellingItems   []TopProduct     `json:"top_selling_items,omitempty"`
 }
 
 // SalesDataPoint represents a single data point in sales analytics
 type SalesDataPoint struct {
-	Date     string `json:"date"`
-	Sales    int64  `json:"sales"`
-	Orders   int    `json:"orders"`
+	Date   string `json:"date"`
+	Sales  int64  `json:"sales"`
+	Orders int    `json:"orders"`
 }
 
 // TopProduct represents a top-selling product
 type TopProduct struct {
-	ProductID    string `json:"product_id"`
-	ProductName  string `json:"product_name"`
-	SKU          string `json:"sku"`
-	UnitsSold    int    `json:"units_sold"`
-	Revenue      int64  `json:"revenue"`
+	ProductID   string `json:"product_id"`
+	ProductName string `json:"product_name"`
+	SKU         string `json:"sku"`
+	UnitsSold   int    `json:"units_sold"`
+	Revenue     int64  `json:"revenue"`
 }
 
 // TopCategory represents a top-performing category
@@ -88,11 +88,11 @@ type TopCategory struct {
 
 // CustomerAnalytics contains customer analytics data
 type CustomerAnalytics struct {
-	TotalCustomers          int           `json:"total_customers"`
-	NewCustomers            int           `json:"new_customers"`
-	ReturningCustomers      int           `json:"returning_customers"`
-	AverageOrdersPerCustomer float64      `json:"average_orders_per_customer"`
-	TopCustomers            []TopCustomer `json:"top_customers,omitempty"`
+	TotalCustomers           int           `json:"total_customers"`
+	NewCustomers             int           `json:"new_customers"`
+	ReturningCustomers       int           `json:"returning_customers"`
+	AverageOrdersPerCustomer float64       `json:"average_orders_per_customer"`
+	TopCustomers             []TopCustomer `json:"top_customers,omitempty"`
 }
 
 // TopCustomer represents a top customer
@@ -249,11 +249,11 @@ type DailySales struct {
 
 // DailyStats represents daily statistics snapshot
 type DailyStats struct {
-	ID         string    `json:"id"`
-	Date       string    `json:"date"`
-	Orders     int       `json:"orders"`
-	Revenue    int64     `json:"revenue"`
-	Customers  int       `json:"customers"`
-	Products   int       `json:"products"`
-	CreatedAt  time.Time `json:"created_at"`
+	ID        string    `json:"id"`
+	Date      string    `json:"date"`
+	Orders    int       `json:"orders"`
+	Revenue   int64     `json:"revenue"`
+	Customers int       `json:"customers"`
+	Products  int       `json:"products"`
+	CreatedAt time.Time `json:"created_at"`
 }

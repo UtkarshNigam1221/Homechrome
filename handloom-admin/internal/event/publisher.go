@@ -72,7 +72,7 @@ func NewSNSPublisher(ctx context.Context, topicARN, region, endpoint string) (*S
 	}, nil
 }
 
-// Publish serialises the event to JSON and publishes it to the SNS topic.
+// Publish serializes the event to JSON and publishes it to the SNS topic.
 func (p *SNSPublisher) Publish(ctx context.Context, event Event) error {
 	payload, err := json.Marshal(event)
 	if err != nil {

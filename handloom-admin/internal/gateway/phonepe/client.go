@@ -67,7 +67,7 @@ func (c *Client) InitiatePayment(ctx context.Context, merchantTxnID, customerID 
 	if err != nil {
 		return "", fmt.Errorf("failed to call PhonePe: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -104,7 +104,7 @@ func (c *Client) CheckPaymentStatus(ctx context.Context, merchantTxnID string) (
 	if err != nil {
 		return nil, fmt.Errorf("failed to call PhonePe: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {

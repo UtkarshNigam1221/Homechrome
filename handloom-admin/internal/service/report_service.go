@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/pkg/errors"
 	"github.com/handloom/admin/pkg/logger"
@@ -77,42 +78,6 @@ func (s *ReportService) Generate(ctx context.Context, req domain.GenerateReportR
 
 	s.logger.WithContext(ctx).Infof("Created report: %s", report.ID)
 	return report, nil
-}
-
-// processReport handles the actual report generation
-func (s *ReportService) processReport(ctx context.Context, report *domain.Report) {
-	// Update status to processing
-	now := time.Now()
-	report.Status = domain.ReportStatusProcessing
-	report.StartedAt = &now
-	report.UpdatedAt = now
-
-	if err := s.reportRepo.Update(ctx, report); err != nil {
-		s.logger.WithContext(ctx).WithError(err).Errorf("Failed to update report status: %s", report.ID)
-		return
-	}
-
-	// TODO: Implement actual report generation based on type
-	// This would:
-	// 1. Query the relevant data based on report type and parameters
-	// 2. Generate the file in the requested format
-	// 3. Upload to S3
-	// 4. Update the report record with file URL
-
-	// For now, simulate processing
-	time.Sleep(1 * time.Second)
-
-	// Mark as completed
-	completedAt := time.Now()
-	report.Status = domain.ReportStatusCompleted
-	report.CompletedAt = &completedAt
-	report.UpdatedAt = completedAt
-	report.FileURL = "https://s3.amazonaws.com/handloom-reports/" + report.ID + "." + s.getExtension(report.Format)
-	report.RowCount = 100 // Placeholder
-
-	if err := s.reportRepo.Update(ctx, report); err != nil {
-		s.logger.WithContext(ctx).WithError(err).Errorf("Failed to update completed report: %s", report.ID)
-	}
 }
 
 // GetByID retrieves a report by ID
@@ -283,17 +248,4 @@ func (s *ReportService) isValidFormat(f domain.ReportFormat) bool {
 		}
 	}
 	return false
-}
-
-func (s *ReportService) getExtension(format domain.ReportFormat) string {
-	switch format {
-	case domain.ReportFormatCSV:
-		return "csv"
-	case domain.ReportFormatXLSX:
-		return "xlsx"
-	case domain.ReportFormatPDF:
-		return "pdf"
-	default:
-		return "csv"
-	}
 }

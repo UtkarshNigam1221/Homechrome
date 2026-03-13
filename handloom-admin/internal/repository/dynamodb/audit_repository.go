@@ -9,6 +9,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
+
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/pkg/errors"
 )
@@ -113,7 +114,7 @@ func (r *AuditRepository) List(ctx context.Context, req domain.ListAuditLogsRequ
 
 		if req.Action != nil {
 			filters = append(filters, "#action = :action")
-			input.ExpressionAttributeValues[":action"] = &types.AttributeValueMemberS{Value: string(*req.Action)}
+			input.ExpressionAttributeValues[":action"] = &types.AttributeValueMemberS{Value: *req.Action}
 			exprAttrNames["#action"] = "action"
 		}
 		if req.EntityType != nil {

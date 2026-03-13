@@ -47,11 +47,11 @@ func TestWithLike(t *testing.T) {
 }
 
 func TestWithRange(t *testing.T) {
-	min := int64(100)
-	max := int64(500)
+	lower := int64(100)
+	upper := int64(500)
 
 	sql, args := querybuilder.Select("id").From("products p").
-		WithRange("p.price", &min, &max).
+		WithRange("p.price", &lower, &upper).
 		Build()
 
 	wantSQL := "SELECT id FROM products p WHERE p.price >= $1 AND p.price <= $2"
@@ -64,9 +64,9 @@ func TestWithRange(t *testing.T) {
 }
 
 func TestWithRangeMinOnly(t *testing.T) {
-	min := int64(100)
+	lower := int64(100)
 	sql, args := querybuilder.Select("id").From("t").
-		WithRange("t.price", &min, nil).
+		WithRange("t.price", &lower, nil).
 		Build()
 
 	wantSQL := "SELECT id FROM t WHERE t.price >= $1"
@@ -133,11 +133,11 @@ func TestOrderByLimitOffset(t *testing.T) {
 }
 
 func TestPlaceholderNumbering(t *testing.T) {
-	min := int64(100)
+	lower := int64(100)
 	sql, args := querybuilder.Select("id").From("products p").
 		WithFilter(true, "p.status", "ACTIVE").
 		WithLike(true, "p.name", "%silk%").
-		WithRange("p.price", &min, nil).
+		WithRange("p.price", &lower, nil).
 		WithRaw(true, "p.category_id = ANY(%s)", []string{"a", "b"}).
 		OrderBy("p.id").
 		Limit(21).

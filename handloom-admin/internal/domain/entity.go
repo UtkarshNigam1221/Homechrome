@@ -167,13 +167,13 @@ type User struct {
 
 // TableName returns the DynamoDB table name for User
 func (u *User) TableName() string {
-	return "handloom-core"
+	return TableCore
 }
 
 // SetKeys sets the DynamoDB keys for User
 func (u *User) SetKeys() {
 	u.PK = "USER#" + u.ID
-	u.SK = "METADATA"
+	u.SK = SKMetadata
 	u.GSI1PK = "USER_EMAIL"
 	u.GSI1SK = u.Email
 	u.EntityType = "USER"
@@ -232,7 +232,6 @@ func (c *Category) ApplyUpdate(req UpdateCategoryRequest, slug string) {
 		c.OwnAttributes = req.OwnAttributes
 	}
 }
-
 
 // CategoryAttribute defines an attribute for a category
 type CategoryAttribute struct {
@@ -341,7 +340,6 @@ type Product struct {
 
 	BaseEntity
 }
-
 
 // NewProduct creates a Product from a CreateProductRequest.
 func NewProduct(req CreateProductRequest, id, slug, createdBy string) *Product {
@@ -462,7 +460,6 @@ type Dimensions struct {
 	Unit   string  `json:"unit"`
 }
 
-
 // ==================== PRICING RULE ENTITY ====================
 
 // PricingRule defines how to calculate price for a category/product
@@ -521,13 +518,13 @@ type PricingRule struct {
 
 // TableName returns the DynamoDB table name for PricingRule
 func (p *PricingRule) TableName() string {
-	return "handloom-core"
+	return TableCore
 }
 
 // SetKeys sets the DynamoDB keys for PricingRule
 func (p *PricingRule) SetKeys() {
 	p.PK = "PRICING_RULE#" + p.ID
-	p.SK = "METADATA"
+	p.SK = SKMetadata
 	p.GSI1PK = "SCOPE#" + string(p.ScopeType)
 	if p.ScopeID != "" {
 		p.GSI1SK = p.ScopeID
@@ -582,13 +579,13 @@ type PriceQuote struct {
 
 // TableName returns the DynamoDB table name for PriceQuote
 func (p *PriceQuote) TableName() string {
-	return "handloom-orders"
+	return TableOrders
 }
 
 // SetKeys sets the DynamoDB keys for PriceQuote
 func (p *PriceQuote) SetKeys() {
 	p.PK = "QUOTE#" + p.ID
-	p.SK = "METADATA"
+	p.SK = SKMetadata
 	p.EntityType = "PRICE_QUOTE"
 }
 
@@ -635,7 +632,6 @@ type Inventory struct {
 	BaseEntity
 }
 
-
 // InventoryTransaction represents a transaction in inventory
 type InventoryTransaction struct {
 	ID string `json:"id" db:"id"`
@@ -653,7 +649,6 @@ type InventoryTransaction struct {
 	CreatedBy string    `json:"created_by" db:"created_by"`
 }
 
-
 // ==================== OTP ENTITY ====================
 
 // OTP represents a one-time password for customer authentication
@@ -670,13 +665,13 @@ type OTP struct {
 
 // TableName returns the DynamoDB table name for OTP
 func (o *OTP) TableName() string {
-	return "handloom-core"
+	return TableCore
 }
 
 // SetKeys sets the DynamoDB keys for OTP
 func (o *OTP) SetKeys() {
 	o.PK = "OTP#" + o.Phone
-	o.SK = "METADATA"
+	o.SK = SKMetadata
 	o.EntityType = "OTP"
 }
 

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/internal/s3client"
 	"github.com/handloom/admin/pkg/errors"
@@ -25,7 +26,7 @@ const (
 )
 
 var validDocumentTypes = map[string]bool{
-	"application/pdf":   true,
+	"application/pdf":    true,
 	"application/msword": true,
 	"application/vnd.openxmlformats-officedocument.wordprocessingml.document": true,
 	"application/vnd.ms-excel": true,
