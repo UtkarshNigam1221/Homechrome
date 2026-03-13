@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/internal/middleware"
 	"github.com/handloom/admin/internal/service"
@@ -177,4 +178,3 @@ func (h *NotificationHandler) MarkAllAsRead(w http.ResponseWriter, r *http.Reque
 
 	response.JSON(w, http.StatusOK, map[string]string{"status": "all read"})
 }
-

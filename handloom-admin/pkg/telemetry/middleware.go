@@ -32,12 +32,13 @@ func HTTPMiddleware(serviceName string) func(http.Handler) http.Handler {
 // HTTPMiddlewareWithOptions returns an HTTP middleware with custom options.
 func HTTPMiddlewareWithOptions(serviceName string, opts ...otelhttp.Option) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
-		defaultOpts := []otelhttp.Option{
+		defaultOpts := make([]otelhttp.Option, 0, 2+len(opts))
+		defaultOpts = append(defaultOpts,
 			otelhttp.WithTracerProvider(otel.GetTracerProvider()),
 			otelhttp.WithSpanNameFormatter(func(operation string, r *http.Request) string {
 				return fmt.Sprintf("%s %s", r.Method, r.URL.Path)
 			}),
-		}
+		)
 		allOpts := append(defaultOpts, opts...)
 		return otelhttp.NewHandler(next, serviceName, allOpts...)
 	}

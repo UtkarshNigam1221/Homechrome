@@ -147,12 +147,12 @@ func buildStatusHistory(order *domain.Order) []StatusEntry {
 		})
 	}
 
-	// If the order was cancelled, add the cancelled entry
+	// If the order was canceled, add the canceled entry
 	if order.CancelledAt != nil {
 		entries = append(entries, StatusEntry{
 			Status:    string(domain.OrderStatusCancelled),
 			Timestamp: *order.CancelledAt,
-			Note:      "Order cancelled",
+			Note:      "Order canceled",
 		})
 	}
 

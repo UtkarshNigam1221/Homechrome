@@ -6,12 +6,15 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/internal/middleware"
 	"github.com/handloom/admin/internal/service"
 	"github.com/handloom/admin/pkg/errors"
 	"github.com/handloom/admin/pkg/response"
 )
+
+const defaultReportFormat = "CSV"
 
 // ReportHandler handles report-related HTTP requests
 type ReportHandler struct {
@@ -52,7 +55,7 @@ func (h *ReportHandler) Routes() chi.Router {
 func (h *ReportHandler) Generate(w http.ResponseWriter, r *http.Request) {
 	req := middleware.MustGetValidatedBody[domain.GenerateReportRequest](r.Context())
 
-	userID := r.Context().Value("user_id").(string)
+	userID, _ := r.Context().Value("user_id").(string)
 	report, err := h.reportService.Generate(r.Context(), *req, userID)
 	if err != nil {
 		response.Error(w, err)
@@ -116,7 +119,7 @@ func (h *ReportHandler) List(w http.ResponseWriter, r *http.Request) {
 // GetMyReports retrieves reports for the current user
 // GET /admin/reports/my
 func (h *ReportHandler) GetMyReports(w http.ResponseWriter, r *http.Request) {
-	userID := r.Context().Value("user_id").(string)
+	userID, _ := r.Context().Value("user_id").(string)
 	pagination := parsePagination(r)
 
 	reports, err := h.reportService.GetByUser(r.Context(), userID, pagination)
@@ -195,7 +198,7 @@ func (h *ReportHandler) GenerateSalesReport(w http.ResponseWriter, r *http.Reque
 		format = domain.ReportFormatCSV
 	}
 
-	userID := r.Context().Value("user_id").(string)
+	userID, _ := r.Context().Value("user_id").(string)
 	report, err := h.reportService.GenerateSalesReport(r.Context(), startDate, endDate, format, userID)
 	if err != nil {
 		response.Error(w, err)
@@ -212,7 +215,7 @@ func (h *ReportHandler) GenerateInventoryReport(w http.ResponseWriter, r *http.R
 		Format string `json:"format"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		req.Format = "CSV"
+		req.Format = defaultReportFormat
 	}
 
 	format := domain.ReportFormat(req.Format)
@@ -220,7 +223,7 @@ func (h *ReportHandler) GenerateInventoryReport(w http.ResponseWriter, r *http.R
 		format = domain.ReportFormatCSV
 	}
 
-	userID := r.Context().Value("user_id").(string)
+	userID, _ := r.Context().Value("user_id").(string)
 	report, err := h.reportService.GenerateInventoryReport(r.Context(), format, userID)
 	if err != nil {
 		response.Error(w, err)
@@ -259,7 +262,7 @@ func (h *ReportHandler) GenerateOrdersReport(w http.ResponseWriter, r *http.Requ
 		format = domain.ReportFormatCSV
 	}
 
-	userID := r.Context().Value("user_id").(string)
+	userID, _ := r.Context().Value("user_id").(string)
 	report, err := h.reportService.GenerateOrdersReport(r.Context(), startDate, endDate, format, req.Status, userID)
 	if err != nil {
 		response.Error(w, err)
@@ -297,7 +300,7 @@ func (h *ReportHandler) GenerateCustomersReport(w http.ResponseWriter, r *http.R
 		format = domain.ReportFormatCSV
 	}
 
-	userID := r.Context().Value("user_id").(string)
+	userID, _ := r.Context().Value("user_id").(string)
 	report, err := h.reportService.GenerateCustomersReport(r.Context(), startDate, endDate, format, userID)
 	if err != nil {
 		response.Error(w, err)
@@ -315,7 +318,7 @@ func (h *ReportHandler) GenerateProductsReport(w http.ResponseWriter, r *http.Re
 		CategoryID string `json:"category_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		req.Format = "CSV"
+		req.Format = defaultReportFormat
 	}
 
 	format := domain.ReportFormat(req.Format)
@@ -323,7 +326,7 @@ func (h *ReportHandler) GenerateProductsReport(w http.ResponseWriter, r *http.Re
 		format = domain.ReportFormatCSV
 	}
 
-	userID := r.Context().Value("user_id").(string)
+	userID, _ := r.Context().Value("user_id").(string)
 	report, err := h.reportService.GenerateProductsReport(r.Context(), format, req.CategoryID, userID)
 	if err != nil {
 		response.Error(w, err)
@@ -340,7 +343,7 @@ func (h *ReportHandler) GenerateArtisansReport(w http.ResponseWriter, r *http.Re
 		Format string `json:"format"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		req.Format = "CSV"
+		req.Format = defaultReportFormat
 	}
 
 	format := domain.ReportFormat(req.Format)
@@ -348,7 +351,7 @@ func (h *ReportHandler) GenerateArtisansReport(w http.ResponseWriter, r *http.Re
 		format = domain.ReportFormatCSV
 	}
 
-	userID := r.Context().Value("user_id").(string)
+	userID, _ := r.Context().Value("user_id").(string)
 	report, err := h.reportService.GenerateArtisansReport(r.Context(), format, userID)
 	if err != nil {
 		response.Error(w, err)

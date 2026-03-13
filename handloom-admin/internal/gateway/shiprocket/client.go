@@ -54,10 +54,10 @@ func (c *Client) Authenticate(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to authenticate with Shiprocket: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("Shiprocket auth returned status %d", resp.StatusCode)
+		return "", fmt.Errorf("shiprocket auth returned status %d", resp.StatusCode)
 	}
 
 	var authResp AuthResponse
@@ -94,7 +94,7 @@ func (c *Client) CheckServiceability(ctx context.Context, pickupPincode, deliver
 	if err != nil {
 		return nil, fmt.Errorf("failed to check serviceability: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, _ := io.ReadAll(resp.Body)
 
@@ -126,7 +126,7 @@ func (c *Client) CreateOrder(ctx context.Context, order *CreateOrderRequest) (*C
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Shiprocket order: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	respBody, _ := io.ReadAll(resp.Body)
 
@@ -161,7 +161,7 @@ func (c *Client) AssignAWB(ctx context.Context, shipmentID, courierID int) (*Ass
 	if err != nil {
 		return nil, fmt.Errorf("failed to assign AWB: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	respBody, _ := io.ReadAll(resp.Body)
 
@@ -195,7 +195,7 @@ func (c *Client) GenerateLabel(ctx context.Context, shipmentID int) (string, err
 	if err != nil {
 		return "", fmt.Errorf("failed to generate label: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	respBody, _ := io.ReadAll(resp.Body)
 
@@ -225,7 +225,7 @@ func (c *Client) TrackByAWB(ctx context.Context, awb string) (*TrackingResponse,
 	if err != nil {
 		return nil, fmt.Errorf("failed to track shipment: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	respBody, _ := io.ReadAll(resp.Body)
 

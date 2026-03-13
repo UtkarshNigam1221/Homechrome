@@ -40,11 +40,11 @@ func TestAuthService_Login(t *testing.T) {
 	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("password123"), bcrypt.DefaultCost)
 
 	tests := []struct {
-		name      string
-		req       domain.LoginRequest
-		setup     func()
-		wantErr   bool
-		errCode   string
+		name    string
+		req     domain.LoginRequest
+		setup   func()
+		wantErr bool
+		errCode string
 	}{
 		{
 			name: "successful login",

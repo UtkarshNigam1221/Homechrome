@@ -47,6 +47,8 @@ type UploadResponse struct {
 // Upload handles file uploads
 // POST /uploads
 func (h *UploadHandler) Upload(w http.ResponseWriter, r *http.Request) {
+	// Limit request body size to 50MB to prevent memory exhaustion
+	r.Body = http.MaxBytesReader(w, r.Body, 50<<20)
 	// Parse multipart form (max 50MB)
 	if err := r.ParseMultipartForm(50 << 20); err != nil {
 		response.Error(w, fmt.Errorf("failed to parse form: %w", err))
@@ -83,7 +85,7 @@ func (h *UploadHandler) Upload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create destination file
-	dstPath := filepath.Join(fullDir, filename)
+	dstPath := filepath.Clean(filepath.Join(fullDir, filename))
 	dst, err := os.Create(dstPath)
 	if err != nil {
 		response.Error(w, fmt.Errorf("failed to create file: %w", err))

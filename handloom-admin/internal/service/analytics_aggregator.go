@@ -157,13 +157,13 @@ func (a *AnalyticsAggregator) aggregateFunnel(ctx context.Context, date string, 
 
 // revenueAggregate holds revenue metrics for the day.
 type revenueAggregate struct {
-	Date              string            `dynamodbav:"date" json:"date"`
-	TotalRevenue      int64             `dynamodbav:"total_revenue" json:"total_revenue"`
-	TotalOrders       int               `dynamodbav:"total_orders" json:"total_orders"`
-	AverageOrderValue int64             `dynamodbav:"average_order_value" json:"average_order_value"`
-	RevenueByMethod   map[string]int64  `dynamodbav:"revenue_by_method" json:"revenue_by_method"`
-	RevenueByCategory map[string]int64  `dynamodbav:"revenue_by_category" json:"revenue_by_category"`
-	OrdersByStatus    map[string]int    `dynamodbav:"orders_by_status" json:"orders_by_status"`
+	Date              string           `dynamodbav:"date" json:"date"`
+	TotalRevenue      int64            `dynamodbav:"total_revenue" json:"total_revenue"`
+	TotalOrders       int              `dynamodbav:"total_orders" json:"total_orders"`
+	AverageOrderValue int64            `dynamodbav:"average_order_value" json:"average_order_value"`
+	RevenueByMethod   map[string]int64 `dynamodbav:"revenue_by_method" json:"revenue_by_method"`
+	RevenueByCategory map[string]int64 `dynamodbav:"revenue_by_category" json:"revenue_by_category"`
+	OrdersByStatus    map[string]int   `dynamodbav:"orders_by_status" json:"orders_by_status"`
 }
 
 func (a *AnalyticsAggregator) aggregateRevenue(ctx context.Context, date string, events []domain.StoreEvent) {
@@ -293,13 +293,13 @@ func (a *AnalyticsAggregator) aggregateCustomers(ctx context.Context, date strin
 
 // engagementAggregate holds engagement metrics for the day.
 type engagementAggregate struct {
-	Date               string         `dynamodbav:"date" json:"date"`
-	TotalSessions      int            `dynamodbav:"total_sessions" json:"total_sessions"`
-	BounceCount        int            `dynamodbav:"bounce_count" json:"bounce_count"`
-	BounceRate         float64        `dynamodbav:"bounce_rate" json:"bounce_rate"`
-	AvgSessionDuration float64        `dynamodbav:"avg_session_duration" json:"avg_session_duration"`
-	TopPages           []pageCount    `dynamodbav:"top_pages" json:"top_pages"`
-	AvgScrollDepth     float64        `dynamodbav:"avg_scroll_depth" json:"avg_scroll_depth"`
+	Date               string      `dynamodbav:"date" json:"date"`
+	TotalSessions      int         `dynamodbav:"total_sessions" json:"total_sessions"`
+	BounceCount        int         `dynamodbav:"bounce_count" json:"bounce_count"`
+	BounceRate         float64     `dynamodbav:"bounce_rate" json:"bounce_rate"`
+	AvgSessionDuration float64     `dynamodbav:"avg_session_duration" json:"avg_session_duration"`
+	TopPages           []pageCount `dynamodbav:"top_pages" json:"top_pages"`
+	AvgScrollDepth     float64     `dynamodbav:"avg_scroll_depth" json:"avg_scroll_depth"`
 }
 
 // pageCount is a helper for top-pages reporting.
@@ -402,11 +402,11 @@ func (a *AnalyticsAggregator) aggregateEngagement(ctx context.Context, date stri
 
 // productAggregate holds product-level metrics for the day.
 type productAggregate struct {
-	Date            string         `dynamodbav:"date" json:"date"`
-	TotalViews      int            `dynamodbav:"total_views" json:"total_views"`
-	TotalAddToCarts int            `dynamodbav:"total_add_to_carts" json:"total_add_to_carts"`
-	TopByViews      []productStat  `dynamodbav:"top_by_views" json:"top_by_views"`
-	TopByAddToCart  []productStat  `dynamodbav:"top_by_add_to_cart" json:"top_by_add_to_cart"`
+	Date            string        `dynamodbav:"date" json:"date"`
+	TotalViews      int           `dynamodbav:"total_views" json:"total_views"`
+	TotalAddToCarts int           `dynamodbav:"total_add_to_carts" json:"total_add_to_carts"`
+	TopByViews      []productStat `dynamodbav:"top_by_views" json:"top_by_views"`
+	TopByAddToCart  []productStat `dynamodbav:"top_by_add_to_cart" json:"top_by_add_to_cart"`
 }
 
 // productStat tracks per-product view/cart counts.
@@ -416,8 +416,8 @@ type productStat struct {
 }
 
 func (a *AnalyticsAggregator) aggregateProducts(ctx context.Context, date string, events []domain.StoreEvent) {
-	viewCounts := make(map[string]int)    // product_id -> views
-	cartCounts := make(map[string]int)    // product_id -> add_to_cart
+	viewCounts := make(map[string]int) // product_id -> views
+	cartCounts := make(map[string]int) // product_id -> add_to_cart
 
 	var totalViews, totalATC int
 

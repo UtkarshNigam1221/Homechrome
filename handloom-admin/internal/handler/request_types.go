@@ -40,7 +40,7 @@ type UpdateTrackingRequest struct {
 	Carrier        string `json:"carrier"`
 }
 
-// CancelOrderRequest is the request body for cancelling an order
+// CancelOrderRequest is the request body for canceling an order
 type CancelOrderRequest struct {
 	Reason string `json:"reason" validate:"required"`
 }
@@ -68,6 +68,3 @@ type ApplyCouponRequest struct {
 	CustomerID string `json:"customer_id" validate:"required"`
 	Discount   int64  `json:"discount" validate:"required,gt=0"`
 }
-
-
-

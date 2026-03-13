@@ -11,7 +11,7 @@ import (
 // PaginationRequest contains cursor-based pagination parameters
 type PaginationRequest struct {
 	Limit   int    `json:"limit"`
-	Cursor  string `json:"cursor,omitempty"`   // base64-encoded ExclusiveStartKey
+	Cursor  string `json:"cursor,omitempty"` // base64-encoded ExclusiveStartKey
 	SortBy  string `json:"sort_by,omitempty"`
 	SortDir string `json:"sort_dir,omitempty"` // asc or desc
 }

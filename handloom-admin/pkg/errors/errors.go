@@ -44,13 +44,13 @@ const (
 	ErrCodeProductHasOrders ErrorCode = "PRODUCT_HAS_ORDERS"
 
 	// Pricing errors
-	ErrCodePricingRuleNotFound   ErrorCode = "PRICING_RULE_NOT_FOUND"
-	ErrCodeConflictingPriority   ErrorCode = "CONFLICTING_PRIORITY"
-	ErrCodeRuleIsDefault         ErrorCode = "RULE_IS_DEFAULT"
-	ErrCodeDimensionOutOfRange   ErrorCode = "DIMENSION_OUT_OF_RANGE"
-	ErrCodeMinOrderValue         ErrorCode = "MIN_ORDER_VALUE"
-	ErrCodeQuoteNotFound         ErrorCode = "QUOTE_NOT_FOUND"
-	ErrCodeQuoteExpired          ErrorCode = "QUOTE_EXPIRED"
+	ErrCodePricingRuleNotFound ErrorCode = "PRICING_RULE_NOT_FOUND"
+	ErrCodeConflictingPriority ErrorCode = "CONFLICTING_PRIORITY"
+	ErrCodeRuleIsDefault       ErrorCode = "RULE_IS_DEFAULT"
+	ErrCodeDimensionOutOfRange ErrorCode = "DIMENSION_OUT_OF_RANGE"
+	ErrCodeMinOrderValue       ErrorCode = "MIN_ORDER_VALUE"
+	ErrCodeQuoteNotFound       ErrorCode = "QUOTE_NOT_FOUND"
+	ErrCodeQuoteExpired        ErrorCode = "QUOTE_EXPIRED"
 
 	// Inventory errors
 	ErrCodeInsufficientStock ErrorCode = "INSUFFICIENT_STOCK"

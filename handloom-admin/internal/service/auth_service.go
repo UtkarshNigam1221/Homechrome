@@ -9,10 +9,11 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	"golang.org/x/crypto/bcrypt"
+
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/pkg/errors"
 	"github.com/handloom/admin/pkg/logger"
-	"golang.org/x/crypto/bcrypt"
 )
 
 // AuthService implements domain.AuthService
@@ -64,13 +65,13 @@ func (s *AuthService) Login(ctx context.Context, req domain.LoginRequest) (*doma
 	}
 
 	// Verify password
-	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)); err != nil {
+	if bcryptErr := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)); bcryptErr != nil {
 		return nil, errors.New(errors.ErrCodeInvalidCredentials, "Invalid email or password")
 	}
 
 	// Revoke any existing refresh tokens before generating new ones (single-session enforcement)
-	if err := s.tokenStore.RevokeAllUserTokens(ctx, user.ID); err != nil {
-		s.logger.WithContext(ctx).WithError(err).Warn("Failed to revoke existing tokens")
+	if revokeErr := s.tokenStore.RevokeAllUserTokens(ctx, user.ID); revokeErr != nil {
+		s.logger.WithContext(ctx).WithError(revokeErr).Warn("Failed to revoke existing tokens")
 	}
 
 	// Generate tokens
@@ -205,7 +206,7 @@ func (s *AuthService) ChangePassword(ctx context.Context, userID string, req dom
 	}
 
 	// Verify current password
-	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.CurrentPassword)); err != nil {
+	if bcryptErr := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.CurrentPassword)); bcryptErr != nil {
 		return errors.New(errors.ErrCodeBadRequest, "Current password is incorrect")
 	}
 

@@ -370,12 +370,12 @@ type CalculatePriceRequest struct {
 
 // CalculatePriceResponse contains the calculated price
 type CalculatePriceResponse struct {
-	PriceBreakdown       *PriceBreakdown      `json:"price_breakdown"`
-	FormattedPrice       *FormattedPrice      `json:"formatted_price"`
-	PricingRuleID        string               `json:"pricing_rule_id"`
-	QuoteID              string               `json:"quote_id"`
-	QuoteValidUntil      time.Time            `json:"quote_valid_until"`
-	DimensionConstraints *DimensionConfig     `json:"dimension_constraints,omitempty"`
+	PriceBreakdown       *PriceBreakdown  `json:"price_breakdown"`
+	FormattedPrice       *FormattedPrice  `json:"formatted_price"`
+	PricingRuleID        string           `json:"pricing_rule_id"`
+	QuoteID              string           `json:"quote_id"`
+	QuoteValidUntil      time.Time        `json:"quote_valid_until"`
+	DimensionConstraints *DimensionConfig `json:"dimension_constraints,omitempty"`
 }
 
 // FormattedPrice contains formatted price strings
@@ -387,21 +387,21 @@ type FormattedPrice struct {
 
 // DimensionOptionsResponse contains dimension options for a category
 type DimensionOptionsResponse struct {
-	CategoryID            string              `json:"category_id"`
-	CategoryName          string              `json:"category_name"`
-	AllowCustomDimensions bool                `json:"allow_custom_dimensions"`
-	DimensionConfig       *DimensionConfig    `json:"dimension_config,omitempty"`
-	PricingModel          string              `json:"pricing_model"`
-	PricingAttributes     []PricingAttribute  `json:"pricing_attributes,omitempty"`
-	MinOrderValue         int64               `json:"min_order_value"`
+	CategoryID            string             `json:"category_id"`
+	CategoryName          string             `json:"category_name"`
+	AllowCustomDimensions bool               `json:"allow_custom_dimensions"`
+	DimensionConfig       *DimensionConfig   `json:"dimension_config,omitempty"`
+	PricingModel          string             `json:"pricing_model"`
+	PricingAttributes     []PricingAttribute `json:"pricing_attributes,omitempty"`
+	MinOrderValue         int64              `json:"min_order_value"`
 }
 
 // PricingAttribute is an attribute that affects pricing
 type PricingAttribute struct {
-	Name           string                  `json:"name"`
-	Label          string                  `json:"label"`
-	Type           AttributeType           `json:"type"`
-	AffectsPricing bool                    `json:"affects_pricing"`
+	Name           string                   `json:"name"`
+	Label          string                   `json:"label"`
+	Type           AttributeType            `json:"type"`
+	AffectsPricing bool                     `json:"affects_pricing"`
 	Options        []PricingAttributeOption `json:"options,omitempty"`
 }
 
@@ -415,8 +415,8 @@ type PricingAttributeOption struct {
 
 // BulkCalculatePriceRequest contains multiple configurations to calculate
 type BulkCalculatePriceRequest struct {
-	CategoryID     string                `json:"category_id" validate:"required"`
-	Configurations []PriceConfiguration  `json:"configurations" validate:"required,max=10"`
+	CategoryID     string               `json:"category_id" validate:"required"`
+	Configurations []PriceConfiguration `json:"configurations" validate:"required,max=10"`
 }
 
 // PriceConfiguration is a single configuration for bulk calculation

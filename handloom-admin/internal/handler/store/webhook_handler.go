@@ -50,7 +50,7 @@ func (h *WebhookHandler) PhonePeWebhook(w http.ResponseWriter, r *http.Request) 
 		response.JSON(w, http.StatusOK, map[string]string{"status": "error"})
 		return
 	}
-	defer r.Body.Close()
+	defer func() { _ = r.Body.Close() }()
 
 	xVerifyHeader := r.Header.Get("X-VERIFY")
 

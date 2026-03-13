@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/pkg/errors"
 	"github.com/handloom/admin/pkg/logger"
@@ -154,13 +155,9 @@ func (s *CouponService) List(ctx context.Context, req domain.ListCouponsRequest)
 
 // Validate validates a coupon for an order
 func (s *CouponService) Validate(ctx context.Context, code string, orderTotal int64, customerID string, productIDs []string) (*domain.CouponValidationResult, error) {
-	coupon, err := s.couponRepo.GetByCode(ctx, strings.ToUpper(code))
-	if err != nil {
-		return &domain.CouponValidationResult{
-			Valid:        false,
-			Code:         code,
-			ErrorMessage: "Coupon not found",
-		}, nil
+	coupon, _ := s.couponRepo.GetByCode(ctx, strings.ToUpper(code))
+	if coupon == nil {
+		return s.invalidCouponResult(code, "Coupon not found"), nil
 	}
 
 	// Check status
@@ -271,6 +268,14 @@ func (s *CouponService) Apply(ctx context.Context, couponID string, orderID stri
 
 	s.logger.WithContext(ctx).Infof("Applied coupon %s to order %s, discount: %d", coupon.Code, orderID, discount)
 	return nil
+}
+
+func (s *CouponService) invalidCouponResult(code, message string) *domain.CouponValidationResult {
+	return &domain.CouponValidationResult{
+		Valid:        false,
+		Code:         code,
+		ErrorMessage: message,
+	}
 }
 
 // Ensure interface compliance

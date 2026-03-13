@@ -2,10 +2,9 @@ package postgres
 
 import (
 	"context"
-	"crypto/md5"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"hash/fnv"
 	"sort"
 	"time"
 
@@ -41,21 +40,21 @@ func prodListKey(req domain.ListProductsRequest) string {
 	}
 
 	canonical := struct {
-		Limit            int                 `json:"limit"`
-		Cursor           string              `json:"cursor,omitempty"`
-		SortBy           string              `json:"sort_by,omitempty"`
-		SortDir          string              `json:"sort_dir,omitempty"`
-		CategoryID       *string             `json:"category_id,omitempty"`
+		Limit            int                   `json:"limit"`
+		Cursor           string                `json:"cursor,omitempty"`
+		SortBy           string                `json:"sort_by,omitempty"`
+		SortDir          string                `json:"sort_dir,omitempty"`
+		CategoryID       *string               `json:"category_id,omitempty"`
 		Status           *domain.ProductStatus `json:"status,omitempty"`
-		Search           string              `json:"search,omitempty"`
-		MinPrice         *int64              `json:"min_price,omitempty"`
-		MaxPrice         *int64              `json:"max_price,omitempty"`
-		InStock          *bool               `json:"in_stock,omitempty"`
-		LowStock         *bool               `json:"low_stock,omitempty"`
-		Material         *string             `json:"material,omitempty"`
-		Color            *string             `json:"color,omitempty"`
-		Slug             string              `json:"slug,omitempty"`
-		AttributeFilters map[string][]string `json:"attribute_filters,omitempty"`
+		Search           string                `json:"search,omitempty"`
+		MinPrice         *int64                `json:"min_price,omitempty"`
+		MaxPrice         *int64                `json:"max_price,omitempty"`
+		InStock          *bool                 `json:"in_stock,omitempty"`
+		LowStock         *bool                 `json:"low_stock,omitempty"`
+		Material         *string               `json:"material,omitempty"`
+		Color            *string               `json:"color,omitempty"`
+		Slug             string                `json:"slug,omitempty"`
+		AttributeFilters map[string][]string   `json:"attribute_filters,omitempty"`
 	}{
 		Limit:            req.Limit,
 		Cursor:           req.Cursor,
@@ -78,8 +77,9 @@ func prodListKey(req domain.ListProductsRequest) string {
 	if err != nil {
 		return "" // empty key signals cache bypass
 	}
-	hash := md5.Sum(data)
-	return prodListPrefix + hex.EncodeToString(hash[:])
+	h := fnv.New64a()
+	h.Write(data)
+	return prodListPrefix + fmt.Sprintf("%x", h.Sum64())
 }
 
 // CachedProductRepository wraps a ProductRepository with an in-process cache.
@@ -104,7 +104,9 @@ func (r *CachedProductRepository) Create(ctx context.Context, product *domain.Pr
 func (r *CachedProductRepository) GetByID(ctx context.Context, id string) (*domain.Product, error) {
 	key := prodKey(id)
 	if v, ok := r.cache.Get(key); ok {
-		return v.(*domain.Product), nil
+		if p, ok := v.(*domain.Product); ok {
+			return p, nil
+		}
 	}
 	p, err := r.inner.GetByID(ctx, id)
 	if err != nil {
@@ -117,7 +119,9 @@ func (r *CachedProductRepository) GetByID(ctx context.Context, id string) (*doma
 func (r *CachedProductRepository) GetBySKU(ctx context.Context, sku string) (*domain.Product, error) {
 	key := prodSKUKey(sku)
 	if v, ok := r.cache.Get(key); ok {
-		return v.(*domain.Product), nil
+		if p, ok := v.(*domain.Product); ok {
+			return p, nil
+		}
 	}
 	p, err := r.inner.GetBySKU(ctx, sku)
 	if err != nil {
@@ -154,7 +158,9 @@ func (r *CachedProductRepository) List(ctx context.Context, req domain.ListProdu
 	key := prodListKey(req)
 	if key != "" {
 		if v, ok := r.cache.Get(key); ok {
-			return v.(*domain.ListProductsResponse), nil
+			if resp, ok := v.(*domain.ListProductsResponse); ok {
+				return resp, nil
+			}
 		}
 	}
 	resp, err := r.inner.List(ctx, req)
@@ -173,7 +179,11 @@ func (r *CachedProductRepository) BatchGetByIDs(ctx context.Context, ids []strin
 
 	for _, id := range ids {
 		if v, ok := r.cache.Get(prodKey(id)); ok {
-			results = append(results, v.(*domain.Product))
+			if p, ok := v.(*domain.Product); ok {
+				results = append(results, p)
+			} else {
+				missIDs = append(missIDs, id)
+			}
 		} else {
 			missIDs = append(missIDs, id)
 		}
@@ -208,7 +218,9 @@ func (r *CachedProductRepository) BatchUpdateSortOrder(ctx context.Context, prod
 func (r *CachedProductRepository) GetByCategoryAll(ctx context.Context, categoryID string) ([]*domain.Product, error) {
 	key := prodCatAllKey(categoryID)
 	if v, ok := r.cache.Get(key); ok {
-		return v.([]*domain.Product), nil
+		if products, ok := v.([]*domain.Product); ok {
+			return products, nil
+		}
 	}
 	products, err := r.inner.GetByCategoryAll(ctx, categoryID)
 	if err != nil {
@@ -221,7 +233,9 @@ func (r *CachedProductRepository) GetByCategoryAll(ctx context.Context, category
 func (r *CachedProductRepository) GetAttributeFilterOptions(ctx context.Context, categoryID string, attrNames []string) (map[string][]string, error) {
 	key := prodAttrKey(categoryID)
 	if v, ok := r.cache.Get(key); ok {
-		return v.(map[string][]string), nil
+		if vals, ok := v.(map[string][]string); ok {
+			return vals, nil
+		}
 	}
 	vals, err := r.inner.GetAttributeFilterOptions(ctx, categoryID, attrNames)
 	if err != nil {

@@ -113,12 +113,12 @@ func (s *CheckoutService) Initiate(ctx context.Context, customerID string, req d
 	// 5. Reserve inventory for each item
 	reservedItems := make([]domain.CartItem, 0, len(cart.Items))
 	for _, item := range cart.Items {
-		_, err := s.inventoryRepo.ReserveStock(ctx, item.ProductID, item.Quantity, "checkout")
-		if err != nil {
+		_, reserveErr := s.inventoryRepo.ReserveStock(ctx, item.ProductID, item.Quantity, "checkout")
+		if reserveErr != nil {
 			// Rollback: release all previously reserved items
 			s.releaseReservedItems(ctx, reservedItems)
-			s.logger.WithContext(ctx).WithError(err).Errorf("Failed to reserve stock for product %s", item.ProductID)
-			return nil, errors.Wrap(err, fmt.Sprintf("Failed to reserve stock for product %s", item.ProductID))
+			s.logger.WithContext(ctx).WithError(reserveErr).Errorf("Failed to reserve stock for product %s", item.ProductID)
+			return nil, errors.Wrap(reserveErr, fmt.Sprintf("Failed to reserve stock for product %s", item.ProductID))
 		}
 		reservedItems = append(reservedItems, item)
 	}
@@ -202,7 +202,7 @@ func (s *CheckoutService) Initiate(ctx context.Context, customerID string, req d
 	order.SetKeys()
 
 	// 10. Save order (repository also writes the order number index)
-	if err := s.orderRepo.Create(ctx, order); err != nil {
+	if err = s.orderRepo.Create(ctx, order); err != nil {
 		s.releaseReservedItems(ctx, reservedItems)
 		s.logger.WithContext(ctx).WithError(err).Error("Failed to create order")
 		return nil, errors.Wrap(err, "Failed to create order")

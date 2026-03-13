@@ -57,7 +57,7 @@ func (b *BatchInsertBuilder) Build() (string, []interface{}) {
 			if j > 0 {
 				sb.WriteString(", ")
 			}
-			sb.WriteString(fmt.Sprintf("$%d", i*colCount+j+1))
+			fmt.Fprintf(&sb, "$%d", i*colCount+j+1)
 		}
 		sb.WriteString(")")
 		args = append(args, row...)

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/pkg/logger"
 )
@@ -56,25 +57,6 @@ func (s *NotificationService) Send(ctx context.Context, req domain.SendNotificat
 
 	s.logger.WithContext(ctx).Infof("Created notification: %s", notification.ID)
 	return notification, nil
-}
-
-// processNotification handles the actual sending of the notification
-func (s *NotificationService) processNotification(ctx context.Context, notification *domain.Notification) {
-	// Simulate sending the notification
-	// In production, this would integrate with:
-	// - AWS SES for email
-	// - AWS SNS for SMS
-	// - Firebase/APNs for push notifications
-
-	time.Sleep(100 * time.Millisecond) // Simulate network call
-
-	now := time.Now()
-	notification.Status = domain.NotificationStatusSent
-	notification.SentAt = &now
-
-	if err := s.notificationRepo.Update(ctx, notification); err != nil {
-		s.logger.WithContext(ctx).WithError(err).Errorf("Failed to update notification status: %s", notification.ID)
-	}
 }
 
 // SendBulk sends notifications to multiple recipients
@@ -147,14 +129,14 @@ func (s *NotificationService) MarkAllAsRead(ctx context.Context, userID string) 
 // SendOrderNotification sends an order-related notification
 func (s *NotificationService) SendOrderNotification(ctx context.Context, order *domain.Order, trigger domain.NotificationTrigger, createdBy string) error {
 	req := domain.SendNotificationRequest{
-		Type:          domain.NotificationTypeEmail,
-		RecipientID:   order.CustomerID,
+		Type:           domain.NotificationTypeEmail,
+		RecipientID:    order.CustomerID,
 		RecipientEmail: order.CustomerEmail,
-		Subject:       s.getOrderSubject(trigger, order.OrderNumber),
-		Body:          s.getOrderBody(trigger, order),
-		TriggerType:   trigger,
-		ReferenceType: "ORDER",
-		ReferenceID:   order.ID,
+		Subject:        s.getOrderSubject(trigger, order.OrderNumber),
+		Body:           s.getOrderBody(trigger, order),
+		TriggerType:    trigger,
+		ReferenceType:  "ORDER",
+		ReferenceID:    order.ID,
 		TemplateData: map[string]interface{}{
 			"order_number": order.OrderNumber,
 			"order_status": order.Status,

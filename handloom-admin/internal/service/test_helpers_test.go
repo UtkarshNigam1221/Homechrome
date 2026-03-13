@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/handloom/admin/internal/event"
 )
@@ -64,20 +63,8 @@ func (s *spyCache) calledWith(prefix string) bool {
 	return false
 }
 
-func (s *spyCache) callCount() int {
-	return len(s.prefixes)
-}
-
-// ptr is a generic helper for creating pointers to literals in tests.
-func ptr[T any](v T) *T {
-	return &v
-}
-
 // Compile-time check: spyPublisher implements EventPublisher
 var _ event.EventPublisher = (*spyPublisher)(nil)
 
 // Compile-time check: spyCache implements CacheInvalidator
 var _ CacheInvalidator = (*spyCache)(nil)
-
-// Suppress unused import warning
-var _ = fmt.Sprintf

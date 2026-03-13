@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/pkg/errors"
 	"github.com/handloom/admin/pkg/logger"
@@ -16,11 +17,11 @@ import (
 
 // PricingService implements domain.PricingService
 type PricingService struct {
-	pricingRuleRepo domain.PricingRuleRepository
-	priceQuoteRepo  domain.PriceQuoteRepository
-	categoryRepo    domain.CategoryRepository
-	productRepo     domain.ProductRepository
-	logger          *logger.Logger
+	pricingRuleRepo  domain.PricingRuleRepository
+	priceQuoteRepo   domain.PriceQuoteRepository
+	categoryRepo     domain.CategoryRepository
+	productRepo      domain.ProductRepository
+	logger           *logger.Logger
 	quoteValidityHrs int
 }
 
@@ -257,8 +258,8 @@ func (s *PricingService) CalculatePrice(ctx context.Context, req domain.Calculat
 	}
 
 	// Validate dimensions
-	if err := s.validateDimensions(category, req.Dimensions); err != nil {
-		return nil, err
+	if dimErr := s.validateDimensions(category, req.Dimensions); dimErr != nil {
+		return nil, dimErr
 	}
 
 	// Get applicable pricing rule
@@ -323,9 +324,9 @@ func (s *PricingService) CalculatePrice(ctx context.Context, req domain.Calculat
 			Total:    formatPrice(breakdown.Total),
 			Currency: "INR",
 		},
-		PricingRuleID:        rule.ID,
-		QuoteID:              quoteID,
-		QuoteValidUntil:      validUntil,
+		PricingRuleID:   rule.ID,
+		QuoteID:         quoteID,
+		QuoteValidUntil: validUntil,
 	}, nil
 }
 

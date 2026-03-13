@@ -1,3 +1,4 @@
+//go:build ignore
 // +build ignore
 
 // Script to generate bcrypt password hashes for development

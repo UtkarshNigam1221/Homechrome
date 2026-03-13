@@ -74,12 +74,12 @@ func (b *Builder) WithSearch(cond bool, vectorCol, likeCol, term string) *Builde
 }
 
 // WithRange adds ">= $N" and/or "<= $N" conditions for non-nil bounds.
-func (b *Builder) WithRange(col string, min, max *int64) *Builder {
-	if min != nil {
-		b.where = append(b.where, fmt.Sprintf("%s >= %s", col, b.nextArg(*min)))
+func (b *Builder) WithRange(col string, lower, upper *int64) *Builder {
+	if lower != nil {
+		b.where = append(b.where, fmt.Sprintf("%s >= %s", col, b.nextArg(*lower)))
 	}
-	if max != nil {
-		b.where = append(b.where, fmt.Sprintf("%s <= %s", col, b.nextArg(*max)))
+	if upper != nil {
+		b.where = append(b.where, fmt.Sprintf("%s <= %s", col, b.nextArg(*upper)))
 	}
 	return b
 }
@@ -165,11 +165,11 @@ func (b *Builder) Build() (string, []interface{}) {
 	}
 
 	if b.limit > 0 {
-		sb.WriteString(fmt.Sprintf(" LIMIT %s", b.nextArg(b.limit)))
+		fmt.Fprintf(&sb, " LIMIT %s", b.nextArg(b.limit))
 	}
 
 	if b.offset > 0 {
-		sb.WriteString(fmt.Sprintf(" OFFSET %s", b.nextArg(b.offset)))
+		fmt.Fprintf(&sb, " OFFSET %s", b.nextArg(b.offset))
 	}
 
 	return sb.String(), b.args

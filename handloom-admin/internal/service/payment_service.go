@@ -132,8 +132,8 @@ func (s *PaymentService) HandleWebhook(ctx context.Context, payload []byte, sign
 		// PENDING or other states - update status to PENDING
 		_ = s.paymentRepo.UpdateStatus(ctx, payment.ID, domain.PaymentStatusPending, map[string]interface{}{
 			"provider_transaction_id": statusResp.Data.TransactionID,
-			"payment_method":         string(paymentMethod),
-			"provider_response":      statusResp.Code,
+			"payment_method":          string(paymentMethod),
+			"provider_response":       statusResp.Code,
 		})
 		return nil
 	}
@@ -146,9 +146,9 @@ func (s *PaymentService) handlePaymentSuccess(ctx context.Context, payment *doma
 	// Update payment status to SUCCESS
 	if err := s.paymentRepo.UpdateStatus(ctx, payment.ID, domain.PaymentStatusSuccess, map[string]interface{}{
 		"provider_transaction_id": statusResp.Data.TransactionID,
-		"payment_method":         string(paymentMethod),
-		"provider_response":      statusResp.Code,
-		"completed_at":           now.Format(time.RFC3339),
+		"payment_method":          string(paymentMethod),
+		"provider_response":       statusResp.Code,
+		"completed_at":            now.Format(time.RFC3339),
 	}); err != nil {
 		s.logger.WithContext(ctx).WithError(err).Error("Failed to update payment status to SUCCESS")
 		return errors.Wrap(err, "Failed to update payment status")
@@ -177,8 +177,8 @@ func (s *PaymentService) handlePaymentFailure(ctx context.Context, payment *doma
 	// Update payment status to FAILED
 	if err := s.paymentRepo.UpdateStatus(ctx, payment.ID, domain.PaymentStatusFailed, map[string]interface{}{
 		"provider_transaction_id": statusResp.Data.TransactionID,
-		"payment_method":         string(paymentMethod),
-		"provider_response":      statusResp.Code,
+		"payment_method":          string(paymentMethod),
+		"provider_response":       statusResp.Code,
 	}); err != nil {
 		s.logger.WithContext(ctx).WithError(err).Error("Failed to update payment status to FAILED")
 		return errors.Wrap(err, "Failed to update payment status")

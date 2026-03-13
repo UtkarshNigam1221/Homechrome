@@ -26,7 +26,7 @@ func (c *Cart) SetKeys() {
 	} else {
 		c.PK = "CART#" + c.SessionID
 	}
-	c.SK = "METADATA"
+	c.SK = SKMetadata
 	c.EntityType = "CART"
 }
 
@@ -42,8 +42,8 @@ type CartItem struct {
 	CategoryID   string            `json:"category_id" dynamodbav:"category_id"`
 	CategoryName string            `json:"category_name" dynamodbav:"category_name"`
 	Quantity     int               `json:"quantity" dynamodbav:"quantity"`
-	UnitPrice    int64             `json:"unit_price" dynamodbav:"unit_price"`     // in paise
-	TotalPrice   int64             `json:"total_price" dynamodbav:"total_price"`   // in paise
+	UnitPrice    int64             `json:"unit_price" dynamodbav:"unit_price"`   // in paise
+	TotalPrice   int64             `json:"total_price" dynamodbav:"total_price"` // in paise
 	IsCustomSize bool              `json:"is_custom_size" dynamodbav:"is_custom_size"`
 	Dimensions   *Dimensions       `json:"dimensions,omitempty" dynamodbav:"dimensions,omitempty"`
 	QuoteID      *string           `json:"quote_id,omitempty" dynamodbav:"quote_id,omitempty"`

@@ -11,6 +11,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/internal/event"
 	"github.com/handloom/admin/pkg/errors"
@@ -107,16 +108,16 @@ func (s *CustomerAuthService) VerifyOTP(ctx context.Context, phone, code string)
 		return nil, nil, false, errors.New(errors.ErrCodeInvalidToken, "Too many OTP attempts")
 	}
 
-	if err := s.otpRepo.IncrementAttempts(ctx, phone); err != nil {
-		s.logger.WithContext(ctx).WithError(err).Warn("Failed to increment OTP attempts")
+	if incrErr := s.otpRepo.IncrementAttempts(ctx, phone); incrErr != nil {
+		s.logger.WithContext(ctx).WithError(incrErr).Warn("Failed to increment OTP attempts")
 	}
 
 	if hashSHA256(code) != otp.CodeHash {
 		return nil, nil, false, errors.New(errors.ErrCodeInvalidCredentials, "Invalid OTP code")
 	}
 
-	if err := s.otpRepo.Delete(ctx, phone); err != nil {
-		s.logger.WithContext(ctx).WithError(err).Warn("Failed to delete OTP after verification")
+	if delErr := s.otpRepo.Delete(ctx, phone); delErr != nil {
+		s.logger.WithContext(ctx).WithError(delErr).Warn("Failed to delete OTP after verification")
 	}
 
 	customer, isNew, err := s.findOrCreateCustomer(ctx, phone)
@@ -220,8 +221,8 @@ func (s *CustomerAuthService) findOrCreateCustomer(ctx context.Context, phone st
 		if !customer.PhoneVerified {
 			customer.PhoneVerified = true
 			customer.UpdatedAt = time.Now()
-			if err := s.customerRepo.Update(ctx, customer); err != nil {
-				s.logger.WithContext(ctx).WithError(err).Warn("Failed to update customer phone_verified")
+			if updateErr := s.customerRepo.Update(ctx, customer); updateErr != nil {
+				s.logger.WithContext(ctx).WithError(updateErr).Warn("Failed to update customer phone_verified")
 			}
 		}
 		return customer, false, nil

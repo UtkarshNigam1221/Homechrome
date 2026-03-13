@@ -335,7 +335,7 @@ func TestProductService_GetByID(t *testing.T) {
 		result, err := svc.GetByID(ctx, "prod_123")
 
 		require.NoError(t, err)
-		assert.Equal(t, "prod_123", result.Product.ID)
+		assert.Equal(t, "prod_123", result.ID)
 		assert.NotNil(t, result.Category)
 		assert.Equal(t, "Sarees", result.Category.Name)
 		assert.NotNil(t, result.Inventory)
@@ -597,7 +597,7 @@ func TestProductService_GetAttributeFilterOptions(t *testing.T) {
 			ID: "cat_123",
 			OwnAttributes: []domain.CategoryAttribute{
 				{Name: "color", Searchable: true},
-				{Name: "size", Searchable: false},   // not searchable
+				{Name: "size", Searchable: false}, // not searchable
 				{Name: "pattern", Searchable: true},
 			},
 		}

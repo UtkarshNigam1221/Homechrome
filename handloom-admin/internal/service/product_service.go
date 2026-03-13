@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/internal/event"
 	"github.com/handloom/admin/pkg/errors"
@@ -239,7 +240,6 @@ func (s *ProductService) GetAttributeFilterOptions(ctx context.Context, category
 
 	return result, nil
 }
-
 
 // normalizeToStringSlice converts various types to a slice of strings for attribute validation.
 func normalizeToStringSlice(value interface{}) []string {

@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/internal/middleware"
 	"github.com/handloom/admin/pkg/logger"
@@ -154,7 +155,7 @@ func (h *OrderHandler) UpdateTracking(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, http.StatusOK, map[string]string{"message": "Tracking updated successfully"})
 }
 
-// Cancel handles cancelling an order
+// Cancel handles canceling an order
 func (h *OrderHandler) Cancel(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	id := chi.URLParam(r, "id")
@@ -166,7 +167,7 @@ func (h *OrderHandler) Cancel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response.JSON(w, http.StatusOK, map[string]string{"message": "Order cancelled successfully"})
+	response.JSON(w, http.StatusOK, map[string]string{"message": "Order canceled successfully"})
 }
 
 // Refund handles initiating a refund

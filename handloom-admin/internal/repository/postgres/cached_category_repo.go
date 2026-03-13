@@ -40,7 +40,9 @@ func (r *CachedCategoryRepository) Create(ctx context.Context, category *domain.
 func (r *CachedCategoryRepository) GetByID(ctx context.Context, id string) (*domain.Category, error) {
 	key := catKey(id)
 	if v, ok := r.cache.Get(key); ok {
-		return v.(*domain.Category), nil
+		if cat, ok := v.(*domain.Category); ok {
+			return cat, nil
+		}
 	}
 	cat, err := r.inner.GetByID(ctx, id)
 	if err != nil {
@@ -72,7 +74,9 @@ func (r *CachedCategoryRepository) List(ctx context.Context, req domain.ListCate
 	// Only cache unfiltered first-page requests
 	if req.Status == nil && req.Search == "" && req.Cursor == "" {
 		if v, ok := r.cache.Get(catListKey); ok {
-			return v.(*domain.ListCategoriesResponse), nil
+			if resp, ok := v.(*domain.ListCategoriesResponse); ok {
+				return resp, nil
+			}
 		}
 	}
 	resp, err := r.inner.List(ctx, req)

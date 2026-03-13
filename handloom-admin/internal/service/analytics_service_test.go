@@ -5,13 +5,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
+
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/internal/mocks"
 	"github.com/handloom/admin/pkg/errors"
 	"github.com/handloom/admin/pkg/logger"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-	"go.uber.org/mock/gomock"
 )
 
 func TestAnalyticsService_GetDashboardStats(t *testing.T) {
@@ -29,17 +30,17 @@ func TestAnalyticsService_GetDashboardStats(t *testing.T) {
 
 	t.Run("successful get dashboard stats", func(t *testing.T) {
 		expectedStats := &domain.DashboardStats{
-			TodayOrders:    15,
-			TodayRevenue:   1500000,
-			WeekOrders:     80,
-			WeekRevenue:    8000000,
-			MonthOrders:    320,
-			MonthRevenue:   32000000,
-			TotalOrders:    5000,
-			TotalRevenue:   500000000,
-			TotalCustomers: 1200,
-			TotalProducts:  350,
-			LowStockCount:  12,
+			TodayOrders:     15,
+			TodayRevenue:    1500000,
+			WeekOrders:      80,
+			WeekRevenue:     8000000,
+			MonthOrders:     320,
+			MonthRevenue:    32000000,
+			TotalOrders:     5000,
+			TotalRevenue:    500000000,
+			TotalCustomers:  1200,
+			TotalProducts:   350,
+			LowStockCount:   12,
 			OutOfStockCount: 3,
 		}
 

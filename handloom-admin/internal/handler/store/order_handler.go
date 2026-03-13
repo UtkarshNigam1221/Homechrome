@@ -87,7 +87,7 @@ func (h *OrderHandler) GetOrder(w http.ResponseWriter, r *http.Request) {
 	response.Success(w, order)
 }
 
-// CancelOrder handles cancelling an order for the authenticated customer.
+// CancelOrder handles canceling an order for the authenticated customer.
 func (h *OrderHandler) CancelOrder(w http.ResponseWriter, r *http.Request) {
 	customerID := middleware.GetCustomerIDFromContext(r.Context())
 
@@ -107,18 +107,18 @@ func (h *OrderHandler) CancelOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate that the order can be cancelled (only PENDING or CONFIRMED)
+	// Validate that the order can be canceled (only PENDING or CONFIRMED)
 	if order.Status != domain.OrderStatusPending && order.Status != domain.OrderStatusConfirmed {
-		response.Error(w, errors.BadRequest("Order cannot be cancelled in its current status"))
+		response.Error(w, errors.BadRequest("Order cannot be canceled in its current status"))
 		return
 	}
 
 	// Cancel via service (uses customerID as the actor)
-	if err := h.orderService.CancelOrder(ctx, id, "Cancelled by customer", customerID); err != nil {
+	if err := h.orderService.CancelOrder(ctx, id, "Canceled by customer", customerID); err != nil {
 		h.logger.WithContext(ctx).WithError(err).Error("Failed to cancel order")
 		response.Error(w, err)
 		return
 	}
 
-	response.Success(w, map[string]string{"message": "Order cancelled successfully"})
+	response.Success(w, map[string]string{"message": "Order canceled successfully"})
 }

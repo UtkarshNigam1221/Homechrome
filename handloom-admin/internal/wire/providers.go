@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/wire"
 	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/handloom/admin/internal/cache"
 	"github.com/handloom/admin/internal/config"
 	"github.com/handloom/admin/internal/domain"
