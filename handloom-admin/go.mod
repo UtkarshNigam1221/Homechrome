@@ -11,7 +11,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/feature/dynamodb/expression v1.6.16
 	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.56.1
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.96.0
-	github.com/aws/aws-sdk-go-v2/service/sns v1.39.11
+	github.com/aws/aws-sdk-go-v2/service/sns v1.39.13
 	github.com/aws/aws-sdk-go-v2/service/ssm v1.67.8
 	github.com/awslabs/aws-lambda-go-api-proxy v0.16.2
 	github.com/georgysavva/scany/v2 v2.1.4
