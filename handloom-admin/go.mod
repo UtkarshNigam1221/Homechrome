@@ -24,7 +24,7 @@ require (
 	github.com/google/wire v0.5.0
 	github.com/jackc/pgx/v5 v5.8.0
 	github.com/patrickmn/go-cache v2.1.0+incompatible
-	github.com/rs/zerolog v1.31.0
+	github.com/rs/zerolog v1.34.0
 	github.com/stretchr/testify v1.11.1
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.65.0
 	go.opentelemetry.io/contrib/propagators/b3 v1.40.0
