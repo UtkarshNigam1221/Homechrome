@@ -52,7 +52,7 @@ func NewStorefrontStack(scope constructs.Construct, id string, props *Storefront
 	// ─── Server Lambda ───
 	serverFn := awslambda.NewFunction(stack, jsii.String("ServerFunction"), &awslambda.FunctionProps{
 		FunctionName: jsii.String(fmt.Sprintf("homechrome-store-server-%s", env)),
-		Runtime:      awslambda.Runtime_NODEJS_20_X(),
+		Runtime:      awslambda.Runtime_NODEJS_22_X(),
 		Handler:      jsii.String("index.handler"),
 		Code:         awslambda.Code_FromAsset(jsii.String("../.open-next/server-functions/default"), nil),
 		Architecture: awslambda.Architecture_ARM_64(),
@@ -81,7 +81,7 @@ func NewStorefrontStack(scope constructs.Construct, id string, props *Storefront
 	// 256MB is the cost-optimized minimum for Sharp. Increase to 512 if images fail to optimize.
 	imageFn := awslambda.NewFunction(stack, jsii.String("ImageFunction"), &awslambda.FunctionProps{
 		FunctionName: jsii.String(fmt.Sprintf("homechrome-store-image-%s", env)),
-		Runtime:      awslambda.Runtime_NODEJS_20_X(),
+		Runtime:      awslambda.Runtime_NODEJS_22_X(),
 		Handler:      jsii.String("index.handler"),
 		Code:         awslambda.Code_FromAsset(jsii.String("../.open-next/image-optimization-function"), nil),
 		Architecture: awslambda.Architecture_ARM_64(),
