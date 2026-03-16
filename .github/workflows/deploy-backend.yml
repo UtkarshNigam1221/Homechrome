@@ -89,7 +89,9 @@ jobs:
           fi
 
       - name: Build Lambdas
-        run: make build-lambdas-active
+        run: |
+          make build-lambdas-active
+          make build-workers
 
       - name: CDK Deploy
         run: |
