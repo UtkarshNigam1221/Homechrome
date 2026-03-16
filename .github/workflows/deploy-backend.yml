@@ -33,7 +33,7 @@ jobs:
 
       - uses: actions/setup-go@v6
         with:
-          go-version: '1.24'
+          go-version: '1.25'
           cache-dependency-path: handloom-admin/go.sum
 
       - name: Generate mocks
@@ -70,12 +70,12 @@ jobs:
 
       - uses: actions/setup-go@v6
         with:
-          go-version: '1.24'
+          go-version: '1.25'
           cache-dependency-path: handloom-admin/go.sum
 
       - uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Install CDK
         run: npm install -g aws-cdk

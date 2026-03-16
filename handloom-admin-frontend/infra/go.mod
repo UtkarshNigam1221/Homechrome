@@ -1,6 +1,6 @@
 module github.com/handloom/admin-frontend/infra
 
-go 1.22.0
+go 1.25.0
 
 require (
 	github.com/aws/aws-cdk-go/awscdk/v2 v2.170.0
