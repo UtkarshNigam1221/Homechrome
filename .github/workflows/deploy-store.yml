@@ -91,7 +91,7 @@ jobs:
       - name: CDK Deploy
         run: |
           cd infra && cdk deploy --all --require-approval never \
-            -c environment=${{ steps.env.outputs.env }} \
+            -c environment=${{ inputs.environment }} \
             -c certArn=${{ env.CERT_ARN }}
 
       - name: Invalidate CloudFront Cache
