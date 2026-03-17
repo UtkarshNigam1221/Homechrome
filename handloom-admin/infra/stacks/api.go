@@ -23,8 +23,9 @@ type APIStackProps struct {
 	DatabaseStack  *DatabaseStack
 	StorageStack   *StorageStack
 	EventStack     *EventStack // Optional: event-driven async infrastructure
-	DomainName     string      // Optional: custom domain for API Gateway (e.g. dev-api.lldlab.com)
-	FrontendOrigin string      // Optional: frontend origin for CORS (e.g. https://dev.lldlab.com)
+	BaseDomain     string      // Base domain (e.g. homechrome.in) — used for cookie domain
+	DomainName     string      // Optional: custom domain for API Gateway (e.g. dev-api.homechrome.in)
+	FrontendOrigin string      // Optional: frontend origin for CORS (e.g. https://dev-admin.homechrome.in)
 	CertArn        string      // Optional: ACM certificate ARN (us-east-1) for custom domain
 }
 
@@ -96,7 +97,7 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 		commonEnv["ALLOWED_ORIGINS"] = jsii.String(props.FrontendOrigin)
 	}
 	if props.DomainName != "" {
-		commonEnv["COOKIE_DOMAIN"] = jsii.String(".homechrome.lldlab.com")
+		commonEnv["COOKIE_DOMAIN"] = jsii.String("." + props.BaseDomain)
 	}
 
 	// Add event publishing env vars when EventStack is available

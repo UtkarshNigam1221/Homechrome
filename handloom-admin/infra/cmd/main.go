@@ -84,15 +84,16 @@ func createEnvironmentStacks(app awscdk.App, environment string, env *awscdk.Env
 
 	// Compute custom domain config from CDK context
 	certArn := getCertArn(app)
+	baseDomain := getBaseDomain(app)
 	var domainName, frontendOrigin string
 	if certArn != "" {
 		switch environment {
 		case "prod":
-			domainName = "api.homechrome.lldlab.com"
-			frontendOrigin = "https://admin.homechrome.lldlab.com"
+			domainName = "api." + baseDomain
+			frontendOrigin = "https://admin." + baseDomain
 		default:
-			domainName = "dev-api.homechrome.lldlab.com"
-			frontendOrigin = "https://dev.homechrome.lldlab.com"
+			domainName = "dev-api." + baseDomain
+			frontendOrigin = "https://dev-admin." + baseDomain
 		}
 	}
 
@@ -111,6 +112,7 @@ func createEnvironmentStacks(app awscdk.App, environment string, env *awscdk.Env
 		DatabaseStack:  databaseStack,
 		StorageStack:   storageStack,
 		EventStack:     eventStack,
+		BaseDomain:     baseDomain,
 		DomainName:     domainName,
 		FrontendOrigin: frontendOrigin,
 		CertArn:        certArn,
@@ -165,6 +167,16 @@ func getPostgresDSN(app constructs.Construct) string {
 		return dsn
 	}
 	return ""
+}
+
+func getBaseDomain(app constructs.Construct) string {
+	if d := app.Node().TryGetContext(jsii.String("baseDomain")); d != nil {
+		return d.(string)
+	}
+	if d := os.Getenv("BASE_DOMAIN"); d != "" {
+		return d
+	}
+	return "homechrome.in"
 }
 
 func getAWSEnv() *awscdk.Environment {

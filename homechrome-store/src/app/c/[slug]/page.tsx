@@ -3,12 +3,10 @@ import { cache, Suspense } from 'react';
 
 import CategoryProductsView from './CategoryProductsView';
 
+import { API_BASE, SITE_URL } from '@/lib/constants';
 import { Category, Product } from '@/types';
 
 export const revalidate = 3600;
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8081';
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://homechrome.lldlab.com';
 
 interface PageProps {
   params: Promise<{ slug: string }>;
