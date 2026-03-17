@@ -25,7 +25,7 @@ This document describes the user flow for the B2C store public order tracking fe
 │ Navigate to     │        │ Click tracking  │
 │ Track Order     │        │ link from SMS:  │
 │ page            │        │ homechrome.     │
-└────────┬────────┘        │ lldlab.com/     │
+└────────┬────────┘        │ homechrome.in/     │
          │                 │ track/ORD-2026- │
          │                 │ 000123          │
          │                 └────────┬────────┘

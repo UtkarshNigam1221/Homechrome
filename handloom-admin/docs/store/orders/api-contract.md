@@ -38,7 +38,7 @@ Retrieve a paginated list of orders belonging to the authenticated customer. Ord
           "product_id": "prod-silk-001",
           "product_name": "Kanchipuram Silk Saree - Maroon & Gold",
           "product_sku": "HL-SAR-KAN-001",
-          "product_image": "https://cdn.homechrome.lldlab.com/assets/products/silk-saree-001.jpg",
+          "product_image": "https://cdn.homechrome.in/assets/products/silk-saree-001.jpg",
           "unit_price": 1250000,
           "quantity": 1,
           "total_price": 1250000
@@ -48,7 +48,7 @@ Retrieve a paginated list of orders belonging to the authenticated customer. Ord
           "product_id": "prod-cot-015",
           "product_name": "Handloom Cotton Table Runner",
           "product_sku": "HL-HOM-CTR-015",
-          "product_image": "https://cdn.homechrome.lldlab.com/assets/products/table-runner-015.jpg",
+          "product_image": "https://cdn.homechrome.in/assets/products/table-runner-015.jpg",
           "unit_price": 85000,
           "quantity": 2,
           "total_price": 170000
@@ -120,7 +120,7 @@ Retrieve full details of a single order. Validates that the order belongs to the
         "product_id": "prod-silk-001",
         "product_name": "Kanchipuram Silk Saree - Maroon & Gold",
         "product_sku": "HL-SAR-KAN-001",
-        "product_image": "https://cdn.homechrome.lldlab.com/assets/products/silk-saree-001.jpg",
+        "product_image": "https://cdn.homechrome.in/assets/products/silk-saree-001.jpg",
         "unit_price": 1250000,
         "quantity": 1,
         "total_price": 1250000
@@ -130,7 +130,7 @@ Retrieve full details of a single order. Validates that the order belongs to the
         "product_id": "prod-cot-015",
         "product_name": "Handloom Cotton Table Runner",
         "product_sku": "HL-HOM-CTR-015",
-        "product_image": "https://cdn.homechrome.lldlab.com/assets/products/table-runner-015.jpg",
+        "product_image": "https://cdn.homechrome.in/assets/products/table-runner-015.jpg",
         "unit_price": 85000,
         "quantity": 2,
         "total_price": 170000

@@ -291,7 +291,7 @@ The Store Auth service provides phone OTP-based authentication for B2C storefron
 │  ┌───────────────────────────────────────────────────────────────┐  │
 │  │                                                               │  │
 │  │  Custom Domain (COOKIE_DOMAIN set):                           │  │
-│  │    Secure=true, SameSite=Lax, Domain=homechrome.lldlab.com   │  │
+│  │    Secure=true, SameSite=Lax, Domain=homechrome.in   │  │
 │  │                                                               │  │
 │  │  Lambda URL (no custom domain):                               │  │
 │  │    Secure=true, SameSite=None (cross-origin required)        │  │

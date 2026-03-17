@@ -12,7 +12,7 @@ Homechrome is a monorepo for a handloom e-commerce platform. It contains three i
 | `handloom-admin-frontend/` | React 19, TypeScript, Vite 7, Tailwind CSS 4 | Admin dashboard SPA |
 | `homechrome-store/` | Next.js 16, React 19, Tailwind CSS 4 | B2C customer storefront |
 
-All deploy to AWS via CDK (written in Go). The brand domain is `*.homechrome.lldlab.com`.
+All deploy to AWS via CDK (written in Go). The brand domain is `*.homechrome.in`.
 
 **For detailed backend guidance, see `handloom-admin/CLAUDE.md`.**
 

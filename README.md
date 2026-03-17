@@ -8,7 +8,7 @@ Handloom e-commerce platform. Monorepo with three independently deployable proje
 | `handloom-admin-frontend/` | React 19, TypeScript, Vite 7, Tailwind CSS 4 | Admin dashboard SPA |
 | `homechrome-store/` | Next.js 16, React 19, Tailwind CSS 4 | B2C customer storefront |
 
-All projects deploy to AWS via CDK (written in Go). Domain: `*.homechrome.lldlab.com`.
+All projects deploy to AWS via CDK (written in Go). Domain: `*.homechrome.in`.
 
 ## Prerequisites
 

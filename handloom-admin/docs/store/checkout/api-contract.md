@@ -127,7 +127,7 @@ Place an order from the customer's cart and initiate payment via PhonePe. This i
           "product_id": "prod-001-uuid",
           "product_name": "Banarasi Silk Saree - Royal Blue",
           "product_sku": "HC-SAR-BNR-001",
-          "product_image": "https://cdn.homechrome.lldlab.com/assets/products/saree-royal-blue.jpg",
+          "product_image": "https://cdn.homechrome.in/assets/products/saree-royal-blue.jpg",
           "is_custom_size": false,
           "dimensions": null,
           "attributes": null,
@@ -141,7 +141,7 @@ Place an order from the customer's cart and initiate payment via PhonePe. This i
           "product_id": "prod-002-uuid",
           "product_name": "Handwoven Cotton Table Runner",
           "product_sku": "HC-TBR-CTN-005",
-          "product_image": "https://cdn.homechrome.lldlab.com/assets/products/table-runner-natural.jpg",
+          "product_image": "https://cdn.homechrome.in/assets/products/table-runner-natural.jpg",
           "is_custom_size": true,
           "dimensions": {
             "length": 180,

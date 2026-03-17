@@ -60,8 +60,8 @@ Each deploy command runs the full pipeline: `next build` → `open-next build` �
 
 | Setting | Dev | Prod |
 |---------|-----|------|
-| Domain | `dev-store.homechrome.lldlab.com` | `homechrome.lldlab.com` |
-| Backend API | `https://dev-api.homechrome.lldlab.com` | `https://api.homechrome.lldlab.com` |
+| Domain | `dev-store.homechrome.in` | `homechrome.in` |
+| Backend API | `https://dev-api.homechrome.in` | `https://api.homechrome.in` |
 | Stack name | `HomechromeStoreStack-dev` | `HomechromeStoreStack-prod` |
 | S3 bucket | `homechrome-store-dev` | `homechrome-store-prod` |
 
@@ -146,8 +146,8 @@ infra/
 After first deploy, create CNAME or alias records in Route 53:
 
 ```
-dev-store.homechrome.lldlab.com → <CloudFront distribution domain>
-homechrome.lldlab.com           → <CloudFront distribution domain>
+dev-store.homechrome.in → <CloudFront distribution domain>
+homechrome.in           → <CloudFront distribution domain>
 ```
 
 The CloudFront distribution domain is printed in the `DistributionDomainName` stack output after deploy.

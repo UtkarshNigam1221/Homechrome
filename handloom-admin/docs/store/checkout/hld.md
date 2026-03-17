@@ -125,7 +125,7 @@ The `Initiate` method follows this strict sequence:
 │  PhonePe DevClient:                                                          │
 │  ┌─────────────────────────────────────────────────────────────────────┐   │
 │  │ - Returns redirect_url pointing to storefront callback:             │   │
-│  │   https://store.homechrome.lldlab.com/account/orders               │   │
+│  │   https://store.homechrome.in/account/orders               │   │
 │  │   ?dev_payment=<merchant_txn_id>                                    │   │
 │  │ - Auto-marks payment as PAID after initiation                       │   │
 │  │ - No actual PhonePe API calls made                                  │   │

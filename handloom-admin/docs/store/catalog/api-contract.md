@@ -34,7 +34,7 @@ Retrieve a paginated list of active categories.
       "name": "Banarasi Sarees",
       "slug": "banarasi-sarees",
       "description": "Handwoven Banarasi silk sarees from Varanasi",
-      "image_url": "https://assets.homechrome.lldlab.com/assets/categories/banarasi-sarees.jpg",
+      "image_url": "https://assets.homechrome.in/assets/categories/banarasi-sarees.jpg",
       "own_attributes": [
         {
           "name": "material",
@@ -60,7 +60,7 @@ Retrieve a paginated list of active categories.
       "name": "Pashmina Shawls",
       "slug": "pashmina-shawls",
       "description": "Authentic Kashmiri Pashmina shawls",
-      "image_url": "https://assets.homechrome.lldlab.com/assets/categories/pashmina-shawls.jpg",
+      "image_url": "https://assets.homechrome.in/assets/categories/pashmina-shawls.jpg",
       "own_attributes": [],
       "product_count": 18,
       "status": "ACTIVE",
@@ -103,7 +103,7 @@ Retrieve a single active category by UUID or slug.
     "name": "Banarasi Sarees",
     "slug": "banarasi-sarees",
     "description": "Handwoven Banarasi silk sarees from Varanasi",
-    "image_url": "https://assets.homechrome.lldlab.com/assets/categories/banarasi-sarees.jpg",
+    "image_url": "https://assets.homechrome.in/assets/categories/banarasi-sarees.jpg",
     "own_attributes": [
       {
         "name": "material",
@@ -204,13 +204,13 @@ Retrieve a paginated list of active products with optional filters.
       "craft_type": "Handloom",
       "images": [
         {
-          "url": "https://assets.homechrome.lldlab.com/assets/products/bnr-sar-001-1.jpg",
+          "url": "https://assets.homechrome.in/assets/products/bnr-sar-001-1.jpg",
           "alt_text": "Royal Blue Banarasi Silk Saree - Full View",
           "is_primary": true,
           "sort_order": 1
         },
         {
-          "url": "https://assets.homechrome.lldlab.com/assets/products/bnr-sar-001-2.jpg",
+          "url": "https://assets.homechrome.in/assets/products/bnr-sar-001-2.jpg",
           "alt_text": "Royal Blue Banarasi Silk Saree - Border Detail",
           "is_primary": false,
           "sort_order": 2
@@ -302,19 +302,19 @@ Retrieve a single active product by UUID or slug, with category summary populate
     "craft_type": "Handloom",
     "images": [
       {
-        "url": "https://assets.homechrome.lldlab.com/assets/products/bnr-sar-001-1.jpg",
+        "url": "https://assets.homechrome.in/assets/products/bnr-sar-001-1.jpg",
         "alt_text": "Royal Blue Banarasi Silk Saree - Full View",
         "is_primary": true,
         "sort_order": 1
       },
       {
-        "url": "https://assets.homechrome.lldlab.com/assets/products/bnr-sar-001-2.jpg",
+        "url": "https://assets.homechrome.in/assets/products/bnr-sar-001-2.jpg",
         "alt_text": "Royal Blue Banarasi Silk Saree - Border Detail",
         "is_primary": false,
         "sort_order": 2
       },
       {
-        "url": "https://assets.homechrome.lldlab.com/assets/products/bnr-sar-001-3.jpg",
+        "url": "https://assets.homechrome.in/assets/products/bnr-sar-001-3.jpg",
         "alt_text": "Royal Blue Banarasi Silk Saree - Pallu",
         "is_primary": false,
         "sort_order": 3

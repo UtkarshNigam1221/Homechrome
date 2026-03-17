@@ -221,9 +221,9 @@ func createEnvironmentStack(app awscdk.App, environment string, env *awscdk.Envi
 	if certArn != "" {
 		switch environment {
 		case "prod":
-			domainName = "homechrome.lldlab.com"
+			domainName = "homechrome.in"
 		default:
-			domainName = "dev-store.homechrome.lldlab.com"
+			domainName = "dev-store.homechrome.in"
 		}
 	}
 
@@ -662,8 +662,8 @@ Add these scripts to `homechrome-store/package.json` (keep existing scripts, add
     "dev:local": "next dev --port 3000",
     "dev:lambda": "cp .env.local-lambda .env.local && next dev --port 3000",
     "build": "next build",
-    "build:dev": "NEXT_PUBLIC_API_URL=https://dev-api.homechrome.lldlab.com NEXT_PUBLIC_SITE_URL=https://dev-store.homechrome.lldlab.com next build",
-    "build:prod": "NEXT_PUBLIC_API_URL=https://api.homechrome.lldlab.com NEXT_PUBLIC_SITE_URL=https://homechrome.lldlab.com next build",
+    "build:dev": "NEXT_PUBLIC_API_URL=https://dev-api.homechrome.in NEXT_PUBLIC_SITE_URL=https://dev-store.homechrome.in next build",
+    "build:prod": "NEXT_PUBLIC_API_URL=https://api.homechrome.in NEXT_PUBLIC_SITE_URL=https://homechrome.in next build",
     "open-next:build": "npx @opennextjs/aws build",
     "start": "next start",
     "lint": "eslint",
@@ -748,16 +748,16 @@ Expected: CloudFormation creates all resources. Stack outputs include:
 - `DistributionId`: CloudFront distribution ID
 - `DistributionDomainName`: `dXXXXXXXXXX.cloudfront.net`
 - `ServerFunctionName`: `homechrome-store-server-dev`
-- `WebsiteURL`: `https://dev-store.homechrome.lldlab.com`
+- `WebsiteURL`: `https://dev-store.homechrome.in`
 
 **Step 2: Create DNS record (one-time)**
 
 In Route 53 (or DNS provider), create:
-- `dev-store.homechrome.lldlab.com` → CNAME to `dXXXXXXXXXX.cloudfront.net`
+- `dev-store.homechrome.in` → CNAME to `dXXXXXXXXXX.cloudfront.net`
 
 **Step 3: Test the deployment**
 
-Visit `https://dev-store.homechrome.lldlab.com` (or the CloudFront domain directly).
+Visit `https://dev-store.homechrome.in` (or the CloudFront domain directly).
 
 Verify:
 - Homepage loads with SSR content (view source shows rendered HTML, not empty div)

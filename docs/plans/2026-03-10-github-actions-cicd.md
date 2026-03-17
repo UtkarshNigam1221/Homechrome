@@ -400,12 +400,12 @@ jobs:
         id: urls
         run: |
           if [ "${{ steps.env.outputs.env }}" = "prod" ]; then
-            echo "api_url=https://api.homechrome.lldlab.com" >> "$GITHUB_OUTPUT"
-            echo "site_url=https://homechrome.lldlab.com" >> "$GITHUB_OUTPUT"
+            echo "api_url=https://api.homechrome.in" >> "$GITHUB_OUTPUT"
+            echo "site_url=https://homechrome.in" >> "$GITHUB_OUTPUT"
             echo "stack_name=HomechromeStoreStack-prod" >> "$GITHUB_OUTPUT"
           else
-            echo "api_url=https://dev-api.homechrome.lldlab.com" >> "$GITHUB_OUTPUT"
-            echo "site_url=https://dev-store.homechrome.lldlab.com" >> "$GITHUB_OUTPUT"
+            echo "api_url=https://dev-api.homechrome.in" >> "$GITHUB_OUTPUT"
+            echo "site_url=https://dev-store.homechrome.in" >> "$GITHUB_OUTPUT"
             echo "stack_name=HomechromeStoreStack-dev" >> "$GITHUB_OUTPUT"
           fi
 

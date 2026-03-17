@@ -726,5 +726,5 @@ Expected: Shows removal of RDS, VPC, Secrets Manager resources and addition of P
 2. Copy pooled connection string
 3. Run migrations: `psql "<neon-dsn>" -f migrations/001_catalog_schema.sql` (repeat for each migration file)
 4. Deploy: `POSTGRES_DSN="<neon-dsn>" make cdk-deploy-dev` (or pass via `-c postgresDsn=...`)
-5. Verify: hit `https://dev-store.homechrome.lldlab.com` — categories and products load
+5. Verify: hit `https://dev-store.homechrome.in` — categories and products load
 6. After 48h stable: delete RDS instance manually via AWS console

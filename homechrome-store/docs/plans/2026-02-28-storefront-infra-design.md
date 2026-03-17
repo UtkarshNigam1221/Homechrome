@@ -18,15 +18,15 @@ Deploy homechrome-store (Next.js 16 SSR storefront) to AWS using OpenNext + Go C
 
 | Environment | Domain |
 |-------------|--------|
-| dev | `dev-store.homechrome.lldlab.com` |
-| prod | `homechrome.lldlab.com` |
+| dev | `dev-store.homechrome.in` |
+| prod | `homechrome.in` |
 
 ## API URLs
 
 | Environment | Backend API |
 |-------------|-------------|
-| dev | `https://dev-api.homechrome.lldlab.com` |
-| prod | `https://api.homechrome.lldlab.com` |
+| dev | `https://dev-api.homechrome.in` |
+| prod | `https://api.homechrome.in` |
 
 ## Architecture
 
@@ -93,8 +93,8 @@ homechrome-store/
 │   ├── cdk.json
 │   ├── go.mod
 │   └── go.sum
-├── .env.dev                   # NEXT_PUBLIC_API_URL=https://dev-api.homechrome.lldlab.com
-├── .env.prod                  # NEXT_PUBLIC_API_URL=https://api.homechrome.lldlab.com
+├── .env.dev                   # NEXT_PUBLIC_API_URL=https://dev-api.homechrome.in
+├── .env.prod                  # NEXT_PUBLIC_API_URL=https://api.homechrome.in
 └── open-next.config.ts        # OpenNext configuration (if needed)
 ```
 
@@ -123,8 +123,8 @@ Same as admin frontend:
 ## DNS (manual, one-time)
 
 After first deploy, create Route 53 records:
-- `dev-store.homechrome.lldlab.com` → CloudFront distribution (CNAME/alias)
-- `homechrome.lldlab.com` → CloudFront distribution (CNAME/alias)
+- `dev-store.homechrome.in` → CloudFront distribution (CNAME/alias)
+- `homechrome.in` → CloudFront distribution (CNAME/alias)
 
 ## Key Differences from Admin Frontend
 

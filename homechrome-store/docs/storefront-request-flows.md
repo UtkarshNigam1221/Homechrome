@@ -29,10 +29,10 @@ CloudFront (CDN, ap-south-1 edge)
 Browser → CloudFront → Server Lambda → Next.js renders → S3 cache write → Response
 ```
 
-1. Browser requests `https://homechrome.lldlab.com/p/silk-saree`
+1. Browser requests `https://homechrome.in/p/silk-saree`
 2. CloudFront matches the default behavior (`*`), checks its edge cache — **miss**
 3. CloudFront forwards to Server Lambda via Function URL
-   - Injects `x-forwarded-host: homechrome.lldlab.com` via CloudFront Function
+   - Injects `x-forwarded-host: homechrome.in` via CloudFront Function
    - Forwards `accept`, `rsc`, `next-router-*` headers (part of cache key)
    - Forwards cookies to Lambda (but cookies are NOT in the cache key)
 4. Server Lambda receives the request:
@@ -201,7 +201,7 @@ Browser JS → /api/v1/store/cart → Next.js rewrite → Backend API → Respon
 ```
 
 1. Client code calls `/api/v1/store/cart/items` (relative URL via axios)
-2. In production: Next.js rewrites `/api/*` → `https://api.homechrome.lldlab.com/api/*`
+2. In production: Next.js rewrites `/api/*` → `https://api.homechrome.in/api/*`
 3. In local dev: Vite proxies to `http://localhost:8081/api/*`
 4. HttpOnly cookies are forwarded automatically (`withCredentials: true`)
 5. Backend returns `{success: true, data: {...}}`

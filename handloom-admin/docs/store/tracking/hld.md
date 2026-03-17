@@ -252,7 +252,7 @@ The Store Tracking module provides a public endpoint for customers to track thei
 │  │                                                                      │   │
 │  │  When order is shipped, SMS sent with tracking link:                 │   │
 │  │    "Your order ORD-2026-000123 has been shipped.                    │   │
-│  │     Track at: https://homechrome.lldlab.com/track/ORD-2026-000123" │   │
+│  │     Track at: https://homechrome.in/track/ORD-2026-000123" │   │
 │  │                                                                      │   │
 │  │  This drives traffic to the public tracking endpoint.               │   │
 │  └─────────────────────────────────────────────────────────────────────┘   │
