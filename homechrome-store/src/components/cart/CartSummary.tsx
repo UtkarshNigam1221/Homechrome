@@ -8,11 +8,12 @@ import { formatPrice } from '@/lib/utils';
 interface CartSummaryProps {
   subtotal: number;
   itemCount: number;
+  isAuthenticated: boolean;
 }
 
 const FREE_SHIPPING_THRESHOLD = 99900; // 999 INR in paise
 
-export default function CartSummary({ subtotal, itemCount }: CartSummaryProps) {
+export default function CartSummary({ subtotal, itemCount, isAuthenticated }: CartSummaryProps) {
   const shippingEstimate = subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : 7900; // 79 INR flat rate
   const total = subtotal + shippingEstimate;
   const amountToFreeShipping = FREE_SHIPPING_THRESHOLD - subtotal;
@@ -55,11 +56,19 @@ export default function CartSummary({ subtotal, itemCount }: CartSummaryProps) {
       )}
 
       <div className="mt-6">
-        <Link href="/checkout">
-          <Button variant="primary" size="lg" className="w-full" disabled={itemCount === 0}>
-            Proceed to Checkout
-          </Button>
-        </Link>
+        {isAuthenticated ? (
+          <Link href="/checkout">
+            <Button variant="primary" size="lg" className="w-full" disabled={itemCount === 0}>
+              Proceed to Checkout
+            </Button>
+          </Link>
+        ) : (
+          <Link href="/login?redirect=/cart">
+            <Button variant="primary" size="lg" className="w-full" disabled={itemCount === 0}>
+              Sign in to Checkout
+            </Button>
+          </Link>
+        )}
       </div>
 
       <div className="mt-4 text-center">

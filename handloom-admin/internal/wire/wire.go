@@ -429,10 +429,10 @@ type StoreCatalogDeps struct {
 
 // StoreCartDeps holds dependencies for the Store Cart Lambda
 type StoreCartDeps struct {
-	Config                 *config.Config
-	Logger                 *logger.Logger
-	Handler                *store.CartHandler
-	CustomerAuthMiddleware *middleware.CustomerAuth
+	Config           *config.Config
+	Logger           *logger.Logger
+	Handler          *store.CartHandler
+	OptionalCartAuth *middleware.OptionalCartAuth
 }
 
 // StoreCheckoutDeps holds dependencies for the Store Checkout Lambda
@@ -495,6 +495,11 @@ func InitializeStoreAuthDeps(ctx context.Context, cfg *config.Config) (*StoreAut
 		ProvideCustomerTokenStore,
 		ProvideEventPublisher,
 		ProvideCustomerAuthService,
+		// Cart deps needed for guest merge in auth handler
+		ProvideCartRepository,
+		ProvideProductRepository,
+		ProvideInventoryRepository,
+		ProvideCartService,
 		ProvideStoreAuthHandler,
 		ProvideCustomerAuthMiddleware,
 		wire.Struct(new(StoreAuthDeps), "*"),
@@ -537,7 +542,7 @@ func InitializeStoreCartDeps(ctx context.Context, cfg *config.Config) (*StoreCar
 		ProvideCustomerAuthService,
 		ProvideCartService,
 		ProvideStoreCartHandler,
-		ProvideCustomerAuthMiddleware,
+		ProvideOptionalCartAuth,
 		wire.Struct(new(StoreCartDeps), "*"),
 	)
 	return nil, nil

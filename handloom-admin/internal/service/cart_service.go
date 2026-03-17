@@ -41,11 +41,11 @@ func cartTTL() int64 {
 	return time.Now().Add(cartTTLDays * 24 * time.Hour).Unix()
 }
 
-func (s *CartService) GetCart(ctx context.Context, customerID string) (*domain.CartWithItems, error) {
-	return s.cartRepo.GetCart(ctx, cartPK(customerID))
+func (s *CartService) GetCart(ctx context.Context, cartOwner string, isGuest bool) (*domain.CartWithItems, error) {
+	return s.cartRepo.GetCart(ctx, cartPK(cartOwner))
 }
 
-func (s *CartService) AddItem(ctx context.Context, customerID string, req domain.AddCartItemRequest) (*domain.CartWithItems, error) {
+func (s *CartService) AddItem(ctx context.Context, cartOwner string, isGuest bool, req domain.AddCartItemRequest) (*domain.CartWithItems, error) {
 	product, err := s.productRepo.GetByID(ctx, req.ProductID)
 	if err != nil {
 		return nil, err
@@ -58,7 +58,7 @@ func (s *CartService) AddItem(ctx context.Context, customerID string, req domain
 		return nil, err
 	}
 
-	pk := cartPK(customerID)
+	pk := cartPK(cartOwner)
 
 	item := &domain.CartItem{
 		ProductID:    req.ProductID,
@@ -81,21 +81,21 @@ func (s *CartService) AddItem(ctx context.Context, customerID string, req domain
 		return nil, err
 	}
 
-	s.logger.WithContext(ctx).Infof("Added item %s to cart for customer %s", req.ProductID, customerID)
+	s.logger.WithContext(ctx).Infof("Added item %s to cart for %s", req.ProductID, cartOwner)
 
-	return s.recalculateAndGetCart(ctx, pk, customerID)
+	return s.recalculateAndGetCart(ctx, pk, cartOwner, isGuest)
 }
 
-func (s *CartService) UpdateItemQuantity(ctx context.Context, customerID, productID string, quantity int) (*domain.CartWithItems, error) {
+func (s *CartService) UpdateItemQuantity(ctx context.Context, cartOwner string, isGuest bool, productID string, quantity int) (*domain.CartWithItems, error) {
 	if quantity == 0 {
-		return s.RemoveItem(ctx, customerID, productID)
+		return s.RemoveItem(ctx, cartOwner, isGuest, productID)
 	}
 
 	if err := s.validateStock(ctx, productID, quantity); err != nil {
 		return nil, err
 	}
 
-	pk := cartPK(customerID)
+	pk := cartPK(cartOwner)
 
 	cart, err := s.cartRepo.GetCart(ctx, pk)
 	if err != nil {
@@ -111,29 +111,29 @@ func (s *CartService) UpdateItemQuantity(ctx context.Context, customerID, produc
 		return nil, err
 	}
 
-	s.logger.WithContext(ctx).Infof("Updated item %s quantity to %d for customer %s", productID, quantity, customerID)
+	s.logger.WithContext(ctx).Infof("Updated item %s quantity to %d for %s", productID, quantity, cartOwner)
 
-	return s.recalculateAndGetCart(ctx, pk, customerID)
+	return s.recalculateAndGetCart(ctx, pk, cartOwner, isGuest)
 }
 
-func (s *CartService) RemoveItem(ctx context.Context, customerID, productID string) (*domain.CartWithItems, error) {
-	pk := cartPK(customerID)
+func (s *CartService) RemoveItem(ctx context.Context, cartOwner string, isGuest bool, productID string) (*domain.CartWithItems, error) {
+	pk := cartPK(cartOwner)
 
 	if err := s.cartRepo.DeleteCartItem(ctx, pk, productID); err != nil {
 		return nil, err
 	}
 
-	s.logger.WithContext(ctx).Infof("Removed item %s from cart for customer %s", productID, customerID)
+	s.logger.WithContext(ctx).Infof("Removed item %s from cart for %s", productID, cartOwner)
 
-	return s.recalculateAndGetCart(ctx, pk, customerID)
+	return s.recalculateAndGetCart(ctx, pk, cartOwner, isGuest)
 }
 
-func (s *CartService) ClearCart(ctx context.Context, customerID string) error {
-	if err := s.cartRepo.ClearCart(ctx, cartPK(customerID)); err != nil {
+func (s *CartService) ClearCart(ctx context.Context, cartOwner string) error {
+	if err := s.cartRepo.ClearCart(ctx, cartPK(cartOwner)); err != nil {
 		return err
 	}
 
-	s.logger.WithContext(ctx).Infof("Cleared cart for customer %s", customerID)
+	s.logger.WithContext(ctx).Infof("Cleared cart for customer %s", cartOwner)
 	return nil
 }
 
@@ -156,7 +156,7 @@ func (s *CartService) MergeGuestCart(ctx context.Context, customerID string, ite
 		if qty, exists := existingQty[req.ProductID]; exists && qty >= req.Quantity {
 			continue
 		}
-		if _, err := s.AddItem(ctx, customerID, req); err != nil {
+		if _, err := s.AddItem(ctx, customerID, false, req); err != nil {
 			s.logger.WithContext(ctx).Warnf("Failed to merge item %s: %v", req.ProductID, err)
 			continue
 		}
@@ -165,6 +165,32 @@ func (s *CartService) MergeGuestCart(ctx context.Context, customerID string, ite
 	s.logger.WithContext(ctx).Infof("Merged guest cart (%d items) for customer %s", len(items), customerID)
 
 	return s.cartRepo.GetCart(ctx, pk)
+}
+
+// MergeGuestSession reads items from a guest cart and merges them into the customer's cart.
+func (s *CartService) MergeGuestSession(ctx context.Context, customerID, guestSessionID string) error {
+	guestCart, err := s.cartRepo.GetCart(ctx, cartPK(guestSessionID))
+	if err != nil {
+		return err
+	}
+
+	if len(guestCart.Items) == 0 {
+		return nil
+	}
+
+	items := make([]domain.AddCartItemRequest, len(guestCart.Items))
+	for i, item := range guestCart.Items {
+		items[i] = domain.AddCartItemRequest{
+			ProductID: item.ProductID,
+			Quantity:  item.Quantity,
+		}
+	}
+
+	if _, err := s.MergeGuestCart(ctx, customerID, items); err != nil {
+		return err
+	}
+
+	return s.ClearCart(ctx, guestSessionID)
 }
 
 // validateStock checks that the product has sufficient available inventory.
@@ -184,7 +210,7 @@ func (s *CartService) validateStock(ctx context.Context, productID string, quant
 
 // recalculateAndGetCart reads all cart items, updates the header totals,
 // and returns the final cart state — avoiding a redundant second read.
-func (s *CartService) recalculateAndGetCart(ctx context.Context, pk, customerID string) (*domain.CartWithItems, error) {
+func (s *CartService) recalculateAndGetCart(ctx context.Context, pk, cartOwner string, isGuest bool) (*domain.CartWithItems, error) {
 	cart, err := s.cartRepo.GetCart(ctx, pk)
 	if err != nil {
 		return nil, err
@@ -196,7 +222,12 @@ func (s *CartService) recalculateAndGetCart(ctx context.Context, pk, customerID 
 	}
 
 	header := cart.Cart
-	header.CustomerID = customerID
+	if isGuest {
+		header.SessionID = cartOwner
+		header.CustomerID = ""
+	} else {
+		header.CustomerID = cartOwner
+	}
 	header.ItemCount = len(cart.Items)
 	header.Subtotal = subtotal
 	header.Currency = "INR"

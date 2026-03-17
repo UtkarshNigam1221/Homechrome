@@ -240,7 +240,7 @@ func main() {
 	authMiddleware := middleware.NewAuth(authService, log)
 
 	// B2C handlers
-	storeAuthHandler := store.NewAuthHandler(customerAuthService, validation)
+	storeAuthHandler := store.NewAuthHandler(customerAuthService, cartService, validation, log)
 	storeCatalogHandler := store.NewCatalogHandler(productService, categoryService, inventoryService, log)
 	storeCartHandler := store.NewCartHandler(cartService, validation, log)
 	storeCheckoutHandler := store.NewCheckoutHandler(checkoutService, validation, log)
@@ -252,6 +252,7 @@ func main() {
 
 	// Customer auth middleware
 	customerAuthMiddleware := middleware.NewCustomerAuth(customerAuthService, log)
+	optionalCartAuth := middleware.NewOptionalCartAuth(customerAuthService, log)
 
 	// Create router
 	r := createRouter(cfg, log, authMiddleware,
@@ -263,7 +264,7 @@ func main() {
 		storeAuthHandler, storeCatalogHandler, storeCartHandler,
 		storeCheckoutHandler, storeOrderHandler, storeTrackingHandler,
 		storeProfileHandler, storeWebhookHandler, storeEventsHandler,
-		customerAuthMiddleware,
+		customerAuthMiddleware, optionalCartAuth,
 	)
 
 	// Create server
@@ -329,6 +330,7 @@ func createRouter(
 	storeWebhookHandler *store.WebhookHandler,
 	storeEventsHandler *store.EventsHandler,
 	customerAuthMiddleware *middleware.CustomerAuth,
+	optionalCartAuth *middleware.OptionalCartAuth,
 ) *chi.Mux {
 	r := chi.NewRouter()
 
@@ -384,11 +386,16 @@ func createRouter(
 		// Webhook routes (signature-verified, not customer auth)
 		r.Mount("/webhooks", storeWebhookHandler.Routes())
 
+		// Guest-accessible cart routes
+		r.Group(func(r chi.Router) {
+			r.Use(optionalCartAuth.Resolve)
+			r.Mount("/cart", storeCartHandler.CRUDRoutes())
+		})
+
 		// Customer-authenticated routes
 		r.Group(func(r chi.Router) {
 			r.Use(customerAuthMiddleware.Authenticate)
 			r.Mount("/me", storeProfileHandler.Routes())
-			r.Mount("/cart", storeCartHandler.Routes())
 			r.Mount("/checkout", storeCheckoutHandler.Routes())
 			r.Mount("/orders", storeOrderHandler.Routes())
 		})

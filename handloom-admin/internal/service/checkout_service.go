@@ -99,7 +99,7 @@ func (s *CheckoutService) Initiate(ctx context.Context, customerID string, req d
 	}
 
 	// 3. Get cart
-	cart, err := s.cartService.GetCart(ctx, customerID)
+	cart, err := s.cartService.GetCart(ctx, customerID, false)
 	if err != nil {
 		s.logger.WithContext(ctx).WithError(err).Error("Failed to get cart during checkout")
 		return nil, err

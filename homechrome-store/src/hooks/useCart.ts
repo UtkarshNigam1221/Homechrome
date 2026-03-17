@@ -22,7 +22,6 @@ export function useCart() {
   );
 
   const fetchCart = useCallback(async () => {
-    if (!isAuthenticated) return;
     setLoading(true);
     try {
       const { data } = await api.get<CartWithItems>('/api/v1/store/cart');

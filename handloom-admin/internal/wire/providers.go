@@ -666,9 +666,11 @@ func ProvideCheckoutService(
 // ProvideStoreAuthHandler creates a new store AuthHandler
 func ProvideStoreAuthHandler(
 	customerAuthService *service.CustomerAuthService,
+	cartService *service.CartService,
 	validation *middleware.Validation,
+	log *logger.Logger,
 ) *store.AuthHandler {
-	return store.NewAuthHandler(customerAuthService, validation)
+	return store.NewAuthHandler(customerAuthService, cartService, validation, log)
 }
 
 // ProvideStoreCatalogHandler creates a new store CatalogHandler
@@ -754,4 +756,12 @@ func ProvideCustomerAuthMiddleware(
 	log *logger.Logger,
 ) *middleware.CustomerAuth {
 	return middleware.NewCustomerAuth(customerAuthService, log)
+}
+
+// ProvideOptionalCartAuth creates the OptionalCartAuth middleware
+func ProvideOptionalCartAuth(
+	customerAuthService *service.CustomerAuthService,
+	log *logger.Logger,
+) *middleware.OptionalCartAuth {
+	return middleware.NewOptionalCartAuth(customerAuthService, log)
 }

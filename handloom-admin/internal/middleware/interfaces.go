@@ -59,6 +59,9 @@ const (
 
 	// CustomerKey stores the authenticated customer object
 	CustomerKey ContextKey = "customer"
+
+	// GuestSessionKey stores the guest cart session ID
+	GuestSessionKey ContextKey = "guest_session_id"
 )
 
 // ValidationError represents a validation error with field details

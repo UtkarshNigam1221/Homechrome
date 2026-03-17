@@ -8,7 +8,6 @@ package wire
 
 import (
 	"context"
-
 	"github.com/handloom/admin/internal/config"
 	"github.com/handloom/admin/internal/handler"
 	"github.com/handloom/admin/internal/handler/store"
@@ -505,9 +504,18 @@ func InitializeStoreAuthDeps(ctx context.Context, cfg *config.Config) (*StoreAut
 		return nil, err
 	}
 	customerAuthService := ProvideCustomerAuthService(otpRepository, customerRepository, customerTokenStore, eventPublisher, logger, cfg)
+	cartRepository := ProvideCartRepository(client)
+	pool, err := ProvidePostgresPool(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+	cache := ProvideCatalogCache()
+	productRepository := ProvideProductRepository(pool, cache)
+	inventoryRepository := ProvideInventoryRepository(pool)
+	cartService := ProvideCartService(cartRepository, productRepository, inventoryRepository, logger)
 	service := ProvideValidator()
 	validation := ProvideValidation(service)
-	authHandler := ProvideStoreAuthHandler(customerAuthService, validation)
+	authHandler := ProvideStoreAuthHandler(customerAuthService, cartService, validation, logger)
 	customerAuth := ProvideCustomerAuthMiddleware(customerAuthService, logger)
 	storeAuthDeps := &StoreAuthDeps{
 		Config:                 cfg,
@@ -577,12 +585,12 @@ func InitializeStoreCartDeps(ctx context.Context, cfg *config.Config) (*StoreCar
 		return nil, err
 	}
 	customerAuthService := ProvideCustomerAuthService(otpRepository, customerRepository, customerTokenStore, eventPublisher, logger, cfg)
-	customerAuth := ProvideCustomerAuthMiddleware(customerAuthService, logger)
+	optionalCartAuth := ProvideOptionalCartAuth(customerAuthService, logger)
 	storeCartDeps := &StoreCartDeps{
-		Config:                 cfg,
-		Logger:                 logger,
-		Handler:                cartHandler,
-		CustomerAuthMiddleware: customerAuth,
+		Config:           cfg,
+		Logger:           logger,
+		Handler:          cartHandler,
+		OptionalCartAuth: optionalCartAuth,
 	}
 	return storeCartDeps, nil
 }
@@ -922,10 +930,10 @@ type StoreCatalogDeps struct {
 
 // StoreCartDeps holds dependencies for the Store Cart Lambda
 type StoreCartDeps struct {
-	Config                 *config.Config
-	Logger                 *logger.Logger
-	Handler                *store.CartHandler
-	CustomerAuthMiddleware *middleware.CustomerAuth
+	Config           *config.Config
+	Logger           *logger.Logger
+	Handler          *store.CartHandler
+	OptionalCartAuth *middleware.OptionalCartAuth
 }
 
 // StoreCheckoutDeps holds dependencies for the Store Checkout Lambda

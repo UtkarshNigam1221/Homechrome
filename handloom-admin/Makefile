@@ -130,6 +130,8 @@ generate-mocks:
 	mockgen -source=internal/domain/notification.go -destination=internal/mocks/notification_mock.go -package=mocks
 	mockgen -source=internal/domain/order_repository.go -destination=internal/mocks/order_repository_mock.go -package=mocks
 	mockgen -source=internal/domain/token_store.go -destination=internal/mocks/token_store_mock.go -package=mocks
+	mockgen -source=internal/domain/store_service.go -destination=internal/mocks/store_service_mock.go -package=mocks
+	mockgen -source=internal/domain/store_repository.go -destination=internal/mocks/store_repository_mock.go -package=mocks
 
 ## Run linter
 lint:

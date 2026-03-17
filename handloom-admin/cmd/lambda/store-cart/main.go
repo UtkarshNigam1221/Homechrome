@@ -29,7 +29,7 @@ func main() {
 	}
 	r := router.NewBaseRouter(routerCfg, deps.Logger, true)
 
-	router.NewStoreCartRouter(r, deps.Handler, deps.CustomerAuthMiddleware)
+	router.NewStoreCartRouter(r, deps.Handler, deps.OptionalCartAuth)
 
 	router.NewLambdaAdapter(r).Start()
 }

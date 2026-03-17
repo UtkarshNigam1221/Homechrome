@@ -25,12 +25,13 @@ type CustomerAuthService interface {
 
 // CartService defines shopping cart operations
 type CartService interface {
-	GetCart(ctx context.Context, customerID string) (*CartWithItems, error)
-	AddItem(ctx context.Context, customerID string, req AddCartItemRequest) (*CartWithItems, error)
-	UpdateItemQuantity(ctx context.Context, customerID, productID string, quantity int) (*CartWithItems, error)
-	RemoveItem(ctx context.Context, customerID, productID string) (*CartWithItems, error)
-	ClearCart(ctx context.Context, customerID string) error
+	GetCart(ctx context.Context, cartOwner string, isGuest bool) (*CartWithItems, error)
+	AddItem(ctx context.Context, cartOwner string, isGuest bool, req AddCartItemRequest) (*CartWithItems, error)
+	UpdateItemQuantity(ctx context.Context, cartOwner string, isGuest bool, productID string, quantity int) (*CartWithItems, error)
+	RemoveItem(ctx context.Context, cartOwner string, isGuest bool, productID string) (*CartWithItems, error)
+	ClearCart(ctx context.Context, cartOwner string) error
 	MergeGuestCart(ctx context.Context, customerID string, items []AddCartItemRequest) (*CartWithItems, error)
+	MergeGuestSession(ctx context.Context, customerID, guestSessionID string) error
 }
 
 // CheckoutService defines checkout operations

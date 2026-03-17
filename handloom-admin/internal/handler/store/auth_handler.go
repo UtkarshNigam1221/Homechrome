@@ -11,20 +11,25 @@ import (
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/internal/middleware"
 	"github.com/handloom/admin/pkg/errors"
+	"github.com/handloom/admin/pkg/logger"
 	"github.com/handloom/admin/pkg/response"
 )
 
 // AuthHandler handles customer authentication requests
 type AuthHandler struct {
 	customerAuthService domain.CustomerAuthService
+	cartService         domain.CartService
 	validation          *middleware.Validation
+	logger              *logger.Logger
 }
 
 // NewAuthHandler creates a new store AuthHandler
-func NewAuthHandler(customerAuthService domain.CustomerAuthService, validation *middleware.Validation) *AuthHandler {
+func NewAuthHandler(customerAuthService domain.CustomerAuthService, cartService domain.CartService, validation *middleware.Validation, logger *logger.Logger) *AuthHandler {
 	return &AuthHandler{
 		customerAuthService: customerAuthService,
+		cartService:         cartService,
 		validation:          validation,
+		logger:              logger,
 	}
 }
 
@@ -48,6 +53,7 @@ func (h *AuthHandler) Routes(authenticate func(http.Handler) http.Handler) chi.R
 }
 
 // cookieSettings returns Secure, SameSite, and Domain values for store auth cookies.
+// IMPORTANT: Must stay in sync with guestCookieSettings() in middleware/optional_cart_auth.go.
 //   - COOKIE_DOMAIN set (custom domain, same-site): Secure + Lax + Domain
 //   - Lambda without custom domain (cross-origin): Secure + None (third-party cookies)
 //   - Local dev: insecure + Lax (Vite proxy, same-origin)
@@ -140,6 +146,25 @@ func (h *AuthHandler) VerifyOTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.setStoreCookies(w, tokens)
+
+	// Merge guest cart if guest_session cookie is present
+	if cookie, err := r.Cookie("guest_session"); err == nil && cookie.Value != "" {
+		if mergeErr := h.cartService.MergeGuestSession(ctx, customer.ID, cookie.Value); mergeErr != nil {
+			h.logger.WithContext(ctx).Warnf("Failed to merge guest cart for customer %s: %v", customer.ID, mergeErr)
+		}
+		// Clear the guest_session cookie
+		secure, sameSite, domain := cookieSettings()
+		http.SetCookie(w, &http.Cookie{
+			Name:     "guest_session",
+			Value:    "",
+			Path:     "/",
+			Domain:   domain,
+			HttpOnly: true,
+			Secure:   secure,
+			SameSite: sameSite,
+			MaxAge:   -1,
+		})
+	}
 
 	response.JSON(w, http.StatusOK, map[string]interface{}{
 		"customer":        customer,

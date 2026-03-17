@@ -7,11 +7,11 @@ import (
 	"github.com/handloom/admin/internal/middleware"
 )
 
-// NewStoreCartRouter creates routes for the store cart service
-// Routes are mounted at /api/v1/store/cart/* with customer auth middleware
-func NewStoreCartRouter(r *chi.Mux, h *store.CartHandler, customerAuth *middleware.CustomerAuth) {
+// NewStoreCartRouter creates routes for the store cart service.
+// Cart CRUD routes use OptionalCartAuth (guest + authenticated access).
+func NewStoreCartRouter(r *chi.Mux, h *store.CartHandler, optionalCartAuth *middleware.OptionalCartAuth) {
 	r.Route("/api/v1/store/cart", func(r chi.Router) {
-		r.Use(customerAuth.Authenticate)
-		r.Mount("/", h.Routes())
+		r.Use(optionalCartAuth.Resolve)
+		r.Mount("/", h.CRUDRoutes())
 	})
 }

@@ -9,7 +9,6 @@ import { useCart } from '@/hooks/useCart';
 import { useScrollDepth } from '@/hooks/useScrollDepth';
 import { track } from '@/lib/analytics';
 import { formatPrice } from '@/lib/utils';
-import { useAuthStore } from '@/stores/auth';
 import { useCartStore } from '@/stores/cart';
 import { Product, ProductImage } from '@/types';
 
@@ -30,7 +29,6 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
   const [quantity, setQuantity] = useState(1);
   const [loading, setLoading] = useState(false);
   const { addItem, updateQuantity, removeItem } = useCart();
-  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const cartQty = useCartStore((s) => s.getQuantity(product.id));
 
   useEffect(() => {
@@ -50,10 +48,6 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
     : 0;
 
   const handleAddToCart = async () => {
-    if (!isAuthenticated) {
-      window.location.href = '/login?redirect=' + encodeURIComponent(`/p/${product.slug}`);
-      return;
-    }
     setLoading(true);
     try {
       await addItem(product.id, quantity);
