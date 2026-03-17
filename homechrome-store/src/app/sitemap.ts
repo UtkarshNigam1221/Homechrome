@@ -1,9 +1,7 @@
 import type { MetadataRoute } from 'next';
 
+import { API_BASE, SITE_URL } from '@/lib/constants';
 import { Category, Product } from '@/types';
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8081';
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://homechrome.lldlab.com';
 
 async function getAllCategories(): Promise<Category[]> {
   try {

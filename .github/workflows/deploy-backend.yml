@@ -18,7 +18,7 @@ permissions:
   contents: read
 
 env:
-  CERT_ARN: arn:aws:acm:us-east-1:163053486005:certificate/a8dca48d-5992-4e6e-94c9-fffc7f3ac447
+  CERT_ARN: arn:aws:acm:us-east-1:163053486005:certificate/4e15c02f-e7ef-48df-8eff-5097eefed2e8
 
 jobs:
   check:

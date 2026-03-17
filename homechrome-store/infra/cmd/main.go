@@ -24,22 +24,23 @@ func main() {
 
 func createEnvironmentStack(app awscdk.App, environment string, env *awscdk.Environment) {
 	certArn := getCertArn(app)
+	baseDomain := getBaseDomain(app)
 	var domainName string
 	if certArn != "" {
 		switch environment {
 		case "prod":
-			domainName = "homechrome.lldlab.com"
+			domainName = baseDomain
 		default:
-			domainName = "dev-store.homechrome.lldlab.com"
+			domainName = "dev-store." + baseDomain
 		}
 	}
 
 	var backendApiUrl string
 	switch environment {
 	case "prod":
-		backendApiUrl = "https://api.homechrome.lldlab.com"
+		backendApiUrl = "https://api." + baseDomain
 	default:
-		backendApiUrl = "https://dev-api.homechrome.lldlab.com"
+		backendApiUrl = "https://dev-api." + baseDomain
 	}
 
 	stacks.NewStorefrontStack(app, "HomechromeStoreStack-"+environment, &stacks.StorefrontStackProps{
@@ -77,6 +78,16 @@ func getCertArn(app constructs.Construct) string {
 		return arn
 	}
 	return ""
+}
+
+func getBaseDomain(app constructs.Construct) string {
+	if d := app.Node().TryGetContext(jsii.String("baseDomain")); d != nil {
+		return d.(string)
+	}
+	if d := os.Getenv("BASE_DOMAIN"); d != "" {
+		return d
+	}
+	return "homechrome.in"
 }
 
 func getAWSEnv() *awscdk.Environment {

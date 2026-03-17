@@ -43,15 +43,16 @@ func createEnvironmentStack(app awscdk.App, environment string, env *awscdk.Envi
 
 	// Custom domain config from CDK context
 	certArn := getCertArn(app)
+	baseDomain := getBaseDomain(app)
 	var domainName string
 	if certArn != "" {
 		// Custom domain requires CloudFront
 		useCDN = true
 		switch environment {
 		case "prod":
-			domainName = "admin.homechrome.lldlab.com"
+			domainName = "admin." + baseDomain
 		default:
-			domainName = "dev.homechrome.lldlab.com"
+			domainName = "dev-admin." + baseDomain
 		}
 	}
 
@@ -142,6 +143,16 @@ func getCertArn(app constructs.Construct) string {
 		return arn
 	}
 	return ""
+}
+
+func getBaseDomain(app constructs.Construct) string {
+	if d := app.Node().TryGetContext(jsii.String("baseDomain")); d != nil {
+		return d.(string)
+	}
+	if d := os.Getenv("BASE_DOMAIN"); d != "" {
+		return d
+	}
+	return "homechrome.in"
 }
 
 func getAWSEnv() *awscdk.Environment {

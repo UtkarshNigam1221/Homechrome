@@ -13,8 +13,8 @@
 	init-s3 deploy-local redeploy-local teardown-local \
 	logs logs-lambda
 
-# ACM certificate ARN for custom domain (*.lldlab.com) - must be in us-east-1
-CERT_ARN ?= arn:aws:acm:us-east-1:163053486005:certificate/a8dca48d-5992-4e6e-94c9-fffc7f3ac447
+# ACM certificate ARN for custom domain (*.homechrome.in) - must be in us-east-1
+CERT_ARN ?= arn:aws:acm:us-east-1:163053486005:certificate/4e15c02f-e7ef-48df-8eff-5097eefed2e8
 
 # Go parameters
 GOCMD=go

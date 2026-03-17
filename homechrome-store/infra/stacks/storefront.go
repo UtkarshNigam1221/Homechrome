@@ -20,7 +20,7 @@ type StorefrontStackProps struct {
 	Environment   string
 	DomainName    string
 	CertArn       string
-	BackendApiUrl string // e.g. https://dev-api.homechrome.lldlab.com
+	BackendApiUrl string // e.g. https://dev-api.homechrome.in
 }
 
 type StorefrontStack struct {
