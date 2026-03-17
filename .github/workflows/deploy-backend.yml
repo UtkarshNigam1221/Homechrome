@@ -98,4 +98,5 @@ jobs:
           set -a && . ./.env.deploy && set +a
           cd infra && cdk deploy --all --require-approval never \
             -c environment=${{ inputs.environment }} \
-            -c certArn=${{ env.CERT_ARN }}
+            -c certArn=${{ env.CERT_ARN }} \
+            -c postgresDsn="${{ secrets.POSTGRES_DSN }}"
