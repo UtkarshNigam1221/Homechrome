@@ -90,7 +90,7 @@ The Handloom Admin Portal is built as a **serverless microservices architecture*
 
 ### Microservices Architecture
 
-The application is decomposed into **25 Lambda services** (12 admin + 9 B2C store + 4 event workers), each responsible for a specific domain:
+The application is decomposed into **26 Lambda services** (12 admin + 9 B2C store + 4 event workers), each responsible for a specific domain:
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────────────┐
@@ -207,7 +207,7 @@ Infrastructure is defined as code using **AWS CDK for Go**:
 │  │      │                                                                        │  │
 │  │      ├── DatabaseStack (stacks/database.go)                                   │  │
 │  │      │     ├── handloom-core-{env}          (DynamoDB, GSIs, PITR)           │  │
-│  │      │     ├── PostgreSQL RDS              (Catalog: categories, products)  │  │
+│  │      │     ├── Neon PostgreSQL             (Catalog: categories, products)  │  │
 │  │      │     ├── handloom-orders-{env}        (DynamoDB, GSIs, PITR)          │  │
 │  │      │     ├── handloom-sessions-{env}      (DynamoDB, TTL)                 │  │
 │  │      │     ├── handloom-audit-{env}         (DynamoDB, GSIs, 90d TTL)       │  │
@@ -221,7 +221,7 @@ Infrastructure is defined as code using **AWS CDK for Go**:
 │  │      │                                                                        │  │
 │  │      ├── APIStack (stacks/api.go)                                              │  │
 │  │      │     ├── JWT Secret (SSM Parameter)                                     │  │
-│  │      │     ├── 25 Lambda Functions (ARM64, Go runtime)                        │  │
+│  │      │     ├── 26 Lambda Functions (ARM64, Go runtime)                        │  │
 │  │      │     │     └── IAM Roles with least-privilege access                    │  │
 │  │      │     └── API Gateway (REST API)                                         │  │
 │  │      │           ├── CORS configuration                                       │  │
@@ -462,7 +462,7 @@ We're using a **hybrid multi-table design** that groups related entities togethe
 
 ### Data Flow Architecture (Detailed View)
 
-> **Note:** This section provides additional detail on data flows. See the [System Architecture Overview](#system-architecture-overview) above for the complete microservices architecture with all 25 Lambda services.
+> **Note:** This section provides additional detail on data flows. See the [System Architecture Overview](#system-architecture-overview) above for the complete microservices architecture with all 26 Lambda services.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -553,11 +553,11 @@ We're using a **hybrid multi-table design** that groups related entities togethe
 
 #### 2. Lambda Functions
 
-> See [Lambda Service Details](#lambda-service-details) above for the complete list of 25 Lambda services (12 admin + 9 store + 4 workers).
+> See [Lambda Service Details](#lambda-service-details) above for the complete list of 26 Lambda services (12 admin + 9 store + 4 workers).
 
 #### 3. Database Design (Hybrid)
 
-The system uses a hybrid database architecture: **DynamoDB** for core/transactional data and **PostgreSQL (RDS)** for catalog data requiring relational queries and full-text search.
+The system uses a hybrid database architecture: **DynamoDB** for core/transactional data and **Neon PostgreSQL** for catalog data requiring relational queries and full-text search.
 
 **DynamoDB Tables (7):**
 
@@ -593,7 +593,7 @@ Catalog data (categories, products, inventory) lives in PostgreSQL for relationa
 
 **PostgreSQL Key Patterns:**
 
-- **Connection pooling**: `pgxpool` (jackc/pgx v5). Local dev uses `POSTGRES_DSN` directly; Lambda resolves credentials from AWS Secrets Manager (`RDS_SECRET_ARN`) and builds the DSN at startup.
+- **Connection pooling**: `pgxpool` (jackc/pgx v5). Local dev uses `POSTGRES_DSN` directly; Lambda uses `NEON_CONNECTION_STRING` (Neon PostgreSQL with connection pooling).
 - **Full-text search**: GIN trigram index (`pg_trgm` extension) on `products.name` for fast `ILIKE '%term%'` queries without full table scans.
 - **Dynamic attribute filtering**: `EXISTS` subqueries on `product_attribute_values` table (EAV pattern). Hardcoded fields (material, color) also stored as attribute rows for uniform filtering across any attribute combination.
 - **Inventory row locking**: `SELECT ... FOR UPDATE` within transactions to prevent race conditions on concurrent stock changes. Every mutation creates an `inventory_transaction` audit record.
@@ -6357,7 +6357,7 @@ provider:
   name: aws
   runtime: provided.al2
   architecture: arm64
-  region: ap-south-1
+  region: ap-southeast-1
   stage: ${opt:stage, 'dev'}
 
   environment:

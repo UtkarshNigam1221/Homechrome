@@ -7,7 +7,6 @@ import { useState } from 'react';
 import Button from '@/components/common/Button';
 import { useCart } from '@/hooks/useCart';
 import { formatPrice } from '@/lib/utils';
-import { useAuthStore } from '@/stores/auth';
 import { useCartStore } from '@/stores/cart';
 import { Product } from '@/types';
 
@@ -18,7 +17,6 @@ interface ProductCardProps {
 export default function ProductCard({ product }: ProductCardProps) {
   const [loading, setLoading] = useState(false);
   const { addItem, updateQuantity, removeItem } = useCart();
-  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const cartQty = useCartStore((s) => s.getQuantity(product.id));
 
   const primaryImage = product.images?.find((img) => img.is_primary) || product.images?.[0];
@@ -30,10 +28,6 @@ export default function ProductCard({ product }: ProductCardProps) {
   const handleAddToCart = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (!isAuthenticated) {
-      window.location.href = '/login?redirect=' + encodeURIComponent(window.location.pathname);
-      return;
-    }
     setLoading(true);
     try {
       await addItem(product.id, 1);

@@ -9,11 +9,11 @@ Automated schema migration system for the PostgreSQL catalog database. Migration
 ```
 cdk deploy
   │
-  ├─ 1. RDS instance created/updated
+  ├─ 1. Neon PostgreSQL instance created/updated
   │
-  ├─ 2. CDK Trigger invokes migrator Lambda (after RDS is ready)
+  ├─ 2. CDK Trigger invokes migrator Lambda (after Neon PostgreSQL is ready)
   │     │
-  │     ├─ Connect to RDS (credentials from Secrets Manager)
+  │     ├─ Connect to Neon PostgreSQL (via POSTGRES_DSN)
   │     ├─ Acquire pg_advisory_lock (prevents concurrent runs)
   │     ├─ Create schema_migrations table (if not exists)
   │     ├─ Read embedded SQL files, skip already-applied
@@ -91,8 +91,8 @@ SELECT * FROM schema_migrations ORDER BY filename;
 |-----------|------|---------|
 | SQL files | `migrations/*.sql` | Raw migration SQL |
 | Embed | `migrations/embed.go` | `go:embed *.sql` exposes `migrations.FS` |
-| Lambda | `cmd/lambda/migrator/main.go` | Connects to RDS, runs unapplied migrations |
-| CDK Trigger | `infra/stacks/database.go` | Invokes migrator after RDS is ready |
+| Lambda | `cmd/lambda/migrator/main.go` | Connects to Neon PostgreSQL, runs unapplied migrations |
+| CDK Trigger | `infra/stacks/database.go` | Invokes migrator after Neon PostgreSQL is ready |
 
 ### Concurrency Safety
 
@@ -100,7 +100,7 @@ The migrator acquires a PostgreSQL advisory lock (`pg_advisory_lock(7248301945)`
 
 ### CDK Trigger Behavior
 
-- **`ExecuteAfter: catalogDB`** — waits for the RDS instance to be available
+- **`ExecuteAfter: catalogDB`** — waits for the Neon PostgreSQL instance to be available
 - **`ExecuteOnHandlerChange: true`** — re-invokes when the Lambda code changes (new migration files produce a new binary hash, triggering a re-run)
 
 ---
@@ -109,17 +109,14 @@ The migrator acquires a PostgreSQL advisory lock (`pg_advisory_lock(7248301945)`
 
 ```bash
 # Environment variables (set by CDK)
-RDS_SECRET_ARN   # Secrets Manager ARN for DB credentials
-RDS_ENDPOINT     # RDS instance endpoint
-RDS_PORT=5432
-RDS_DATABASE=handloom
+POSTGRES_DSN     # Neon PostgreSQL connection string
 APP_ENV          # dev | prod
 ```
 
 - Runtime: `provided.al2023` (ARM64)
 - Memory: 128 MB
 - Timeout: 60 seconds
-- IAM: Read access to `CatalogDBSecret`
+- Connects via `POSTGRES_DSN` environment variable
 
 ---
 

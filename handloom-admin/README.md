@@ -4,7 +4,7 @@ A serverless backend for the Homechrome handloom e-commerce platform. Powers bot
 
 ## Architecture
 
-The application is built as **25 AWS Lambda services** (12 admin + 9 B2C store + 4 event workers), designed for high availability, scalability, and cost efficiency.
+The application is built as **26 AWS Lambda services** (12 admin + 9 B2C store + 4 event workers + 1 migrator), designed for high availability, scalability, and cost efficiency.
 
 ### Admin Microservices
 
@@ -66,7 +66,7 @@ Domain events are published to an SNS topic and fanned out to SQS queues. Each w
 
 ## Tech Stack
 
-- **Language**: Go 1.24+
+- **Language**: Go 1.25+
 - **Router**: Chi
 - **Database**: DynamoDB (7 tables) + PostgreSQL (catalog data)
 - **Infrastructure**: AWS CDK (Go)
@@ -81,7 +81,7 @@ Domain events are published to an SNS topic and fanned out to SQS queues. Each w
 .
 ├── cmd/
 │   ├── api/                    # Local development server entry point
-│   └── lambda/                 # Lambda entry points (25 services)
+│   └── lambda/                 # Lambda entry points (26 services)
 │       ├── auth/               # Admin services (12)
 │       ├── user/
 │       ├── catalog/
@@ -145,7 +145,7 @@ Domain events are published to an SNS topic and fanned out to SQS queues. Each w
 
 ### Prerequisites
 
-- Go 1.24+
+- Go 1.25+
 - Docker & Docker Compose
 - AWS CLI v2 (for LocalStack commands)
 - AWS CDK CLI (for deployment)
@@ -296,7 +296,7 @@ Key environment variables:
 - `APP_DEBUG` - Enable debug logging
 - `SERVER_PORT` - API server port (default: 8081)
 - `AWS_ENDPOINT` - LocalStack endpoint (set for local, empty for AWS)
-- `AWS_REGION` - AWS region (ap-south-1)
+- `AWS_REGION` - AWS region (ap-southeast-1)
 - `JWT_SECRET_KEY` - Admin JWT signing key (change in production!)
 - `CUSTOMER_JWT_SECRET` - Customer JWT signing key (B2C store auth)
 - `PHONEPE_*` - PhonePe payment gateway config
@@ -442,7 +442,6 @@ make test-integration
 | Table | Purpose | Entities |
 |-------|---------|----------|
 | `handloom-core` | Core business data | Users, Pricing Rules, Coupons |
-| `handloom-catalog` | Product catalog (migrated to PostgreSQL) | Categories, Products, Inventory |
 | `handloom-orders` | Order management | Orders, OrderItems, StatusHistory, Customers, PriceQuotes |
 | `handloom-sessions` | Auth sessions (TTL-based) | OTPs, Refresh Tokens |
 | `handloom-audit` | Compliance logs (90-day TTL) | AuditLogs |
@@ -532,13 +531,13 @@ make setup-local
 
 ```bash
 # Check if Lambdas are deployed
-aws --endpoint-url=http://localhost:4566 --region ap-south-1 lambda list-functions
+aws --endpoint-url=http://localhost:4566 --region ap-southeast-1 lambda list-functions
 
 # Check API Gateway
-aws --endpoint-url=http://localhost:4566 --region ap-south-1 apigateway get-rest-apis
+aws --endpoint-url=http://localhost:4566 --region ap-southeast-1 apigateway get-rest-apis
 
 # View Lambda logs
-aws --endpoint-url=http://localhost:4566 --region ap-south-1 logs describe-log-groups
+aws --endpoint-url=http://localhost:4566 --region ap-southeast-1 logs describe-log-groups
 ```
 
 ### View Database Data

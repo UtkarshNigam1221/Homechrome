@@ -5,7 +5,7 @@
 The Handloom Admin system uses a **hybrid database architecture**:
 
 - **Amazon DynamoDB** (7 tables) — for core data, orders, sessions, audit, analytics, notifications, and events
-- **PostgreSQL** (RDS) — for catalog data (categories, products, inventory) requiring relational queries and full-text search
+- **Neon PostgreSQL** — for catalog data (categories, products, inventory) requiring relational queries and full-text search
 
 ## Table Architecture
 
@@ -44,10 +44,10 @@ DYNAMODB_EVENTS_TABLE=handloom-events
 
 # PostgreSQL (Catalog)
 POSTGRES_DSN=postgres://postgres:postgres@localhost:5432/handloom?sslmode=disable
-# Or for production (Lambda): RDS_SECRET_ARN, RDS_ENDPOINT, RDS_PORT, RDS_DATABASE
+# Or for production (Lambda): NEON_CONNECTION_STRING
 
 # AWS Configuration
-AWS_REGION=ap-south-1
+AWS_REGION=ap-southeast-1
 AWS_ACCESS_KEY_ID=<your-access-key>
 AWS_SECRET_ACCESS_KEY=<your-secret-key>
 

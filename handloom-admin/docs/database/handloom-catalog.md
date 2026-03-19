@@ -1,6 +1,6 @@
 # Catalog Data (PostgreSQL)
 
-Catalog data (categories, products, inventory) lives in **PostgreSQL** (RDS in production, Docker locally). This provides relational querying, ACID transactions with row-level locking, full-text search via tsvector with ts_rank ordering, and normalized attribute filtering.
+Catalog data (categories, products, inventory) lives in **PostgreSQL** (Neon in production, Docker locally). This provides relational querying, ACID transactions with row-level locking, full-text search via tsvector with ts_rank ordering, and normalized attribute filtering.
 
 Schema: `migrations/*.sql` (auto-applied by migrator Lambda on `cdk deploy`; locally via Docker init scripts). See [migrations.md](./migrations.md).
 Repository: `internal/repository/postgres/`
@@ -15,13 +15,10 @@ Cache: `internal/cache/` (in-process TTL-based via go-cache)
 POSTGRES_DSN=postgres://handloom:handloom@localhost:5432/handloom?sslmode=disable
 
 # Production / Lambda (credentials from Secrets Manager)
-RDS_SECRET_ARN=arn:aws:secretsmanager:ap-south-1:...   # JSON: {username, password}
-RDS_ENDPOINT=handloom-db.xxxxx.ap-south-1.rds.amazonaws.com
-RDS_PORT=5432
-RDS_DATABASE=handloom
+NEON_CONNECTION_STRING=postgres://user:pass@ep-xxx.ap-southeast-1.aws.neon.tech/handloom?sslmode=require
 ```
 
-Connection pool: `pgxpool` (jackc/pgx v5). Local uses DSN directly; Lambda resolves credentials from Secrets Manager and builds `postgres://user:pass@endpoint:port/db?sslmode=require`.
+Connection pool: `pgxpool` (jackc/pgx v5). Local uses DSN directly; Lambda uses `NEON_CONNECTION_STRING` (Neon PostgreSQL with connection pooling via PgBouncer).
 
 ---
 

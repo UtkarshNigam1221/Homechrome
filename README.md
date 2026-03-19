@@ -4,7 +4,7 @@ Handloom e-commerce platform. Monorepo with three independently deployable proje
 
 | Directory | Stack | Purpose |
 |-----------|-------|---------|
-| `handloom-admin/` | Go 1.24, Chi, DynamoDB + PostgreSQL, AWS Lambda | Backend API (12 admin + 9 store + 4 worker Lambdas) |
+| `handloom-admin/` | Go 1.25, Chi, DynamoDB + PostgreSQL, AWS Lambda | Backend API (12 admin + 9 store + 4 worker Lambdas) |
 | `handloom-admin-frontend/` | React 19, TypeScript, Vite 7, Tailwind CSS 4 | Admin dashboard SPA |
 | `homechrome-store/` | Next.js 16, React 19, Tailwind CSS 4 | B2C customer storefront |
 
@@ -12,8 +12,8 @@ All projects deploy to AWS via CDK (written in Go). Domain: `*.homechrome.in`.
 
 ## Prerequisites
 
-- **Go 1.24+**
-- **Node.js 20+** and npm
+- **Go 1.25+**
+- **Node.js 22+** and npm
 - **Docker** and Docker Compose
 - **AWS CLI v2** (for LocalStack commands)
 - **awscli-local** (for LocalStack shortcuts: `pip install awscli-local`)
@@ -231,7 +231,7 @@ npm run start             # Start production server
 ├── handloom-admin/                 # Backend (Go)
 │   ├── cmd/
 │   │   ├── api/                    # Local monolith entry point
-│   │   └── lambda/                 # Lambda entry points (25 services)
+│   │   └── lambda/                 # Lambda entry points (26 services)
 │   │       ├── auth/               # Admin services (12)
 │   │       ├── user/
 │   │       ├── catalog/
@@ -349,7 +349,7 @@ domain/ (entities + interfaces) <- handler/ -> service/ -> repository/dynamodb/
 - Backend CDK: 4 stacks (DatabaseStack, StorageStack, APIStack, EventStack)
 - Frontend CDK: S3 static hosting (dev) or CloudFront + S3 (prod)
 - All Lambdas: ARM64, `provided.al2023`, 128MB (dev) / 256MB (prod)
-- Region: `ap-south-1`
+- Region: `ap-southeast-1`
 
 ## Troubleshooting
 
@@ -373,18 +373,18 @@ From the CLI:
 
 ```bash
 # List all tables
-aws --endpoint-url=http://localhost:4566 --region ap-south-1 dynamodb list-tables
+aws --endpoint-url=http://localhost:4566 --region ap-southeast-1 dynamodb list-tables
 
 # Scan a table
-aws --endpoint-url=http://localhost:4566 --region ap-south-1 dynamodb scan --table-name handloom-core --max-items 10
+aws --endpoint-url=http://localhost:4566 --region ap-southeast-1 dynamodb scan --table-name handloom-core --max-items 10
 
 # Get a specific item
-aws --endpoint-url=http://localhost:4566 --region ap-south-1 dynamodb get-item \
+aws --endpoint-url=http://localhost:4566 --region ap-southeast-1 dynamodb get-item \
   --table-name handloom-core \
   --key '{"PK": {"S": "USER#<id>"}, "SK": {"S": "METADATA"}}'
 
 # Count items in a table
-aws --endpoint-url=http://localhost:4566 --region ap-south-1 dynamodb scan --table-name handloom-orders --select COUNT
+aws --endpoint-url=http://localhost:4566 --region ap-southeast-1 dynamodb scan --table-name handloom-orders --select COUNT
 ```
 
 **PostgreSQL (catalog data)** — Browse tables in **pgAdmin** at http://localhost:5050. On first use, register a server: host `postgres`, port `5432`, user/password `handloom`. Then navigate to Servers > handloom > Databases > handloom > Schemas > public > Tables, right-click a table > View/Edit Data > All Rows.
@@ -422,10 +422,10 @@ Make sure you're using the right dev mode:
 
 ```bash
 # Check deployed Lambdas
-aws --endpoint-url=http://localhost:4566 --region ap-south-1 lambda list-functions
+aws --endpoint-url=http://localhost:4566 --region ap-southeast-1 lambda list-functions
 
 # Check API Gateway
-aws --endpoint-url=http://localhost:4566 --region ap-south-1 apigateway get-rest-apis
+aws --endpoint-url=http://localhost:4566 --region ap-southeast-1 apigateway get-rest-apis
 ```
 
 ### Reset everything

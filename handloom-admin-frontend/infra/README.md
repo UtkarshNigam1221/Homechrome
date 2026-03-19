@@ -130,7 +130,7 @@ To use a custom domain:
 
 ```bash
 cdk deploy -c environment=prod \
-  -c domainName=admin.handloom.com \
+  -c domainName=admin.homechrome.in \
   -c certArn=arn:aws:acm:us-east-1:123456789:certificate/xxx
 ```
 

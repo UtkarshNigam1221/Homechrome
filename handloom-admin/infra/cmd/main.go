@@ -67,20 +67,21 @@ func createEnvironmentStacks(app awscdk.App, environment string, env *awscdk.Env
 		Environment: environment,
 	})
 
-	// Event stack (depends on database)
-	eventStack := stacks.NewEventStack(app, "HandloomEventStack-"+environment, &stacks.EventStackProps{
-		StackProps: awscdk.StackProps{
-			Env:         env,
-			Description: jsii.String("Handloom Admin - Event-driven async infrastructure (" + environment + ")"),
-			Tags: &map[string]*string{
-				"Environment": jsii.String(environment),
-				"Project":     jsii.String("handloom-admin"),
-				"ManagedBy":   jsii.String("cdk"),
-			},
-		},
-		Environment:   environment,
-		DatabaseStack: databaseStack,
-	})
+	// DISABLED: Event stack (SNS + SQS + 4 worker Lambdas + EventBridge rule)
+	// Uncomment below to re-enable event-driven workers.
+	// eventStack := stacks.NewEventStack(app, "HandloomEventStack-"+environment, &stacks.EventStackProps{
+	// 	StackProps: awscdk.StackProps{
+	// 		Env:         env,
+	// 		Description: jsii.String("Handloom Admin - Event-driven async infrastructure (" + environment + ")"),
+	// 		Tags: &map[string]*string{
+	// 			"Environment": jsii.String(environment),
+	// 			"Project":     jsii.String("handloom-admin"),
+	// 			"ManagedBy":   jsii.String("cdk"),
+	// 		},
+	// 	},
+	// 	Environment:   environment,
+	// 	DatabaseStack: databaseStack,
+	// })
 
 	// Compute custom domain config from CDK context
 	certArn := getCertArn(app)
@@ -111,7 +112,7 @@ func createEnvironmentStacks(app awscdk.App, environment string, env *awscdk.Env
 		Environment:    environment,
 		DatabaseStack:  databaseStack,
 		StorageStack:   storageStack,
-		EventStack:     eventStack,
+		EventStack:     nil, // DISABLED: pass eventStack here when re-enabling
 		BaseDomain:     baseDomain,
 		DomainName:     domainName,
 		FrontendOrigin: frontendOrigin,

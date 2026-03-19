@@ -6,8 +6,8 @@ This guide walks you through setting up all three projects locally so they can c
 
 | Tool | Version | Install |
 |------|---------|---------|
-| **Go** | 1.24+ | [go.dev/dl](https://go.dev/dl/) |
-| **Node.js** | 18+ (recommended 22.x) | [nodejs.org](https://nodejs.org/) or `nvm install 22` |
+| **Go** | 1.25+ | [go.dev/dl](https://go.dev/dl/) |
+| **Node.js** | 22+ | [nodejs.org](https://nodejs.org/) or `nvm install 22` |
 | **npm** | 10+ | Comes with Node.js |
 | **Docker & Docker Compose** | Latest | [docker.com](https://www.docker.com/) |
 | **AWS CLI v2** | Latest | `brew install awscli` |

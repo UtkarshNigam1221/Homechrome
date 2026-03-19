@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Handloom Admin is a Go serverless backend for the Homechrome handloom e-commerce platform. It powers both the admin dashboard and the B2C customer storefront. It runs as 26 Lambda services in production (12 admin + 9 store + 4 event workers + 1 migrator) and a single monolithic server locally (port 8081). Go module: `github.com/handloom/admin`, Go 1.24.
+Handloom Admin is a Go serverless backend for the Homechrome handloom e-commerce platform. It powers both the admin dashboard and the B2C customer storefront. It runs as 26 Lambda services in production (12 admin + 9 store + 4 event workers + 1 migrator) and a single monolithic server locally (port 8081). Go module: `github.com/handloom/admin`, Go 1.25.
 
 ## Common Commands
 
@@ -80,7 +80,7 @@ domain/ (entities + interfaces) ← handler/ → service/ → repository/dynamod
 - `pkg/response/` — standard JSON envelope: `{success, data, meta}` or `{success, error: {code, message}}`
 
 ### Database Design
-Hybrid storage: DynamoDB (7 tables) for core/transactional data + PostgreSQL (RDS) for catalog data.
+Hybrid storage: DynamoDB (7 tables) for core/transactional data + Neon PostgreSQL for catalog data.
 
 #### DynamoDB Tables
 All using PK/SK composite keys with GSIs:
@@ -97,9 +97,9 @@ All using PK/SK composite keys with GSIs:
 Key patterns: `PK=USER#<id> SK=METADATA`, etc. Prices stored in **paise** (1 INR = 100 paise). Pagination is cursor-based (base64-encoded DynamoDB `ExclusiveStartKey`).
 
 #### PostgreSQL (Catalog)
-Categories, products, inventory stored in PostgreSQL (RDS). Schema files in `migrations/*.sql`, auto-applied by the migrator Lambda on `cdk deploy` (see below). Locally, Docker applies `001_catalog_schema.sql` on first start. Repository implementations in `internal/repository/postgres/`.
+Categories, products, inventory stored in Neon PostgreSQL. Schema files in `migrations/*.sql`, auto-applied by the migrator Lambda on `cdk deploy` (see below). Locally, Docker applies `001_catalog_schema.sql` on first start. Repository implementations in `internal/repository/postgres/`.
 
-**Config:** `POSTGRES_DSN` (local dev) or `RDS_SECRET_ARN` + `RDS_ENDPOINT` + `RDS_PORT` + `RDS_DATABASE` (Lambda — credentials resolved from Secrets Manager). Connection pool: `pgxpool` (jackc/pgx v5).
+**Config:** `POSTGRES_DSN` (local dev) or `NEON_CONNECTION_STRING` (Lambda — Neon PostgreSQL connection string). Connection pool: `pgxpool` (jackc/pgx v5).
 
 **Tables:** `categories`, `category_attributes`, `category_attribute_options`, `products`, `product_attribute_values`, `product_images`, `inventory`, `inventory_transactions`
 
@@ -162,8 +162,8 @@ Mounted at `/api/v1/store/*` in the monolith (`cmd/api/main.go`):
 
 ### Schema Migrations
 - SQL files in `migrations/` are embedded via `go:embed` (`migrations/embed.go`) into the migrator Lambda
-- `cmd/lambda/migrator/main.go` — connects to RDS, creates `schema_migrations` tracking table, applies unapplied `.sql` files in filename order, each in a transaction
-- CDK `triggers.Trigger` in `infra/stacks/database.go` invokes the migrator after RDS is ready, re-runs when migration files change
+- `cmd/lambda/migrator/main.go` — connects to Neon PostgreSQL, creates `schema_migrations` tracking table, applies unapplied `.sql` files in filename order, each in a transaction
+- CDK `triggers.Trigger` in `infra/stacks/database.go` invokes the migrator after Neon PostgreSQL is ready, re-runs when migration files change
 - Uses `pg_advisory_lock` for concurrency safety
 - Migration failure causes CDK deployment rollback
 - To add a migration: create `migrations/NNN_description.sql`, then `make cdk-deploy-dev`
