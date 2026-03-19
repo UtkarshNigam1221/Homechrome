@@ -12,15 +12,13 @@ import (
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/internal/mocks"
 	"github.com/handloom/admin/pkg/errors"
-	"github.com/handloom/admin/pkg/logger"
 )
 
 func newTestReportService(ctrl *gomock.Controller) (*ReportService, *mocks.MockReportRepository) {
 	mockReportRepo := mocks.NewMockReportRepository(ctrl)
-	log := logger.NewNoop()
 
 	// Pass nil for concrete service pointers - they are only used in processReport (async goroutine)
-	service := NewReportService(mockReportRepo, nil, nil, nil, nil, nil, log)
+	service := NewReportService(mockReportRepo, nil, nil, nil, nil, nil)
 
 	return service, mockReportRepo
 }

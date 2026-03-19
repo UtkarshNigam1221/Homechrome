@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	"log/slog"
 	"os"
 
 	"github.com/go-chi/chi/v5"
@@ -15,16 +16,16 @@ import (
 	"github.com/handloom/admin/internal/router"
 	"github.com/handloom/admin/internal/service"
 	"github.com/handloom/admin/internal/validator"
-	"github.com/handloom/admin/pkg/logger"
+	"github.com/handloom/admin/pkg/slogx"
 )
 
 func main() {
 	// Load configuration
 	cfg := config.Load()
 
-	// Initialize logger
-	log := logger.New(cfg.App.Debug)
-	log.Info("Starting Pricing Lambda")
+	// Initialize structured logger
+	slogx.Setup(cfg.App.Debug)
+	slog.Info("Starting Pricing Lambda")
 
 	// Initialize context
 	ctx := context.Background()
@@ -32,13 +33,15 @@ func main() {
 	// Initialize DynamoDB client
 	dbClient, err := dynamodb.NewClient(ctx, cfg)
 	if err != nil {
-		log.Fatalf("Failed to initialize DynamoDB client: %v", err)
+		slog.Error("Failed to initialize DynamoDB client", "error", err)
+		os.Exit(1)
 	}
 
 	// Initialize PostgreSQL pool for catalog data
 	pgPool, err := postgres.NewPool(ctx, &cfg.Postgres)
 	if err != nil {
-		log.Fatalf("Failed to initialize PostgreSQL pool: %v", err)
+		slog.Error("Failed to initialize PostgreSQL pool", "error", err)
+		os.Exit(1)
 	}
 	defer pgPool.Close()
 
@@ -54,7 +57,6 @@ func main() {
 	authService := service.NewAuthService(
 		userRepo,
 		tokenStore,
-		log,
 		cfg.JWT.SecretKey,
 		cfg.JWT.AccessTokenDuration,
 		cfg.JWT.RefreshTokenDuration,
@@ -65,7 +67,6 @@ func main() {
 		priceQuoteRepo,
 		categoryRepo,
 		productRepo,
-		log,
 		cfg.App.QuoteValidityHrs,
 	)
 
@@ -74,17 +75,17 @@ func main() {
 	validation := middleware.NewValidation(v, middleware.ValidationConfig{})
 
 	// Initialize handler
-	pricingHandler := handler.NewPricingHandler(pricingService, log, validation)
+	pricingHandler := handler.NewPricingHandler(pricingService, validation)
 
 	// Initialize auth middleware
-	authMiddleware := middleware.NewAuth(authService, log)
+	authMiddleware := middleware.NewAuth(authService)
 
 	// Create router
 	routerCfg := router.Config{
 		AllowedOrigins: getAllowedOrigins(),
 		Debug:          cfg.App.Debug,
 	}
-	r := router.NewBaseRouter(routerCfg, log, true)
+	r := router.NewBaseRouter(routerCfg, true)
 
 	// Public pricing routes (no auth required) - for B2C
 	r.Route("/api/v1/pricing", func(r chi.Router) {

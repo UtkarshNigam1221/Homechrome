@@ -9,22 +9,19 @@ import (
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/internal/middleware"
 	"github.com/handloom/admin/pkg/errors"
-	"github.com/handloom/admin/pkg/logger"
 	"github.com/handloom/admin/pkg/response"
 )
 
 // UserHandler handles user-related requests
 type UserHandler struct {
 	userService domain.UserService
-	logger      *logger.Logger
 	validation  *middleware.Validation
 }
 
 // NewUserHandler creates a new UserHandler
-func NewUserHandler(userService domain.UserService, logger *logger.Logger, validation *middleware.Validation) *UserHandler {
+func NewUserHandler(userService domain.UserService, validation *middleware.Validation) *UserHandler {
 	return &UserHandler{
 		userService: userService,
-		logger:      logger,
 		validation:  validation,
 	}
 }

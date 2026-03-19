@@ -11,7 +11,6 @@ import (
 	"github.com/go-chi/cors"
 
 	"github.com/handloom/admin/internal/middleware"
-	"github.com/handloom/admin/pkg/logger"
 )
 
 // Config contains router configuration
@@ -22,13 +21,13 @@ type Config struct {
 
 // NewBaseRouter creates a base router with common middleware
 // Set addHealthCheck to true to add the /health endpoint (for unauthenticated routers)
-func NewBaseRouter(cfg Config, log *logger.Logger, addHealthCheck bool) *chi.Mux {
+func NewBaseRouter(cfg Config, addHealthCheck bool) *chi.Mux {
 	r := chi.NewRouter()
 
 	// Global middleware
 	r.Use(middleware.RequestID)
-	r.Use(middleware.Logger(log))
-	r.Use(middleware.Recoverer(log))
+	r.Use(middleware.Logger())
+	r.Use(middleware.Recoverer())
 	r.Use(chimiddleware.RealIP)
 
 	// Skip compression in Lambda — the gzipped body corrupts in the
@@ -63,9 +62,9 @@ func NewBaseRouter(cfg Config, log *logger.Logger, addHealthCheck bool) *chi.Mux
 }
 
 // NewAuthenticatedRouter creates a router that requires authentication
-func NewAuthenticatedRouter(cfg Config, log *logger.Logger, authMiddleware *middleware.Auth) *chi.Mux {
+func NewAuthenticatedRouter(cfg Config, authMiddleware *middleware.Auth) *chi.Mux {
 	// Don't add health check yet - we need to add auth middleware first
-	r := NewBaseRouter(cfg, log, false)
+	r := NewBaseRouter(cfg, false)
 
 	// Apply auth middleware to all routes
 	r.Use(authMiddleware.Authenticate)

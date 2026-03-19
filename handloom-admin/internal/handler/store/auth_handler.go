@@ -2,6 +2,7 @@
 package store
 
 import (
+	"log/slog"
 	"net/http"
 	"os"
 	"time"
@@ -11,7 +12,6 @@ import (
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/internal/middleware"
 	"github.com/handloom/admin/pkg/errors"
-	"github.com/handloom/admin/pkg/logger"
 	"github.com/handloom/admin/pkg/response"
 )
 
@@ -20,16 +20,14 @@ type AuthHandler struct {
 	customerAuthService domain.CustomerAuthService
 	cartService         domain.CartService
 	validation          *middleware.Validation
-	logger              *logger.Logger
 }
 
 // NewAuthHandler creates a new store AuthHandler
-func NewAuthHandler(customerAuthService domain.CustomerAuthService, cartService domain.CartService, validation *middleware.Validation, logger *logger.Logger) *AuthHandler {
+func NewAuthHandler(customerAuthService domain.CustomerAuthService, cartService domain.CartService, validation *middleware.Validation) *AuthHandler {
 	return &AuthHandler{
 		customerAuthService: customerAuthService,
 		cartService:         cartService,
 		validation:          validation,
-		logger:              logger,
 	}
 }
 
@@ -150,7 +148,7 @@ func (h *AuthHandler) VerifyOTP(w http.ResponseWriter, r *http.Request) {
 	// Merge guest cart if guest_session cookie is present
 	if cookie, err := r.Cookie("guest_session"); err == nil && cookie.Value != "" {
 		if mergeErr := h.cartService.MergeGuestSession(ctx, customer.ID, cookie.Value); mergeErr != nil {
-			h.logger.WithContext(ctx).Warnf("Failed to merge guest cart for customer %s: %v", customer.ID, mergeErr)
+			slog.WarnContext(ctx, "failed to merge guest cart", "customer_id", customer.ID, "error", mergeErr)
 		}
 		// Clear the guest_session cookie
 		secure, sameSite, domain := cookieSettings()

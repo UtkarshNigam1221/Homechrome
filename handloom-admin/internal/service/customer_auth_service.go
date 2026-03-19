@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"log/slog"
 	"math/big"
 	"time"
 
@@ -15,7 +16,6 @@ import (
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/internal/event"
 	"github.com/handloom/admin/pkg/errors"
-	"github.com/handloom/admin/pkg/logger"
 )
 
 const (
@@ -40,7 +40,6 @@ type CustomerAuthService struct {
 	tokenStore   domain.CustomerTokenStore
 	smsGateway   domain.SMSGateway
 	publisher    event.EventPublisher
-	logger       *logger.Logger
 	config       CustomerAuthConfig
 	jwtSecret    []byte
 }
@@ -52,7 +51,6 @@ func NewCustomerAuthService(
 	tokenStore domain.CustomerTokenStore,
 	smsGateway domain.SMSGateway,
 	publisher event.EventPublisher,
-	logger *logger.Logger,
 	cfg CustomerAuthConfig,
 ) *CustomerAuthService {
 	return &CustomerAuthService{
@@ -61,7 +59,6 @@ func NewCustomerAuthService(
 		tokenStore:   tokenStore,
 		smsGateway:   smsGateway,
 		publisher:    publisher,
-		logger:       logger,
 		config:       cfg,
 		jwtSecret:    []byte(cfg.JWTSecret),
 	}
@@ -85,11 +82,11 @@ func (s *CustomerAuthService) SendOTP(ctx context.Context, phone string) error {
 	}
 
 	if err := s.smsGateway.SendOTP(ctx, phone, code); err != nil {
-		s.logger.WithContext(ctx).WithError(err).Error("Failed to send OTP SMS")
+		slog.ErrorContext(ctx, "Failed to send OTP SMS", "error", err)
 		return errors.Internal("Failed to send OTP")
 	}
 
-	s.logger.WithContext(ctx).Infof("OTP sent to %s", phone)
+	slog.InfoContext(ctx, "OTP sent", "phone", phone)
 	return nil
 }
 
@@ -109,7 +106,7 @@ func (s *CustomerAuthService) VerifyOTP(ctx context.Context, phone, code string)
 	}
 
 	if incrErr := s.otpRepo.IncrementAttempts(ctx, phone); incrErr != nil {
-		s.logger.WithContext(ctx).WithError(incrErr).Warn("Failed to increment OTP attempts")
+		slog.WarnContext(ctx, "Failed to increment OTP attempts", "error", incrErr)
 	}
 
 	if hashSHA256(code) != otp.CodeHash {
@@ -117,7 +114,7 @@ func (s *CustomerAuthService) VerifyOTP(ctx context.Context, phone, code string)
 	}
 
 	if delErr := s.otpRepo.Delete(ctx, phone); delErr != nil {
-		s.logger.WithContext(ctx).WithError(delErr).Warn("Failed to delete OTP after verification")
+		slog.WarnContext(ctx, "Failed to delete OTP after verification", "error", delErr)
 	}
 
 	customer, isNew, err := s.findOrCreateCustomer(ctx, phone)
@@ -127,7 +124,7 @@ func (s *CustomerAuthService) VerifyOTP(ctx context.Context, phone, code string)
 
 	if isNew {
 		if pubErr := s.publisher.Publish(ctx, event.New(event.CustomerRegistered, customer)); pubErr != nil {
-			s.logger.WithContext(ctx).WithError(pubErr).Error("failed to publish customer.registered event")
+			slog.ErrorContext(ctx, "Failed to publish customer.registered event", "error", pubErr)
 		}
 	}
 
@@ -140,7 +137,7 @@ func (s *CustomerAuthService) VerifyOTP(ctx context.Context, phone, code string)
 		return nil, nil, false, err
 	}
 
-	s.logger.WithContext(ctx).Infof("Customer authenticated: %s (new=%v)", customer.ID, isNew)
+	slog.InfoContext(ctx, "Customer authenticated", "customer_id", customer.ID, "is_new", isNew)
 	return customer, tokens, isNew, nil
 }
 
@@ -178,7 +175,7 @@ func (s *CustomerAuthService) RefreshToken(ctx context.Context, refreshToken str
 	}
 
 	if err := s.tokenStore.RevokeToken(ctx, customerID, oldHash); err != nil {
-		s.logger.WithContext(ctx).WithError(err).Warn("Failed to revoke old customer refresh token")
+		slog.WarnContext(ctx, "Failed to revoke old customer refresh token", "error", err)
 	}
 
 	return customer, tokens, nil
@@ -190,7 +187,7 @@ func (s *CustomerAuthService) Logout(ctx context.Context, customerID, refreshTok
 		return err
 	}
 
-	s.logger.WithContext(ctx).Infof("Customer logged out: %s", customerID)
+	slog.InfoContext(ctx, "Customer logged out", "customer_id", customerID)
 	return nil
 }
 
@@ -222,7 +219,7 @@ func (s *CustomerAuthService) findOrCreateCustomer(ctx context.Context, phone st
 			customer.PhoneVerified = true
 			customer.UpdatedAt = time.Now()
 			if updateErr := s.customerRepo.Update(ctx, customer); updateErr != nil {
-				s.logger.WithContext(ctx).WithError(updateErr).Warn("Failed to update customer phone_verified")
+				slog.WarnContext(ctx, "Failed to update customer phone_verified", "error", updateErr)
 			}
 		}
 		return customer, false, nil
@@ -246,7 +243,7 @@ func (s *CustomerAuthService) findOrCreateCustomer(ctx context.Context, phone st
 		return nil, false, err
 	}
 
-	s.logger.WithContext(ctx).Infof("New customer created: %s", customer.ID)
+	slog.InfoContext(ctx, "New customer created", "customer_id", customer.ID)
 	return customer, true, nil
 }
 
@@ -326,7 +323,7 @@ func (s *CustomerAuthService) generateTokenPair(customer *domain.Customer) (*dom
 func (s *CustomerAuthService) storeRefreshToken(ctx context.Context, customerID, refreshToken string) error {
 	ttl := time.Now().Add(s.config.RefreshTokenDuration).Unix()
 	if err := s.tokenStore.StoreToken(ctx, customerID, hashSHA256(refreshToken), ttl); err != nil {
-		s.logger.WithContext(ctx).WithError(err).Error("Failed to store customer refresh token")
+		slog.ErrorContext(ctx, "Failed to store customer refresh token", "error", err)
 		return errors.Internal("Failed to create session")
 	}
 	return nil

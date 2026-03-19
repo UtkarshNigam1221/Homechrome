@@ -3,31 +3,28 @@ package service
 
 import (
 	"context"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/handloom/admin/internal/domain"
-	"github.com/handloom/admin/pkg/logger"
 )
 
 // NotificationService implements notification operations
 type NotificationService struct {
 	notificationRepo domain.NotificationRepository
 	userRepo         domain.UserRepository
-	logger           *logger.Logger
 }
 
 // NewNotificationService creates a new NotificationService
 func NewNotificationService(
 	notificationRepo domain.NotificationRepository,
 	userRepo domain.UserRepository,
-	logger *logger.Logger,
 ) *NotificationService {
 	return &NotificationService{
 		notificationRepo: notificationRepo,
 		userRepo:         userRepo,
-		logger:           logger,
 	}
 }
 
@@ -55,7 +52,7 @@ func (s *NotificationService) Send(ctx context.Context, req domain.SendNotificat
 		return nil, err
 	}
 
-	s.logger.WithContext(ctx).Infof("Created notification: %s", notification.ID)
+	slog.InfoContext(ctx, "Created notification", "notification_id", notification.ID)
 	return notification, nil
 }
 
@@ -83,7 +80,7 @@ func (s *NotificationService) SendBulk(ctx context.Context, req domain.SendBulkN
 		if err != nil {
 			response.Failed++
 			response.FailedIDs = append(response.FailedIDs, recipientID)
-			s.logger.WithContext(ctx).WithError(err).Errorf("Failed to send notification to: %s", recipientID)
+			slog.ErrorContext(ctx, "Failed to send notification", "recipient_id", recipientID, "error", err)
 		} else {
 			response.Sent++
 		}

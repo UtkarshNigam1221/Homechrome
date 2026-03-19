@@ -4,6 +4,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"math"
 	"sort"
 	"time"
@@ -12,7 +13,6 @@ import (
 
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/pkg/errors"
-	"github.com/handloom/admin/pkg/logger"
 )
 
 // PricingService implements domain.PricingService
@@ -21,7 +21,6 @@ type PricingService struct {
 	priceQuoteRepo   domain.PriceQuoteRepository
 	categoryRepo     domain.CategoryRepository
 	productRepo      domain.ProductRepository
-	logger           *logger.Logger
 	quoteValidityHrs int
 }
 
@@ -31,7 +30,6 @@ func NewPricingService(
 	priceQuoteRepo domain.PriceQuoteRepository,
 	categoryRepo domain.CategoryRepository,
 	productRepo domain.ProductRepository,
-	logger *logger.Logger,
 	quoteValidityHrs int,
 ) *PricingService {
 	return &PricingService{
@@ -39,7 +37,6 @@ func NewPricingService(
 		priceQuoteRepo:   priceQuoteRepo,
 		categoryRepo:     categoryRepo,
 		productRepo:      productRepo,
-		logger:           logger,
 		quoteValidityHrs: quoteValidityHrs,
 	}
 }
@@ -76,7 +73,7 @@ func (s *PricingService) CreateRule(ctx context.Context, req domain.CreatePricin
 		return nil, err
 	}
 
-	s.logger.WithContext(ctx).Infof("Created pricing rule: %s", rule.ID)
+	slog.InfoContext(ctx, "Created pricing rule", "rule_id", rule.ID)
 	return rule, nil
 }
 
@@ -313,7 +310,7 @@ func (s *PricingService) CalculatePrice(ctx context.Context, req domain.Calculat
 	}
 
 	if err := s.priceQuoteRepo.Create(ctx, quote); err != nil {
-		s.logger.WithContext(ctx).WithError(err).Error("Failed to save price quote")
+		slog.ErrorContext(ctx, "Failed to save price quote", "error", err)
 		// Continue even if quote save fails
 	}
 

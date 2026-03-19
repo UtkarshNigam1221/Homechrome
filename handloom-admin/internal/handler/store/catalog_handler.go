@@ -15,7 +15,6 @@ import (
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/internal/middleware"
 	"github.com/handloom/admin/pkg/errors"
-	"github.com/handloom/admin/pkg/logger"
 	"github.com/handloom/admin/pkg/response"
 )
 
@@ -24,7 +23,6 @@ type CatalogHandler struct {
 	productService   domain.ProductService
 	categoryService  domain.CategoryService
 	inventoryService domain.InventoryService
-	logger           *logger.Logger
 }
 
 // NewCatalogHandler creates a new CatalogHandler.
@@ -32,13 +30,11 @@ func NewCatalogHandler(
 	ps domain.ProductService,
 	cs domain.CategoryService,
 	is domain.InventoryService,
-	l *logger.Logger,
 ) *CatalogHandler {
 	return &CatalogHandler{
 		productService:   ps,
 		categoryService:  cs,
 		inventoryService: is,
-		logger:           l,
 	}
 }
 

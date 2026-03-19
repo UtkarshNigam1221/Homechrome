@@ -3,24 +3,26 @@ package main
 
 import (
 	"context"
+	"log/slog"
 	"os"
 
 	"github.com/handloom/admin/internal/config"
 	"github.com/handloom/admin/internal/router"
 	"github.com/handloom/admin/internal/wire"
-	"github.com/handloom/admin/pkg/logger"
+	"github.com/handloom/admin/pkg/slogx"
 )
 
 func main() {
 	cfg := config.Load()
-	log := logger.New(cfg.App.Debug)
-	log.Info("Starting User Lambda")
+	slogx.Setup(cfg.App.Debug)
+	slog.Info("Starting User Lambda")
 
 	ctx := context.Background()
 
 	deps, err := wire.InitializeUserDeps(ctx, cfg)
 	if err != nil {
-		log.Fatalf("Failed to initialize dependencies: %v", err)
+		slog.Error("Failed to initialize dependencies", "error", err)
+		os.Exit(1)
 	}
 
 	// Create authenticated router
@@ -28,7 +30,7 @@ func main() {
 		AllowedOrigins: getAllowedOrigins(),
 		Debug:          cfg.App.Debug,
 	}
-	r := router.NewAuthenticatedRouter(routerCfg, deps.Logger, deps.AuthMiddleware)
+	r := router.NewAuthenticatedRouter(routerCfg, deps.AuthMiddleware)
 
 	// Register routes
 	router.NewUserRouter(r, deps.Handler, deps.AuthMiddleware)

@@ -3,31 +3,33 @@ package main
 
 import (
 	"context"
+	"log/slog"
 	"os"
 
 	"github.com/handloom/admin/internal/config"
 	"github.com/handloom/admin/internal/router"
 	"github.com/handloom/admin/internal/wire"
-	"github.com/handloom/admin/pkg/logger"
+	"github.com/handloom/admin/pkg/slogx"
 )
 
 func main() {
 	cfg := config.Load()
-	log := logger.New(cfg.App.Debug)
-	log.Info("Starting Store Checkout Lambda")
+	slogx.Setup(cfg.App.Debug)
+	slog.Info("Starting Store Checkout Lambda")
 
 	ctx := context.Background()
 
 	deps, err := wire.InitializeStoreCheckoutDeps(ctx, cfg)
 	if err != nil {
-		log.Fatalf("Failed to initialize dependencies: %v", err)
+		slog.Error("Failed to initialize dependencies", "error", err)
+		os.Exit(1)
 	}
 
 	routerCfg := router.Config{
 		AllowedOrigins: getAllowedOrigins(),
 		Debug:          cfg.App.Debug,
 	}
-	r := router.NewBaseRouter(routerCfg, deps.Logger, true)
+	r := router.NewBaseRouter(routerCfg, true)
 
 	router.NewStoreCheckoutRouter(r, deps.Handler, deps.CustomerAuthMiddleware)
 

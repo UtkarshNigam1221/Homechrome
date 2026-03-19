@@ -23,17 +23,11 @@ import (
 	"github.com/handloom/admin/internal/s3client"
 	"github.com/handloom/admin/internal/service"
 	"github.com/handloom/admin/internal/validator"
-	"github.com/handloom/admin/pkg/logger"
 )
 
 // ============================================================================
 // CORE PROVIDERS - Shared across all services
 // ============================================================================
-
-// ProvideLogger creates a new logger
-func ProvideLogger(cfg *config.Config) *logger.Logger {
-	return logger.New(cfg.App.Debug)
-}
 
 // ProvideDynamoDBClient creates a new DynamoDB client
 func ProvideDynamoDBClient(ctx context.Context, cfg *config.Config) (*dynamodb.Client, error) {
@@ -57,7 +51,6 @@ func ProvideCatalogCache() *cache.Cache {
 
 // CoreSet contains core providers used by all services
 var CoreSet = wire.NewSet(
-	ProvideLogger,
 	ProvideDynamoDBClient,
 	ProvidePostgresPool,
 	ProvideCatalogCache,
@@ -173,13 +166,11 @@ var RepositorySet = wire.NewSet(
 func ProvideAuthService(
 	userRepo domain.UserRepository,
 	tokenStore domain.TokenStore,
-	log *logger.Logger,
 	cfg *config.Config,
 ) *service.AuthService {
 	return service.NewAuthService(
 		userRepo,
 		tokenStore,
-		log,
 		cfg.JWT.SecretKey,
 		cfg.JWT.AccessTokenDuration,
 		cfg.JWT.RefreshTokenDuration,
@@ -191,9 +182,8 @@ func ProvideAuthService(
 func ProvideUserService(
 	userRepo domain.UserRepository,
 	tokenStore domain.TokenStore,
-	log *logger.Logger,
 ) *service.UserService {
-	return service.NewUserService(userRepo, tokenStore, log)
+	return service.NewUserService(userRepo, tokenStore)
 }
 
 // ProvideCategoryService creates a new CategoryService
@@ -201,9 +191,8 @@ func ProvideCategoryService(
 	categoryRepo domain.CategoryRepository,
 	productRepo domain.ProductRepository,
 	assetService *service.AssetService,
-	log *logger.Logger,
 ) *service.CategoryService {
-	return service.NewCategoryService(categoryRepo, productRepo, assetService, log)
+	return service.NewCategoryService(categoryRepo, productRepo, assetService)
 }
 
 // ProvideProductService creates a new ProductService
@@ -213,9 +202,8 @@ func ProvideProductService(
 	inventoryRepo domain.InventoryRepository,
 	assetService *service.AssetService,
 	publisher event.EventPublisher,
-	log *logger.Logger,
 ) *service.ProductService {
-	return service.NewProductService(productRepo, categoryRepo, inventoryRepo, assetService, publisher, log)
+	return service.NewProductService(productRepo, categoryRepo, inventoryRepo, assetService, publisher)
 }
 
 // ProvideInventoryService creates a new InventoryService
@@ -223,9 +211,8 @@ func ProvideInventoryService(
 	inventoryRepo domain.InventoryRepository,
 	c *cache.Cache,
 	publisher event.EventPublisher,
-	log *logger.Logger,
 ) *service.InventoryService {
-	return service.NewInventoryService(inventoryRepo, c, publisher, log)
+	return service.NewInventoryService(inventoryRepo, c, publisher)
 }
 
 // ProvidePricingService creates a new PricingService
@@ -234,7 +221,6 @@ func ProvidePricingService(
 	priceQuoteRepo domain.PriceQuoteRepository,
 	categoryRepo domain.CategoryRepository,
 	productRepo domain.ProductRepository,
-	log *logger.Logger,
 	cfg *config.Config,
 ) *service.PricingService {
 	return service.NewPricingService(
@@ -242,7 +228,6 @@ func ProvidePricingService(
 		priceQuoteRepo,
 		categoryRepo,
 		productRepo,
-		log,
 		cfg.App.QuoteValidityHrs,
 	)
 }
@@ -255,18 +240,16 @@ func ProvideOrderService(
 	inventoryRepo domain.InventoryRepository,
 	priceQuoteRepo domain.PriceQuoteRepository,
 	pricingService *service.PricingService,
-	log *logger.Logger,
 ) *service.OrderService {
-	return service.NewOrderService(orderRepo, customerRepo, productRepo, inventoryRepo, priceQuoteRepo, pricingService, log)
+	return service.NewOrderService(orderRepo, customerRepo, productRepo, inventoryRepo, priceQuoteRepo, pricingService)
 }
 
 // ProvideCustomerService creates a new CustomerService
 func ProvideCustomerService(
 	customerRepo domain.CustomerRepository,
 	orderRepo domain.OrderRepository,
-	log *logger.Logger,
 ) *service.CustomerService {
-	return service.NewCustomerService(customerRepo, orderRepo, log)
+	return service.NewCustomerService(customerRepo, orderRepo)
 }
 
 // ProvideAnalyticsService creates a new AnalyticsService
@@ -275,35 +258,31 @@ func ProvideAnalyticsService(
 	orderRepo domain.OrderRepository,
 	productRepo domain.ProductRepository,
 	inventoryRepo domain.InventoryRepository,
-	log *logger.Logger,
 ) *service.AnalyticsService {
-	return service.NewAnalyticsService(analyticsRepo, orderRepo, productRepo, inventoryRepo, log)
+	return service.NewAnalyticsService(analyticsRepo, orderRepo, productRepo, inventoryRepo)
 }
 
 // ProvideNotificationService creates a new NotificationService
 func ProvideNotificationService(
 	notificationRepo domain.NotificationRepository,
 	userRepo domain.UserRepository,
-	log *logger.Logger,
 ) *service.NotificationService {
-	return service.NewNotificationService(notificationRepo, userRepo, log)
+	return service.NewNotificationService(notificationRepo, userRepo)
 }
 
 // ProvideCouponService creates a new CouponService
 func ProvideCouponService(
 	couponRepo domain.CouponRepository,
-	log *logger.Logger,
 ) *service.CouponService {
-	return service.NewCouponService(couponRepo, log)
+	return service.NewCouponService(couponRepo)
 }
 
 // ProvideAssetService creates a new AssetService
 func ProvideAssetService(
-	log *logger.Logger,
 	s3Client *s3client.S3Client,
 	cfg *config.Config,
 ) *service.AssetService {
-	return service.NewAssetService(log, s3Client, cfg.AWS.S3Bucket, cfg.AWS.Endpoint)
+	return service.NewAssetService(s3Client, cfg.AWS.S3Bucket, cfg.AWS.Endpoint)
 }
 
 // ProvideReportService creates a new ReportService
@@ -314,23 +293,21 @@ func ProvideReportService(
 	customerService *service.CustomerService,
 	inventoryService *service.InventoryService,
 	analyticsService *service.AnalyticsService,
-	log *logger.Logger,
 ) *service.ReportService {
-	return service.NewReportService(reportRepo, orderService, productService, customerService, inventoryService, analyticsService, log)
+	return service.NewReportService(reportRepo, orderService, productService, customerService, inventoryService, analyticsService)
 }
 
 // ProvideAuditService creates a new AuditService
 func ProvideAuditService(
 	auditRepo domain.AuditRepository,
-	log *logger.Logger,
 ) *service.AuditService {
-	return service.NewAuditService(auditRepo, log)
+	return service.NewAuditService(auditRepo)
 }
 
 // ProvideEventPublisher creates an EventPublisher based on config.
 // Returns SNSPublisher when events are enabled (Lambda mode), NoopPublisher otherwise.
 // Monolith mode uses LocalPublisher wired manually in cmd/api/main.go.
-func ProvideEventPublisher(ctx context.Context, cfg *config.Config, log *logger.Logger) (event.EventPublisher, error) {
+func ProvideEventPublisher(ctx context.Context, cfg *config.Config) (event.EventPublisher, error) {
 	if cfg.Event.Enabled {
 		return event.NewSNSPublisher(ctx, cfg.Event.SNSTopicARN, cfg.AWS.Region, cfg.AWS.Endpoint)
 	}
@@ -364,73 +341,65 @@ var ServiceSet = wire.NewSet(
 func ProvideAuthHandler(
 	authService *service.AuthService,
 	userService *service.UserService,
-	log *logger.Logger,
 	validation *middleware.Validation,
 ) *handler.AuthHandler {
-	return handler.NewAuthHandler(authService, userService, log, validation)
+	return handler.NewAuthHandler(authService, userService, validation)
 }
 
 // ProvideUserHandler creates a new UserHandler
 func ProvideUserHandler(
 	userService *service.UserService,
-	log *logger.Logger,
 	validation *middleware.Validation,
 ) *handler.UserHandler {
-	return handler.NewUserHandler(userService, log, validation)
+	return handler.NewUserHandler(userService, validation)
 }
 
 // ProvideCategoryHandler creates a new CategoryHandler
 func ProvideCategoryHandler(
 	categoryService *service.CategoryService,
-	log *logger.Logger,
 	validation *middleware.Validation,
 ) *handler.CategoryHandler {
-	return handler.NewCategoryHandler(categoryService, log, validation)
+	return handler.NewCategoryHandler(categoryService, validation)
 }
 
 // ProvideProductHandler creates a new ProductHandler
 func ProvideProductHandler(
 	productService *service.ProductService,
 	inventoryService *service.InventoryService,
-	log *logger.Logger,
 	validation *middleware.Validation,
 ) *handler.ProductHandler {
-	return handler.NewProductHandler(productService, inventoryService, log, validation)
+	return handler.NewProductHandler(productService, inventoryService, validation)
 }
 
 // ProvideInventoryHandler creates a new InventoryHandler
 func ProvideInventoryHandler(
 	inventoryService *service.InventoryService,
-	log *logger.Logger,
 ) *handler.InventoryHandler {
-	return handler.NewInventoryHandler(inventoryService, log)
+	return handler.NewInventoryHandler(inventoryService)
 }
 
 // ProvideOrderHandler creates a new OrderHandler
 func ProvideOrderHandler(
 	orderService *service.OrderService,
-	log *logger.Logger,
 	validation *middleware.Validation,
 ) *handler.OrderHandler {
-	return handler.NewOrderHandler(orderService, log, validation)
+	return handler.NewOrderHandler(orderService, validation)
 }
 
 // ProvideCustomerHandler creates a new CustomerHandler
 func ProvideCustomerHandler(
 	customerService *service.CustomerService,
-	log *logger.Logger,
 	validation *middleware.Validation,
 ) *handler.CustomerHandler {
-	return handler.NewCustomerHandler(customerService, log, validation)
+	return handler.NewCustomerHandler(customerService, validation)
 }
 
 // ProvidePricingHandler creates a new PricingHandler
 func ProvidePricingHandler(
 	pricingService *service.PricingService,
-	log *logger.Logger,
 	validation *middleware.Validation,
 ) *handler.PricingHandler {
-	return handler.NewPricingHandler(pricingService, log, validation)
+	return handler.NewPricingHandler(pricingService, validation)
 }
 
 // ProvideAnalyticsHandler creates a new AnalyticsHandler
@@ -504,9 +473,8 @@ var HandlerSet = wire.NewSet(
 // ProvideAuthMiddleware creates the Auth middleware
 func ProvideAuthMiddleware(
 	authService *service.AuthService,
-	log *logger.Logger,
 ) *middleware.Auth {
-	return middleware.NewAuth(authService, log)
+	return middleware.NewAuth(authService)
 }
 
 // ProvideValidation creates the Validation middleware
@@ -565,7 +533,6 @@ func ProvideCustomerAuthService(
 	customerRepo domain.CustomerRepository,
 	tokenStore domain.CustomerTokenStore,
 	publisher event.EventPublisher,
-	log *logger.Logger,
 	cfg *config.Config,
 ) *service.CustomerAuthService {
 	var smsGateway domain.SMSGateway
@@ -579,7 +546,7 @@ func ProvideCustomerAuthService(
 		})
 	}
 	return service.NewCustomerAuthService(
-		otpRepo, customerRepo, tokenStore, smsGateway, publisher, log,
+		otpRepo, customerRepo, tokenStore, smsGateway, publisher,
 		service.CustomerAuthConfig{
 			JWTSecret:            cfg.Store.CustomerJWTSecret,
 			AccessTokenDuration:  cfg.Store.CustomerAccessTokenTTL,
@@ -594,9 +561,8 @@ func ProvideCartService(
 	cartRepo domain.CartRepository,
 	productRepo domain.ProductRepository,
 	inventoryRepo domain.InventoryRepository,
-	log *logger.Logger,
 ) *service.CartService {
-	return service.NewCartService(cartRepo, productRepo, inventoryRepo, log)
+	return service.NewCartService(cartRepo, productRepo, inventoryRepo)
 }
 
 // ProvidePaymentService creates a new PaymentService with PhonePe gateway
@@ -605,7 +571,6 @@ func ProvidePaymentService(
 	orderRepo domain.OrderRepository,
 	inventoryRepo domain.InventoryRepository,
 	publisher event.EventPublisher,
-	log *logger.Logger,
 	cfg *config.Config,
 ) *service.PaymentService {
 	var phonePeClient phonepe.Gateway
@@ -621,14 +586,13 @@ func ProvidePaymentService(
 			RedirectURL: cfg.Store.PhonePeRedirectURL,
 		})
 	}
-	return service.NewPaymentService(paymentRepo, orderRepo, inventoryRepo, phonePeClient, publisher, log)
+	return service.NewPaymentService(paymentRepo, orderRepo, inventoryRepo, phonePeClient, publisher)
 }
 
 // ProvideShippingService creates a new ShippingService with Shiprocket gateway
 func ProvideShippingService(
 	shipmentRepo domain.ShipmentRepository,
 	orderRepo domain.OrderRepository,
-	log *logger.Logger,
 	cfg *config.Config,
 ) *service.ShippingService {
 	var shiprocketClient shiprocket.Gateway
@@ -642,7 +606,7 @@ func ProvideShippingService(
 			PickupPincode: cfg.Store.ShiprocketPickupPincode,
 		})
 	}
-	return service.NewShippingService(shipmentRepo, orderRepo, shiprocketClient, cfg.Store.ShiprocketPickupPincode, log)
+	return service.NewShippingService(shipmentRepo, orderRepo, shiprocketClient, cfg.Store.ShiprocketPickupPincode)
 }
 
 // ProvideCheckoutService creates a new CheckoutService
@@ -654,9 +618,8 @@ func ProvideCheckoutService(
 	inventoryRepo domain.InventoryRepository,
 	customerRepo domain.CustomerRepository,
 	publisher event.EventPublisher,
-	log *logger.Logger,
 ) *service.CheckoutService {
-	return service.NewCheckoutService(cartService, orderRepo, paymentService, shippingService, inventoryRepo, customerRepo, publisher, log)
+	return service.NewCheckoutService(cartService, orderRepo, paymentService, shippingService, inventoryRepo, customerRepo, publisher)
 }
 
 // ============================================================================
@@ -668,9 +631,8 @@ func ProvideStoreAuthHandler(
 	customerAuthService *service.CustomerAuthService,
 	cartService *service.CartService,
 	validation *middleware.Validation,
-	log *logger.Logger,
 ) *store.AuthHandler {
-	return store.NewAuthHandler(customerAuthService, cartService, validation, log)
+	return store.NewAuthHandler(customerAuthService, cartService, validation)
 }
 
 // ProvideStoreCatalogHandler creates a new store CatalogHandler
@@ -678,62 +640,55 @@ func ProvideStoreCatalogHandler(
 	productService *service.ProductService,
 	categoryService *service.CategoryService,
 	inventoryService *service.InventoryService,
-	log *logger.Logger,
 ) *store.CatalogHandler {
-	return store.NewCatalogHandler(productService, categoryService, inventoryService, log)
+	return store.NewCatalogHandler(productService, categoryService, inventoryService)
 }
 
 // ProvideStoreCartHandler creates a new store CartHandler
 func ProvideStoreCartHandler(
 	cartService *service.CartService,
 	validation *middleware.Validation,
-	log *logger.Logger,
 ) *store.CartHandler {
-	return store.NewCartHandler(cartService, validation, log)
+	return store.NewCartHandler(cartService, validation)
 }
 
 // ProvideStoreCheckoutHandler creates a new store CheckoutHandler
 func ProvideStoreCheckoutHandler(
 	checkoutService *service.CheckoutService,
 	validation *middleware.Validation,
-	log *logger.Logger,
 ) *store.CheckoutHandler {
-	return store.NewCheckoutHandler(checkoutService, validation, log)
+	return store.NewCheckoutHandler(checkoutService, validation)
 }
 
 // ProvideStoreOrderHandler creates a new store OrderHandler
 func ProvideStoreOrderHandler(
 	orderService *service.OrderService,
 	orderRepo domain.OrderRepository,
-	log *logger.Logger,
 ) *store.OrderHandler {
-	return store.NewOrderHandler(orderService, orderRepo, log)
+	return store.NewOrderHandler(orderService, orderRepo)
 }
 
 // ProvideStoreTrackingHandler creates a new store TrackingHandler
 func ProvideStoreTrackingHandler(
 	orderRepo domain.OrderRepository,
 	shipmentRepo domain.ShipmentRepository,
-	log *logger.Logger,
 ) *store.TrackingHandler {
-	return store.NewTrackingHandler(orderRepo, shipmentRepo, log)
+	return store.NewTrackingHandler(orderRepo, shipmentRepo)
 }
 
 // ProvideStoreProfileHandler creates a new store ProfileHandler
 func ProvideStoreProfileHandler(
 	customerRepo domain.CustomerRepository,
 	validation *middleware.Validation,
-	log *logger.Logger,
 ) *store.ProfileHandler {
-	return store.NewProfileHandler(customerRepo, validation, log)
+	return store.NewProfileHandler(customerRepo, validation)
 }
 
 // ProvideStoreWebhookHandler creates a new store WebhookHandler
 func ProvideStoreWebhookHandler(
 	paymentService *service.PaymentService,
-	log *logger.Logger,
 ) *store.WebhookHandler {
-	return store.NewWebhookHandler(paymentService, log)
+	return store.NewWebhookHandler(paymentService)
 }
 
 // ProvideStoreEventsHandler creates a new store EventsHandler
@@ -741,9 +696,8 @@ func ProvideStoreEventsHandler(
 	eventsRepo domain.EventsRepository,
 	analyticsRepo domain.AnalyticsRepository,
 	validation *middleware.Validation,
-	log *logger.Logger,
 ) *store.EventsHandler {
-	return store.NewEventsHandler(eventsRepo, analyticsRepo, validation, log)
+	return store.NewEventsHandler(eventsRepo, analyticsRepo, validation)
 }
 
 // ============================================================================
@@ -753,15 +707,13 @@ func ProvideStoreEventsHandler(
 // ProvideCustomerAuthMiddleware creates the CustomerAuth middleware
 func ProvideCustomerAuthMiddleware(
 	customerAuthService *service.CustomerAuthService,
-	log *logger.Logger,
 ) *middleware.CustomerAuth {
-	return middleware.NewCustomerAuth(customerAuthService, log)
+	return middleware.NewCustomerAuth(customerAuthService)
 }
 
 // ProvideOptionalCartAuth creates the OptionalCartAuth middleware
 func ProvideOptionalCartAuth(
 	customerAuthService *service.CustomerAuthService,
-	log *logger.Logger,
 ) *middleware.OptionalCartAuth {
-	return middleware.NewOptionalCartAuth(customerAuthService, log)
+	return middleware.NewOptionalCartAuth(customerAuthService)
 }

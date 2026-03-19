@@ -3,26 +3,24 @@ package store
 
 import (
 	"io"
+	"log/slog"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 
 	"github.com/handloom/admin/internal/domain"
-	"github.com/handloom/admin/pkg/logger"
 	"github.com/handloom/admin/pkg/response"
 )
 
 // WebhookHandler handles incoming webhook callbacks from external providers.
 type WebhookHandler struct {
 	paymentService domain.PaymentService
-	logger         *logger.Logger
 }
 
 // NewWebhookHandler creates a new WebhookHandler.
-func NewWebhookHandler(paymentService domain.PaymentService, l *logger.Logger) *WebhookHandler {
+func NewWebhookHandler(paymentService domain.PaymentService) *WebhookHandler {
 	return &WebhookHandler{
 		paymentService: paymentService,
-		logger:         l,
 	}
 }
 
@@ -46,7 +44,7 @@ func (h *WebhookHandler) PhonePeWebhook(w http.ResponseWriter, r *http.Request) 
 
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		h.logger.WithContext(ctx).WithError(err).Error("Failed to read PhonePe webhook body")
+		slog.ErrorContext(ctx, "failed to read PhonePe webhook body", "error", err)
 		response.JSON(w, http.StatusOK, map[string]string{"status": "error"})
 		return
 	}
@@ -55,7 +53,7 @@ func (h *WebhookHandler) PhonePeWebhook(w http.ResponseWriter, r *http.Request) 
 	xVerifyHeader := r.Header.Get("X-VERIFY")
 
 	if err := h.paymentService.HandleWebhook(ctx, body, xVerifyHeader); err != nil {
-		h.logger.WithContext(ctx).WithError(err).Error("Failed to process PhonePe webhook")
+		slog.ErrorContext(ctx, "failed to process PhonePe webhook", "error", err)
 		// Still return 200 to acknowledge receipt; PhonePe requires a quick 200 response
 	}
 

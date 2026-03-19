@@ -3,6 +3,7 @@ package service
 
 import (
 	"context"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -10,20 +11,17 @@ import (
 
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/pkg/errors"
-	"github.com/handloom/admin/pkg/logger"
 )
 
 // CouponService implements domain.CouponService
 type CouponService struct {
 	couponRepo domain.CouponRepository
-	logger     *logger.Logger
 }
 
 // NewCouponService creates a new CouponService
-func NewCouponService(couponRepo domain.CouponRepository, logger *logger.Logger) *CouponService {
+func NewCouponService(couponRepo domain.CouponRepository) *CouponService {
 	return &CouponService{
 		couponRepo: couponRepo,
-		logger:     logger,
 	}
 }
 
@@ -66,7 +64,7 @@ func (s *CouponService) Create(ctx context.Context, req domain.CreateCouponReque
 		return nil, err
 	}
 
-	s.logger.WithContext(ctx).Infof("Created coupon: %s (%s)", coupon.ID, coupon.Code)
+	slog.InfoContext(ctx, "Created coupon", "coupon_id", coupon.ID, "code", coupon.Code)
 	return coupon, nil
 }
 
@@ -134,7 +132,7 @@ func (s *CouponService) Update(ctx context.Context, id string, req domain.Update
 		return nil, err
 	}
 
-	s.logger.WithContext(ctx).Infof("Updated coupon: %s", id)
+	slog.InfoContext(ctx, "Updated coupon", "coupon_id", id)
 	return coupon, nil
 }
 
@@ -144,7 +142,7 @@ func (s *CouponService) Delete(ctx context.Context, id string) error {
 		return err
 	}
 
-	s.logger.WithContext(ctx).Infof("Deleted coupon: %s", id)
+	slog.InfoContext(ctx, "Deleted coupon", "coupon_id", id)
 	return nil
 }
 
@@ -263,10 +261,10 @@ func (s *CouponService) Apply(ctx context.Context, couponID string, orderID stri
 	// Increment usage count
 	coupon.UsageCount++
 	if err := s.couponRepo.Update(ctx, coupon); err != nil {
-		s.logger.WithContext(ctx).WithError(err).Error("Failed to update coupon usage count")
+		slog.ErrorContext(ctx, "Failed to update coupon usage count", "error", err)
 	}
 
-	s.logger.WithContext(ctx).Infof("Applied coupon %s to order %s, discount: %d", coupon.Code, orderID, discount)
+	slog.InfoContext(ctx, "Applied coupon", "coupon_code", coupon.Code, "order_id", orderID, "discount", discount)
 	return nil
 }
 

@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"log/slog"
 	"regexp"
 	"strings"
 
@@ -9,7 +10,6 @@ import (
 
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/pkg/errors"
-	"github.com/handloom/admin/pkg/logger"
 )
 
 var slugDashCollapse = regexp.MustCompile("-+")
@@ -19,7 +19,6 @@ type CategoryService struct {
 	categoryRepo   domain.CategoryRepository
 	productRepo    domain.ProductRepository
 	assetFinalizer domain.AssetFinalizer
-	logger         *logger.Logger
 }
 
 // NewCategoryService creates a new CategoryService
@@ -27,13 +26,11 @@ func NewCategoryService(
 	categoryRepo domain.CategoryRepository,
 	productRepo domain.ProductRepository,
 	assetFinalizer domain.AssetFinalizer,
-	logger *logger.Logger,
 ) *CategoryService {
 	return &CategoryService{
 		categoryRepo:   categoryRepo,
 		productRepo:    productRepo,
 		assetFinalizer: assetFinalizer,
-		logger:         logger,
 	}
 }
 
@@ -72,7 +69,7 @@ func (s *CategoryService) Create(ctx context.Context, req domain.CreateCategoryR
 		return nil, err
 	}
 
-	s.logger.WithContext(ctx).Infof("Created category: %s", category.ID)
+	slog.InfoContext(ctx, "Created category", "category_id", category.ID)
 	return category, nil
 }
 

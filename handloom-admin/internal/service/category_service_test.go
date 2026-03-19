@@ -11,7 +11,6 @@ import (
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/internal/mocks"
 	"github.com/handloom/admin/pkg/errors"
-	"github.com/handloom/admin/pkg/logger"
 )
 
 func setupCategoryTest(t *testing.T) (
@@ -27,9 +26,8 @@ func setupCategoryTest(t *testing.T) (
 	mockCatRepo := mocks.NewMockCategoryRepository(ctrl)
 	mockProdRepo := mocks.NewMockProductRepository(ctrl)
 	mockFinalizer := mocks.NewMockAssetFinalizer(ctrl)
-	log := logger.NewNoop()
 
-	svc := NewCategoryService(mockCatRepo, mockProdRepo, mockFinalizer, log)
+	svc := NewCategoryService(mockCatRepo, mockProdRepo, mockFinalizer)
 	return svc, mockCatRepo, mockProdRepo, mockFinalizer, context.Background()
 }
 

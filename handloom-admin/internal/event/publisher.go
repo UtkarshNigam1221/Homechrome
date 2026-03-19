@@ -3,14 +3,13 @@ package event
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/sns"
 	snstypes "github.com/aws/aws-sdk-go-v2/service/sns/types"
-
-	"github.com/handloom/admin/pkg/logger"
 )
 
 // EventPublisher is the interface every publisher implementation satisfies.
@@ -100,14 +99,12 @@ func (p *SNSPublisher) Publish(ctx context.Context, event Event) error {
 // synchronously. Handler errors are logged but not propagated (fire-and-forget).
 type LocalPublisher struct {
 	handlers []EventHandler
-	log      *logger.Logger
 }
 
 // NewLocalPublisher creates a LocalPublisher with the given handlers.
-func NewLocalPublisher(log *logger.Logger, handlers ...EventHandler) *LocalPublisher {
+func NewLocalPublisher(handlers ...EventHandler) *LocalPublisher {
 	return &LocalPublisher{
 		handlers: handlers,
-		log:      log,
 	}
 }
 
@@ -117,9 +114,7 @@ func (p *LocalPublisher) Publish(ctx context.Context, event Event) error {
 	for _, h := range p.handlers {
 		if h.CanHandle(event.Type) {
 			if err := h.Handle(ctx, event); err != nil {
-				p.log.WithError(err).WithField("event_type", string(event.Type)).
-					WithField("event_id", event.ID).
-					Error("local event handler failed")
+				slog.ErrorContext(ctx, "local event handler failed", "event_type", string(event.Type), "event_id", event.ID, "error", err)
 			}
 		}
 	}

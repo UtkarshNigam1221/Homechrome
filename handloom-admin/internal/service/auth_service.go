@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"log/slog"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -13,14 +14,12 @@ import (
 
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/pkg/errors"
-	"github.com/handloom/admin/pkg/logger"
 )
 
 // AuthService implements domain.AuthService
 type AuthService struct {
 	userRepo             domain.UserRepository
 	tokenStore           domain.TokenStore
-	logger               *logger.Logger
 	jwtSecret            []byte
 	accessTokenDuration  time.Duration
 	refreshTokenDuration time.Duration
@@ -31,7 +30,6 @@ type AuthService struct {
 func NewAuthService(
 	userRepo domain.UserRepository,
 	tokenStore domain.TokenStore,
-	logger *logger.Logger,
 	jwtSecret string,
 	accessTokenDuration time.Duration,
 	refreshTokenDuration time.Duration,
@@ -40,7 +38,6 @@ func NewAuthService(
 	return &AuthService{
 		userRepo:             userRepo,
 		tokenStore:           tokenStore,
-		logger:               logger,
 		jwtSecret:            []byte(jwtSecret),
 		accessTokenDuration:  accessTokenDuration,
 		refreshTokenDuration: refreshTokenDuration,
@@ -71,7 +68,7 @@ func (s *AuthService) Login(ctx context.Context, req domain.LoginRequest) (*doma
 
 	// Revoke any existing refresh tokens before generating new ones (single-session enforcement)
 	if revokeErr := s.tokenStore.RevokeAllUserTokens(ctx, user.ID); revokeErr != nil {
-		s.logger.WithContext(ctx).WithError(revokeErr).Warn("Failed to revoke existing tokens")
+		slog.WarnContext(ctx, "Failed to revoke existing tokens", "error", revokeErr)
 	}
 
 	// Generate tokens
@@ -82,16 +79,16 @@ func (s *AuthService) Login(ctx context.Context, req domain.LoginRequest) (*doma
 
 	// Store refresh token — fail the login if we can't persist the session
 	if err := s.tokenStore.StoreRefreshToken(ctx, user.ID, tokens.RefreshToken, s.refreshTokenDuration); err != nil {
-		s.logger.WithContext(ctx).WithError(err).Error("Failed to store refresh token")
+		slog.ErrorContext(ctx, "Failed to store refresh token", "error", err)
 		return nil, errors.Internal("Failed to create session")
 	}
 
 	// Update last login (best-effort, non-critical)
 	if err := s.userRepo.UpdateLastLogin(ctx, user.ID); err != nil {
-		s.logger.WithContext(ctx).WithError(err).Warn("Failed to update last login")
+		slog.WarnContext(ctx, "Failed to update last login", "error", err)
 	}
 
-	s.logger.WithContext(ctx).Infof("User logged in: %s", user.ID)
+	slog.InfoContext(ctx, "User logged in", "user_id", user.ID)
 
 	// Remove sensitive data
 	user.PasswordHash = ""
@@ -135,12 +132,12 @@ func (s *AuthService) RefreshToken(ctx context.Context, refreshToken string) (*d
 
 	// Revoke old refresh token — if this fails, the old token remains valid (token reuse risk)
 	if err := s.tokenStore.RevokeRefreshToken(ctx, claims.UserID, refreshToken); err != nil {
-		s.logger.WithContext(ctx).WithError(err).Warn("Failed to revoke old refresh token")
+		slog.WarnContext(ctx, "Failed to revoke old refresh token", "error", err)
 	}
 
 	// Store new refresh token — fail if we can't persist the session
 	if err := s.tokenStore.StoreRefreshToken(ctx, user.ID, tokens.RefreshToken, s.refreshTokenDuration); err != nil {
-		s.logger.WithContext(ctx).WithError(err).Error("Failed to store refresh token")
+		slog.ErrorContext(ctx, "Failed to store refresh token", "error", err)
 		return nil, errors.Internal("Failed to create session")
 	}
 
@@ -153,7 +150,7 @@ func (s *AuthService) Logout(ctx context.Context, userID string) error {
 		return err
 	}
 
-	s.logger.WithContext(ctx).Infof("User logged out: %s", userID)
+	slog.InfoContext(ctx, "User logged out", "user_id", userID)
 	return nil
 }
 
@@ -226,10 +223,10 @@ func (s *AuthService) ChangePassword(ctx context.Context, userID string, req dom
 
 	// Revoke all existing tokens to force re-login
 	if err := s.tokenStore.RevokeAllUserTokens(ctx, userID); err != nil {
-		s.logger.WithContext(ctx).WithError(err).Warn("Failed to revoke tokens after password change")
+		slog.WarnContext(ctx, "Failed to revoke tokens after password change", "error", err)
 	}
 
-	s.logger.WithContext(ctx).Infof("Password changed for user: %s", userID)
+	slog.InfoContext(ctx, "Password changed", "user_id", userID)
 	return nil
 }
 
@@ -239,7 +236,7 @@ func (s *AuthService) RequestPasswordReset(ctx context.Context, email string) er
 	if err != nil {
 		// Don't reveal if email exists
 		if errors.IsNotFound(err) {
-			s.logger.WithContext(ctx).Infof("Password reset requested for non-existent email: %s", email)
+			slog.InfoContext(ctx, "Password reset requested for non-existent email", "email", email)
 			return nil
 		}
 		return err
@@ -258,7 +255,7 @@ func (s *AuthService) RequestPasswordReset(ctx context.Context, email string) er
 
 	// TODO: Send password reset email
 	// This should be handled by a notification service
-	s.logger.WithContext(ctx).Infof("Password reset token generated for user: %s", user.ID)
+	slog.InfoContext(ctx, "Password reset token generated", "user_id", user.ID)
 
 	return nil
 }
@@ -292,13 +289,13 @@ func (s *AuthService) ResetPassword(ctx context.Context, req domain.ResetPasswor
 
 	// Revoke reset token and all existing session tokens
 	if err := s.tokenStore.RevokePasswordResetToken(ctx, req.Token); err != nil {
-		s.logger.WithContext(ctx).WithError(err).Warn("Failed to revoke password reset token")
+		slog.WarnContext(ctx, "Failed to revoke password reset token", "error", err)
 	}
 	if err := s.tokenStore.RevokeAllUserTokens(ctx, userID); err != nil {
-		s.logger.WithContext(ctx).WithError(err).Warn("Failed to revoke tokens after password reset")
+		slog.WarnContext(ctx, "Failed to revoke tokens after password reset", "error", err)
 	}
 
-	s.logger.WithContext(ctx).Infof("Password reset completed for user: %s", userID)
+	slog.InfoContext(ctx, "Password reset completed", "user_id", userID)
 	return nil
 }
 

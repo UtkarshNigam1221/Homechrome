@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"sort"
 	"strings"
 	"time"
@@ -15,7 +16,7 @@ import (
 	"github.com/handloom/admin/internal/config"
 	"github.com/handloom/admin/internal/repository/postgres"
 	"github.com/handloom/admin/migrations"
-	"github.com/handloom/admin/pkg/logger"
+	"github.com/handloom/admin/pkg/slogx"
 )
 
 // advisoryLockID is a fixed key for pg_advisory_lock to prevent concurrent migration runs.
@@ -23,8 +24,8 @@ const advisoryLockID = 7_248_301_945
 
 func main() {
 	cfg := config.Load()
-	log := logger.New(cfg.App.Debug)
-	log.Info("Starting Migrator Lambda")
+	slogx.Setup(cfg.App.Debug)
+	slog.Info("Starting Migrator Lambda")
 
 	lambda.Start(func(ctx context.Context) (string, error) {
 		pool, err := postgres.NewPool(ctx, &cfg.Postgres)
@@ -33,14 +34,13 @@ func main() {
 		}
 		defer pool.Close()
 
-		m := &migrator{pool: pool, log: log}
+		m := &migrator{pool: pool}
 		return m.run(ctx)
 	})
 }
 
 type migrator struct {
 	pool *pgxpool.Pool
-	log  *logger.Logger
 }
 
 func (m *migrator) run(ctx context.Context) (string, error) {
@@ -87,13 +87,13 @@ func (m *migrator) applyPending(ctx context.Context) error {
 	}
 
 	for _, filename := range pending {
-		m.log.Info(fmt.Sprintf("Applying migration: %s", filename))
+		slog.Info("Applying migration", "filename", filename)
 		if err := m.exec(ctx, filename); err != nil {
 			return fmt.Errorf("apply %s: %w", filename, err)
 		}
 	}
 
-	m.log.Info(fmt.Sprintf("Done: %d applied, %d already up-to-date", len(pending), len(applied)))
+	slog.Info("Migration complete", "applied", len(pending), "already_up_to_date", len(applied))
 	return nil
 }
 

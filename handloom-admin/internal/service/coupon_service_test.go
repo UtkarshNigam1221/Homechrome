@@ -12,7 +12,6 @@ import (
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/internal/mocks"
 	"github.com/handloom/admin/pkg/errors"
-	"github.com/handloom/admin/pkg/logger"
 )
 
 func TestCouponService_Create(t *testing.T) {
@@ -20,8 +19,7 @@ func TestCouponService_Create(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockCouponRepo := mocks.NewMockCouponRepository(ctrl)
-	log := logger.NewNoop()
-	service := NewCouponService(mockCouponRepo, log)
+	service := NewCouponService(mockCouponRepo)
 	ctx := context.Background()
 
 	t.Run("successful creation", func(t *testing.T) {
@@ -118,8 +116,7 @@ func TestCouponService_GetByID(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockCouponRepo := mocks.NewMockCouponRepository(ctrl)
-	log := logger.NewNoop()
-	service := NewCouponService(mockCouponRepo, log)
+	service := NewCouponService(mockCouponRepo)
 	ctx := context.Background()
 
 	t.Run("successful get", func(t *testing.T) {
@@ -156,8 +153,7 @@ func TestCouponService_GetByCode(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockCouponRepo := mocks.NewMockCouponRepository(ctrl)
-	log := logger.NewNoop()
-	service := NewCouponService(mockCouponRepo, log)
+	service := NewCouponService(mockCouponRepo)
 	ctx := context.Background()
 
 	t.Run("successful get by code - uppercased", func(t *testing.T) {
@@ -182,8 +178,7 @@ func TestCouponService_Update(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockCouponRepo := mocks.NewMockCouponRepository(ctrl)
-	log := logger.NewNoop()
-	service := NewCouponService(mockCouponRepo, log)
+	service := NewCouponService(mockCouponRepo)
 	ctx := context.Background()
 
 	t.Run("successful update", func(t *testing.T) {
@@ -245,8 +240,7 @@ func TestCouponService_Delete(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockCouponRepo := mocks.NewMockCouponRepository(ctrl)
-	log := logger.NewNoop()
-	service := NewCouponService(mockCouponRepo, log)
+	service := NewCouponService(mockCouponRepo)
 	ctx := context.Background()
 
 	t.Run("successful deletion", func(t *testing.T) {
@@ -273,8 +267,7 @@ func TestCouponService_List(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockCouponRepo := mocks.NewMockCouponRepository(ctrl)
-	log := logger.NewNoop()
-	service := NewCouponService(mockCouponRepo, log)
+	service := NewCouponService(mockCouponRepo)
 	ctx := context.Background()
 
 	t.Run("successful list", func(t *testing.T) {
@@ -310,8 +303,7 @@ func TestCouponService_Validate(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockCouponRepo := mocks.NewMockCouponRepository(ctrl)
-	log := logger.NewNoop()
-	service := NewCouponService(mockCouponRepo, log)
+	service := NewCouponService(mockCouponRepo)
 	ctx := context.Background()
 
 	t.Run("coupon not found - returns invalid result", func(t *testing.T) {
@@ -568,8 +560,7 @@ func TestCouponService_Apply(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockCouponRepo := mocks.NewMockCouponRepository(ctrl)
-	log := logger.NewNoop()
-	service := NewCouponService(mockCouponRepo, log)
+	service := NewCouponService(mockCouponRepo)
 	ctx := context.Background()
 
 	t.Run("successful apply", func(t *testing.T) {

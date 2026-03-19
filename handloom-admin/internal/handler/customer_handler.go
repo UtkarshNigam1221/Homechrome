@@ -9,22 +9,19 @@ import (
 	"github.com/handloom/admin/internal/middleware"
 	"github.com/handloom/admin/internal/service"
 	"github.com/handloom/admin/pkg/errors"
-	"github.com/handloom/admin/pkg/logger"
 	"github.com/handloom/admin/pkg/response"
 )
 
 // CustomerHandler handles customer-related HTTP requests
 type CustomerHandler struct {
 	customerService *service.CustomerService
-	logger          *logger.Logger
 	validation      *middleware.Validation
 }
 
 // NewCustomerHandler creates a new CustomerHandler
-func NewCustomerHandler(customerService *service.CustomerService, logger *logger.Logger, validation *middleware.Validation) *CustomerHandler {
+func NewCustomerHandler(customerService *service.CustomerService, validation *middleware.Validation) *CustomerHandler {
 	return &CustomerHandler{
 		customerService: customerService,
-		logger:          logger,
 		validation:      validation,
 	}
 }

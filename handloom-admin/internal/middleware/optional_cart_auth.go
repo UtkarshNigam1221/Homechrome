@@ -9,7 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/handloom/admin/internal/domain"
-	"github.com/handloom/admin/pkg/logger"
+	"github.com/handloom/admin/pkg/slogx"
 )
 
 const guestSessionCookieName = "guest_session"
@@ -19,17 +19,14 @@ const guestSessionMaxAge = 30 * 24 * time.Hour
 // Authenticated users get CustomerIDKey set; guests get GuestSessionKey set.
 type OptionalCartAuth struct {
 	customerAuthService domain.CustomerAuthService
-	logger              *logger.Logger
 }
 
 // NewOptionalCartAuth creates a new OptionalCartAuth middleware.
 func NewOptionalCartAuth(
 	customerAuthService domain.CustomerAuthService,
-	logger *logger.Logger,
 ) *OptionalCartAuth {
 	return &OptionalCartAuth{
 		customerAuthService: customerAuthService,
-		logger:              logger,
 	}
 }
 
@@ -42,7 +39,7 @@ func (m *OptionalCartAuth) Resolve(next http.Handler) http.Handler {
 		if token, err := extractBearerToken(r, "store_token"); err == nil {
 			if claims, err := m.customerAuthService.ValidateCustomerToken(ctx, token); err == nil && claims.CustomerID != "" {
 				ctx = context.WithValue(ctx, CustomerIDKey, claims.CustomerID)
-				ctx = logger.SetUserID(ctx, claims.CustomerID)
+				ctx = slogx.SetUserID(ctx, claims.CustomerID)
 				ctx = context.WithValue(ctx, CustomerKey, &domain.Customer{
 					ID:    claims.CustomerID,
 					Phone: claims.Phone,

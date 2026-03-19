@@ -8,7 +8,7 @@ Homechrome is a monorepo for a handloom e-commerce platform. It contains three i
 
 | Directory | Stack | Purpose |
 |-----------|-------|---------|
-| `handloom-admin/` | Go 1.24, Chi, DynamoDB + PostgreSQL, AWS Lambda | Backend API (12 admin + 9 store + 4 worker Lambdas) |
+| `handloom-admin/` | Go 1.25, Chi, DynamoDB + PostgreSQL, AWS Lambda | Backend API (12 admin + 9 store + 4 worker Lambdas) |
 | `handloom-admin-frontend/` | React 19, TypeScript, Vite 7, Tailwind CSS 4 | Admin dashboard SPA |
 | `homechrome-store/` | Next.js 16, React 19, Tailwind CSS 4 | B2C customer storefront |
 
@@ -119,7 +119,7 @@ domain/ (entities + interfaces) ← handler/ → service/ → repository/{dynamo
 - Backend CDK: 4 stacks (DatabaseStack, StorageStack, APIStack, EventStack)
 - Admin Frontend CDK: S3 static hosting (dev) or CloudFront + S3 (prod), custom domain via ACM cert
 - All Lambdas: ARM64, `provided.al2023`, 128MB (dev) / 256MB (prod)
-- Region: `ap-south-1`
+- Region: `ap-southeast-1`
 
 ## Key Conventions
 

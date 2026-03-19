@@ -13,7 +13,6 @@ import (
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/internal/mocks"
 	"github.com/handloom/admin/pkg/errors"
-	"github.com/handloom/admin/pkg/logger"
 )
 
 func TestAuthService_Login(t *testing.T) {
@@ -22,12 +21,10 @@ func TestAuthService_Login(t *testing.T) {
 
 	userRepo := mocks.NewMockUserRepository(ctrl)
 	tokenStore := mocks.NewMockTokenStore(ctrl)
-	log := logger.New(true)
 
 	service := NewAuthService(
 		userRepo,
 		tokenStore,
-		log,
 		"test-secret-key",
 		15*time.Minute,
 		7*24*time.Hour,
@@ -154,12 +151,10 @@ func TestAuthService_ValidateToken(t *testing.T) {
 
 	userRepo := mocks.NewMockUserRepository(ctrl)
 	tokenStore := mocks.NewMockTokenStore(ctrl)
-	log := logger.New(true)
 
 	service := NewAuthService(
 		userRepo,
 		tokenStore,
-		log,
 		"test-secret-key",
 		15*time.Minute,
 		7*24*time.Hour,
@@ -207,12 +202,10 @@ func TestAuthService_RefreshToken(t *testing.T) {
 
 	userRepo := mocks.NewMockUserRepository(ctrl)
 	tokenStore := mocks.NewMockTokenStore(ctrl)
-	log := logger.New(true)
 
 	service := NewAuthService(
 		userRepo,
 		tokenStore,
-		log,
 		"test-secret-key",
 		15*time.Minute,
 		7*24*time.Hour,
@@ -258,12 +251,10 @@ func TestAuthService_Logout(t *testing.T) {
 
 	userRepo := mocks.NewMockUserRepository(ctrl)
 	tokenStore := mocks.NewMockTokenStore(ctrl)
-	log := logger.New(true)
 
 	service := NewAuthService(
 		userRepo,
 		tokenStore,
-		log,
 		"test-secret-key",
 		15*time.Minute,
 		7*24*time.Hour,
@@ -286,12 +277,10 @@ func TestAuthService_ChangePassword(t *testing.T) {
 
 	userRepo := mocks.NewMockUserRepository(ctrl)
 	tokenStore := mocks.NewMockTokenStore(ctrl)
-	log := logger.New(true)
 
 	service := NewAuthService(
 		userRepo,
 		tokenStore,
-		log,
 		"test-secret-key",
 		15*time.Minute,
 		7*24*time.Hour,
@@ -342,9 +331,8 @@ func TestAuthService_RequestPasswordReset(t *testing.T) {
 
 	userRepo := mocks.NewMockUserRepository(ctrl)
 	tokenStore := mocks.NewMockTokenStore(ctrl)
-	log := logger.New(true)
 
-	svc := NewAuthService(userRepo, tokenStore, log, "test-secret", 15*time.Minute, 7*24*time.Hour, "test-issuer")
+	svc := NewAuthService(userRepo, tokenStore, "test-secret", 15*time.Minute, 7*24*time.Hour, "test-issuer")
 	ctx := context.Background()
 
 	tests := []struct {
@@ -402,9 +390,8 @@ func TestAuthService_ResetPassword(t *testing.T) {
 
 	userRepo := mocks.NewMockUserRepository(ctrl)
 	tokenStore := mocks.NewMockTokenStore(ctrl)
-	log := logger.New(true)
 
-	svc := NewAuthService(userRepo, tokenStore, log, "test-secret", 15*time.Minute, 7*24*time.Hour, "test-issuer")
+	svc := NewAuthService(userRepo, tokenStore, "test-secret", 15*time.Minute, 7*24*time.Hour, "test-issuer")
 	ctx := context.Background()
 
 	tests := []struct {
@@ -463,9 +450,8 @@ func TestAuthService_Login_ErrorCodes(t *testing.T) {
 
 	userRepo := mocks.NewMockUserRepository(ctrl)
 	tokenStore := mocks.NewMockTokenStore(ctrl)
-	log := logger.NewNoop()
 
-	svc := NewAuthService(userRepo, tokenStore, log, "test-secret", 15*time.Minute, 7*24*time.Hour, "test-issuer")
+	svc := NewAuthService(userRepo, tokenStore, "test-secret", 15*time.Minute, 7*24*time.Hour, "test-issuer")
 	ctx := context.Background()
 
 	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("password123"), bcrypt.DefaultCost)
@@ -542,9 +528,8 @@ func TestAuthService_RefreshToken_EdgeCases(t *testing.T) {
 
 	userRepo := mocks.NewMockUserRepository(ctrl)
 	tokenStore := mocks.NewMockTokenStore(ctrl)
-	log := logger.NewNoop()
 
-	svc := NewAuthService(userRepo, tokenStore, log, "test-secret", 15*time.Minute, 7*24*time.Hour, "test-issuer")
+	svc := NewAuthService(userRepo, tokenStore, "test-secret", 15*time.Minute, 7*24*time.Hour, "test-issuer")
 	ctx := context.Background()
 
 	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("password123"), bcrypt.DefaultCost)
@@ -590,9 +575,8 @@ func TestAuthService_ChangePassword_EdgeCases(t *testing.T) {
 
 	userRepo := mocks.NewMockUserRepository(ctrl)
 	tokenStore := mocks.NewMockTokenStore(ctrl)
-	log := logger.NewNoop()
 
-	svc := NewAuthService(userRepo, tokenStore, log, "test-secret", 15*time.Minute, 7*24*time.Hour, "test-issuer")
+	svc := NewAuthService(userRepo, tokenStore, "test-secret", 15*time.Minute, 7*24*time.Hour, "test-issuer")
 	ctx := context.Background()
 
 	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("oldpassword"), bcrypt.DefaultCost)
@@ -665,9 +649,8 @@ func TestAuthService_RequestPasswordReset_EdgeCases(t *testing.T) {
 
 	userRepo := mocks.NewMockUserRepository(ctrl)
 	tokenStore := mocks.NewMockTokenStore(ctrl)
-	log := logger.NewNoop()
 
-	svc := NewAuthService(userRepo, tokenStore, log, "test-secret", 15*time.Minute, 7*24*time.Hour, "test-issuer")
+	svc := NewAuthService(userRepo, tokenStore, "test-secret", 15*time.Minute, 7*24*time.Hour, "test-issuer")
 	ctx := context.Background()
 
 	t.Run("token store failure returns error", func(t *testing.T) {
@@ -689,9 +672,8 @@ func TestAuthService_ResetPassword_EdgeCases(t *testing.T) {
 
 	userRepo := mocks.NewMockUserRepository(ctrl)
 	tokenStore := mocks.NewMockTokenStore(ctrl)
-	log := logger.NewNoop()
 
-	svc := NewAuthService(userRepo, tokenStore, log, "test-secret", 15*time.Minute, 7*24*time.Hour, "test-issuer")
+	svc := NewAuthService(userRepo, tokenStore, "test-secret", 15*time.Minute, 7*24*time.Hour, "test-issuer")
 	ctx := context.Background()
 
 	t.Run("revocation failures are non-fatal", func(t *testing.T) {
@@ -713,9 +695,8 @@ func TestAuthService_ValidateToken_EdgeCases(t *testing.T) {
 
 	userRepo := mocks.NewMockUserRepository(ctrl)
 	tokenStore := mocks.NewMockTokenStore(ctrl)
-	log := logger.NewNoop()
 
-	svc := NewAuthService(userRepo, tokenStore, log, "test-secret", 15*time.Minute, 7*24*time.Hour, "test-issuer")
+	svc := NewAuthService(userRepo, tokenStore, "test-secret", 15*time.Minute, 7*24*time.Hour, "test-issuer")
 	ctx := context.Background()
 
 	t.Run("permissions defaults to empty slice when missing", func(t *testing.T) {
@@ -741,7 +722,7 @@ func TestAuthService_ValidateToken_EdgeCases(t *testing.T) {
 
 	t.Run("expired token returns INVALID_TOKEN error code", func(t *testing.T) {
 		// Create a service with negative duration to generate already-expired tokens
-		expiredSvc := NewAuthService(userRepo, tokenStore, log, "test-secret", -1*time.Second, 7*24*time.Hour, "test-issuer")
+		expiredSvc := NewAuthService(userRepo, tokenStore, "test-secret", -1*time.Second, 7*24*time.Hour, "test-issuer")
 
 		user := &domain.User{
 			ID: "user_123", Email: "test@example.com",

@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -11,7 +12,6 @@ import (
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/internal/event"
 	"github.com/handloom/admin/internal/service"
-	"github.com/handloom/admin/pkg/logger"
 )
 
 // AnalyticsHandler processes analytics-aggregation events from SQS and
@@ -19,20 +19,17 @@ import (
 // It writes raw events to the events table, updates live dashboard counters,
 // and runs daily aggregation on a schedule.
 type AnalyticsHandler struct {
-	logger        *logger.Logger
 	eventsRepo    domain.EventsRepository
 	analyticsRepo domain.AnalyticsRepository
 	aggregator    *service.AnalyticsAggregator
 }
 
 func NewAnalyticsHandler(
-	log *logger.Logger,
 	eventsRepo domain.EventsRepository,
 	analyticsRepo domain.AnalyticsRepository,
 	aggregator *service.AnalyticsAggregator,
 ) *AnalyticsHandler {
 	return &AnalyticsHandler{
-		logger:        log,
 		eventsRepo:    eventsRepo,
 		analyticsRepo: analyticsRepo,
 		aggregator:    aggregator,
@@ -43,7 +40,7 @@ func NewAnalyticsHandler(
 // It is invoked by EventBridge on a cron schedule (00:30 UTC daily).
 func (h *AnalyticsHandler) HandleScheduledEvent(ctx context.Context) error {
 	yesterday := time.Now().AddDate(0, 0, -1).Format("2006-01-02")
-	h.logger.Infof("Running daily aggregation for %s", yesterday)
+	slog.Info("Running daily aggregation", "date", yesterday)
 	return h.aggregator.AggregateDate(ctx, yesterday)
 }
 
@@ -52,7 +49,7 @@ func (h *AnalyticsHandler) HandleSQSEvent(ctx context.Context, sqsEvent events.S
 	var failures []events.SQSBatchItemFailure
 	for _, record := range sqsEvent.Records {
 		if err := h.processRecord(ctx, record); err != nil {
-			h.logger.WithContext(ctx).WithError(err).Errorf("failed to process analytics event: %s", record.MessageId)
+			slog.ErrorContext(ctx, "failed to process analytics event", "message_id", record.MessageId, "error", err)
 			failures = append(failures, events.SQSBatchItemFailure{ItemIdentifier: record.MessageId})
 		}
 	}
@@ -64,7 +61,7 @@ func (h *AnalyticsHandler) processRecord(ctx context.Context, record events.SQSM
 	if err := json.Unmarshal([]byte(record.Body), &evt); err != nil {
 		return err
 	}
-	h.logger.WithContext(ctx).Infof("Processing analytics for event %s: %s", evt.Type, evt.ID)
+	slog.InfoContext(ctx, "Processing analytics for event", "event_type", evt.Type, "event_id", evt.ID)
 
 	h.storeRawEvent(ctx, evt)
 	h.updateCounters(ctx, evt)
@@ -83,7 +80,7 @@ func (h *AnalyticsHandler) CanHandle(t event.EventType) bool {
 
 // Handle processes a single event (used by LocalPublisher).
 func (h *AnalyticsHandler) Handle(ctx context.Context, evt event.Event) error {
-	h.logger.WithContext(ctx).Infof("[local] analytics handler: %s %s", evt.Type, evt.ID)
+	slog.InfoContext(ctx, "[local] analytics handler", "event_type", evt.Type, "event_id", evt.ID)
 
 	h.storeRawEvent(ctx, evt)
 	h.updateCounters(ctx, evt)
@@ -114,7 +111,7 @@ func (h *AnalyticsHandler) storeRawEvent(ctx context.Context, evt event.Event) {
 	}
 
 	if err := h.eventsRepo.BatchWriteEvents(ctx, []domain.StoreEvent{storeEvt}); err != nil {
-		h.logger.WithContext(ctx).WithError(err).Errorf("failed to write raw event %s", evt.Type)
+		slog.ErrorContext(ctx, "failed to write raw event", "event_type", evt.Type, "error", err)
 	}
 }
 
@@ -130,29 +127,29 @@ func (h *AnalyticsHandler) updateCounters(ctx context.Context, evt event.Event) 
 	case event.OrderCreated:
 		// Increment today_orders by 1
 		if err := h.analyticsRepo.IncrementDashboardCounter(ctx, "today_orders", 1); err != nil {
-			h.logger.WithContext(ctx).WithError(err).Error("failed to increment today_orders")
+			slog.ErrorContext(ctx, "failed to increment today_orders", "error", err)
 		}
 		// Increment today_revenue by order total amount
 		var od orderData
 		if err := json.Unmarshal(evt.Data, &od); err == nil && od.TotalAmount > 0 {
 			if err := h.analyticsRepo.IncrementDashboardCounter(ctx, "today_revenue", od.TotalAmount); err != nil {
-				h.logger.WithContext(ctx).WithError(err).Error("failed to increment today_revenue")
+				slog.ErrorContext(ctx, "failed to increment today_revenue", "error", err)
 			}
 		}
 
 	case event.PaymentReceived:
 		if err := h.analyticsRepo.IncrementDashboardCounter(ctx, "today_payments_success", 1); err != nil {
-			h.logger.WithContext(ctx).WithError(err).Error("failed to increment today_payments_success")
+			slog.ErrorContext(ctx, "failed to increment today_payments_success", "error", err)
 		}
 
 	case event.PaymentFailed:
 		if err := h.analyticsRepo.IncrementDashboardCounter(ctx, "today_payments_failed", 1); err != nil {
-			h.logger.WithContext(ctx).WithError(err).Error("failed to increment today_payments_failed")
+			slog.ErrorContext(ctx, "failed to increment today_payments_failed", "error", err)
 		}
 
 	case event.CustomerRegistered:
 		if err := h.analyticsRepo.IncrementDashboardCounter(ctx, "today_new_customers", 1); err != nil {
-			h.logger.WithContext(ctx).WithError(err).Error("failed to increment today_new_customers")
+			slog.ErrorContext(ctx, "failed to increment today_new_customers", "error", err)
 		}
 	}
 }

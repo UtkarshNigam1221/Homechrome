@@ -3,11 +3,11 @@ package service
 
 import (
 	"context"
+	"log/slog"
 	"sort"
 	"time"
 
 	"github.com/handloom/admin/internal/domain"
-	"github.com/handloom/admin/pkg/logger"
 )
 
 // AnalyticsService implements domain.AnalyticsService
@@ -16,7 +16,6 @@ type AnalyticsService struct {
 	orderRepo     domain.OrderRepository
 	productRepo   domain.ProductRepository
 	inventoryRepo domain.InventoryRepository
-	logger        *logger.Logger
 }
 
 // NewAnalyticsService creates a new AnalyticsService
@@ -25,14 +24,12 @@ func NewAnalyticsService(
 	orderRepo domain.OrderRepository,
 	productRepo domain.ProductRepository,
 	inventoryRepo domain.InventoryRepository,
-	logger *logger.Logger,
 ) *AnalyticsService {
 	return &AnalyticsService{
 		analyticsRepo: analyticsRepo,
 		orderRepo:     orderRepo,
 		productRepo:   productRepo,
 		inventoryRepo: inventoryRepo,
-		logger:        logger,
 	}
 }
 
@@ -40,7 +37,7 @@ func NewAnalyticsService(
 func (s *AnalyticsService) GetDashboardStats(ctx context.Context) (*domain.DashboardStats, error) {
 	stats, err := s.analyticsRepo.GetDashboardStats(ctx)
 	if err != nil {
-		s.logger.WithContext(ctx).WithError(err).Error("Failed to get dashboard stats")
+		slog.ErrorContext(ctx, "Failed to get dashboard stats", "error", err)
 		// Return empty stats instead of error for better UX
 		return &domain.DashboardStats{}, nil
 	}
@@ -103,7 +100,7 @@ func (s *AnalyticsService) GetInventoryAnalytics(ctx context.Context) (*domain.I
 func (s *AnalyticsService) GetFunnelAnalytics(ctx context.Context, startDate, endDate string) (*domain.FunnelAnalytics, error) {
 	rows, err := s.analyticsRepo.GetDailyAggregates(ctx, "FUNNEL", startDate, endDate)
 	if err != nil {
-		s.logger.WithContext(ctx).WithError(err).Error("Failed to get funnel aggregates")
+		slog.ErrorContext(ctx, "Failed to get funnel aggregates", "error", err)
 		return nil, err
 	}
 
@@ -165,7 +162,7 @@ func (s *AnalyticsService) GetFunnelAnalytics(ctx context.Context, startDate, en
 func (s *AnalyticsService) GetEngagementAnalytics(ctx context.Context, startDate, endDate string) (*domain.EngagementAnalytics, error) {
 	rows, err := s.analyticsRepo.GetDailyAggregates(ctx, "ENGAGEMENT", startDate, endDate)
 	if err != nil {
-		s.logger.WithContext(ctx).WithError(err).Error("Failed to get engagement aggregates")
+		slog.ErrorContext(ctx, "Failed to get engagement aggregates", "error", err)
 		return nil, err
 	}
 

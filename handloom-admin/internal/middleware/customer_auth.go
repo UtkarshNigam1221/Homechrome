@@ -5,24 +5,21 @@ import (
 	"net/http"
 
 	"github.com/handloom/admin/internal/domain"
-	"github.com/handloom/admin/pkg/logger"
 	"github.com/handloom/admin/pkg/response"
+	"github.com/handloom/admin/pkg/slogx"
 )
 
 // CustomerAuth provides customer JWT authentication middleware
 type CustomerAuth struct {
 	customerAuthService domain.CustomerAuthService
-	logger              *logger.Logger
 }
 
 // NewCustomerAuth creates a new CustomerAuth middleware
 func NewCustomerAuth(
 	customerAuthService domain.CustomerAuthService,
-	logger *logger.Logger,
 ) *CustomerAuth {
 	return &CustomerAuth{
 		customerAuthService: customerAuthService,
-		logger:              logger,
 	}
 }
 
@@ -49,7 +46,7 @@ func (a *CustomerAuth) Authenticate(next http.Handler) http.Handler {
 
 		// Set customer ID in context
 		ctx := context.WithValue(r.Context(), CustomerIDKey, claims.CustomerID)
-		ctx = logger.SetUserID(ctx, claims.CustomerID)
+		ctx = slogx.SetUserID(ctx, claims.CustomerID)
 
 		// Create a minimal customer object from claims
 		customer := &domain.Customer{

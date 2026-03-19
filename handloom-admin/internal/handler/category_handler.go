@@ -7,22 +7,19 @@ import (
 
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/internal/middleware"
-	"github.com/handloom/admin/pkg/logger"
 	"github.com/handloom/admin/pkg/response"
 )
 
 // CategoryHandler handles category-related HTTP requests
 type CategoryHandler struct {
 	categoryService domain.CategoryService
-	logger          *logger.Logger
 	validation      *middleware.Validation
 }
 
 // NewCategoryHandler creates a new CategoryHandler
-func NewCategoryHandler(categoryService domain.CategoryService, logger *logger.Logger, validation *middleware.Validation) *CategoryHandler {
+func NewCategoryHandler(categoryService domain.CategoryService, validation *middleware.Validation) *CategoryHandler {
 	return &CategoryHandler{
 		categoryService: categoryService,
-		logger:          logger,
 		validation:      validation,
 	}
 }

@@ -11,7 +11,6 @@ import (
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/internal/middleware"
 	"github.com/handloom/admin/pkg/errors"
-	"github.com/handloom/admin/pkg/logger"
 	"github.com/handloom/admin/pkg/response"
 )
 
@@ -19,16 +18,14 @@ import (
 type AuthHandler struct {
 	authService domain.AuthService
 	userService domain.UserService
-	logger      *logger.Logger
 	validation  *middleware.Validation
 }
 
 // NewAuthHandler creates a new AuthHandler
-func NewAuthHandler(authService domain.AuthService, userService domain.UserService, logger *logger.Logger, validation *middleware.Validation) *AuthHandler {
+func NewAuthHandler(authService domain.AuthService, userService domain.UserService, validation *middleware.Validation) *AuthHandler {
 	return &AuthHandler{
 		authService: authService,
 		userService: userService,
-		logger:      logger,
 		validation:  validation,
 	}
 }

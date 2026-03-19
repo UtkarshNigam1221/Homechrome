@@ -12,7 +12,6 @@ import (
 	"github.com/handloom/admin/internal/event"
 	"github.com/handloom/admin/internal/mocks"
 	"github.com/handloom/admin/pkg/errors"
-	"github.com/handloom/admin/pkg/logger"
 )
 
 // noopCache is a no-op CacheInvalidator for tests.
@@ -25,8 +24,7 @@ func TestInventoryService_GetByProductID(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockInventoryRepo := mocks.NewMockInventoryRepository(ctrl)
-	log := logger.NewNoop()
-	service := NewInventoryService(mockInventoryRepo, noopCache{}, event.NewNoopPublisher(), log)
+	service := NewInventoryService(mockInventoryRepo, noopCache{}, event.NewNoopPublisher())
 	ctx := context.Background()
 
 	t.Run("successful get inventory", func(t *testing.T) {
@@ -68,8 +66,7 @@ func TestInventoryService_AddStock(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockInventoryRepo := mocks.NewMockInventoryRepository(ctrl)
-	log := logger.NewNoop()
-	service := NewInventoryService(mockInventoryRepo, noopCache{}, event.NewNoopPublisher(), log)
+	service := NewInventoryService(mockInventoryRepo, noopCache{}, event.NewNoopPublisher())
 	ctx := context.Background()
 
 	t.Run("successful add stock", func(t *testing.T) {
@@ -124,8 +121,7 @@ func TestInventoryService_RemoveStock(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockInventoryRepo := mocks.NewMockInventoryRepository(ctrl)
-	log := logger.NewNoop()
-	service := NewInventoryService(mockInventoryRepo, noopCache{}, event.NewNoopPublisher(), log)
+	service := NewInventoryService(mockInventoryRepo, noopCache{}, event.NewNoopPublisher())
 	ctx := context.Background()
 
 	t.Run("successful remove stock", func(t *testing.T) {
@@ -192,8 +188,7 @@ func TestInventoryService_AdjustStock(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockInventoryRepo := mocks.NewMockInventoryRepository(ctrl)
-	log := logger.NewNoop()
-	service := NewInventoryService(mockInventoryRepo, noopCache{}, event.NewNoopPublisher(), log)
+	service := NewInventoryService(mockInventoryRepo, noopCache{}, event.NewNoopPublisher())
 	ctx := context.Background()
 
 	t.Run("successful adjust stock up", func(t *testing.T) {
@@ -258,8 +253,7 @@ func TestInventoryService_GetTransactions(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockInventoryRepo := mocks.NewMockInventoryRepository(ctrl)
-	log := logger.NewNoop()
-	service := NewInventoryService(mockInventoryRepo, noopCache{}, event.NewNoopPublisher(), log)
+	service := NewInventoryService(mockInventoryRepo, noopCache{}, event.NewNoopPublisher())
 	ctx := context.Background()
 
 	t.Run("successful get transactions", func(t *testing.T) {
@@ -295,8 +289,7 @@ func TestInventoryService_GetLowStockProducts(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockInventoryRepo := mocks.NewMockInventoryRepository(ctrl)
-	log := logger.NewNoop()
-	service := NewInventoryService(mockInventoryRepo, noopCache{}, event.NewNoopPublisher(), log)
+	service := NewInventoryService(mockInventoryRepo, noopCache{}, event.NewNoopPublisher())
 	ctx := context.Background()
 
 	t.Run("successful get low stock products", func(t *testing.T) {
@@ -332,13 +325,12 @@ func TestInventoryService_AddStock_EventPublishing(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockInventoryRepo := mocks.NewMockInventoryRepository(ctrl)
-	log := logger.NewNoop()
 	ctx := context.Background()
 
 	t.Run("publishes RESTOCKED event", func(t *testing.T) {
 		spy := newSpyPublisher()
 		cache := newSpyCache()
-		svc := NewInventoryService(mockInventoryRepo, cache, spy, log)
+		svc := NewInventoryService(mockInventoryRepo, cache, spy)
 
 		transaction := &domain.InventoryTransaction{
 			ID: "txn_1", ProductID: "prod_123",
@@ -360,7 +352,7 @@ func TestInventoryService_AddStock_EventPublishing(t *testing.T) {
 
 	t.Run("event publish failure is non-fatal", func(t *testing.T) {
 		spy := newFailingPublisher(errors.Internal("SNS down"))
-		svc := NewInventoryService(mockInventoryRepo, noopCache{}, spy, log)
+		svc := NewInventoryService(mockInventoryRepo, noopCache{}, spy)
 
 		transaction := &domain.InventoryTransaction{
 			ID: "txn_1", PreviousQty: 10, NewQty: 60,
@@ -384,12 +376,11 @@ func TestInventoryService_RemoveStock_EventPublishing(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockInventoryRepo := mocks.NewMockInventoryRepository(ctrl)
-	log := logger.NewNoop()
 	ctx := context.Background()
 
 	t.Run("publishes OUT_OF_STOCK event when available qty is zero", func(t *testing.T) {
 		spy := newSpyPublisher()
-		svc := NewInventoryService(mockInventoryRepo, noopCache{}, spy, log)
+		svc := NewInventoryService(mockInventoryRepo, noopCache{}, spy)
 
 		transaction := &domain.InventoryTransaction{
 			ID: "txn_1", PreviousQty: 5, NewQty: 0,
@@ -416,7 +407,7 @@ func TestInventoryService_RemoveStock_EventPublishing(t *testing.T) {
 
 	t.Run("publishes LOW_STOCK event when below threshold but not zero", func(t *testing.T) {
 		spy := newSpyPublisher()
-		svc := NewInventoryService(mockInventoryRepo, noopCache{}, spy, log)
+		svc := NewInventoryService(mockInventoryRepo, noopCache{}, spy)
 
 		transaction := &domain.InventoryTransaction{
 			ID: "txn_1", PreviousQty: 15, NewQty: 8,
@@ -443,7 +434,7 @@ func TestInventoryService_RemoveStock_EventPublishing(t *testing.T) {
 
 	t.Run("no stock event when above threshold", func(t *testing.T) {
 		spy := newSpyPublisher()
-		svc := NewInventoryService(mockInventoryRepo, noopCache{}, spy, log)
+		svc := NewInventoryService(mockInventoryRepo, noopCache{}, spy)
 
 		transaction := &domain.InventoryTransaction{
 			ID: "txn_1", PreviousQty: 100, NewQty: 80,
@@ -469,7 +460,7 @@ func TestInventoryService_RemoveStock_EventPublishing(t *testing.T) {
 
 	t.Run("event publish failure is non-fatal", func(t *testing.T) {
 		spy := newFailingPublisher(errors.Internal("SNS down"))
-		svc := NewInventoryService(mockInventoryRepo, noopCache{}, spy, log)
+		svc := NewInventoryService(mockInventoryRepo, noopCache{}, spy)
 
 		transaction := &domain.InventoryTransaction{
 			ID: "txn_1", PreviousQty: 5, NewQty: 0,
@@ -499,13 +490,12 @@ func TestInventoryService_CacheInvalidation(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockInventoryRepo := mocks.NewMockInventoryRepository(ctrl)
-	log := logger.NewNoop()
 	publisher := event.NewNoopPublisher()
 	ctx := context.Background()
 
 	t.Run("AddStock invalidates product cache", func(t *testing.T) {
 		cache := newSpyCache()
-		svc := NewInventoryService(mockInventoryRepo, cache, publisher, log)
+		svc := NewInventoryService(mockInventoryRepo, cache, publisher)
 
 		mockInventoryRepo.EXPECT().
 			AddStock(ctx, "prod_123", 10, "test", "user_1").
@@ -521,7 +511,7 @@ func TestInventoryService_CacheInvalidation(t *testing.T) {
 
 	t.Run("RemoveStock invalidates product cache", func(t *testing.T) {
 		cache := newSpyCache()
-		svc := NewInventoryService(mockInventoryRepo, cache, publisher, log)
+		svc := NewInventoryService(mockInventoryRepo, cache, publisher)
 
 		mockInventoryRepo.EXPECT().
 			RemoveStock(ctx, "prod_123", 5, "test", "user_1").
@@ -541,7 +531,7 @@ func TestInventoryService_CacheInvalidation(t *testing.T) {
 
 	t.Run("AdjustStock invalidates product cache", func(t *testing.T) {
 		cache := newSpyCache()
-		svc := NewInventoryService(mockInventoryRepo, cache, publisher, log)
+		svc := NewInventoryService(mockInventoryRepo, cache, publisher)
 
 		mockInventoryRepo.EXPECT().
 			AdjustStock(ctx, "prod_123", 50, "audit", "user_1").
@@ -561,8 +551,7 @@ func TestInventoryService_ResultFields(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockInventoryRepo := mocks.NewMockInventoryRepository(ctrl)
-	log := logger.NewNoop()
-	svc := NewInventoryService(mockInventoryRepo, noopCache{}, event.NewNoopPublisher(), log)
+	svc := NewInventoryService(mockInventoryRepo, noopCache{}, event.NewNoopPublisher())
 	ctx := context.Background()
 
 	t.Run("AddStock result fields match transaction", func(t *testing.T) {

@@ -1,6 +1,7 @@
 package store
 
 import (
+	"log/slog"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -8,7 +9,6 @@ import (
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/internal/middleware"
 	"github.com/handloom/admin/pkg/errors"
-	"github.com/handloom/admin/pkg/logger"
 	"github.com/handloom/admin/pkg/response"
 )
 
@@ -17,19 +17,16 @@ import (
 type OrderHandler struct {
 	orderService domain.OrderService
 	orderRepo    domain.OrderRepository
-	logger       *logger.Logger
 }
 
 // NewOrderHandler creates a new OrderHandler.
 func NewOrderHandler(
 	os domain.OrderService,
 	or domain.OrderRepository,
-	l *logger.Logger,
 ) *OrderHandler {
 	return &OrderHandler{
 		orderService: os,
 		orderRepo:    or,
-		logger:       l,
 	}
 }
 
@@ -53,7 +50,7 @@ func (h *OrderHandler) ListMyOrders(w http.ResponseWriter, r *http.Request) {
 
 	result, err := h.orderRepo.GetByCustomer(ctx, customerID, pagination)
 	if err != nil {
-		h.logger.WithContext(ctx).WithError(err).Error("Failed to list customer orders")
+		slog.ErrorContext(ctx, "failed to list customer orders", "error", err)
 		response.Error(w, err)
 		return
 	}
@@ -115,7 +112,7 @@ func (h *OrderHandler) CancelOrder(w http.ResponseWriter, r *http.Request) {
 
 	// Cancel via service (uses customerID as the actor)
 	if err := h.orderService.CancelOrder(ctx, id, "Canceled by customer", customerID); err != nil {
-		h.logger.WithContext(ctx).WithError(err).Error("Failed to cancel order")
+		slog.ErrorContext(ctx, "failed to cancel order", "error", err)
 		response.Error(w, err)
 		return
 	}

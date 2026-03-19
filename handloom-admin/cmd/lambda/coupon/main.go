@@ -3,29 +3,30 @@ package main
 
 import (
 	"context"
+	"log/slog"
 	"os"
 
 	"github.com/handloom/admin/internal/config"
 	"github.com/handloom/admin/internal/router"
 	"github.com/handloom/admin/internal/wire"
-	"github.com/handloom/admin/pkg/logger"
+	"github.com/handloom/admin/pkg/slogx"
 )
 
 func main() {
 	cfg := config.Load()
-	log := logger.New(cfg.App.Debug)
-	log.Info("Starting Coupon Lambda")
+	slogx.Setup(cfg.App.Debug)
+	slog.Info("Starting Coupon Lambda")
 
 	ctx := context.Background()
 
 	deps, err := wire.InitializeCouponDeps(ctx, cfg)
 	if err != nil {
-		log.Fatalf("Failed to initialize dependencies: %v", err)
+		slog.Error("Failed to initialize dependencies", "error", err)
+		os.Exit(1)
 	}
 
 	r := router.NewAuthenticatedRouter(
 		router.Config{AllowedOrigins: getAllowedOrigins(), Debug: cfg.App.Debug},
-		deps.Logger,
 		deps.AuthMiddleware,
 	)
 	router.NewCouponRouter(r, deps.Handler)

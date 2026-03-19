@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"math"
 	"strconv"
 	"time"
@@ -13,7 +14,6 @@ import (
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/internal/gateway/shiprocket"
 	"github.com/handloom/admin/pkg/errors"
-	"github.com/handloom/admin/pkg/logger"
 )
 
 // ShippingService implements domain.ShippingService
@@ -22,7 +22,6 @@ type ShippingService struct {
 	orderRepo     domain.OrderRepository
 	shiprocket    shiprocket.Gateway
 	pickupPincode string
-	logger        *logger.Logger
 }
 
 // NewShippingService creates a new ShippingService
@@ -31,14 +30,12 @@ func NewShippingService(
 	orderRepo domain.OrderRepository,
 	shiprocketClient shiprocket.Gateway,
 	pickupPincode string,
-	logger *logger.Logger,
 ) *ShippingService {
 	return &ShippingService{
 		shipmentRepo:  shipmentRepo,
 		orderRepo:     orderRepo,
 		shiprocket:    shiprocketClient,
 		pickupPincode: pickupPincode,
-		logger:        logger,
 	}
 }
 
@@ -49,7 +46,7 @@ func (s *ShippingService) CheckServiceability(ctx context.Context, pickupPincode
 
 	resp, err := s.shiprocket.CheckServiceability(ctx, pickupPincode, deliveryPincode, weightKG)
 	if err != nil {
-		s.logger.WithError(err).Errorf("Failed to check serviceability for pincodes %s -> %s", pickupPincode, deliveryPincode)
+		slog.ErrorContext(ctx, "Failed to check serviceability", "pickup_pincode", pickupPincode, "delivery_pincode", deliveryPincode, "error", err)
 		return nil, errors.Wrap(err, "Failed to check shipping serviceability")
 	}
 
@@ -131,21 +128,21 @@ func (s *ShippingService) CreateShipment(ctx context.Context, order *domain.Orde
 	// Create order in Shiprocket
 	createResp, err := s.shiprocket.CreateOrder(ctx, createReq)
 	if err != nil {
-		s.logger.WithError(err).Errorf("Failed to create Shiprocket order for order %s", order.ID)
+		slog.ErrorContext(ctx, "Failed to create Shiprocket order", "order_id", order.ID, "error", err)
 		return nil, errors.Wrap(err, "Failed to create shipping order")
 	}
 
 	// Assign AWB (use first available courier)
 	awbResp, err := s.shiprocket.AssignAWB(ctx, createResp.ShipmentID, 0)
 	if err != nil {
-		s.logger.WithError(err).Errorf("Failed to assign AWB for shipment %d", createResp.ShipmentID)
+		slog.ErrorContext(ctx, "Failed to assign AWB", "shipment_id", createResp.ShipmentID, "error", err)
 		return nil, errors.Wrap(err, "Failed to assign AWB number")
 	}
 
 	// Generate shipping label
 	labelURL, err := s.shiprocket.GenerateLabel(ctx, createResp.ShipmentID)
 	if err != nil {
-		s.logger.WithError(err).Errorf("Failed to generate label for shipment %d", createResp.ShipmentID)
+		slog.ErrorContext(ctx, "Failed to generate label", "shipment_id", createResp.ShipmentID, "error", err)
 		return nil, errors.Wrap(err, "Failed to generate shipping label")
 	}
 
@@ -167,17 +164,17 @@ func (s *ShippingService) CreateShipment(ctx context.Context, order *domain.Orde
 
 	// Save shipment to repository
 	if err := s.shipmentRepo.Create(ctx, shipment); err != nil {
-		s.logger.WithError(err).Errorf("Failed to save shipment for order %s", order.ID)
+		slog.ErrorContext(ctx, "Failed to save shipment", "order_id", order.ID, "error", err)
 		return nil, errors.Wrap(err, "Failed to save shipment")
 	}
 
 	// Update order status to SHIPPED with tracking info
 	if err := s.orderRepo.UpdateStatus(ctx, order.ID, domain.OrderStatusShipped, "system"); err != nil {
-		s.logger.WithError(err).Errorf("Failed to update order status to SHIPPED for order %s", order.ID)
+		slog.ErrorContext(ctx, "Failed to update order status to SHIPPED", "order_id", order.ID, "error", err)
 	}
 
 	if err := s.orderRepo.UpdateTracking(ctx, order.ID, shipment.AWBNumber, shipment.CourierName); err != nil {
-		s.logger.WithError(err).Errorf("Failed to update tracking info for order %s", order.ID)
+		slog.ErrorContext(ctx, "Failed to update tracking info", "order_id", order.ID, "error", err)
 	}
 
 	return shipment, nil
@@ -194,7 +191,7 @@ func (s *ShippingService) TrackShipment(ctx context.Context, orderID string) (*d
 	if shipment.AWBNumber != "" {
 		trackResp, err := s.shiprocket.TrackByAWB(ctx, shipment.AWBNumber)
 		if err != nil {
-			s.logger.WithError(err).Errorf("Failed to track AWB %s for order %s", shipment.AWBNumber, orderID)
+			slog.ErrorContext(ctx, "Failed to track AWB", "awb_number", shipment.AWBNumber, "order_id", orderID, "error", err)
 			// Return cached shipment data even if live tracking fails
 			return shipment, nil
 		}
@@ -207,14 +204,14 @@ func (s *ShippingService) TrackShipment(ctx context.Context, orderID string) (*d
 				updates["delivered_at"] = now.Format(time.RFC3339)
 			}
 			if err := s.shipmentRepo.UpdateStatus(ctx, orderID, shipment.ID, newStatus, updates); err != nil {
-				s.logger.WithError(err).Errorf("Failed to update shipment status for order %s", orderID)
+				slog.ErrorContext(ctx, "Failed to update shipment status", "order_id", orderID, "error", err)
 			}
 			shipment.Status = newStatus
 
 			// Update corresponding order status if delivered
 			if newStatus == domain.ShipmentStatusDelivered {
 				if err := s.orderRepo.UpdateStatus(ctx, orderID, domain.OrderStatusDelivered, "system"); err != nil {
-					s.logger.WithError(err).Errorf("Failed to update order status to DELIVERED for order %s", orderID)
+					slog.ErrorContext(ctx, "Failed to update order status to DELIVERED", "order_id", orderID, "error", err)
 				}
 			}
 		}
@@ -246,7 +243,7 @@ func (s *ShippingService) HandleWebhook(ctx context.Context, payload []byte, tok
 	// Retrieve the shipment for this order
 	shipment, err := s.shipmentRepo.GetByOrderID(ctx, webhook.OrderID)
 	if err != nil {
-		s.logger.WithError(err).Errorf("Failed to find shipment for webhook order %s", webhook.OrderID)
+		slog.ErrorContext(ctx, "Failed to find shipment for webhook order", "order_id", webhook.OrderID, "error", err)
 		return errors.Wrap(err, fmt.Sprintf("Failed to find shipment for order %s", webhook.OrderID))
 	}
 
@@ -268,7 +265,7 @@ func (s *ShippingService) HandleWebhook(ctx context.Context, payload []byte, tok
 
 	// Update shipment status
 	if err := s.shipmentRepo.UpdateStatus(ctx, shipment.OrderID, shipment.ID, newStatus, updates); err != nil {
-		s.logger.WithError(err).Errorf("Failed to update shipment status via webhook for order %s", webhook.OrderID)
+		slog.ErrorContext(ctx, "Failed to update shipment status via webhook", "order_id", webhook.OrderID, "error", err)
 		return errors.Wrap(err, "Failed to update shipment status")
 	}
 
@@ -276,11 +273,11 @@ func (s *ShippingService) HandleWebhook(ctx context.Context, payload []byte, tok
 	switch newStatus {
 	case domain.ShipmentStatusDelivered:
 		if err := s.orderRepo.UpdateStatus(ctx, shipment.OrderID, domain.OrderStatusDelivered, "system"); err != nil {
-			s.logger.WithError(err).Errorf("Failed to update order to DELIVERED for order %s", shipment.OrderID)
+			slog.ErrorContext(ctx, "Failed to update order to DELIVERED", "order_id", shipment.OrderID, "error", err)
 		}
 	case domain.ShipmentStatusRTO:
 		if err := s.orderRepo.UpdateStatus(ctx, shipment.OrderID, domain.OrderStatusReturned, "system"); err != nil {
-			s.logger.WithError(err).Errorf("Failed to update order to RETURNED for order %s", shipment.OrderID)
+			slog.ErrorContext(ctx, "Failed to update order to RETURNED", "order_id", shipment.OrderID, "error", err)
 		}
 	}
 

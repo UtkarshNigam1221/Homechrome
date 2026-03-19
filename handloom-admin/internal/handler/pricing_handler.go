@@ -8,22 +8,19 @@ import (
 
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/internal/middleware"
-	"github.com/handloom/admin/pkg/logger"
 	"github.com/handloom/admin/pkg/response"
 )
 
 // PricingHandler handles pricing-related HTTP requests
 type PricingHandler struct {
 	pricingService domain.PricingService
-	logger         *logger.Logger
 	validation     *middleware.Validation
 }
 
 // NewPricingHandler creates a new PricingHandler
-func NewPricingHandler(pricingService domain.PricingService, logger *logger.Logger, validation *middleware.Validation) *PricingHandler {
+func NewPricingHandler(pricingService domain.PricingService, validation *middleware.Validation) *PricingHandler {
 	return &PricingHandler{
 		pricingService: pricingService,
-		logger:         logger,
 		validation:     validation,
 	}
 }

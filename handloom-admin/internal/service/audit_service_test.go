@@ -12,7 +12,6 @@ import (
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/internal/mocks"
 	"github.com/handloom/admin/pkg/errors"
-	"github.com/handloom/admin/pkg/logger"
 )
 
 func TestAuditService_Log(t *testing.T) {
@@ -20,8 +19,7 @@ func TestAuditService_Log(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockAuditRepo := mocks.NewMockAuditRepository(ctrl)
-	log := logger.NewNoop()
-	service := NewAuditService(mockAuditRepo, log)
+	service := NewAuditService(mockAuditRepo)
 	ctx := context.Background()
 
 	t.Run("successful audit log creation", func(t *testing.T) {
@@ -70,8 +68,7 @@ func TestAuditService_GetByID(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockAuditRepo := mocks.NewMockAuditRepository(ctrl)
-	log := logger.NewNoop()
-	service := NewAuditService(mockAuditRepo, log)
+	service := NewAuditService(mockAuditRepo)
 	ctx := context.Background()
 
 	t.Run("successful get by ID", func(t *testing.T) {
@@ -112,8 +109,7 @@ func TestAuditService_List(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockAuditRepo := mocks.NewMockAuditRepository(ctrl)
-	log := logger.NewNoop()
-	service := NewAuditService(mockAuditRepo, log)
+	service := NewAuditService(mockAuditRepo)
 	ctx := context.Background()
 
 	t.Run("successful list", func(t *testing.T) {
@@ -181,8 +177,7 @@ func TestAuditService_GetByEntity(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockAuditRepo := mocks.NewMockAuditRepository(ctrl)
-	log := logger.NewNoop()
-	service := NewAuditService(mockAuditRepo, log)
+	service := NewAuditService(mockAuditRepo)
 	ctx := context.Background()
 
 	t.Run("successful get by entity", func(t *testing.T) {
@@ -218,8 +213,7 @@ func TestAuditService_GetByUser(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockAuditRepo := mocks.NewMockAuditRepository(ctrl)
-	log := logger.NewNoop()
-	service := NewAuditService(mockAuditRepo, log)
+	service := NewAuditService(mockAuditRepo)
 	ctx := context.Background()
 
 	t.Run("successful get by user", func(t *testing.T) {

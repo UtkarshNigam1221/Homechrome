@@ -13,7 +13,6 @@ import (
 
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/pkg/errors"
-	"github.com/handloom/admin/pkg/logger"
 )
 
 // ---------------------------------------------------------------------------
@@ -48,7 +47,6 @@ const testBucket = "test-bucket"
 func newTestAssetService(s3 *mockS3Client) *AssetService {
 	return &AssetService{
 		s3Client: s3,
-		logger:   logger.NewNoop(),
 		bucket:   testBucket,
 	}
 }

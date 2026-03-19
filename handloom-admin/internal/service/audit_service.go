@@ -4,25 +4,23 @@ package service
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/handloom/admin/internal/domain"
-	"github.com/handloom/admin/pkg/logger"
 )
 
 // AuditService implements domain.AuditService
 type AuditService struct {
 	auditRepo domain.AuditRepository
-	logger    *logger.Logger
 }
 
 // NewAuditService creates a new AuditService
-func NewAuditService(auditRepo domain.AuditRepository, logger *logger.Logger) *AuditService {
+func NewAuditService(auditRepo domain.AuditRepository) *AuditService {
 	return &AuditService{
 		auditRepo: auditRepo,
-		logger:    logger,
 	}
 }
 
@@ -48,7 +46,7 @@ func (s *AuditService) Log(ctx context.Context, action string, entityType string
 	log.SetKeys()
 
 	if err := s.auditRepo.Create(ctx, log); err != nil {
-		s.logger.WithContext(ctx).WithError(err).Error("Failed to create audit log")
+		slog.ErrorContext(ctx, "Failed to create audit log", "error", err)
 		return err
 	}
 

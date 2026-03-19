@@ -14,7 +14,6 @@ import (
 	"github.com/handloom/admin/internal/handler/store"
 	"github.com/handloom/admin/internal/middleware"
 	"github.com/handloom/admin/internal/repository/dynamodb"
-	"github.com/handloom/admin/pkg/logger"
 )
 
 // ============================================================================
@@ -24,7 +23,6 @@ import (
 // AuthDeps holds dependencies for the Auth Lambda
 type AuthDeps struct {
 	Config         *config.Config
-	Logger         *logger.Logger
 	Handler        *handler.AuthHandler
 	AuthMiddleware *middleware.Auth
 }
@@ -32,7 +30,6 @@ type AuthDeps struct {
 // UserDeps holds dependencies for the User Lambda
 type UserDeps struct {
 	Config         *config.Config
-	Logger         *logger.Logger
 	Handler        *handler.UserHandler
 	AuthMiddleware *middleware.Auth
 }
@@ -40,7 +37,6 @@ type UserDeps struct {
 // CatalogDeps holds dependencies for the Catalog Lambda
 type CatalogDeps struct {
 	Config          *config.Config
-	Logger          *logger.Logger
 	CategoryHandler *handler.CategoryHandler
 	ProductHandler  *handler.ProductHandler
 	AuthMiddleware  *middleware.Auth
@@ -49,7 +45,6 @@ type CatalogDeps struct {
 // OrderDeps holds dependencies for the Order Lambda
 type OrderDeps struct {
 	Config          *config.Config
-	Logger          *logger.Logger
 	OrderHandler    *handler.OrderHandler
 	CustomerHandler *handler.CustomerHandler
 	AuthMiddleware  *middleware.Auth
@@ -58,7 +53,6 @@ type OrderDeps struct {
 // PricingDeps holds dependencies for the Pricing Lambda
 type PricingDeps struct {
 	Config         *config.Config
-	Logger         *logger.Logger
 	Handler        *handler.PricingHandler
 	AuthMiddleware *middleware.Auth
 }
@@ -66,7 +60,6 @@ type PricingDeps struct {
 // InventoryDeps holds dependencies for the Inventory Lambda
 type InventoryDeps struct {
 	Config         *config.Config
-	Logger         *logger.Logger
 	Handler        *handler.InventoryHandler
 	AuthMiddleware *middleware.Auth
 }
@@ -74,7 +67,6 @@ type InventoryDeps struct {
 // AnalyticsDeps holds dependencies for the Analytics Lambda
 type AnalyticsDeps struct {
 	Config         *config.Config
-	Logger         *logger.Logger
 	Handler        *handler.AnalyticsHandler
 	AuthMiddleware *middleware.Auth
 }
@@ -82,7 +74,6 @@ type AnalyticsDeps struct {
 // NotificationDeps holds dependencies for the Notification Lambda
 type NotificationDeps struct {
 	Config         *config.Config
-	Logger         *logger.Logger
 	Handler        *handler.NotificationHandler
 	AuthMiddleware *middleware.Auth
 }
@@ -90,7 +81,6 @@ type NotificationDeps struct {
 // CouponDeps holds dependencies for the Coupon Lambda
 type CouponDeps struct {
 	Config         *config.Config
-	Logger         *logger.Logger
 	Handler        *handler.CouponHandler
 	AuthMiddleware *middleware.Auth
 }
@@ -98,7 +88,6 @@ type CouponDeps struct {
 // AssetDeps holds dependencies for the Asset Lambda
 type AssetDeps struct {
 	Config         *config.Config
-	Logger         *logger.Logger
 	Handler        *handler.AssetHandler
 	AuthMiddleware *middleware.Auth
 }
@@ -106,7 +95,6 @@ type AssetDeps struct {
 // ReportDeps holds dependencies for the Report Lambda
 type ReportDeps struct {
 	Config         *config.Config
-	Logger         *logger.Logger
 	Handler        *handler.ReportHandler
 	AuthMiddleware *middleware.Auth
 }
@@ -114,7 +102,6 @@ type ReportDeps struct {
 // AuditDeps holds dependencies for the Audit Lambda
 type AuditDeps struct {
 	Config         *config.Config
-	Logger         *logger.Logger
 	Handler        *handler.AuditHandler
 	AuthMiddleware *middleware.Auth
 }
@@ -122,7 +109,6 @@ type AuditDeps struct {
 // ApiDeps holds all dependencies for the main API server
 type ApiDeps struct {
 	Config              *config.Config
-	Logger              *logger.Logger
 	DynamoDBClient      *dynamodb.Client
 	AuthHandler         *handler.AuthHandler
 	UserHandler         *handler.UserHandler
@@ -415,7 +401,6 @@ func InitializeAuditDeps(ctx context.Context, cfg *config.Config) (*AuditDeps, e
 // StoreAuthDeps holds dependencies for the Store Auth Lambda
 type StoreAuthDeps struct {
 	Config                 *config.Config
-	Logger                 *logger.Logger
 	Handler                *store.AuthHandler
 	CustomerAuthMiddleware *middleware.CustomerAuth
 }
@@ -423,14 +408,12 @@ type StoreAuthDeps struct {
 // StoreCatalogDeps holds dependencies for the Store Catalog Lambda
 type StoreCatalogDeps struct {
 	Config  *config.Config
-	Logger  *logger.Logger
 	Handler *store.CatalogHandler
 }
 
 // StoreCartDeps holds dependencies for the Store Cart Lambda
 type StoreCartDeps struct {
 	Config           *config.Config
-	Logger           *logger.Logger
 	Handler          *store.CartHandler
 	OptionalCartAuth *middleware.OptionalCartAuth
 }
@@ -438,7 +421,6 @@ type StoreCartDeps struct {
 // StoreCheckoutDeps holds dependencies for the Store Checkout Lambda
 type StoreCheckoutDeps struct {
 	Config                 *config.Config
-	Logger                 *logger.Logger
 	Handler                *store.CheckoutHandler
 	CustomerAuthMiddleware *middleware.CustomerAuth
 }
@@ -446,7 +428,6 @@ type StoreCheckoutDeps struct {
 // StoreOrdersDeps holds dependencies for the Store Orders Lambda
 type StoreOrdersDeps struct {
 	Config                 *config.Config
-	Logger                 *logger.Logger
 	Handler                *store.OrderHandler
 	CustomerAuthMiddleware *middleware.CustomerAuth
 }
@@ -454,14 +435,12 @@ type StoreOrdersDeps struct {
 // StoreTrackingDeps holds dependencies for the Store Tracking Lambda
 type StoreTrackingDeps struct {
 	Config  *config.Config
-	Logger  *logger.Logger
 	Handler *store.TrackingHandler
 }
 
 // StoreProfileDeps holds dependencies for the Store Profile Lambda
 type StoreProfileDeps struct {
 	Config                 *config.Config
-	Logger                 *logger.Logger
 	Handler                *store.ProfileHandler
 	CustomerAuthMiddleware *middleware.CustomerAuth
 }
@@ -469,14 +448,12 @@ type StoreProfileDeps struct {
 // StoreWebhooksDeps holds dependencies for the Store Webhooks Lambda
 type StoreWebhooksDeps struct {
 	Config  *config.Config
-	Logger  *logger.Logger
 	Handler *store.WebhookHandler
 }
 
 // StoreEventsDeps holds dependencies for the Store Events Lambda
 type StoreEventsDeps struct {
 	Config  *config.Config
-	Logger  *logger.Logger
 	Handler *store.EventsHandler
 }
 
@@ -666,7 +643,6 @@ func InitializeStoreEventsDeps(ctx context.Context, cfg *config.Config) (*StoreE
 // App holds all application dependencies (deprecated, use service-specific deps)
 type App struct {
 	Config         *config.Config
-	Logger         *logger.Logger
 	DynamoDBClient *dynamodb.Client
 	AuthMiddleware *middleware.Auth
 }

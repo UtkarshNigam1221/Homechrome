@@ -3,13 +3,13 @@ package service
 
 import (
 	"context"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/pkg/errors"
-	"github.com/handloom/admin/pkg/logger"
 )
 
 // ReportService implements report generation business logic
@@ -20,7 +20,6 @@ type ReportService struct {
 	customerService  *CustomerService
 	inventoryService *InventoryService
 	analyticsService *AnalyticsService
-	logger           *logger.Logger
 }
 
 // NewReportService creates a new ReportService
@@ -31,7 +30,6 @@ func NewReportService(
 	customerService *CustomerService,
 	inventoryService *InventoryService,
 	analyticsService *AnalyticsService,
-	logger *logger.Logger,
 ) *ReportService {
 	return &ReportService{
 		reportRepo:       reportRepo,
@@ -40,7 +38,6 @@ func NewReportService(
 		customerService:  customerService,
 		inventoryService: inventoryService,
 		analyticsService: analyticsService,
-		logger:           logger,
 	}
 }
 
@@ -76,7 +73,7 @@ func (s *ReportService) Generate(ctx context.Context, req domain.GenerateReportR
 		return nil, err
 	}
 
-	s.logger.WithContext(ctx).Infof("Created report: %s", report.ID)
+	slog.InfoContext(ctx, "Created report", "report_id", report.ID)
 	return report, nil
 }
 
@@ -113,7 +110,7 @@ func (s *ReportService) Delete(ctx context.Context, id string) error {
 		return err
 	}
 
-	s.logger.WithContext(ctx).Infof("Deleted report: %s", id)
+	slog.InfoContext(ctx, "Deleted report", "report_id", id)
 	return nil
 }
 

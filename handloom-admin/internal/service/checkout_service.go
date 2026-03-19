@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -10,7 +11,6 @@ import (
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/internal/event"
 	"github.com/handloom/admin/pkg/errors"
-	"github.com/handloom/admin/pkg/logger"
 )
 
 // defaultPickupPincode is the warehouse/pickup location pincode
@@ -29,7 +29,6 @@ type CheckoutService struct {
 	customerRepo    domain.CustomerRepository
 	publisher       event.EventPublisher
 	pickupPincode   string
-	logger          *logger.Logger
 }
 
 // NewCheckoutService creates a new CheckoutService
@@ -41,7 +40,6 @@ func NewCheckoutService(
 	inventoryRepo domain.InventoryRepository,
 	customerRepo domain.CustomerRepository,
 	publisher event.EventPublisher,
-	logger *logger.Logger,
 ) *CheckoutService {
 	return &CheckoutService{
 		cartService:     cartService,
@@ -52,7 +50,6 @@ func NewCheckoutService(
 		customerRepo:    customerRepo,
 		publisher:       publisher,
 		pickupPincode:   defaultPickupPincode,
-		logger:          logger,
 	}
 }
 
@@ -61,13 +58,13 @@ func (s *CheckoutService) CheckServiceability(ctx context.Context, customerID, p
 	// Verify the customer exists
 	_, err := s.customerRepo.GetByID(ctx, customerID)
 	if err != nil {
-		s.logger.WithContext(ctx).WithError(err).Error("Failed to get customer for serviceability check")
+		slog.ErrorContext(ctx, "Failed to get customer for serviceability check", "error", err)
 		return nil, err
 	}
 
 	result, err := s.shippingService.CheckServiceability(ctx, s.pickupPincode, pincode, defaultWeightGrams)
 	if err != nil {
-		s.logger.WithContext(ctx).WithError(err).Error("Failed to check serviceability")
+		slog.ErrorContext(ctx, "Failed to check serviceability", "error", err)
 		return nil, errors.Wrap(err, "Failed to check serviceability")
 	}
 
@@ -80,7 +77,7 @@ func (s *CheckoutService) Initiate(ctx context.Context, customerID string, req d
 	// 1. Get customer
 	customer, err := s.customerRepo.GetByID(ctx, customerID)
 	if err != nil {
-		s.logger.WithContext(ctx).WithError(err).Error("Failed to get customer during checkout")
+		slog.ErrorContext(ctx, "Failed to get customer during checkout", "error", err)
 		return nil, err
 	}
 
@@ -101,7 +98,7 @@ func (s *CheckoutService) Initiate(ctx context.Context, customerID string, req d
 	// 3. Get cart
 	cart, err := s.cartService.GetCart(ctx, customerID, false)
 	if err != nil {
-		s.logger.WithContext(ctx).WithError(err).Error("Failed to get cart during checkout")
+		slog.ErrorContext(ctx, "Failed to get cart during checkout", "error", err)
 		return nil, err
 	}
 
@@ -117,7 +114,7 @@ func (s *CheckoutService) Initiate(ctx context.Context, customerID string, req d
 		if reserveErr != nil {
 			// Rollback: release all previously reserved items
 			s.releaseReservedItems(ctx, reservedItems)
-			s.logger.WithContext(ctx).WithError(reserveErr).Errorf("Failed to reserve stock for product %s", item.ProductID)
+			slog.ErrorContext(ctx, "Failed to reserve stock", "product_id", item.ProductID, "error", reserveErr)
 			return nil, errors.Wrap(reserveErr, fmt.Sprintf("Failed to reserve stock for product %s", item.ProductID))
 		}
 		reservedItems = append(reservedItems, item)
@@ -152,7 +149,7 @@ func (s *CheckoutService) Initiate(ctx context.Context, customerID string, req d
 	// Check serviceability for shipping cost
 	serviceResult, err := s.shippingService.CheckServiceability(ctx, s.pickupPincode, shippingAddr.PostalCode, defaultWeightGrams)
 	if err != nil {
-		s.logger.WithContext(ctx).WithError(err).Error("Failed to check serviceability for shipping cost")
+		slog.ErrorContext(ctx, "Failed to check serviceability for shipping cost", "error", err)
 		// Proceed with zero shipping if serviceability check fails
 	} else if serviceResult.Serviceable && len(serviceResult.Couriers) > 0 {
 		// Use selected courier or default to first available
@@ -204,7 +201,7 @@ func (s *CheckoutService) Initiate(ctx context.Context, customerID string, req d
 	// 10. Save order (repository also writes the order number index)
 	if err = s.orderRepo.Create(ctx, order); err != nil {
 		s.releaseReservedItems(ctx, reservedItems)
-		s.logger.WithContext(ctx).WithError(err).Error("Failed to create order")
+		slog.ErrorContext(ctx, "Failed to create order", "error", err)
 		return nil, errors.Wrap(err, "Failed to create order")
 	}
 
@@ -217,22 +214,22 @@ func (s *CheckoutService) Initiate(ctx context.Context, customerID string, req d
 	})
 	if err != nil {
 		s.releaseReservedItems(ctx, reservedItems)
-		s.logger.WithContext(ctx).WithError(err).Error("Failed to initiate payment")
+		slog.ErrorContext(ctx, "Failed to initiate payment", "error", err)
 		return nil, errors.Wrap(err, "Failed to initiate payment")
 	}
 
 	// 12. Clear cart
 	if err := s.cartService.ClearCart(ctx, customerID); err != nil {
 		// Log but don't fail the checkout - order and payment are already created
-		s.logger.WithContext(ctx).WithError(err).Error("Failed to clear cart after checkout")
+		slog.ErrorContext(ctx, "Failed to clear cart after checkout", "error", err)
 	}
 
 	// 13. Publish order.created event
 	if pubErr := s.publisher.Publish(ctx, event.New(event.OrderCreated, order)); pubErr != nil {
-		s.logger.WithContext(ctx).WithError(pubErr).Error("failed to publish order.created event")
+		slog.ErrorContext(ctx, "Failed to publish order.created event", "error", pubErr)
 	}
 
-	s.logger.WithContext(ctx).Infof("Checkout completed: order %s for customer %s", order.OrderNumber, customerID)
+	slog.InfoContext(ctx, "Checkout completed", "order_number", order.OrderNumber, "customer_id", customerID)
 
 	return &domain.CheckoutResult{
 		Order:         order,
@@ -278,7 +275,7 @@ func (s *CheckoutService) releaseReservedItems(ctx context.Context, items []doma
 	for _, item := range items {
 		_, err := s.inventoryRepo.ReleaseStock(ctx, item.ProductID, item.Quantity, "checkout")
 		if err != nil {
-			s.logger.WithContext(ctx).WithError(err).Errorf("Failed to release reserved stock for product %s", item.ProductID)
+			slog.ErrorContext(ctx, "Failed to release reserved stock", "product_id", item.ProductID, "error", err)
 			// Continue releasing other items even if one fails
 		}
 	}

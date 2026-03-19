@@ -11,7 +11,6 @@ import (
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/internal/mocks"
 	"github.com/handloom/admin/pkg/errors"
-	"github.com/handloom/admin/pkg/logger"
 )
 
 func TestNotificationService_Send(t *testing.T) {
@@ -20,8 +19,7 @@ func TestNotificationService_Send(t *testing.T) {
 
 	mockNotifRepo := mocks.NewMockNotificationRepository(ctrl)
 	mockUserRepo := mocks.NewMockUserRepository(ctrl)
-	log := logger.NewNoop()
-	service := NewNotificationService(mockNotifRepo, mockUserRepo, log)
+	service := NewNotificationService(mockNotifRepo, mockUserRepo)
 	ctx := context.Background()
 
 	t.Run("successful send", func(t *testing.T) {
@@ -81,8 +79,7 @@ func TestNotificationService_SendBulk(t *testing.T) {
 
 	mockNotifRepo := mocks.NewMockNotificationRepository(ctrl)
 	mockUserRepo := mocks.NewMockUserRepository(ctrl)
-	log := logger.NewNoop()
-	service := NewNotificationService(mockNotifRepo, mockUserRepo, log)
+	service := NewNotificationService(mockNotifRepo, mockUserRepo)
 	ctx := context.Background()
 
 	t.Run("bulk send with mixed results", func(t *testing.T) {
@@ -145,8 +142,7 @@ func TestNotificationService_GetByID(t *testing.T) {
 
 	mockNotifRepo := mocks.NewMockNotificationRepository(ctrl)
 	mockUserRepo := mocks.NewMockUserRepository(ctrl)
-	log := logger.NewNoop()
-	service := NewNotificationService(mockNotifRepo, mockUserRepo, log)
+	service := NewNotificationService(mockNotifRepo, mockUserRepo)
 	ctx := context.Background()
 
 	t.Run("successful get", func(t *testing.T) {
@@ -186,8 +182,7 @@ func TestNotificationService_List(t *testing.T) {
 
 	mockNotifRepo := mocks.NewMockNotificationRepository(ctrl)
 	mockUserRepo := mocks.NewMockUserRepository(ctrl)
-	log := logger.NewNoop()
-	service := NewNotificationService(mockNotifRepo, mockUserRepo, log)
+	service := NewNotificationService(mockNotifRepo, mockUserRepo)
 	ctx := context.Background()
 
 	t.Run("successful list", func(t *testing.T) {
@@ -226,8 +221,7 @@ func TestNotificationService_GetByUser(t *testing.T) {
 
 	mockNotifRepo := mocks.NewMockNotificationRepository(ctrl)
 	mockUserRepo := mocks.NewMockUserRepository(ctrl)
-	log := logger.NewNoop()
-	service := NewNotificationService(mockNotifRepo, mockUserRepo, log)
+	service := NewNotificationService(mockNotifRepo, mockUserRepo)
 	ctx := context.Background()
 
 	t.Run("successful get by user", func(t *testing.T) {
@@ -262,8 +256,7 @@ func TestNotificationService_MarkAsRead(t *testing.T) {
 
 	mockNotifRepo := mocks.NewMockNotificationRepository(ctrl)
 	mockUserRepo := mocks.NewMockUserRepository(ctrl)
-	log := logger.NewNoop()
-	service := NewNotificationService(mockNotifRepo, mockUserRepo, log)
+	service := NewNotificationService(mockNotifRepo, mockUserRepo)
 	ctx := context.Background()
 
 	t.Run("successful mark as read", func(t *testing.T) {
@@ -308,8 +301,7 @@ func TestNotificationService_MarkAllAsRead(t *testing.T) {
 
 	mockNotifRepo := mocks.NewMockNotificationRepository(ctrl)
 	mockUserRepo := mocks.NewMockUserRepository(ctrl)
-	log := logger.NewNoop()
-	service := NewNotificationService(mockNotifRepo, mockUserRepo, log)
+	service := NewNotificationService(mockNotifRepo, mockUserRepo)
 	ctx := context.Background()
 
 	t.Run("successful mark all as read", func(t *testing.T) {
@@ -339,8 +331,7 @@ func TestNotificationService_SendOrderNotification(t *testing.T) {
 
 	mockNotifRepo := mocks.NewMockNotificationRepository(ctrl)
 	mockUserRepo := mocks.NewMockUserRepository(ctrl)
-	log := logger.NewNoop()
-	service := NewNotificationService(mockNotifRepo, mockUserRepo, log)
+	service := NewNotificationService(mockNotifRepo, mockUserRepo)
 	ctx := context.Background()
 
 	tests := []struct {

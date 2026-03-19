@@ -4,6 +4,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -12,7 +13,6 @@ import (
 	"github.com/handloom/admin/internal/event"
 	"github.com/handloom/admin/internal/gateway/phonepe"
 	"github.com/handloom/admin/pkg/errors"
-	"github.com/handloom/admin/pkg/logger"
 )
 
 // PaymentService implements domain.PaymentService
@@ -22,7 +22,6 @@ type PaymentService struct {
 	inventoryRepo domain.InventoryRepository
 	phonePe       phonepe.Gateway
 	publisher     event.EventPublisher
-	logger        *logger.Logger
 }
 
 // NewPaymentService creates a new PaymentService
@@ -32,7 +31,6 @@ func NewPaymentService(
 	inventoryRepo domain.InventoryRepository,
 	phonePe phonepe.Gateway,
 	publisher event.EventPublisher,
-	logger *logger.Logger,
 ) *PaymentService {
 	return &PaymentService{
 		paymentRepo:   paymentRepo,
@@ -40,7 +38,6 @@ func NewPaymentService(
 		inventoryRepo: inventoryRepo,
 		phonePe:       phonePe,
 		publisher:     publisher,
-		logger:        logger,
 	}
 }
 
@@ -62,13 +59,13 @@ func (s *PaymentService) InitiatePayment(ctx context.Context, req domain.Initiat
 	}
 
 	if err := s.paymentRepo.Create(ctx, payment); err != nil {
-		s.logger.WithContext(ctx).WithError(err).Error("Failed to create payment record")
+		slog.ErrorContext(ctx, "Failed to create payment record", "error", err)
 		return nil, errors.Wrap(err, "Failed to create payment record")
 	}
 
 	redirectURL, err := s.phonePe.InitiatePayment(ctx, merchantTxnID, req.CustomerID, req.Amount)
 	if err != nil {
-		s.logger.WithContext(ctx).WithError(err).Error("Failed to initiate PhonePe payment")
+		slog.ErrorContext(ctx, "Failed to initiate PhonePe payment", "error", err)
 		// Update payment status to FAILED since gateway call failed
 		_ = s.paymentRepo.UpdateStatus(ctx, payment.ID, domain.PaymentStatusFailed, map[string]interface{}{
 			"provider_response": err.Error(),
@@ -88,20 +85,20 @@ func (s *PaymentService) HandleWebhook(ctx context.Context, payload []byte, sign
 	// Parse the webhook payload to extract the base64-encoded response
 	var webhookPayload phonepe.WebhookPayload
 	if err := json.Unmarshal(payload, &webhookPayload); err != nil {
-		s.logger.WithContext(ctx).WithError(err).Error("Failed to parse webhook payload")
+		slog.ErrorContext(ctx, "Failed to parse webhook payload", "error", err)
 		return errors.BadRequest("Invalid webhook payload")
 	}
 
 	// Verify signature
 	if !s.phonePe.VerifyWebhookSignature(webhookPayload.Response, signature) {
-		s.logger.WithContext(ctx).Error("Invalid webhook signature")
+		slog.ErrorContext(ctx, "Invalid webhook signature")
 		return errors.Unauthorized("Invalid webhook signature")
 	}
 
 	// Decode the response
 	statusResp, err := s.phonePe.DecodeWebhookResponse(webhookPayload.Response)
 	if err != nil {
-		s.logger.WithContext(ctx).WithError(err).Error("Failed to decode webhook response")
+		slog.ErrorContext(ctx, "Failed to decode webhook response", "error", err)
 		return errors.Wrap(err, "Failed to decode webhook response")
 	}
 
@@ -110,13 +107,13 @@ func (s *PaymentService) HandleWebhook(ctx context.Context, payload []byte, sign
 	// Find payment by merchant transaction ID
 	payment, err := s.paymentRepo.GetByMerchantTxnID(ctx, merchantTxnID)
 	if err != nil {
-		s.logger.WithContext(ctx).WithError(err).Errorf("Payment not found for merchant txn ID: %s", merchantTxnID)
+		slog.ErrorContext(ctx, "Payment not found for merchant txn ID", "merchant_txn_id", merchantTxnID, "error", err)
 		return errors.NotFound("Payment not found")
 	}
 
 	// Idempotency: if already processed (not INITIATED), skip
 	if payment.Status != domain.PaymentStatusInitiated {
-		s.logger.WithContext(ctx).Infof("Payment %s already processed with status %s, skipping", payment.ID, payment.Status)
+		slog.InfoContext(ctx, "Payment already processed, skipping", "payment_id", payment.ID, "status", payment.Status)
 		return nil
 	}
 
@@ -150,13 +147,13 @@ func (s *PaymentService) handlePaymentSuccess(ctx context.Context, payment *doma
 		"provider_response":       statusResp.Code,
 		"completed_at":            now.Format(time.RFC3339),
 	}); err != nil {
-		s.logger.WithContext(ctx).WithError(err).Error("Failed to update payment status to SUCCESS")
+		slog.ErrorContext(ctx, "Failed to update payment status to SUCCESS", "error", err)
 		return errors.Wrap(err, "Failed to update payment status")
 	}
 
 	// Update order status to CONFIRMED and payment_status to PAID
 	if err := s.orderRepo.Update(ctx, s.buildOrderStatusUpdate(ctx, payment.OrderID, domain.OrderStatusConfirmed, domain.PaymentStatusPaid, payment.ID)); err != nil {
-		s.logger.WithContext(ctx).WithError(err).Error("Failed to update order status after successful payment")
+		slog.ErrorContext(ctx, "Failed to update order status after successful payment", "error", err)
 		// Non-fatal: payment is already recorded as success
 	}
 
@@ -165,10 +162,10 @@ func (s *PaymentService) handlePaymentSuccess(ctx context.Context, payment *doma
 		"order_id":   payment.OrderID,
 		"amount":     payment.Amount,
 	})); pubErr != nil {
-		s.logger.WithContext(ctx).WithError(pubErr).Error("failed to publish payment.received event")
+		slog.ErrorContext(ctx, "Failed to publish payment.received event", "error", pubErr)
 	}
 
-	s.logger.WithContext(ctx).Infof("Payment %s completed successfully for order %s", payment.ID, payment.OrderID)
+	slog.InfoContext(ctx, "Payment completed successfully", "payment_id", payment.ID, "order_id", payment.OrderID)
 	return nil
 }
 
@@ -180,7 +177,7 @@ func (s *PaymentService) handlePaymentFailure(ctx context.Context, payment *doma
 		"payment_method":          string(paymentMethod),
 		"provider_response":       statusResp.Code,
 	}); err != nil {
-		s.logger.WithContext(ctx).WithError(err).Error("Failed to update payment status to FAILED")
+		slog.ErrorContext(ctx, "Failed to update payment status to FAILED", "error", err)
 		return errors.Wrap(err, "Failed to update payment status")
 	}
 
@@ -192,10 +189,10 @@ func (s *PaymentService) handlePaymentFailure(ctx context.Context, payment *doma
 		"order_id":   payment.OrderID,
 		"amount":     payment.Amount,
 	})); pubErr != nil {
-		s.logger.WithContext(ctx).WithError(pubErr).Error("failed to publish payment.failed event")
+		slog.ErrorContext(ctx, "Failed to publish payment.failed event", "error", pubErr)
 	}
 
-	s.logger.WithContext(ctx).Infof("Payment %s failed for order %s", payment.ID, payment.OrderID)
+	slog.InfoContext(ctx, "Payment failed", "payment_id", payment.ID, "order_id", payment.OrderID)
 	return nil
 }
 
@@ -203,14 +200,14 @@ func (s *PaymentService) handlePaymentFailure(ctx context.Context, payment *doma
 func (s *PaymentService) releaseOrderInventory(ctx context.Context, orderID string) {
 	order, err := s.orderRepo.GetByID(ctx, orderID)
 	if err != nil {
-		s.logger.WithContext(ctx).WithError(err).Errorf("Failed to get order %s for inventory release", orderID)
+		slog.ErrorContext(ctx, "Failed to get order for inventory release", "order_id", orderID, "error", err)
 		return
 	}
 
 	for _, item := range order.Items {
 		_, err := s.inventoryRepo.ReleaseStock(ctx, item.ProductID, item.Quantity, orderID)
 		if err != nil {
-			s.logger.WithContext(ctx).WithError(err).Errorf("Failed to release inventory for product %s in order %s", item.ProductID, orderID)
+			slog.ErrorContext(ctx, "Failed to release inventory", "product_id", item.ProductID, "order_id", orderID, "error", err)
 			// Continue releasing other items even if one fails
 		}
 	}
@@ -220,7 +217,7 @@ func (s *PaymentService) releaseOrderInventory(ctx context.Context, orderID stri
 func (s *PaymentService) buildOrderStatusUpdate(ctx context.Context, orderID string, orderStatus domain.OrderStatus, paymentStatus domain.PaymentStatus, paymentID string) *domain.Order {
 	order, err := s.orderRepo.GetByID(ctx, orderID)
 	if err != nil {
-		s.logger.WithContext(ctx).WithError(err).Errorf("Failed to get order %s for status update", orderID)
+		slog.ErrorContext(ctx, "Failed to get order for status update", "order_id", orderID, "error", err)
 		// Return a minimal order for the update attempt
 		return &domain.Order{
 			ID:            orderID,

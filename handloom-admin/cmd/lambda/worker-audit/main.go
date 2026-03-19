@@ -1,18 +1,20 @@
 package main
 
 import (
+	"log/slog"
+
 	"github.com/aws/aws-lambda-go/lambda"
 
 	"github.com/handloom/admin/internal/config"
 	"github.com/handloom/admin/internal/event/handlers"
-	"github.com/handloom/admin/pkg/logger"
+	"github.com/handloom/admin/pkg/slogx"
 )
 
 func main() {
 	cfg := config.Load()
-	log := logger.New(cfg.App.Debug)
-	log.Info("Starting Worker Audit Lambda")
+	slogx.Setup(cfg.App.Debug)
+	slog.Info("Starting Worker Audit Lambda")
 
-	handler := handlers.NewAuditHandler(log)
+	handler := handlers.NewAuditHandler()
 	lambda.Start(handler.HandleSQSEvent)
 }

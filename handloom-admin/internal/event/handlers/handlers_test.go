@@ -10,7 +10,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/handloom/admin/internal/event"
-	"github.com/handloom/admin/pkg/logger"
 )
 
 func TestNotificationHandler_CanHandle(t *testing.T) {
@@ -49,8 +48,7 @@ func TestAuditHandler_CanHandle_AllEvents(t *testing.T) {
 }
 
 func TestNotificationHandler_HandleSQSEvent(t *testing.T) {
-	log := logger.NewNoop()
-	h := NewNotificationHandler(log)
+	h := NewNotificationHandler()
 
 	evt := event.New(event.OrderCreated, map[string]string{"order_id": "ord_123"})
 	body, _ := json.Marshal(evt)
@@ -67,8 +65,7 @@ func TestNotificationHandler_HandleSQSEvent(t *testing.T) {
 }
 
 func TestNotificationHandler_HandleSQSEvent_InvalidJSON(t *testing.T) {
-	log := logger.NewNoop()
-	h := NewNotificationHandler(log)
+	h := NewNotificationHandler()
 
 	sqsEvent := events.SQSEvent{
 		Records: []events.SQSMessage{

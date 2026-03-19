@@ -7,7 +7,6 @@ import (
 
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/internal/middleware"
-	"github.com/handloom/admin/pkg/logger"
 	"github.com/handloom/admin/pkg/response"
 )
 
@@ -15,19 +14,16 @@ import (
 type CartHandler struct {
 	cartService domain.CartService
 	validation  *middleware.Validation
-	logger      *logger.Logger
 }
 
 // NewCartHandler creates a new CartHandler.
 func NewCartHandler(
 	cartService domain.CartService,
 	validation *middleware.Validation,
-	logger *logger.Logger,
 ) *CartHandler {
 	return &CartHandler{
 		cartService: cartService,
 		validation:  validation,
-		logger:      logger,
 	}
 }
 

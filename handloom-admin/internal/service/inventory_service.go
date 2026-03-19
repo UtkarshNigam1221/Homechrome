@@ -3,10 +3,10 @@ package service
 
 import (
 	"context"
+	"log/slog"
 
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/internal/event"
-	"github.com/handloom/admin/pkg/logger"
 )
 
 // CacheInvalidator allows services to invalidate cached product data after mutations.
@@ -19,7 +19,6 @@ type InventoryService struct {
 	inventoryRepo domain.InventoryRepository
 	cache         CacheInvalidator
 	publisher     event.EventPublisher
-	logger        *logger.Logger
 }
 
 // NewInventoryService creates a new InventoryService
@@ -27,13 +26,11 @@ func NewInventoryService(
 	inventoryRepo domain.InventoryRepository,
 	cache CacheInvalidator,
 	publisher event.EventPublisher,
-	logger *logger.Logger,
 ) *InventoryService {
 	return &InventoryService{
 		inventoryRepo: inventoryRepo,
 		cache:         cache,
 		publisher:     publisher,
-		logger:        logger,
 	}
 }
 
@@ -62,11 +59,11 @@ func (s *InventoryService) AddStock(ctx context.Context, productID string, req d
 		"quantity":     req.Quantity,
 		"new_quantity": txn.NewQty,
 	})); pubErr != nil {
-		s.logger.WithContext(ctx).WithError(pubErr).Error("failed to publish inventory.restocked event")
+		slog.ErrorContext(ctx, "Failed to publish inventory.restocked event", "error", pubErr)
 	}
 
 	s.invalidateProductCache()
-	s.logger.WithContext(ctx).Infof("Added stock to product %s: +%d", productID, req.Quantity)
+	slog.InfoContext(ctx, "Added stock", "product_id", productID, "quantity", req.Quantity)
 
 	return &domain.InventoryTransactionResult{
 		ProductID:        productID,
@@ -93,7 +90,7 @@ func (s *InventoryService) RemoveStock(ctx context.Context, productID string, re
 				"product_id":    productID,
 				"available_qty": inventory.AvailableQty,
 			})); pubErr != nil {
-				s.logger.WithContext(ctx).WithError(pubErr).Error("failed to publish inventory.out_of_stock event")
+				slog.ErrorContext(ctx, "Failed to publish inventory.out_of_stock event", "error", pubErr)
 			}
 		} else if inventory.AvailableQty <= inventory.LowStockThreshold {
 			if pubErr := s.publisher.Publish(ctx, event.New(event.InventoryLowStock, map[string]interface{}{
@@ -101,13 +98,13 @@ func (s *InventoryService) RemoveStock(ctx context.Context, productID string, re
 				"available_qty":       inventory.AvailableQty,
 				"low_stock_threshold": inventory.LowStockThreshold,
 			})); pubErr != nil {
-				s.logger.WithContext(ctx).WithError(pubErr).Error("failed to publish inventory.low_stock event")
+				slog.ErrorContext(ctx, "Failed to publish inventory.low_stock event", "error", pubErr)
 			}
 		}
 	}
 
 	s.invalidateProductCache()
-	s.logger.WithContext(ctx).Infof("Removed stock from product %s: -%d", productID, req.Quantity)
+	slog.InfoContext(ctx, "Removed stock", "product_id", productID, "quantity", req.Quantity)
 
 	return &domain.InventoryTransactionResult{
 		ProductID:        productID,
@@ -127,7 +124,7 @@ func (s *InventoryService) AdjustStock(ctx context.Context, productID string, re
 	}
 
 	s.invalidateProductCache()
-	s.logger.WithContext(ctx).Infof("Adjusted stock for product %s: %d -> %d", productID, txn.PreviousQty, txn.NewQty)
+	slog.InfoContext(ctx, "Adjusted stock", "product_id", productID, "previous_qty", txn.PreviousQty, "new_qty", txn.NewQty)
 
 	return &domain.InventoryTransactionResult{
 		ProductID:        productID,

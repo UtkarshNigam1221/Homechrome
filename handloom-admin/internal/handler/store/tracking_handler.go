@@ -1,6 +1,7 @@
 package store
 
 import (
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -8,7 +9,6 @@ import (
 
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/pkg/errors"
-	"github.com/handloom/admin/pkg/logger"
 	"github.com/handloom/admin/pkg/response"
 )
 
@@ -16,19 +16,16 @@ import (
 type TrackingHandler struct {
 	orderRepo    domain.OrderRepository
 	shipmentRepo domain.ShipmentRepository
-	logger       *logger.Logger
 }
 
 // NewTrackingHandler creates a new TrackingHandler.
 func NewTrackingHandler(
 	or domain.OrderRepository,
 	sr domain.ShipmentRepository,
-	l *logger.Logger,
 ) *TrackingHandler {
 	return &TrackingHandler{
 		orderRepo:    or,
 		shipmentRepo: sr,
-		logger:       l,
 	}
 }
 
@@ -82,7 +79,7 @@ func (h *TrackingHandler) TrackOrder(w http.ResponseWriter, r *http.Request) {
 			response.NotFound(w, "Order")
 			return
 		}
-		h.logger.WithContext(ctx).WithError(err).Error("Failed to look up order by number")
+		slog.ErrorContext(ctx, "failed to look up order by number", "error", err)
 		response.Error(w, err)
 		return
 	}
@@ -96,7 +93,7 @@ func (h *TrackingHandler) TrackOrder(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		// Only log; shipment not found is not an error for tracking
 		if !errors.IsNotFound(err) {
-			h.logger.WithContext(ctx).WithError(err).Warn("Failed to fetch shipment info")
+			slog.WarnContext(ctx, "failed to fetch shipment info", "error", err)
 		}
 	} else if shipment != nil {
 		shipmentInfo = &ShipmentInfo{

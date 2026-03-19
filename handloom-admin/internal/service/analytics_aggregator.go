@@ -4,10 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"sort"
 
 	"github.com/handloom/admin/internal/domain"
-	"github.com/handloom/admin/pkg/logger"
 )
 
 // AnalyticsAggregator computes daily aggregate metrics from raw events and
@@ -16,19 +16,16 @@ import (
 type AnalyticsAggregator struct {
 	eventsRepo    domain.EventsRepository
 	analyticsRepo domain.AnalyticsRepository
-	logger        *logger.Logger
 }
 
 // NewAnalyticsAggregator creates a new AnalyticsAggregator.
 func NewAnalyticsAggregator(
 	eventsRepo domain.EventsRepository,
 	analyticsRepo domain.AnalyticsRepository,
-	log *logger.Logger,
 ) *AnalyticsAggregator {
 	return &AnalyticsAggregator{
 		eventsRepo:    eventsRepo,
 		analyticsRepo: analyticsRepo,
-		logger:        log,
 	}
 }
 
@@ -42,11 +39,11 @@ func (a *AnalyticsAggregator) AggregateDate(ctx context.Context, date string) er
 	}
 
 	if len(events) == 0 {
-		a.logger.WithContext(ctx).Infof("No events to aggregate for %s", date)
+		slog.InfoContext(ctx, "No events to aggregate", "date", date)
 		return nil
 	}
 
-	a.logger.WithContext(ctx).Infof("Aggregating %d events for %s", len(events), date)
+	slog.InfoContext(ctx, "Aggregating events", "count", len(events), "date", date)
 
 	// Aggregate each category (best-effort, log errors)
 	a.aggregateFunnel(ctx, date, events)
@@ -68,19 +65,19 @@ func (a *AnalyticsAggregator) resetDashboardCounters(ctx context.Context, date s
 	// Read current counters
 	stats, err := a.analyticsRepo.GetDashboardStats(ctx)
 	if err != nil {
-		a.logger.WithContext(ctx).WithError(err).Error("Failed to read dashboard stats for archival")
+		slog.ErrorContext(ctx, "Failed to read dashboard stats for archival", "error", err)
 		return
 	}
 
 	// Archive as historical record
 	if err := a.analyticsRepo.PutDailyStats(ctx, date, stats); err != nil {
-		a.logger.WithContext(ctx).WithError(err).Error("Failed to archive dashboard stats")
+		slog.ErrorContext(ctx, "Failed to archive dashboard stats", "error", err)
 		return
 	}
 
 	// Reset current counters
 	if err := a.analyticsRepo.ResetDashboardCurrent(ctx); err != nil {
-		a.logger.WithContext(ctx).WithError(err).Error("Failed to reset dashboard counters")
+		slog.ErrorContext(ctx, "Failed to reset dashboard counters", "error", err)
 	}
 }
 
@@ -147,7 +144,7 @@ func (a *AnalyticsAggregator) aggregateFunnel(ctx context.Context, date string, 
 
 	pk := fmt.Sprintf("FUNNEL#DAILY#%s", date)
 	if err := a.analyticsRepo.PutDailyAggregate(ctx, pk, "METADATA", agg); err != nil {
-		a.logger.WithContext(ctx).WithError(err).Errorf("failed to write funnel aggregate for %s", date)
+		slog.ErrorContext(ctx, "Failed to write funnel aggregate", "date", date, "error", err)
 	}
 }
 
@@ -221,7 +218,7 @@ func (a *AnalyticsAggregator) aggregateRevenue(ctx context.Context, date string,
 
 	pk := fmt.Sprintf("REVENUE#DAILY#%s", date)
 	if err := a.analyticsRepo.PutDailyAggregate(ctx, pk, "METADATA", agg); err != nil {
-		a.logger.WithContext(ctx).WithError(err).Errorf("failed to write revenue aggregate for %s", date)
+		slog.ErrorContext(ctx, "Failed to write revenue aggregate", "date", date, "error", err)
 	}
 }
 
@@ -283,7 +280,7 @@ func (a *AnalyticsAggregator) aggregateCustomers(ctx context.Context, date strin
 
 	pk := fmt.Sprintf("CUSTOMERS#DAILY#%s", date)
 	if err := a.analyticsRepo.PutDailyAggregate(ctx, pk, "METADATA", agg); err != nil {
-		a.logger.WithContext(ctx).WithError(err).Errorf("failed to write customer aggregate for %s", date)
+		slog.ErrorContext(ctx, "Failed to write customer aggregate", "date", date, "error", err)
 	}
 }
 
@@ -392,7 +389,7 @@ func (a *AnalyticsAggregator) aggregateEngagement(ctx context.Context, date stri
 
 	pk := fmt.Sprintf("ENGAGEMENT#DAILY#%s", date)
 	if err := a.analyticsRepo.PutDailyAggregate(ctx, pk, "METADATA", agg); err != nil {
-		a.logger.WithContext(ctx).WithError(err).Errorf("failed to write engagement aggregate for %s", date)
+		slog.ErrorContext(ctx, "Failed to write engagement aggregate", "date", date, "error", err)
 	}
 }
 
@@ -450,7 +447,7 @@ func (a *AnalyticsAggregator) aggregateProducts(ctx context.Context, date string
 
 	pk := fmt.Sprintf("PRODUCTS#DAILY#%s", date)
 	if err := a.analyticsRepo.PutDailyAggregate(ctx, pk, "METADATA", agg); err != nil {
-		a.logger.WithContext(ctx).WithError(err).Errorf("failed to write product aggregate for %s", date)
+		slog.ErrorContext(ctx, "Failed to write product aggregate", "date", date, "error", err)
 	}
 }
 

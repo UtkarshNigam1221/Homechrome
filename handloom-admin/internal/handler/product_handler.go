@@ -9,7 +9,6 @@ import (
 
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/internal/middleware"
-	"github.com/handloom/admin/pkg/logger"
 	"github.com/handloom/admin/pkg/response"
 )
 
@@ -17,7 +16,6 @@ import (
 type ProductHandler struct {
 	productService   domain.ProductService
 	inventoryService domain.InventoryService
-	logger           *logger.Logger
 	validation       *middleware.Validation
 }
 
@@ -25,13 +23,11 @@ type ProductHandler struct {
 func NewProductHandler(
 	productService domain.ProductService,
 	inventoryService domain.InventoryService,
-	logger *logger.Logger,
 	validation *middleware.Validation,
 ) *ProductHandler {
 	return &ProductHandler{
 		productService:   productService,
 		inventoryService: inventoryService,
-		logger:           logger,
 		validation:       validation,
 	}
 }
@@ -269,14 +265,12 @@ func (h *ProductHandler) GetInventoryTransactions(w http.ResponseWriter, r *http
 // InventoryHandler handles inventory-related requests
 type InventoryHandler struct {
 	inventoryService domain.InventoryService
-	logger           *logger.Logger
 }
 
 // NewInventoryHandler creates a new InventoryHandler
-func NewInventoryHandler(inventoryService domain.InventoryService, logger *logger.Logger) *InventoryHandler {
+func NewInventoryHandler(inventoryService domain.InventoryService) *InventoryHandler {
 	return &InventoryHandler{
 		inventoryService: inventoryService,
-		logger:           logger,
 	}
 }
 

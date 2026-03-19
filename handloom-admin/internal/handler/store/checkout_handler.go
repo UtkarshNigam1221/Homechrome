@@ -7,7 +7,6 @@ import (
 
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/internal/middleware"
-	"github.com/handloom/admin/pkg/logger"
 	"github.com/handloom/admin/pkg/response"
 )
 
@@ -15,19 +14,16 @@ import (
 type CheckoutHandler struct {
 	checkoutService domain.CheckoutService
 	validation      *middleware.Validation
-	logger          *logger.Logger
 }
 
 // NewCheckoutHandler creates a new CheckoutHandler.
 func NewCheckoutHandler(
 	cs domain.CheckoutService,
 	v *middleware.Validation,
-	l *logger.Logger,
 ) *CheckoutHandler {
 	return &CheckoutHandler{
 		checkoutService: cs,
 		validation:      v,
-		logger:          l,
 	}
 }
 

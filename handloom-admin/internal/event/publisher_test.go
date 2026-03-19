@@ -7,8 +7,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/handloom/admin/pkg/logger"
 )
 
 // ---------------------------------------------------------------------------
@@ -65,7 +63,7 @@ func TestLocalPublisher_DispatchesToMatchingHandlers(t *testing.T) {
 	orderHandler := &spyHandler{types: []EventType{OrderCreated, OrderCancelled}}
 	paymentHandler := &spyHandler{types: []EventType{PaymentReceived}}
 
-	pub := NewLocalPublisher(logger.NewNoop(), orderHandler, paymentHandler)
+	pub := NewLocalPublisher(orderHandler, paymentHandler)
 
 	ctx := context.Background()
 

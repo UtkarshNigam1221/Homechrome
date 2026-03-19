@@ -10,7 +10,6 @@ import (
 
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/pkg/errors"
-	"github.com/handloom/admin/pkg/logger"
 )
 
 // MockPricingRuleRepository is a mock implementation of PricingRuleRepository
@@ -212,7 +211,6 @@ func (m *MockProductRepository) GetAttributeFilterOptions(ctx context.Context, c
 
 func TestPricingService_CalculatePrice_AreaBased(t *testing.T) {
 	ctx := context.Background()
-	log := logger.New(true)
 
 	// Setup mocks
 	pricingRuleRepo := new(MockPricingRuleRepository)
@@ -221,7 +219,7 @@ func TestPricingService_CalculatePrice_AreaBased(t *testing.T) {
 	productRepo := new(MockProductRepository)
 
 	// Create service
-	svc := NewPricingService(pricingRuleRepo, priceQuoteRepo, categoryRepo, productRepo, log, 24)
+	svc := NewPricingService(pricingRuleRepo, priceQuoteRepo, categoryRepo, productRepo, 24)
 
 	// Setup test data
 	category := &domain.Category{
@@ -309,14 +307,13 @@ func TestPricingService_CalculatePrice_AreaBased(t *testing.T) {
 
 func TestPricingService_CalculatePrice_NilDimensions(t *testing.T) {
 	ctx := context.Background()
-	log := logger.New(true)
 
 	pricingRuleRepo := new(MockPricingRuleRepository)
 	priceQuoteRepo := new(MockPriceQuoteRepository)
 	categoryRepo := new(MockCategoryRepository)
 	productRepo := new(MockProductRepository)
 
-	svc := NewPricingService(pricingRuleRepo, priceQuoteRepo, categoryRepo, productRepo, log, 24)
+	svc := NewPricingService(pricingRuleRepo, priceQuoteRepo, categoryRepo, productRepo, 24)
 
 	category := &domain.Category{
 		ID:   "cat_bedsheets",
@@ -344,14 +341,13 @@ func TestPricingService_CalculatePrice_NilDimensions(t *testing.T) {
 
 func TestPricingService_CalculatePrice_NoPricingRule(t *testing.T) {
 	ctx := context.Background()
-	log := logger.New(true)
 
 	pricingRuleRepo := new(MockPricingRuleRepository)
 	priceQuoteRepo := new(MockPriceQuoteRepository)
 	categoryRepo := new(MockCategoryRepository)
 	productRepo := new(MockProductRepository)
 
-	svc := NewPricingService(pricingRuleRepo, priceQuoteRepo, categoryRepo, productRepo, log, 24)
+	svc := NewPricingService(pricingRuleRepo, priceQuoteRepo, categoryRepo, productRepo, 24)
 
 	category := &domain.Category{ID: "cat_orphan", Name: "Orphan"}
 
@@ -377,7 +373,6 @@ func TestPricingService_CalculatePrice_NoPricingRule(t *testing.T) {
 
 func TestPricingService_CreateRule(t *testing.T) {
 	ctx := context.Background()
-	log := logger.New(true)
 
 	// Setup mocks
 	pricingRuleRepo := new(MockPricingRuleRepository)
@@ -386,7 +381,7 @@ func TestPricingService_CreateRule(t *testing.T) {
 	productRepo := new(MockProductRepository)
 
 	// Create service
-	svc := NewPricingService(pricingRuleRepo, priceQuoteRepo, categoryRepo, productRepo, log, 24)
+	svc := NewPricingService(pricingRuleRepo, priceQuoteRepo, categoryRepo, productRepo, 24)
 
 	pricingRuleRepo.On("Create", ctx, mock.AnythingOfType("*domain.PricingRule")).Return(nil)
 
@@ -414,7 +409,6 @@ func TestPricingService_CreateRule(t *testing.T) {
 
 func TestPricingService_BulkCalculatePrice(t *testing.T) {
 	ctx := context.Background()
-	log := logger.New(true)
 
 	// Setup mocks
 	pricingRuleRepo := new(MockPricingRuleRepository)
@@ -423,7 +417,7 @@ func TestPricingService_BulkCalculatePrice(t *testing.T) {
 	productRepo := new(MockProductRepository)
 
 	// Create service
-	svc := NewPricingService(pricingRuleRepo, priceQuoteRepo, categoryRepo, productRepo, log, 24)
+	svc := NewPricingService(pricingRuleRepo, priceQuoteRepo, categoryRepo, productRepo, 24)
 
 	category := &domain.Category{
 		ID:   "cat_bedsheets",
@@ -488,14 +482,13 @@ func TestPricingService_BulkCalculatePrice(t *testing.T) {
 
 func TestPricingService_BulkCalculatePrice_MaxLimit(t *testing.T) {
 	ctx := context.Background()
-	log := logger.New(true)
 
 	pricingRuleRepo := new(MockPricingRuleRepository)
 	priceQuoteRepo := new(MockPriceQuoteRepository)
 	categoryRepo := new(MockCategoryRepository)
 	productRepo := new(MockProductRepository)
 
-	svc := NewPricingService(pricingRuleRepo, priceQuoteRepo, categoryRepo, productRepo, log, 24)
+	svc := NewPricingService(pricingRuleRepo, priceQuoteRepo, categoryRepo, productRepo, 24)
 
 	// Build 11 configurations (exceeds max of 10)
 	configs := make([]domain.PriceConfiguration, 11)
@@ -521,14 +514,13 @@ func TestPricingService_BulkCalculatePrice_MaxLimit(t *testing.T) {
 
 func TestPricingService_GetRule(t *testing.T) {
 	ctx := context.Background()
-	log := logger.New(true)
 
 	pricingRuleRepo := new(MockPricingRuleRepository)
 	priceQuoteRepo := new(MockPriceQuoteRepository)
 	categoryRepo := new(MockCategoryRepository)
 	productRepo := new(MockProductRepository)
 
-	svc := NewPricingService(pricingRuleRepo, priceQuoteRepo, categoryRepo, productRepo, log, 24)
+	svc := NewPricingService(pricingRuleRepo, priceQuoteRepo, categoryRepo, productRepo, 24)
 
 	t.Run("found", func(t *testing.T) {
 		expected := &domain.PricingRule{ID: "rule_123", Name: "Test Rule"}
@@ -550,14 +542,13 @@ func TestPricingService_GetRule(t *testing.T) {
 
 func TestPricingService_UpdateRule(t *testing.T) {
 	ctx := context.Background()
-	log := logger.New(true)
 
 	pricingRuleRepo := new(MockPricingRuleRepository)
 	priceQuoteRepo := new(MockPriceQuoteRepository)
 	categoryRepo := new(MockCategoryRepository)
 	productRepo := new(MockProductRepository)
 
-	svc := NewPricingService(pricingRuleRepo, priceQuoteRepo, categoryRepo, productRepo, log, 24)
+	svc := NewPricingService(pricingRuleRepo, priceQuoteRepo, categoryRepo, productRepo, 24)
 
 	t.Run("successful update", func(t *testing.T) {
 		existing := &domain.PricingRule{
@@ -596,14 +587,13 @@ func TestPricingService_UpdateRule(t *testing.T) {
 
 func TestPricingService_DeleteRule(t *testing.T) {
 	ctx := context.Background()
-	log := logger.New(true)
 
 	pricingRuleRepo := new(MockPricingRuleRepository)
 	priceQuoteRepo := new(MockPriceQuoteRepository)
 	categoryRepo := new(MockCategoryRepository)
 	productRepo := new(MockProductRepository)
 
-	svc := NewPricingService(pricingRuleRepo, priceQuoteRepo, categoryRepo, productRepo, log, 24)
+	svc := NewPricingService(pricingRuleRepo, priceQuoteRepo, categoryRepo, productRepo, 24)
 
 	pricingRuleRepo.On("Delete", ctx, "rule_123").Return(nil)
 
@@ -613,14 +603,13 @@ func TestPricingService_DeleteRule(t *testing.T) {
 
 func TestPricingService_ListRules(t *testing.T) {
 	ctx := context.Background()
-	log := logger.New(true)
 
 	pricingRuleRepo := new(MockPricingRuleRepository)
 	priceQuoteRepo := new(MockPriceQuoteRepository)
 	categoryRepo := new(MockCategoryRepository)
 	productRepo := new(MockProductRepository)
 
-	svc := NewPricingService(pricingRuleRepo, priceQuoteRepo, categoryRepo, productRepo, log, 24)
+	svc := NewPricingService(pricingRuleRepo, priceQuoteRepo, categoryRepo, productRepo, 24)
 
 	req := domain.ListPricingRulesRequest{
 		PaginationRequest: domain.PaginationRequest{Limit: 10},
@@ -643,14 +632,13 @@ func TestPricingService_ListRules(t *testing.T) {
 
 func TestPricingService_GetQuote(t *testing.T) {
 	ctx := context.Background()
-	log := logger.New(true)
 
 	pricingRuleRepo := new(MockPricingRuleRepository)
 	priceQuoteRepo := new(MockPriceQuoteRepository)
 	categoryRepo := new(MockCategoryRepository)
 	productRepo := new(MockProductRepository)
 
-	svc := NewPricingService(pricingRuleRepo, priceQuoteRepo, categoryRepo, productRepo, log, 24)
+	svc := NewPricingService(pricingRuleRepo, priceQuoteRepo, categoryRepo, productRepo, 24)
 
 	t.Run("valid quote", func(t *testing.T) {
 		quote := &domain.PriceQuote{
@@ -692,14 +680,13 @@ func TestPricingService_GetQuote(t *testing.T) {
 
 func TestPricingService_GetDimensionOptions(t *testing.T) {
 	ctx := context.Background()
-	log := logger.New(true)
 
 	pricingRuleRepo := new(MockPricingRuleRepository)
 	priceQuoteRepo := new(MockPriceQuoteRepository)
 	categoryRepo := new(MockCategoryRepository)
 	productRepo := new(MockProductRepository)
 
-	svc := NewPricingService(pricingRuleRepo, priceQuoteRepo, categoryRepo, productRepo, log, 24)
+	svc := NewPricingService(pricingRuleRepo, priceQuoteRepo, categoryRepo, productRepo, 24)
 
 	t.Run("returns pricing attributes with surcharges", func(t *testing.T) {
 		category := &domain.Category{
@@ -749,14 +736,13 @@ func TestPricingService_GetDimensionOptions(t *testing.T) {
 
 func TestPricingService_CalculatePrice_FixedPricing(t *testing.T) {
 	ctx := context.Background()
-	log := logger.New(true)
 
 	pricingRuleRepo := new(MockPricingRuleRepository)
 	priceQuoteRepo := new(MockPriceQuoteRepository)
 	categoryRepo := new(MockCategoryRepository)
 	productRepo := new(MockProductRepository)
 
-	svc := NewPricingService(pricingRuleRepo, priceQuoteRepo, categoryRepo, productRepo, log, 24)
+	svc := NewPricingService(pricingRuleRepo, priceQuoteRepo, categoryRepo, productRepo, 24)
 
 	category := &domain.Category{ID: "cat_fixed", Name: "Fixed"}
 	rule := &domain.PricingRule{
@@ -791,14 +777,13 @@ func TestPricingService_CalculatePrice_FixedPricing(t *testing.T) {
 
 func TestPricingService_CalculatePrice_LengthBased(t *testing.T) {
 	ctx := context.Background()
-	log := logger.New(true)
 
 	pricingRuleRepo := new(MockPricingRuleRepository)
 	priceQuoteRepo := new(MockPriceQuoteRepository)
 	categoryRepo := new(MockCategoryRepository)
 	productRepo := new(MockProductRepository)
 
-	svc := NewPricingService(pricingRuleRepo, priceQuoteRepo, categoryRepo, productRepo, log, 24)
+	svc := NewPricingService(pricingRuleRepo, priceQuoteRepo, categoryRepo, productRepo, 24)
 
 	category := &domain.Category{ID: "cat_length", Name: "By Length"}
 	rule := &domain.PricingRule{

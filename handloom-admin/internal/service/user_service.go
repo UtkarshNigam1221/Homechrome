@@ -3,6 +3,7 @@ package service
 
 import (
 	"context"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -10,22 +11,19 @@ import (
 
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/pkg/errors"
-	"github.com/handloom/admin/pkg/logger"
 )
 
 // UserService implements domain.UserService
 type UserService struct {
 	userRepo   domain.UserRepository
 	tokenStore domain.TokenStore
-	logger     *logger.Logger
 }
 
 // NewUserService creates a new UserService
-func NewUserService(userRepo domain.UserRepository, tokenStore domain.TokenStore, logger *logger.Logger) *UserService {
+func NewUserService(userRepo domain.UserRepository, tokenStore domain.TokenStore) *UserService {
 	return &UserService{
 		userRepo:   userRepo,
 		tokenStore: tokenStore,
-		logger:     logger,
 	}
 }
 
@@ -60,7 +58,7 @@ func (s *UserService) Create(ctx context.Context, req domain.CreateUserRequest, 
 		return nil, err
 	}
 
-	s.logger.WithContext(ctx).Infof("Created user: %s", user.ID)
+	slog.InfoContext(ctx, "Created user", "user_id", user.ID)
 
 	// Remove sensitive data before returning
 	user.PasswordHash = ""
@@ -120,7 +118,7 @@ func (s *UserService) Update(ctx context.Context, id string, req domain.UpdateUs
 		return nil, err
 	}
 
-	s.logger.WithContext(ctx).Infof("Updated user: %s", id)
+	slog.InfoContext(ctx, "Updated user", "user_id", id)
 
 	// Remove sensitive data
 	user.PasswordHash = ""
@@ -135,10 +133,10 @@ func (s *UserService) Delete(ctx context.Context, id string) error {
 
 	// Best-effort revoke all tokens — user is already deleted
 	if err := s.tokenStore.RevokeAllUserTokens(ctx, id); err != nil {
-		s.logger.WithContext(ctx).WithError(err).Warn("Failed to revoke tokens for deleted user")
+		slog.WarnContext(ctx, "Failed to revoke tokens for deleted user", "error", err)
 	}
 
-	s.logger.WithContext(ctx).Infof("Deleted user: %s", id)
+	slog.InfoContext(ctx, "Deleted user", "user_id", id)
 	return nil
 }
 
@@ -172,7 +170,7 @@ func (s *UserService) UpdateStatus(ctx context.Context, id string, status domain
 		return err
 	}
 
-	s.logger.WithContext(ctx).Infof("Updated user status: %s -> %s", id, status)
+	slog.InfoContext(ctx, "Updated user status", "user_id", id, "status", status)
 	return nil
 }
 

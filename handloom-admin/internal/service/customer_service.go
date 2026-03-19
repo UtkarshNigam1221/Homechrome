@@ -3,32 +3,29 @@ package service
 
 import (
 	"context"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/pkg/errors"
-	"github.com/handloom/admin/pkg/logger"
 )
 
 // CustomerService implements customer business logic
 type CustomerService struct {
 	customerRepo domain.CustomerRepository
 	orderRepo    domain.OrderRepository
-	logger       *logger.Logger
 }
 
 // NewCustomerService creates a new CustomerService
 func NewCustomerService(
 	customerRepo domain.CustomerRepository,
 	orderRepo domain.OrderRepository,
-	logger *logger.Logger,
 ) *CustomerService {
 	return &CustomerService{
 		customerRepo: customerRepo,
 		orderRepo:    orderRepo,
-		logger:       logger,
 	}
 }
 
@@ -68,7 +65,7 @@ func (s *CustomerService) Create(ctx context.Context, req domain.CreateCustomerR
 		return nil, err
 	}
 
-	s.logger.WithContext(ctx).Infof("Created customer: %s", customer.ID)
+	slog.InfoContext(ctx, "Created customer", "customer_id", customer.ID)
 	return customer, nil
 }
 
@@ -115,7 +112,7 @@ func (s *CustomerService) Update(ctx context.Context, id string, req domain.Upda
 		return nil, err
 	}
 
-	s.logger.WithContext(ctx).Infof("Updated customer: %s", id)
+	slog.InfoContext(ctx, "Updated customer", "customer_id", id)
 	return customer, nil
 }
 
@@ -139,7 +136,7 @@ func (s *CustomerService) Delete(ctx context.Context, id string) error {
 		return err
 	}
 
-	s.logger.WithContext(ctx).Infof("Soft deleted customer: %s", id)
+	slog.InfoContext(ctx, "Soft deleted customer", "customer_id", id)
 	return nil
 }
 
@@ -187,7 +184,7 @@ func (s *CustomerService) AddAddress(ctx context.Context, customerID string, add
 		return nil, err
 	}
 
-	s.logger.WithContext(ctx).Infof("Added address to customer: %s", customerID)
+	slog.InfoContext(ctx, "Added address to customer", "customer_id", customerID)
 	return customer, nil
 }
 
@@ -228,7 +225,7 @@ func (s *CustomerService) UpdateAddress(ctx context.Context, customerID, address
 		return nil, err
 	}
 
-	s.logger.WithContext(ctx).Infof("Updated address for customer: %s", customerID)
+	slog.InfoContext(ctx, "Updated address for customer", "customer_id", customerID)
 	return customer, nil
 }
 
@@ -261,7 +258,7 @@ func (s *CustomerService) RemoveAddress(ctx context.Context, customerID, address
 		return nil, err
 	}
 
-	s.logger.WithContext(ctx).Infof("Removed address from customer: %s", customerID)
+	slog.InfoContext(ctx, "Removed address from customer", "customer_id", customerID)
 	return customer, nil
 }
 

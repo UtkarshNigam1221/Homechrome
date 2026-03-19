@@ -12,7 +12,6 @@ import (
 	"github.com/handloom/admin/internal/event"
 	"github.com/handloom/admin/internal/mocks"
 	"github.com/handloom/admin/pkg/errors"
-	"github.com/handloom/admin/pkg/logger"
 )
 
 func setupProductTest(t *testing.T) (
@@ -30,10 +29,9 @@ func setupProductTest(t *testing.T) (
 	mockCatRepo := mocks.NewMockCategoryRepository(ctrl)
 	mockInvRepo := mocks.NewMockInventoryRepository(ctrl)
 	mockFinalizer := mocks.NewMockAssetFinalizer(ctrl)
-	log := logger.NewNoop()
 
 	publisher := event.NewNoopPublisher()
-	svc := NewProductService(mockProdRepo, mockCatRepo, mockInvRepo, mockFinalizer, publisher, log)
+	svc := NewProductService(mockProdRepo, mockCatRepo, mockInvRepo, mockFinalizer, publisher)
 	return svc, mockProdRepo, mockCatRepo, mockInvRepo, mockFinalizer, context.Background()
 }
 
@@ -53,10 +51,9 @@ func setupProductTestWithSpy(t *testing.T) (
 	mockCatRepo := mocks.NewMockCategoryRepository(ctrl)
 	mockInvRepo := mocks.NewMockInventoryRepository(ctrl)
 	mockFinalizer := mocks.NewMockAssetFinalizer(ctrl)
-	log := logger.NewNoop()
 
 	spy := newSpyPublisher()
-	svc := NewProductService(mockProdRepo, mockCatRepo, mockInvRepo, mockFinalizer, spy, log)
+	svc := NewProductService(mockProdRepo, mockCatRepo, mockInvRepo, mockFinalizer, spy)
 	return svc, mockProdRepo, mockCatRepo, mockInvRepo, mockFinalizer, spy, context.Background()
 }
 
@@ -778,10 +775,8 @@ func TestProductService_Create_EventPublishing(t *testing.T) {
 		mockCatRepo := mocks.NewMockCategoryRepository(ctrl)
 		mockInvRepo := mocks.NewMockInventoryRepository(ctrl)
 		mockFinalizer := mocks.NewMockAssetFinalizer(ctrl)
-		log := logger.NewNoop()
-
 		failPub := newFailingPublisher(errors.Internal("SNS down"))
-		svc := NewProductService(mockProdRepo, mockCatRepo, mockInvRepo, mockFinalizer, failPub, log)
+		svc := NewProductService(mockProdRepo, mockCatRepo, mockInvRepo, mockFinalizer, failPub)
 		ctx := context.Background()
 
 		mockCatRepo.EXPECT().GetByID(ctx, "cat_123").Return(&domain.Category{ID: "cat_123"}, nil)

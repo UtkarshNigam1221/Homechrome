@@ -4,6 +4,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"path/filepath"
 	"strings"
 	"time"
@@ -13,7 +14,6 @@ import (
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/internal/s3client"
 	"github.com/handloom/admin/pkg/errors"
-	"github.com/handloom/admin/pkg/logger"
 )
 
 const (
@@ -46,21 +46,18 @@ type s3Ops interface {
 // S3 lifecycle auto-deletes tmp/ objects after 24h — no DB scan needed.
 type AssetService struct {
 	s3Client s3Ops
-	logger   *logger.Logger
 	bucket   string
 	endpoint string // AWS_ENDPOINT for local dev (empty in production)
 }
 
 // NewAssetService creates a new AssetService.
 func NewAssetService(
-	logger *logger.Logger,
 	s3Client *s3client.S3Client,
 	bucket string,
 	endpoint string,
 ) *AssetService {
 	return &AssetService{
 		s3Client: s3Client,
-		logger:   logger,
 		bucket:   bucket,
 		endpoint: strings.TrimRight(endpoint, "/"),
 	}
@@ -136,11 +133,11 @@ func (s *AssetService) FinalizeUpload(ctx context.Context, tmpKey string) (strin
 
 	// Delete tmp object (best-effort; lifecycle will clean up anyway)
 	if err := s.s3Client.DeleteObject(ctx, s.bucket, tmpKey); err != nil {
-		s.logger.WithContext(ctx).Errorf("Failed to delete tmp object %s: %v", tmpKey, err)
+		slog.ErrorContext(ctx, "Failed to delete tmp object", "tmp_key", tmpKey, "error", err)
 	}
 
 	finalURL := s.s3URL(finalKey)
-	s.logger.WithContext(ctx).Infof("Finalized asset: %s → %s", tmpKey, finalKey)
+	slog.InfoContext(ctx, "Finalized asset", "tmp_key", tmpKey, "final_key", finalKey)
 	return finalURL, nil
 }
 
@@ -173,7 +170,7 @@ func (s *AssetService) DeleteAsset(ctx context.Context, assetURL string) error {
 		return errors.Wrap(err, "Failed to delete asset")
 	}
 
-	s.logger.WithContext(ctx).Infof("Deleted asset: %s", key)
+	slog.InfoContext(ctx, "Deleted asset", "key", key)
 	return nil
 }
 

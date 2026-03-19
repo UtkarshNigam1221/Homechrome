@@ -1,6 +1,7 @@
 package store
 
 import (
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -10,7 +11,6 @@ import (
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/internal/middleware"
 	"github.com/handloom/admin/pkg/errors"
-	"github.com/handloom/admin/pkg/logger"
 	"github.com/handloom/admin/pkg/response"
 )
 
@@ -19,19 +19,16 @@ import (
 type ProfileHandler struct {
 	customerRepo domain.CustomerRepository
 	validation   *middleware.Validation
-	logger       *logger.Logger
 }
 
 // NewProfileHandler creates a new ProfileHandler.
 func NewProfileHandler(
 	cr domain.CustomerRepository,
 	v *middleware.Validation,
-	l *logger.Logger,
 ) *ProfileHandler {
 	return &ProfileHandler{
 		customerRepo: cr,
 		validation:   v,
-		logger:       l,
 	}
 }
 
@@ -112,7 +109,7 @@ func (h *ProfileHandler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
 	customer.UpdatedAt = time.Now()
 
 	if err := h.customerRepo.Update(ctx, customer); err != nil {
-		h.logger.WithContext(ctx).WithError(err).Error("Failed to update customer profile")
+		slog.ErrorContext(ctx, "failed to update customer profile", "error", err)
 		response.Error(w, err)
 		return
 	}
@@ -146,7 +143,7 @@ func (h *ProfileHandler) AddAddress(w http.ResponseWriter, r *http.Request) {
 	customer.UpdatedAt = time.Now()
 
 	if err := h.customerRepo.Update(ctx, customer); err != nil {
-		h.logger.WithContext(ctx).WithError(err).Error("Failed to add address")
+		slog.ErrorContext(ctx, "failed to add address", "error", err)
 		response.Error(w, err)
 		return
 	}
@@ -193,7 +190,7 @@ func (h *ProfileHandler) UpdateAddress(w http.ResponseWriter, r *http.Request) {
 	customer.UpdatedAt = time.Now()
 
 	if err := h.customerRepo.Update(ctx, customer); err != nil {
-		h.logger.WithContext(ctx).WithError(err).Error("Failed to update address")
+		slog.ErrorContext(ctx, "failed to update address", "error", err)
 		response.Error(w, err)
 		return
 	}
@@ -234,7 +231,7 @@ func (h *ProfileHandler) RemoveAddress(w http.ResponseWriter, r *http.Request) {
 	customer.UpdatedAt = time.Now()
 
 	if err := h.customerRepo.Update(ctx, customer); err != nil {
-		h.logger.WithContext(ctx).WithError(err).Error("Failed to remove address")
+		slog.ErrorContext(ctx, "failed to remove address", "error", err)
 		response.Error(w, err)
 		return
 	}

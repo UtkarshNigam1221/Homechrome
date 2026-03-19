@@ -3,6 +3,7 @@ package middleware
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -10,8 +11,8 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/handloom/admin/internal/domain"
-	"github.com/handloom/admin/pkg/logger"
 	"github.com/handloom/admin/pkg/response"
+	"github.com/handloom/admin/pkg/slogx"
 )
 
 // Use exported ContextKey constants from interfaces.go for all context keys.
@@ -26,7 +27,7 @@ func RequestID(next http.Handler) http.Handler {
 		}
 
 		ctx := context.WithValue(r.Context(), RequestIDKey, requestID)
-		ctx = logger.SetRequestID(ctx, requestID)
+		ctx = slogx.SetRequestID(ctx, requestID)
 		w.Header().Set("X-Request-ID", requestID)
 
 		next.ServeHTTP(w, r.WithContext(ctx))
@@ -34,7 +35,7 @@ func RequestID(next http.Handler) http.Handler {
 }
 
 // Logger logs HTTP requests
-func Logger(log *logger.Logger) func(next http.Handler) http.Handler {
+func Logger() func(next http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			start := time.Now()
@@ -44,16 +45,14 @@ func Logger(log *logger.Logger) func(next http.Handler) http.Handler {
 
 			next.ServeHTTP(ww, r)
 
-			log.WithContext(r.Context()).
-				WithFields(map[string]interface{}{
-					"method":     r.Method,
-					"path":       r.URL.Path,
-					"status":     ww.statusCode,
-					"duration":   time.Since(start).String(),
-					"user_agent": r.UserAgent(),
-					"remote_ip":  getRemoteIP(r),
-				}).
-				Info("HTTP request")
+			slog.InfoContext(r.Context(), "HTTP request",
+				"method", r.Method,
+				"path", r.URL.Path,
+				"status", ww.statusCode,
+				"duration", time.Since(start).String(),
+				"user_agent", r.UserAgent(),
+				"remote_ip", getRemoteIP(r),
+			)
 		})
 	}
 }
@@ -70,14 +69,12 @@ func (w *responseWriter) WriteHeader(code int) {
 }
 
 // Recoverer recovers from panics and returns a 500 error
-func Recoverer(log *logger.Logger) func(next http.Handler) http.Handler {
+func Recoverer() func(next http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			defer func() {
 				if err := recover(); err != nil {
-					log.WithContext(r.Context()).
-						WithField("panic", err).
-						Error("Panic recovered")
+					slog.ErrorContext(r.Context(), "Panic recovered", "panic", err)
 
 					response.InternalError(w)
 				}
@@ -91,14 +88,12 @@ func Recoverer(log *logger.Logger) func(next http.Handler) http.Handler {
 // Auth provides JWT authentication middleware
 type Auth struct {
 	authService domain.AuthService
-	logger      *logger.Logger
 }
 
 // NewAuth creates a new Auth middleware
-func NewAuth(authService domain.AuthService, logger *logger.Logger) *Auth {
+func NewAuth(authService domain.AuthService) *Auth {
 	return &Auth{
 		authService: authService,
-		logger:      logger,
 	}
 }
 
@@ -120,7 +115,7 @@ func (a *Auth) Authenticate(next http.Handler) http.Handler {
 
 		// Set user in context using exported keys
 		ctx := context.WithValue(r.Context(), UserIDKey, claims.UserID)
-		ctx = logger.SetUserID(ctx, claims.UserID)
+		ctx = slogx.SetUserID(ctx, claims.UserID)
 
 		// Create a minimal user object from claims
 		user := &domain.User{

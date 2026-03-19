@@ -12,7 +12,6 @@ import (
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/internal/mocks"
 	"github.com/handloom/admin/pkg/errors"
-	"github.com/handloom/admin/pkg/logger"
 )
 
 func TestUserService_Create(t *testing.T) {
@@ -20,9 +19,8 @@ func TestUserService_Create(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockUserRepo := mocks.NewMockUserRepository(ctrl)
-	log := logger.NewNoop()
 	mockTokenStore := mocks.NewMockTokenStore(ctrl)
-	service := NewUserService(mockUserRepo, mockTokenStore, log)
+	service := NewUserService(mockUserRepo, mockTokenStore)
 	ctx := context.Background()
 
 	t.Run("successful user creation", func(t *testing.T) {
@@ -91,9 +89,8 @@ func TestUserService_GetByID(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockUserRepo := mocks.NewMockUserRepository(ctrl)
-	log := logger.NewNoop()
 	mockTokenStore := mocks.NewMockTokenStore(ctrl)
-	service := NewUserService(mockUserRepo, mockTokenStore, log)
+	service := NewUserService(mockUserRepo, mockTokenStore)
 	ctx := context.Background()
 
 	t.Run("successful get by ID", func(t *testing.T) {
@@ -134,9 +131,8 @@ func TestUserService_Update(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockUserRepo := mocks.NewMockUserRepository(ctrl)
-	log := logger.NewNoop()
 	mockTokenStore := mocks.NewMockTokenStore(ctrl)
-	service := NewUserService(mockUserRepo, mockTokenStore, log)
+	service := NewUserService(mockUserRepo, mockTokenStore)
 	ctx := context.Background()
 
 	t.Run("successful update", func(t *testing.T) {
@@ -192,9 +188,8 @@ func TestUserService_Delete(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockUserRepo := mocks.NewMockUserRepository(ctrl)
-	log := logger.NewNoop()
 	mockTokenStore := mocks.NewMockTokenStore(ctrl)
-	service := NewUserService(mockUserRepo, mockTokenStore, log)
+	service := NewUserService(mockUserRepo, mockTokenStore)
 	ctx := context.Background()
 
 	t.Run("successful delete", func(t *testing.T) {
@@ -238,9 +233,8 @@ func TestUserService_List(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockUserRepo := mocks.NewMockUserRepository(ctrl)
-	log := logger.NewNoop()
 	mockTokenStore := mocks.NewMockTokenStore(ctrl)
-	service := NewUserService(mockUserRepo, mockTokenStore, log)
+	service := NewUserService(mockUserRepo, mockTokenStore)
 	ctx := context.Background()
 
 	t.Run("successful list", func(t *testing.T) {
@@ -312,9 +306,8 @@ func TestUserService_UpdateStatus(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockUserRepo := mocks.NewMockUserRepository(ctrl)
-	log := logger.NewNoop()
 	mockTokenStore := mocks.NewMockTokenStore(ctrl)
-	service := NewUserService(mockUserRepo, mockTokenStore, log)
+	service := NewUserService(mockUserRepo, mockTokenStore)
 	ctx := context.Background()
 
 	t.Run("successful status update", func(t *testing.T) {
@@ -358,8 +351,7 @@ func TestUserService_Create_EdgeCases(t *testing.T) {
 
 	mockUserRepo := mocks.NewMockUserRepository(ctrl)
 	mockTokenStore := mocks.NewMockTokenStore(ctrl)
-	log := logger.NewNoop()
-	svc := NewUserService(mockUserRepo, mockTokenStore, log)
+	svc := NewUserService(mockUserRepo, mockTokenStore)
 	ctx := context.Background()
 
 	t.Run("new user starts with PENDING status", func(t *testing.T) {
@@ -428,8 +420,7 @@ func TestUserService_GetByID_Security(t *testing.T) {
 
 	mockUserRepo := mocks.NewMockUserRepository(ctrl)
 	mockTokenStore := mocks.NewMockTokenStore(ctrl)
-	log := logger.NewNoop()
-	svc := NewUserService(mockUserRepo, mockTokenStore, log)
+	svc := NewUserService(mockUserRepo, mockTokenStore)
 	ctx := context.Background()
 
 	t.Run("password hash cleared even when repo returns one", func(t *testing.T) {
@@ -453,8 +444,7 @@ func TestUserService_Update_EdgeCases(t *testing.T) {
 
 	mockUserRepo := mocks.NewMockUserRepository(ctrl)
 	mockTokenStore := mocks.NewMockTokenStore(ctrl)
-	log := logger.NewNoop()
-	svc := NewUserService(mockUserRepo, mockTokenStore, log)
+	svc := NewUserService(mockUserRepo, mockTokenStore)
 	ctx := context.Background()
 
 	t.Run("empty password skips hashing", func(t *testing.T) {
@@ -538,8 +528,7 @@ func TestUserService_List_Security(t *testing.T) {
 
 	mockUserRepo := mocks.NewMockUserRepository(ctrl)
 	mockTokenStore := mocks.NewMockTokenStore(ctrl)
-	log := logger.NewNoop()
-	svc := NewUserService(mockUserRepo, mockTokenStore, log)
+	svc := NewUserService(mockUserRepo, mockTokenStore)
 	ctx := context.Background()
 
 	t.Run("all users have password cleared in batch", func(t *testing.T) {
@@ -570,8 +559,7 @@ func TestUserService_UpdateStatus_EdgeCases(t *testing.T) {
 
 	mockUserRepo := mocks.NewMockUserRepository(ctrl)
 	mockTokenStore := mocks.NewMockTokenStore(ctrl)
-	log := logger.NewNoop()
-	svc := NewUserService(mockUserRepo, mockTokenStore, log)
+	svc := NewUserService(mockUserRepo, mockTokenStore)
 	ctx := context.Background()
 
 	t.Run("sets updated_at timestamp", func(t *testing.T) {

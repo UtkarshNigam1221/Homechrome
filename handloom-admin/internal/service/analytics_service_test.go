@@ -12,7 +12,6 @@ import (
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/internal/mocks"
 	"github.com/handloom/admin/pkg/errors"
-	"github.com/handloom/admin/pkg/logger"
 )
 
 func TestAnalyticsService_GetDashboardStats(t *testing.T) {
@@ -23,9 +22,8 @@ func TestAnalyticsService_GetDashboardStats(t *testing.T) {
 	mockOrderRepo := mocks.NewMockOrderRepository(ctrl)
 	mockProductRepo := mocks.NewMockProductRepository(ctrl)
 	mockInventoryRepo := mocks.NewMockInventoryRepository(ctrl)
-	log := logger.NewNoop()
 
-	service := NewAnalyticsService(mockAnalyticsRepo, mockOrderRepo, mockProductRepo, mockInventoryRepo, log)
+	service := NewAnalyticsService(mockAnalyticsRepo, mockOrderRepo, mockProductRepo, mockInventoryRepo)
 	ctx := context.Background()
 
 	t.Run("successful get dashboard stats", func(t *testing.T) {
@@ -82,9 +80,8 @@ func TestAnalyticsService_GetSalesAnalytics(t *testing.T) {
 	mockOrderRepo := mocks.NewMockOrderRepository(ctrl)
 	mockProductRepo := mocks.NewMockProductRepository(ctrl)
 	mockInventoryRepo := mocks.NewMockInventoryRepository(ctrl)
-	log := logger.NewNoop()
 
-	service := NewAnalyticsService(mockAnalyticsRepo, mockOrderRepo, mockProductRepo, mockInventoryRepo, log)
+	service := NewAnalyticsService(mockAnalyticsRepo, mockOrderRepo, mockProductRepo, mockInventoryRepo)
 	ctx := context.Background()
 
 	t.Run("with valid request", func(t *testing.T) {
@@ -186,9 +183,8 @@ func TestAnalyticsService_GetTopProducts(t *testing.T) {
 	mockOrderRepo := mocks.NewMockOrderRepository(ctrl)
 	mockProductRepo := mocks.NewMockProductRepository(ctrl)
 	mockInventoryRepo := mocks.NewMockInventoryRepository(ctrl)
-	log := logger.NewNoop()
 
-	service := NewAnalyticsService(mockAnalyticsRepo, mockOrderRepo, mockProductRepo, mockInventoryRepo, log)
+	service := NewAnalyticsService(mockAnalyticsRepo, mockOrderRepo, mockProductRepo, mockInventoryRepo)
 	ctx := context.Background()
 
 	startDate := time.Now().AddDate(0, -1, 0)
@@ -253,9 +249,8 @@ func TestAnalyticsService_GetTopCategories(t *testing.T) {
 	mockOrderRepo := mocks.NewMockOrderRepository(ctrl)
 	mockProductRepo := mocks.NewMockProductRepository(ctrl)
 	mockInventoryRepo := mocks.NewMockInventoryRepository(ctrl)
-	log := logger.NewNoop()
 
-	service := NewAnalyticsService(mockAnalyticsRepo, mockOrderRepo, mockProductRepo, mockInventoryRepo, log)
+	service := NewAnalyticsService(mockAnalyticsRepo, mockOrderRepo, mockProductRepo, mockInventoryRepo)
 	ctx := context.Background()
 
 	startDate := time.Now().AddDate(0, -1, 0)
@@ -308,9 +303,8 @@ func TestAnalyticsService_GetCustomerAnalytics(t *testing.T) {
 	mockOrderRepo := mocks.NewMockOrderRepository(ctrl)
 	mockProductRepo := mocks.NewMockProductRepository(ctrl)
 	mockInventoryRepo := mocks.NewMockInventoryRepository(ctrl)
-	log := logger.NewNoop()
 
-	service := NewAnalyticsService(mockAnalyticsRepo, mockOrderRepo, mockProductRepo, mockInventoryRepo, log)
+	service := NewAnalyticsService(mockAnalyticsRepo, mockOrderRepo, mockProductRepo, mockInventoryRepo)
 	ctx := context.Background()
 
 	t.Run("successful get customer analytics", func(t *testing.T) {
@@ -359,9 +353,8 @@ func TestAnalyticsService_GetInventoryAnalytics(t *testing.T) {
 	mockOrderRepo := mocks.NewMockOrderRepository(ctrl)
 	mockProductRepo := mocks.NewMockProductRepository(ctrl)
 	mockInventoryRepo := mocks.NewMockInventoryRepository(ctrl)
-	log := logger.NewNoop()
 
-	service := NewAnalyticsService(mockAnalyticsRepo, mockOrderRepo, mockProductRepo, mockInventoryRepo, log)
+	service := NewAnalyticsService(mockAnalyticsRepo, mockOrderRepo, mockProductRepo, mockInventoryRepo)
 	ctx := context.Background()
 
 	t.Run("successful get inventory analytics", func(t *testing.T) {

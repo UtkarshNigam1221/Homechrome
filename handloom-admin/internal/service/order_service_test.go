@@ -11,7 +11,6 @@ import (
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/internal/mocks"
 	"github.com/handloom/admin/pkg/errors"
-	"github.com/handloom/admin/pkg/logger"
 )
 
 func TestOrderService_Create(t *testing.T) {
@@ -24,7 +23,6 @@ func TestOrderService_Create(t *testing.T) {
 	mockInventoryRepo := mocks.NewMockInventoryRepository(ctrl)
 	mockPriceQuoteRepo := mocks.NewMockPriceQuoteRepository(ctrl)
 	mockPricingService := mocks.NewMockPricingService(ctrl)
-	log := logger.NewNoop()
 
 	service := NewOrderService(
 		mockOrderRepo,
@@ -33,7 +31,6 @@ func TestOrderService_Create(t *testing.T) {
 		mockInventoryRepo,
 		mockPriceQuoteRepo,
 		mockPricingService,
-		log,
 	)
 	ctx := context.Background()
 
@@ -215,7 +212,6 @@ func TestOrderService_GetByID(t *testing.T) {
 	mockInventoryRepo := mocks.NewMockInventoryRepository(ctrl)
 	mockPriceQuoteRepo := mocks.NewMockPriceQuoteRepository(ctrl)
 	mockPricingService := mocks.NewMockPricingService(ctrl)
-	log := logger.NewNoop()
 
 	service := NewOrderService(
 		mockOrderRepo,
@@ -224,7 +220,6 @@ func TestOrderService_GetByID(t *testing.T) {
 		mockInventoryRepo,
 		mockPriceQuoteRepo,
 		mockPricingService,
-		log,
 	)
 	ctx := context.Background()
 
@@ -297,7 +292,6 @@ func TestOrderService_UpdateStatus(t *testing.T) {
 	mockInventoryRepo := mocks.NewMockInventoryRepository(ctrl)
 	mockPriceQuoteRepo := mocks.NewMockPriceQuoteRepository(ctrl)
 	mockPricingService := mocks.NewMockPricingService(ctrl)
-	log := logger.NewNoop()
 
 	service := NewOrderService(
 		mockOrderRepo,
@@ -306,7 +300,6 @@ func TestOrderService_UpdateStatus(t *testing.T) {
 		mockInventoryRepo,
 		mockPriceQuoteRepo,
 		mockPricingService,
-		log,
 	)
 	ctx := context.Background()
 
@@ -456,7 +449,6 @@ func TestOrderService_AddNote(t *testing.T) {
 	mockInventoryRepo := mocks.NewMockInventoryRepository(ctrl)
 	mockPriceQuoteRepo := mocks.NewMockPriceQuoteRepository(ctrl)
 	mockPricingService := mocks.NewMockPricingService(ctrl)
-	log := logger.NewNoop()
 
 	service := NewOrderService(
 		mockOrderRepo,
@@ -465,7 +457,6 @@ func TestOrderService_AddNote(t *testing.T) {
 		mockInventoryRepo,
 		mockPriceQuoteRepo,
 		mockPricingService,
-		log,
 	)
 	ctx := context.Background()
 
@@ -516,7 +507,6 @@ func TestOrderService_UpdateTracking(t *testing.T) {
 	mockInventoryRepo := mocks.NewMockInventoryRepository(ctrl)
 	mockPriceQuoteRepo := mocks.NewMockPriceQuoteRepository(ctrl)
 	mockPricingService := mocks.NewMockPricingService(ctrl)
-	log := logger.NewNoop()
 
 	service := NewOrderService(
 		mockOrderRepo,
@@ -525,7 +515,6 @@ func TestOrderService_UpdateTracking(t *testing.T) {
 		mockInventoryRepo,
 		mockPriceQuoteRepo,
 		mockPricingService,
-		log,
 	)
 	ctx := context.Background()
 
@@ -559,7 +548,6 @@ func TestOrderService_CancelOrder(t *testing.T) {
 	mockInventoryRepo := mocks.NewMockInventoryRepository(ctrl)
 	mockPriceQuoteRepo := mocks.NewMockPriceQuoteRepository(ctrl)
 	mockPricingService := mocks.NewMockPricingService(ctrl)
-	log := logger.NewNoop()
 
 	service := NewOrderService(
 		mockOrderRepo,
@@ -568,7 +556,6 @@ func TestOrderService_CancelOrder(t *testing.T) {
 		mockInventoryRepo,
 		mockPriceQuoteRepo,
 		mockPricingService,
-		log,
 	)
 	ctx := context.Background()
 
@@ -671,7 +658,6 @@ func TestOrderService_RefundOrder(t *testing.T) {
 	mockInventoryRepo := mocks.NewMockInventoryRepository(ctrl)
 	mockPriceQuoteRepo := mocks.NewMockPriceQuoteRepository(ctrl)
 	mockPricingService := mocks.NewMockPricingService(ctrl)
-	log := logger.NewNoop()
 
 	service := NewOrderService(
 		mockOrderRepo,
@@ -680,7 +666,6 @@ func TestOrderService_RefundOrder(t *testing.T) {
 		mockInventoryRepo,
 		mockPriceQuoteRepo,
 		mockPricingService,
-		log,
 	)
 	ctx := context.Background()
 
@@ -767,7 +752,6 @@ func TestOrderService_List(t *testing.T) {
 	mockInventoryRepo := mocks.NewMockInventoryRepository(ctrl)
 	mockPriceQuoteRepo := mocks.NewMockPriceQuoteRepository(ctrl)
 	mockPricingService := mocks.NewMockPricingService(ctrl)
-	log := logger.NewNoop()
 
 	service := NewOrderService(
 		mockOrderRepo,
@@ -776,7 +760,6 @@ func TestOrderService_List(t *testing.T) {
 		mockInventoryRepo,
 		mockPriceQuoteRepo,
 		mockPricingService,
-		log,
 	)
 	ctx := context.Background()
 

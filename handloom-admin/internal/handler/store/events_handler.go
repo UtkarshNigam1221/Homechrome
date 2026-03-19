@@ -1,6 +1,7 @@
 package store
 
 import (
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -8,7 +9,6 @@ import (
 
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/internal/middleware"
-	"github.com/handloom/admin/pkg/logger"
 	"github.com/handloom/admin/pkg/response"
 )
 
@@ -17,7 +17,6 @@ type EventsHandler struct {
 	eventsRepo    domain.EventsRepository
 	analyticsRepo domain.AnalyticsRepository
 	validation    *middleware.Validation
-	logger        *logger.Logger
 }
 
 // NewEventsHandler creates a new EventsHandler.
@@ -25,13 +24,11 @@ func NewEventsHandler(
 	eventsRepo domain.EventsRepository,
 	analyticsRepo domain.AnalyticsRepository,
 	validation *middleware.Validation,
-	logger *logger.Logger,
 ) *EventsHandler {
 	return &EventsHandler{
 		eventsRepo:    eventsRepo,
 		analyticsRepo: analyticsRepo,
 		validation:    validation,
-		logger:        logger,
 	}
 }
 
@@ -67,7 +64,7 @@ func (h *EventsHandler) IngestEvents(w http.ResponseWriter, r *http.Request) {
 
 	// Write raw events (best-effort, don't fail the request)
 	if err := h.eventsRepo.BatchWriteEvents(ctx, valid); err != nil {
-		h.logger.WithContext(ctx).WithError(err).Error("failed to write raw events")
+		slog.ErrorContext(ctx, "failed to write raw events", "error", err)
 	}
 
 	// Update live counters (best-effort, log errors but don't fail the request)
@@ -84,7 +81,7 @@ func (h *EventsHandler) IngestEvents(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		if err := h.analyticsRepo.IncrementDashboardCounter(ctx, field, 1); err != nil {
-			h.logger.WithContext(ctx).WithError(err).Errorf("failed to increment counter %s", field)
+			slog.ErrorContext(ctx, "failed to increment counter", "field", field, "error", err)
 		}
 	}
 

@@ -11,7 +11,6 @@ import (
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/internal/mocks"
 	"github.com/handloom/admin/pkg/errors"
-	"github.com/handloom/admin/pkg/logger"
 )
 
 func TestCustomerService_Create(t *testing.T) {
@@ -20,8 +19,7 @@ func TestCustomerService_Create(t *testing.T) {
 
 	mockCustomerRepo := mocks.NewMockCustomerRepository(ctrl)
 	mockOrderRepo := mocks.NewMockOrderRepository(ctrl)
-	log := logger.NewNoop()
-	service := NewCustomerService(mockCustomerRepo, mockOrderRepo, log)
+	service := NewCustomerService(mockCustomerRepo, mockOrderRepo)
 	ctx := context.Background()
 
 	t.Run("successful creation", func(t *testing.T) {
@@ -124,8 +122,7 @@ func TestCustomerService_GetByID(t *testing.T) {
 
 	mockCustomerRepo := mocks.NewMockCustomerRepository(ctrl)
 	mockOrderRepo := mocks.NewMockOrderRepository(ctrl)
-	log := logger.NewNoop()
-	service := NewCustomerService(mockCustomerRepo, mockOrderRepo, log)
+	service := NewCustomerService(mockCustomerRepo, mockOrderRepo)
 	ctx := context.Background()
 
 	t.Run("successful get", func(t *testing.T) {
@@ -164,8 +161,7 @@ func TestCustomerService_Update(t *testing.T) {
 
 	mockCustomerRepo := mocks.NewMockCustomerRepository(ctrl)
 	mockOrderRepo := mocks.NewMockOrderRepository(ctrl)
-	log := logger.NewNoop()
-	service := NewCustomerService(mockCustomerRepo, mockOrderRepo, log)
+	service := NewCustomerService(mockCustomerRepo, mockOrderRepo)
 	ctx := context.Background()
 
 	t.Run("successful update", func(t *testing.T) {
@@ -228,8 +224,7 @@ func TestCustomerService_Delete(t *testing.T) {
 
 	mockCustomerRepo := mocks.NewMockCustomerRepository(ctrl)
 	mockOrderRepo := mocks.NewMockOrderRepository(ctrl)
-	log := logger.NewNoop()
-	service := NewCustomerService(mockCustomerRepo, mockOrderRepo, log)
+	service := NewCustomerService(mockCustomerRepo, mockOrderRepo)
 	ctx := context.Background()
 
 	t.Run("successful soft delete", func(t *testing.T) {
@@ -303,8 +298,7 @@ func TestCustomerService_List(t *testing.T) {
 
 	mockCustomerRepo := mocks.NewMockCustomerRepository(ctrl)
 	mockOrderRepo := mocks.NewMockOrderRepository(ctrl)
-	log := logger.NewNoop()
-	service := NewCustomerService(mockCustomerRepo, mockOrderRepo, log)
+	service := NewCustomerService(mockCustomerRepo, mockOrderRepo)
 	ctx := context.Background()
 
 	t.Run("successful list", func(t *testing.T) {
@@ -341,8 +335,7 @@ func TestCustomerService_Search(t *testing.T) {
 
 	mockCustomerRepo := mocks.NewMockCustomerRepository(ctrl)
 	mockOrderRepo := mocks.NewMockOrderRepository(ctrl)
-	log := logger.NewNoop()
-	service := NewCustomerService(mockCustomerRepo, mockOrderRepo, log)
+	service := NewCustomerService(mockCustomerRepo, mockOrderRepo)
 	ctx := context.Background()
 
 	t.Run("successful search", func(t *testing.T) {
@@ -375,8 +368,7 @@ func TestCustomerService_GetOrders(t *testing.T) {
 
 	mockCustomerRepo := mocks.NewMockCustomerRepository(ctrl)
 	mockOrderRepo := mocks.NewMockOrderRepository(ctrl)
-	log := logger.NewNoop()
-	service := NewCustomerService(mockCustomerRepo, mockOrderRepo, log)
+	service := NewCustomerService(mockCustomerRepo, mockOrderRepo)
 	ctx := context.Background()
 
 	t.Run("successful get orders", func(t *testing.T) {
@@ -410,8 +402,7 @@ func TestCustomerService_AddAddress(t *testing.T) {
 
 	mockCustomerRepo := mocks.NewMockCustomerRepository(ctrl)
 	mockOrderRepo := mocks.NewMockOrderRepository(ctrl)
-	log := logger.NewNoop()
-	service := NewCustomerService(mockCustomerRepo, mockOrderRepo, log)
+	service := NewCustomerService(mockCustomerRepo, mockOrderRepo)
 	ctx := context.Background()
 
 	t.Run("first address auto-defaults", func(t *testing.T) {
@@ -532,8 +523,7 @@ func TestCustomerService_UpdateAddress(t *testing.T) {
 
 	mockCustomerRepo := mocks.NewMockCustomerRepository(ctrl)
 	mockOrderRepo := mocks.NewMockOrderRepository(ctrl)
-	log := logger.NewNoop()
-	service := NewCustomerService(mockCustomerRepo, mockOrderRepo, log)
+	service := NewCustomerService(mockCustomerRepo, mockOrderRepo)
 	ctx := context.Background()
 
 	t.Run("successful update", func(t *testing.T) {
@@ -612,8 +602,7 @@ func TestCustomerService_RemoveAddress(t *testing.T) {
 
 	mockCustomerRepo := mocks.NewMockCustomerRepository(ctrl)
 	mockOrderRepo := mocks.NewMockOrderRepository(ctrl)
-	log := logger.NewNoop()
-	service := NewCustomerService(mockCustomerRepo, mockOrderRepo, log)
+	service := NewCustomerService(mockCustomerRepo, mockOrderRepo)
 	ctx := context.Background()
 
 	t.Run("successful removal", func(t *testing.T) {
@@ -671,8 +660,7 @@ func TestCustomerService_UpdateStats(t *testing.T) {
 
 	mockCustomerRepo := mocks.NewMockCustomerRepository(ctrl)
 	mockOrderRepo := mocks.NewMockOrderRepository(ctrl)
-	log := logger.NewNoop()
-	service := NewCustomerService(mockCustomerRepo, mockOrderRepo, log)
+	service := NewCustomerService(mockCustomerRepo, mockOrderRepo)
 	ctx := context.Background()
 
 	t.Run("successful stats update", func(t *testing.T) {

@@ -4,6 +4,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -31,16 +32,16 @@ import (
 	"github.com/handloom/admin/internal/s3client"
 	"github.com/handloom/admin/internal/service"
 	"github.com/handloom/admin/internal/validator"
-	"github.com/handloom/admin/pkg/logger"
+	"github.com/handloom/admin/pkg/slogx"
 )
 
 func main() {
 	// Load configuration
 	cfg := config.Load()
 
-	// Initialize logger
-	log := logger.New(cfg.App.Debug)
-	log.Infof("Starting handloom-admin API server in %s mode", cfg.App.Environment)
+	// Initialize structured logger
+	slogx.Setup(cfg.App.Debug)
+	slog.Info("Starting handloom-admin API server", "environment", cfg.App.Environment)
 
 	// Initialize context
 	ctx, cancel := context.WithCancel(context.Background())
@@ -49,24 +50,27 @@ func main() {
 	// Initialize DynamoDB client
 	dbClient, err := dynamodb.NewClient(ctx, cfg)
 	if err != nil {
-		log.Fatalf("Failed to initialize DynamoDB client: %v", err)
+		slog.Error("Failed to initialize DynamoDB client", "error", err)
+		os.Exit(1)
 	}
-	log.Info("DynamoDB client initialized")
+	slog.Info("DynamoDB client initialized")
 
 	// Initialize S3 client
 	s3c, err := s3client.New(ctx, cfg.AWS.Region, cfg.AWS.Endpoint)
 	if err != nil {
-		log.Fatalf("Failed to initialize S3 client: %v", err)
+		slog.Error("Failed to initialize S3 client", "error", err)
+		os.Exit(1)
 	}
-	log.Info("S3 client initialized")
+	slog.Info("S3 client initialized")
 
 	// Initialize PostgreSQL pool for catalog data
 	pgPool, err := postgres.NewPool(ctx, &cfg.Postgres)
 	if err != nil {
-		log.Fatalf("Failed to initialize PostgreSQL pool: %v", err)
+		slog.Error("Failed to initialize PostgreSQL pool", "error", err)
+		os.Exit(1)
 	}
 	defer pgPool.Close()
-	log.Info("PostgreSQL pool initialized")
+	slog.Info("PostgreSQL pool initialized")
 
 	// Initialize repositories
 	catalogCache := cache.New(5*time.Minute, 10*time.Minute)
@@ -98,42 +102,39 @@ func main() {
 	eventsRepo := dynamodb.NewEventsRepository(dbClient)
 
 	// Initialize event handlers and publisher (LocalPublisher for monolith dev mode)
-	notifEventHandler := eventhandlers.NewNotificationHandler(log)
-	reportEventHandler := eventhandlers.NewReportHandler(log)
-	analyticsAggregator := service.NewAnalyticsAggregator(eventsRepo, analyticsRepo, log)
-	analyticsEventHandler := eventhandlers.NewAnalyticsHandler(log, eventsRepo, analyticsRepo, analyticsAggregator)
-	auditEventHandler := eventhandlers.NewAuditHandler(log)
-	publisher := event.NewLocalPublisher(log, notifEventHandler, reportEventHandler, analyticsEventHandler, auditEventHandler)
+	notifEventHandler := eventhandlers.NewNotificationHandler()
+	reportEventHandler := eventhandlers.NewReportHandler()
+	analyticsAggregator := service.NewAnalyticsAggregator(eventsRepo, analyticsRepo)
+	analyticsEventHandler := eventhandlers.NewAnalyticsHandler(eventsRepo, analyticsRepo, analyticsAggregator)
+	auditEventHandler := eventhandlers.NewAuditHandler()
+	publisher := event.NewLocalPublisher(notifEventHandler, reportEventHandler, analyticsEventHandler, auditEventHandler)
 
 	// Initialize services
 	authService := service.NewAuthService(
 		userRepo,
 		tokenStore,
-		log,
 		cfg.JWT.SecretKey,
 		cfg.JWT.AccessTokenDuration,
 		cfg.JWT.RefreshTokenDuration,
 		cfg.JWT.Issuer,
 	)
 
-	userService := service.NewUserService(userRepo, tokenStore, log)
-	assetService := service.NewAssetService(log, s3c, cfg.AWS.S3Bucket, cfg.AWS.Endpoint)
-	inventoryService := service.NewInventoryService(inventoryRepo, catalogCache, publisher, log)
-	categoryService := service.NewCategoryService(categoryRepo, productRepo, assetService, log)
+	userService := service.NewUserService(userRepo, tokenStore)
+	assetService := service.NewAssetService(s3c, cfg.AWS.S3Bucket, cfg.AWS.Endpoint)
+	inventoryService := service.NewInventoryService(inventoryRepo, catalogCache, publisher)
+	categoryService := service.NewCategoryService(categoryRepo, productRepo, assetService)
 	productService := service.NewProductService(
 		productRepo,
 		categoryRepo,
 		inventoryRepo,
 		assetService,
 		publisher,
-		log,
 	)
 	pricingService := service.NewPricingService(
 		pricingRuleRepo,
 		priceQuoteRepo,
 		categoryRepo,
 		productRepo,
-		log,
 		cfg.App.QuoteValidityHrs,
 	)
 	orderService := service.NewOrderService(
@@ -143,14 +144,13 @@ func main() {
 		inventoryRepo,
 		priceQuoteRepo,
 		pricingService,
-		log,
 	)
-	customerService := service.NewCustomerService(customerRepo, orderRepo, log)
-	auditService := service.NewAuditService(auditRepo, log)
-	notificationService := service.NewNotificationService(notificationRepo, userRepo, log)
-	couponService := service.NewCouponService(couponRepo, log)
-	analyticsService := service.NewAnalyticsService(analyticsRepo, orderRepo, productRepo, inventoryRepo, log)
-	reportService := service.NewReportService(reportRepo, orderService, productService, customerService, inventoryService, analyticsService, log)
+	customerService := service.NewCustomerService(customerRepo, orderRepo)
+	auditService := service.NewAuditService(auditRepo)
+	notificationService := service.NewNotificationService(notificationRepo, userRepo)
+	couponService := service.NewCouponService(couponRepo)
+	analyticsService := service.NewAnalyticsService(analyticsRepo, orderRepo, productRepo, inventoryRepo)
+	reportService := service.NewReportService(reportRepo, orderService, productService, customerService, inventoryService, analyticsService)
 
 	// Gateway clients
 	var smsGateway interface {
@@ -158,7 +158,7 @@ func main() {
 	}
 	if cfg.IsDevelopment() {
 		smsGateway = sms.NewDevClient()
-		log.Info("Using dev SMS gateway (OTPs printed to console)")
+		slog.Info("Using dev SMS gateway (OTPs printed to console)")
 	} else {
 		smsGateway = sms.NewClient(sms.Config{
 			AuthKey:       cfg.Store.MSG91AuthKey,
@@ -170,7 +170,7 @@ func main() {
 	var phonePeClient phonepe.Gateway
 	if cfg.IsDevelopment() {
 		phonePeClient = phonepe.NewDevClient(cfg.Store.PhonePeRedirectURL)
-		log.Info("Using dev PhonePe gateway (mock payments)")
+		slog.Info("Using dev PhonePe gateway (mock payments)")
 	} else {
 		phonePeClient = phonepe.NewClient(phonepe.Config{
 			MerchantID:  cfg.Store.PhonePeMerchantID,
@@ -185,7 +185,7 @@ func main() {
 	var shiprocketClient shiprocket.Gateway
 	if cfg.IsDevelopment() {
 		shiprocketClient = shiprocket.NewDevClient()
-		log.Info("Using dev Shiprocket gateway (mock courier data)")
+		slog.Info("Using dev Shiprocket gateway (mock courier data)")
 	} else {
 		shiprocketClient = shiprocket.NewClient(shiprocket.Config{
 			Email:         cfg.Store.ShiprocketEmail,
@@ -202,7 +202,6 @@ func main() {
 		customerTokenStore,
 		smsGateway,
 		publisher,
-		log,
 		service.CustomerAuthConfig{
 			JWTSecret:            cfg.Store.CustomerJWTSecret,
 			AccessTokenDuration:  cfg.Store.CustomerAccessTokenTTL,
@@ -211,24 +210,24 @@ func main() {
 		},
 	)
 
-	cartService := service.NewCartService(cartRepo, productRepo, inventoryRepo, log)
-	paymentService := service.NewPaymentService(paymentRepo, orderRepo, inventoryRepo, phonePeClient, publisher, log)
-	shippingService := service.NewShippingService(shipmentRepo, orderRepo, shiprocketClient, cfg.Store.ShiprocketPickupPincode, log)
-	checkoutService := service.NewCheckoutService(cartService, orderRepo, paymentService, shippingService, inventoryRepo, customerRepo, publisher, log)
+	cartService := service.NewCartService(cartRepo, productRepo, inventoryRepo)
+	paymentService := service.NewPaymentService(paymentRepo, orderRepo, inventoryRepo, phonePeClient, publisher)
+	shippingService := service.NewShippingService(shipmentRepo, orderRepo, shiprocketClient, cfg.Store.ShiprocketPickupPincode)
+	checkoutService := service.NewCheckoutService(cartService, orderRepo, paymentService, shippingService, inventoryRepo, customerRepo, publisher)
 
 	// Initialize validation middleware
 	v := validator.New()
 	validation := middleware.NewValidation(v, middleware.ValidationConfig{})
 
 	// Initialize handlers
-	authHandler := handler.NewAuthHandler(authService, userService, log, validation)
-	userHandler := handler.NewUserHandler(userService, log, validation)
-	categoryHandler := handler.NewCategoryHandler(categoryService, log, validation)
-	productHandler := handler.NewProductHandler(productService, inventoryService, log, validation)
-	inventoryHandler := handler.NewInventoryHandler(inventoryService, log)
-	pricingHandler := handler.NewPricingHandler(pricingService, log, validation)
-	orderHandler := handler.NewOrderHandler(orderService, log, validation)
-	customerHandler := handler.NewCustomerHandler(customerService, log, validation)
+	authHandler := handler.NewAuthHandler(authService, userService, validation)
+	userHandler := handler.NewUserHandler(userService, validation)
+	categoryHandler := handler.NewCategoryHandler(categoryService, validation)
+	productHandler := handler.NewProductHandler(productService, inventoryService, validation)
+	inventoryHandler := handler.NewInventoryHandler(inventoryService)
+	pricingHandler := handler.NewPricingHandler(pricingService, validation)
+	orderHandler := handler.NewOrderHandler(orderService, validation)
+	customerHandler := handler.NewCustomerHandler(customerService, validation)
 	auditHandler := handler.NewAuditHandler(auditService)
 	notificationHandler := handler.NewNotificationHandler(notificationService, validation)
 	couponHandler := handler.NewCouponHandler(couponService, validation)
@@ -237,25 +236,25 @@ func main() {
 	reportHandler := handler.NewReportHandler(reportService, validation)
 
 	// Initialize auth middleware
-	authMiddleware := middleware.NewAuth(authService, log)
+	authMiddleware := middleware.NewAuth(authService)
 
 	// B2C handlers
-	storeAuthHandler := store.NewAuthHandler(customerAuthService, cartService, validation, log)
-	storeCatalogHandler := store.NewCatalogHandler(productService, categoryService, inventoryService, log)
-	storeCartHandler := store.NewCartHandler(cartService, validation, log)
-	storeCheckoutHandler := store.NewCheckoutHandler(checkoutService, validation, log)
-	storeOrderHandler := store.NewOrderHandler(orderService, orderRepo, log)
-	storeTrackingHandler := store.NewTrackingHandler(orderRepo, shipmentRepo, log)
-	storeProfileHandler := store.NewProfileHandler(customerRepo, validation, log)
-	storeWebhookHandler := store.NewWebhookHandler(paymentService, log)
-	storeEventsHandler := store.NewEventsHandler(eventsRepo, analyticsRepo, validation, log)
+	storeAuthHandler := store.NewAuthHandler(customerAuthService, cartService, validation)
+	storeCatalogHandler := store.NewCatalogHandler(productService, categoryService, inventoryService)
+	storeCartHandler := store.NewCartHandler(cartService, validation)
+	storeCheckoutHandler := store.NewCheckoutHandler(checkoutService, validation)
+	storeOrderHandler := store.NewOrderHandler(orderService, orderRepo)
+	storeTrackingHandler := store.NewTrackingHandler(orderRepo, shipmentRepo)
+	storeProfileHandler := store.NewProfileHandler(customerRepo, validation)
+	storeWebhookHandler := store.NewWebhookHandler(paymentService)
+	storeEventsHandler := store.NewEventsHandler(eventsRepo, analyticsRepo, validation)
 
 	// Customer auth middleware
-	customerAuthMiddleware := middleware.NewCustomerAuth(customerAuthService, log)
-	optionalCartAuth := middleware.NewOptionalCartAuth(customerAuthService, log)
+	customerAuthMiddleware := middleware.NewCustomerAuth(customerAuthService)
+	optionalCartAuth := middleware.NewOptionalCartAuth(customerAuthService)
 
 	// Create router
-	r := createRouter(cfg, log, authMiddleware,
+	r := createRouter(cfg, authMiddleware,
 		authHandler, userHandler, categoryHandler,
 		productHandler, inventoryHandler, pricingHandler, orderHandler,
 		customerHandler, auditHandler, notificationHandler, couponHandler,
@@ -278,9 +277,10 @@ func main() {
 
 	// Start server in goroutine
 	go func() {
-		log.Infof("Server listening on port %s", cfg.Server.Port)
+		slog.Info("Server listening", "port", cfg.Server.Port)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("Server error: %v", err)
+			slog.Error("Server error", "error", err)
+			os.Exit(1)
 		}
 	}()
 
@@ -288,22 +288,21 @@ func main() {
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
-	log.Info("Shutting down server...")
+	slog.Info("Shutting down server...")
 
 	// Graceful shutdown
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer shutdownCancel()
 
 	if err := server.Shutdown(shutdownCtx); err != nil {
-		log.Errorf("Server forced to shutdown: %v", err)
+		slog.Error("Server forced to shutdown", "error", err)
 	}
 
-	log.Info("Server stopped")
+	slog.Info("Server stopped")
 }
 
 func createRouter(
 	cfg *config.Config,
-	log *logger.Logger,
 	authMiddleware *middleware.Auth,
 	authHandler *handler.AuthHandler,
 	userHandler *handler.UserHandler,
@@ -336,8 +335,8 @@ func createRouter(
 
 	// Global middleware
 	r.Use(middleware.RequestID)
-	r.Use(middleware.Logger(log))
-	r.Use(middleware.Recoverer(log))
+	r.Use(middleware.Logger())
+	r.Use(middleware.Recoverer())
 	r.Use(chimiddleware.RealIP)
 	r.Use(chimiddleware.Compress(5))
 

@@ -3,20 +3,18 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 
 	"github.com/aws/aws-lambda-go/events"
 
 	"github.com/handloom/admin/internal/event"
-	"github.com/handloom/admin/pkg/logger"
 )
 
 // AuditHandler processes audit-log events from SQS.
-type AuditHandler struct {
-	logger *logger.Logger
-}
+type AuditHandler struct{}
 
-func NewAuditHandler(log *logger.Logger) *AuditHandler {
-	return &AuditHandler{logger: log}
+func NewAuditHandler() *AuditHandler {
+	return &AuditHandler{}
 }
 
 // HandleSQSEvent is the Lambda entry point for SQS-triggered invocations.
@@ -24,7 +22,7 @@ func (h *AuditHandler) HandleSQSEvent(ctx context.Context, sqsEvent events.SQSEv
 	var failures []events.SQSBatchItemFailure
 	for _, record := range sqsEvent.Records {
 		if err := h.processRecord(ctx, record); err != nil {
-			h.logger.WithContext(ctx).WithError(err).Errorf("failed to process audit event: %s", record.MessageId)
+			slog.ErrorContext(ctx, "failed to process audit event", "message_id", record.MessageId, "error", err)
 			failures = append(failures, events.SQSBatchItemFailure{ItemIdentifier: record.MessageId})
 		}
 	}
@@ -36,7 +34,7 @@ func (h *AuditHandler) processRecord(ctx context.Context, record events.SQSMessa
 	if err := json.Unmarshal([]byte(record.Body), &evt); err != nil {
 		return err
 	}
-	h.logger.WithContext(ctx).Infof("Processing audit for event %s: %s", evt.Type, evt.ID)
+	slog.InfoContext(ctx, "Processing audit for event", "event_type", evt.Type, "event_id", evt.ID)
 	// TODO: implement audit log creation
 	return nil
 }
@@ -48,6 +46,6 @@ func (h *AuditHandler) CanHandle(_ event.EventType) bool {
 
 // Handle processes a single event (used by LocalPublisher).
 func (h *AuditHandler) Handle(ctx context.Context, evt event.Event) error {
-	h.logger.WithContext(ctx).Infof("[local] audit handler: %s %s", evt.Type, evt.ID)
+	slog.InfoContext(ctx, "[local] audit handler", "event_type", evt.Type, "event_id", evt.ID)
 	return nil
 }

@@ -8,22 +8,19 @@ import (
 
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/internal/middleware"
-	"github.com/handloom/admin/pkg/logger"
 	"github.com/handloom/admin/pkg/response"
 )
 
 // OrderHandler handles order-related requests
 type OrderHandler struct {
 	orderService domain.OrderService
-	logger       *logger.Logger
 	validation   *middleware.Validation
 }
 
 // NewOrderHandler creates a new OrderHandler
-func NewOrderHandler(orderService domain.OrderService, logger *logger.Logger, validation *middleware.Validation) *OrderHandler {
+func NewOrderHandler(orderService domain.OrderService, validation *middleware.Validation) *OrderHandler {
 	return &OrderHandler{
 		orderService: orderService,
-		logger:       logger,
 		validation:   validation,
 	}
 }

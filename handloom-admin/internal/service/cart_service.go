@@ -2,11 +2,11 @@ package service
 
 import (
 	"context"
+	"log/slog"
 	"time"
 
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/pkg/errors"
-	"github.com/handloom/admin/pkg/logger"
 )
 
 const cartTTLDays = 30
@@ -16,20 +16,17 @@ type CartService struct {
 	cartRepo      domain.CartRepository
 	productRepo   domain.ProductRepository
 	inventoryRepo domain.InventoryRepository
-	logger        *logger.Logger
 }
 
 func NewCartService(
 	cartRepo domain.CartRepository,
 	productRepo domain.ProductRepository,
 	inventoryRepo domain.InventoryRepository,
-	logger *logger.Logger,
 ) *CartService {
 	return &CartService{
 		cartRepo:      cartRepo,
 		productRepo:   productRepo,
 		inventoryRepo: inventoryRepo,
-		logger:        logger,
 	}
 }
 
@@ -81,7 +78,7 @@ func (s *CartService) AddItem(ctx context.Context, cartOwner string, isGuest boo
 		return nil, err
 	}
 
-	s.logger.WithContext(ctx).Infof("Added item %s to cart for %s", req.ProductID, cartOwner)
+	slog.InfoContext(ctx, "Added item to cart", "product_id", req.ProductID, "cart_owner", cartOwner)
 
 	return s.recalculateAndGetCart(ctx, pk, cartOwner, isGuest)
 }
@@ -111,7 +108,7 @@ func (s *CartService) UpdateItemQuantity(ctx context.Context, cartOwner string, 
 		return nil, err
 	}
 
-	s.logger.WithContext(ctx).Infof("Updated item %s quantity to %d for %s", productID, quantity, cartOwner)
+	slog.InfoContext(ctx, "Updated item quantity", "product_id", productID, "quantity", quantity, "cart_owner", cartOwner)
 
 	return s.recalculateAndGetCart(ctx, pk, cartOwner, isGuest)
 }
@@ -123,7 +120,7 @@ func (s *CartService) RemoveItem(ctx context.Context, cartOwner string, isGuest 
 		return nil, err
 	}
 
-	s.logger.WithContext(ctx).Infof("Removed item %s from cart for %s", productID, cartOwner)
+	slog.InfoContext(ctx, "Removed item from cart", "product_id", productID, "cart_owner", cartOwner)
 
 	return s.recalculateAndGetCart(ctx, pk, cartOwner, isGuest)
 }
@@ -133,7 +130,7 @@ func (s *CartService) ClearCart(ctx context.Context, cartOwner string) error {
 		return err
 	}
 
-	s.logger.WithContext(ctx).Infof("Cleared cart for customer %s", cartOwner)
+	slog.InfoContext(ctx, "Cleared cart", "cart_owner", cartOwner)
 	return nil
 }
 
@@ -157,12 +154,12 @@ func (s *CartService) MergeGuestCart(ctx context.Context, customerID string, ite
 			continue
 		}
 		if _, err := s.AddItem(ctx, customerID, false, req); err != nil {
-			s.logger.WithContext(ctx).Warnf("Failed to merge item %s: %v", req.ProductID, err)
+			slog.WarnContext(ctx, "Failed to merge item", "product_id", req.ProductID, "error", err)
 			continue
 		}
 	}
 
-	s.logger.WithContext(ctx).Infof("Merged guest cart (%d items) for customer %s", len(items), customerID)
+	slog.InfoContext(ctx, "Merged guest cart", "item_count", len(items), "customer_id", customerID)
 
 	return s.cartRepo.GetCart(ctx, pk)
 }

@@ -4,13 +4,13 @@ package service
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/pkg/errors"
-	"github.com/handloom/admin/pkg/logger"
 )
 
 // OrderService implements domain.OrderService
@@ -21,7 +21,6 @@ type OrderService struct {
 	inventoryRepo  domain.InventoryRepository
 	priceQuoteRepo domain.PriceQuoteRepository
 	pricingService domain.PricingService
-	logger         *logger.Logger
 }
 
 // NewOrderService creates a new OrderService
@@ -32,7 +31,6 @@ func NewOrderService(
 	inventoryRepo domain.InventoryRepository,
 	priceQuoteRepo domain.PriceQuoteRepository,
 	pricingService domain.PricingService,
-	logger *logger.Logger,
 ) *OrderService {
 	return &OrderService{
 		orderRepo:      orderRepo,
@@ -41,7 +39,6 @@ func NewOrderService(
 		inventoryRepo:  inventoryRepo,
 		priceQuoteRepo: priceQuoteRepo,
 		pricingService: pricingService,
-		logger:         logger,
 	}
 }
 
@@ -173,12 +170,12 @@ func (s *OrderService) Create(ctx context.Context, req domain.CreateOrderRequest
 	for _, item := range items {
 		_, err := s.inventoryRepo.ReserveStock(ctx, item.ProductID, item.Quantity, order.ID)
 		if err != nil {
-			s.logger.WithContext(ctx).WithError(err).Errorf("Failed to reserve stock for product %s", item.ProductID)
+			slog.ErrorContext(ctx, "Failed to reserve stock", "product_id", item.ProductID, "error", err)
 			// Continue - order is created but stock reservation failed
 		}
 	}
 
-	s.logger.WithContext(ctx).Infof("Created order: %s", order.ID)
+	slog.InfoContext(ctx, "Created order", "order_id", order.ID)
 	return order, nil
 }
 
@@ -260,12 +257,12 @@ func (s *OrderService) UpdateStatus(ctx context.Context, id string, status domai
 		// Release reserved stock
 		for _, item := range order.Items {
 			if _, releaseErr := s.inventoryRepo.ReleaseStock(ctx, item.ProductID, item.Quantity, order.ID); releaseErr != nil {
-				s.logger.WithContext(ctx).WithError(releaseErr).Errorf("Failed to release stock for product %s", item.ProductID)
+				slog.ErrorContext(ctx, "Failed to release stock", "product_id", item.ProductID, "error", releaseErr)
 			}
 		}
 	}
 
-	s.logger.WithContext(ctx).Infof("Updated order status: %s -> %s", id, status)
+	slog.InfoContext(ctx, "Updated order status", "order_id", id, "status", status)
 	return nil
 }
 
@@ -282,7 +279,7 @@ func (s *OrderService) AddNote(ctx context.Context, id string, note string, isIn
 		return err
 	}
 
-	s.logger.WithContext(ctx).Infof("Added note to order: %s", id)
+	slog.InfoContext(ctx, "Added note to order", "order_id", id)
 	return nil
 }
 
@@ -292,7 +289,7 @@ func (s *OrderService) UpdateTracking(ctx context.Context, id string, trackingNu
 		return err
 	}
 
-	s.logger.WithContext(ctx).Infof("Updated tracking for order: %s", id)
+	slog.InfoContext(ctx, "Updated tracking for order", "order_id", id)
 	return nil
 }
 
@@ -322,11 +319,11 @@ func (s *OrderService) CancelOrder(ctx context.Context, id string, reason string
 	for _, item := range order.Items {
 		_, err := s.inventoryRepo.ReleaseStock(ctx, item.ProductID, item.Quantity, order.ID)
 		if err != nil {
-			s.logger.WithContext(ctx).WithError(err).Errorf("Failed to release stock for product %s", item.ProductID)
+			slog.ErrorContext(ctx, "Failed to release stock", "product_id", item.ProductID, "error", err)
 		}
 	}
 
-	s.logger.WithContext(ctx).Infof("Canceled order: %s", id)
+	slog.InfoContext(ctx, "Canceled order", "order_id", id)
 	return nil
 }
 
@@ -352,7 +349,7 @@ func (s *OrderService) RefundOrder(ctx context.Context, id string, amount int64,
 
 	// TODO: Integrate with payment gateway for actual refund
 
-	s.logger.WithContext(ctx).Infof("Initiated refund for order: %s, amount: %d", id, amount)
+	slog.InfoContext(ctx, "Initiated refund", "order_id", id, "amount", amount)
 	return nil
 }
 

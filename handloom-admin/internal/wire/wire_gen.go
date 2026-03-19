@@ -13,26 +13,24 @@ import (
 	"github.com/handloom/admin/internal/handler/store"
 	"github.com/handloom/admin/internal/middleware"
 	"github.com/handloom/admin/internal/repository/dynamodb"
-	"github.com/handloom/admin/pkg/logger"
 )
 
 // Injectors from wire.go:
 
 // InitializeApiDeps creates all dependencies for the main API server
 func InitializeApiDeps(ctx context.Context, cfg *config.Config) (*ApiDeps, error) {
-	logger := ProvideLogger(cfg)
 	client, err := ProvideDynamoDBClient(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}
 	userRepository := ProvideUserRepository(client)
 	tokenStore := ProvideTokenStore(client)
-	authService := ProvideAuthService(userRepository, tokenStore, logger, cfg)
-	userService := ProvideUserService(userRepository, tokenStore, logger)
+	authService := ProvideAuthService(userRepository, tokenStore, cfg)
+	userService := ProvideUserService(userRepository, tokenStore)
 	service := ProvideValidator()
 	validation := ProvideValidation(service)
-	authHandler := ProvideAuthHandler(authService, userService, logger, validation)
-	userHandler := ProvideUserHandler(userService, logger, validation)
+	authHandler := ProvideAuthHandler(authService, userService, validation)
+	userHandler := ProvideUserHandler(userService, validation)
 	pool, err := ProvidePostgresPool(ctx, cfg)
 	if err != nil {
 		return nil, err
@@ -44,48 +42,47 @@ func InitializeApiDeps(ctx context.Context, cfg *config.Config) (*ApiDeps, error
 	if err != nil {
 		return nil, err
 	}
-	assetService := ProvideAssetService(logger, s3Client, cfg)
-	categoryService := ProvideCategoryService(categoryRepository, productRepository, assetService, logger)
-	categoryHandler := ProvideCategoryHandler(categoryService, logger, validation)
+	assetService := ProvideAssetService(s3Client, cfg)
+	categoryService := ProvideCategoryService(categoryRepository, productRepository, assetService)
+	categoryHandler := ProvideCategoryHandler(categoryService, validation)
 	inventoryRepository := ProvideInventoryRepository(pool)
-	eventPublisher, err := ProvideEventPublisher(ctx, cfg, logger)
+	eventPublisher, err := ProvideEventPublisher(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}
-	productService := ProvideProductService(productRepository, categoryRepository, inventoryRepository, assetService, eventPublisher, logger)
-	inventoryService := ProvideInventoryService(inventoryRepository, cache, eventPublisher, logger)
-	productHandler := ProvideProductHandler(productService, inventoryService, logger, validation)
-	inventoryHandler := ProvideInventoryHandler(inventoryService, logger)
+	productService := ProvideProductService(productRepository, categoryRepository, inventoryRepository, assetService, eventPublisher)
+	inventoryService := ProvideInventoryService(inventoryRepository, cache, eventPublisher)
+	productHandler := ProvideProductHandler(productService, inventoryService, validation)
+	inventoryHandler := ProvideInventoryHandler(inventoryService)
 	pricingRuleRepository := ProvidePricingRuleRepository(client)
 	priceQuoteRepository := ProvidePriceQuoteRepository(client)
-	pricingService := ProvidePricingService(pricingRuleRepository, priceQuoteRepository, categoryRepository, productRepository, logger, cfg)
-	pricingHandler := ProvidePricingHandler(pricingService, logger, validation)
+	pricingService := ProvidePricingService(pricingRuleRepository, priceQuoteRepository, categoryRepository, productRepository, cfg)
+	pricingHandler := ProvidePricingHandler(pricingService, validation)
 	orderRepository := ProvideOrderRepository(client)
 	customerRepository := ProvideCustomerRepository(client)
-	orderService := ProvideOrderService(orderRepository, customerRepository, productRepository, inventoryRepository, priceQuoteRepository, pricingService, logger)
-	orderHandler := ProvideOrderHandler(orderService, logger, validation)
-	customerService := ProvideCustomerService(customerRepository, orderRepository, logger)
-	customerHandler := ProvideCustomerHandler(customerService, logger, validation)
+	orderService := ProvideOrderService(orderRepository, customerRepository, productRepository, inventoryRepository, priceQuoteRepository, pricingService)
+	orderHandler := ProvideOrderHandler(orderService, validation)
+	customerService := ProvideCustomerService(customerRepository, orderRepository)
+	customerHandler := ProvideCustomerHandler(customerService, validation)
 	auditRepository := ProvideAuditRepository(client)
-	auditService := ProvideAuditService(auditRepository, logger)
+	auditService := ProvideAuditService(auditRepository)
 	auditHandler := ProvideAuditHandler(auditService)
 	notificationRepository := ProvideNotificationRepository(client)
-	notificationService := ProvideNotificationService(notificationRepository, userRepository, logger)
+	notificationService := ProvideNotificationService(notificationRepository, userRepository)
 	notificationHandler := ProvideNotificationHandler(notificationService, validation)
 	couponRepository := ProvideCouponRepository(client)
-	couponService := ProvideCouponService(couponRepository, logger)
+	couponService := ProvideCouponService(couponRepository)
 	couponHandler := ProvideCouponHandler(couponService, validation)
 	analyticsRepository := ProvideAnalyticsRepository(client)
-	analyticsService := ProvideAnalyticsService(analyticsRepository, orderRepository, productRepository, inventoryRepository, logger)
+	analyticsService := ProvideAnalyticsService(analyticsRepository, orderRepository, productRepository, inventoryRepository)
 	analyticsHandler := ProvideAnalyticsHandler(analyticsService)
 	assetHandler := ProvideAssetHandler(assetService, validation)
 	reportRepository := ProvideReportRepository(client)
-	reportService := ProvideReportService(reportRepository, orderService, productService, customerService, inventoryService, analyticsService, logger)
+	reportService := ProvideReportService(reportRepository, orderService, productService, customerService, inventoryService, analyticsService)
 	reportHandler := ProvideReportHandler(reportService, validation)
-	auth := ProvideAuthMiddleware(authService, logger)
+	auth := ProvideAuthMiddleware(authService)
 	apiDeps := &ApiDeps{
 		Config:              cfg,
-		Logger:              logger,
 		DynamoDBClient:      client,
 		AuthHandler:         authHandler,
 		UserHandler:         userHandler,
@@ -108,22 +105,20 @@ func InitializeApiDeps(ctx context.Context, cfg *config.Config) (*ApiDeps, error
 
 // InitializeAuthDeps creates Auth Lambda dependencies
 func InitializeAuthDeps(ctx context.Context, cfg *config.Config) (*AuthDeps, error) {
-	logger := ProvideLogger(cfg)
 	client, err := ProvideDynamoDBClient(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}
 	userRepository := ProvideUserRepository(client)
 	tokenStore := ProvideTokenStore(client)
-	authService := ProvideAuthService(userRepository, tokenStore, logger, cfg)
-	userService := ProvideUserService(userRepository, tokenStore, logger)
+	authService := ProvideAuthService(userRepository, tokenStore, cfg)
+	userService := ProvideUserService(userRepository, tokenStore)
 	service := ProvideValidator()
 	validation := ProvideValidation(service)
-	authHandler := ProvideAuthHandler(authService, userService, logger, validation)
-	auth := ProvideAuthMiddleware(authService, logger)
+	authHandler := ProvideAuthHandler(authService, userService, validation)
+	auth := ProvideAuthMiddleware(authService)
 	authDeps := &AuthDeps{
 		Config:         cfg,
-		Logger:         logger,
 		Handler:        authHandler,
 		AuthMiddleware: auth,
 	}
@@ -132,22 +127,20 @@ func InitializeAuthDeps(ctx context.Context, cfg *config.Config) (*AuthDeps, err
 
 // InitializeUserDeps creates User Lambda dependencies
 func InitializeUserDeps(ctx context.Context, cfg *config.Config) (*UserDeps, error) {
-	logger := ProvideLogger(cfg)
 	client, err := ProvideDynamoDBClient(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}
 	userRepository := ProvideUserRepository(client)
 	tokenStore := ProvideTokenStore(client)
-	userService := ProvideUserService(userRepository, tokenStore, logger)
+	userService := ProvideUserService(userRepository, tokenStore)
 	service := ProvideValidator()
 	validation := ProvideValidation(service)
-	userHandler := ProvideUserHandler(userService, logger, validation)
-	authService := ProvideAuthService(userRepository, tokenStore, logger, cfg)
-	auth := ProvideAuthMiddleware(authService, logger)
+	userHandler := ProvideUserHandler(userService, validation)
+	authService := ProvideAuthService(userRepository, tokenStore, cfg)
+	auth := ProvideAuthMiddleware(authService)
 	userDeps := &UserDeps{
 		Config:         cfg,
-		Logger:         logger,
 		Handler:        userHandler,
 		AuthMiddleware: auth,
 	}
@@ -156,7 +149,6 @@ func InitializeUserDeps(ctx context.Context, cfg *config.Config) (*UserDeps, err
 
 // InitializeCatalogDeps creates Catalog Lambda dependencies
 func InitializeCatalogDeps(ctx context.Context, cfg *config.Config) (*CatalogDeps, error) {
-	logger := ProvideLogger(cfg)
 	pool, err := ProvidePostgresPool(ctx, cfg)
 	if err != nil {
 		return nil, err
@@ -168,30 +160,29 @@ func InitializeCatalogDeps(ctx context.Context, cfg *config.Config) (*CatalogDep
 	if err != nil {
 		return nil, err
 	}
-	assetService := ProvideAssetService(logger, s3Client, cfg)
-	categoryService := ProvideCategoryService(categoryRepository, productRepository, assetService, logger)
+	assetService := ProvideAssetService(s3Client, cfg)
+	categoryService := ProvideCategoryService(categoryRepository, productRepository, assetService)
 	service := ProvideValidator()
 	validation := ProvideValidation(service)
-	categoryHandler := ProvideCategoryHandler(categoryService, logger, validation)
+	categoryHandler := ProvideCategoryHandler(categoryService, validation)
 	inventoryRepository := ProvideInventoryRepository(pool)
-	eventPublisher, err := ProvideEventPublisher(ctx, cfg, logger)
+	eventPublisher, err := ProvideEventPublisher(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}
-	productService := ProvideProductService(productRepository, categoryRepository, inventoryRepository, assetService, eventPublisher, logger)
-	inventoryService := ProvideInventoryService(inventoryRepository, cache, eventPublisher, logger)
-	productHandler := ProvideProductHandler(productService, inventoryService, logger, validation)
+	productService := ProvideProductService(productRepository, categoryRepository, inventoryRepository, assetService, eventPublisher)
+	inventoryService := ProvideInventoryService(inventoryRepository, cache, eventPublisher)
+	productHandler := ProvideProductHandler(productService, inventoryService, validation)
 	client, err := ProvideDynamoDBClient(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}
 	userRepository := ProvideUserRepository(client)
 	tokenStore := ProvideTokenStore(client)
-	authService := ProvideAuthService(userRepository, tokenStore, logger, cfg)
-	auth := ProvideAuthMiddleware(authService, logger)
+	authService := ProvideAuthService(userRepository, tokenStore, cfg)
+	auth := ProvideAuthMiddleware(authService)
 	catalogDeps := &CatalogDeps{
 		Config:          cfg,
-		Logger:          logger,
 		CategoryHandler: categoryHandler,
 		ProductHandler:  productHandler,
 		AuthMiddleware:  auth,
@@ -201,7 +192,6 @@ func InitializeCatalogDeps(ctx context.Context, cfg *config.Config) (*CatalogDep
 
 // InitializeOrderDeps creates Order Lambda dependencies
 func InitializeOrderDeps(ctx context.Context, cfg *config.Config) (*OrderDeps, error) {
-	logger := ProvideLogger(cfg)
 	client, err := ProvideDynamoDBClient(ctx, cfg)
 	if err != nil {
 		return nil, err
@@ -218,20 +208,19 @@ func InitializeOrderDeps(ctx context.Context, cfg *config.Config) (*OrderDeps, e
 	priceQuoteRepository := ProvidePriceQuoteRepository(client)
 	pricingRuleRepository := ProvidePricingRuleRepository(client)
 	categoryRepository := ProvideCategoryRepository(pool, cache)
-	pricingService := ProvidePricingService(pricingRuleRepository, priceQuoteRepository, categoryRepository, productRepository, logger, cfg)
-	orderService := ProvideOrderService(orderRepository, customerRepository, productRepository, inventoryRepository, priceQuoteRepository, pricingService, logger)
+	pricingService := ProvidePricingService(pricingRuleRepository, priceQuoteRepository, categoryRepository, productRepository, cfg)
+	orderService := ProvideOrderService(orderRepository, customerRepository, productRepository, inventoryRepository, priceQuoteRepository, pricingService)
 	service := ProvideValidator()
 	validation := ProvideValidation(service)
-	orderHandler := ProvideOrderHandler(orderService, logger, validation)
-	customerService := ProvideCustomerService(customerRepository, orderRepository, logger)
-	customerHandler := ProvideCustomerHandler(customerService, logger, validation)
+	orderHandler := ProvideOrderHandler(orderService, validation)
+	customerService := ProvideCustomerService(customerRepository, orderRepository)
+	customerHandler := ProvideCustomerHandler(customerService, validation)
 	userRepository := ProvideUserRepository(client)
 	tokenStore := ProvideTokenStore(client)
-	authService := ProvideAuthService(userRepository, tokenStore, logger, cfg)
-	auth := ProvideAuthMiddleware(authService, logger)
+	authService := ProvideAuthService(userRepository, tokenStore, cfg)
+	auth := ProvideAuthMiddleware(authService)
 	orderDeps := &OrderDeps{
 		Config:          cfg,
-		Logger:          logger,
 		OrderHandler:    orderHandler,
 		CustomerHandler: customerHandler,
 		AuthMiddleware:  auth,
@@ -241,7 +230,6 @@ func InitializeOrderDeps(ctx context.Context, cfg *config.Config) (*OrderDeps, e
 
 // InitializePricingDeps creates Pricing Lambda dependencies
 func InitializePricingDeps(ctx context.Context, cfg *config.Config) (*PricingDeps, error) {
-	logger := ProvideLogger(cfg)
 	client, err := ProvideDynamoDBClient(ctx, cfg)
 	if err != nil {
 		return nil, err
@@ -255,17 +243,16 @@ func InitializePricingDeps(ctx context.Context, cfg *config.Config) (*PricingDep
 	cache := ProvideCatalogCache()
 	categoryRepository := ProvideCategoryRepository(pool, cache)
 	productRepository := ProvideProductRepository(pool, cache)
-	pricingService := ProvidePricingService(pricingRuleRepository, priceQuoteRepository, categoryRepository, productRepository, logger, cfg)
+	pricingService := ProvidePricingService(pricingRuleRepository, priceQuoteRepository, categoryRepository, productRepository, cfg)
 	service := ProvideValidator()
 	validation := ProvideValidation(service)
-	pricingHandler := ProvidePricingHandler(pricingService, logger, validation)
+	pricingHandler := ProvidePricingHandler(pricingService, validation)
 	userRepository := ProvideUserRepository(client)
 	tokenStore := ProvideTokenStore(client)
-	authService := ProvideAuthService(userRepository, tokenStore, logger, cfg)
-	auth := ProvideAuthMiddleware(authService, logger)
+	authService := ProvideAuthService(userRepository, tokenStore, cfg)
+	auth := ProvideAuthMiddleware(authService)
 	pricingDeps := &PricingDeps{
 		Config:         cfg,
-		Logger:         logger,
 		Handler:        pricingHandler,
 		AuthMiddleware: auth,
 	}
@@ -274,30 +261,28 @@ func InitializePricingDeps(ctx context.Context, cfg *config.Config) (*PricingDep
 
 // InitializeInventoryDeps creates Inventory Lambda dependencies
 func InitializeInventoryDeps(ctx context.Context, cfg *config.Config) (*InventoryDeps, error) {
-	logger := ProvideLogger(cfg)
 	pool, err := ProvidePostgresPool(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}
 	inventoryRepository := ProvideInventoryRepository(pool)
 	cache := ProvideCatalogCache()
-	eventPublisher, err := ProvideEventPublisher(ctx, cfg, logger)
+	eventPublisher, err := ProvideEventPublisher(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}
-	inventoryService := ProvideInventoryService(inventoryRepository, cache, eventPublisher, logger)
-	inventoryHandler := ProvideInventoryHandler(inventoryService, logger)
+	inventoryService := ProvideInventoryService(inventoryRepository, cache, eventPublisher)
+	inventoryHandler := ProvideInventoryHandler(inventoryService)
 	client, err := ProvideDynamoDBClient(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}
 	userRepository := ProvideUserRepository(client)
 	tokenStore := ProvideTokenStore(client)
-	authService := ProvideAuthService(userRepository, tokenStore, logger, cfg)
-	auth := ProvideAuthMiddleware(authService, logger)
+	authService := ProvideAuthService(userRepository, tokenStore, cfg)
+	auth := ProvideAuthMiddleware(authService)
 	inventoryDeps := &InventoryDeps{
 		Config:         cfg,
-		Logger:         logger,
 		Handler:        inventoryHandler,
 		AuthMiddleware: auth,
 	}
@@ -306,7 +291,6 @@ func InitializeInventoryDeps(ctx context.Context, cfg *config.Config) (*Inventor
 
 // InitializeAnalyticsDeps creates Analytics Lambda dependencies
 func InitializeAnalyticsDeps(ctx context.Context, cfg *config.Config) (*AnalyticsDeps, error) {
-	logger := ProvideLogger(cfg)
 	client, err := ProvideDynamoDBClient(ctx, cfg)
 	if err != nil {
 		return nil, err
@@ -320,15 +304,14 @@ func InitializeAnalyticsDeps(ctx context.Context, cfg *config.Config) (*Analytic
 	cache := ProvideCatalogCache()
 	productRepository := ProvideProductRepository(pool, cache)
 	inventoryRepository := ProvideInventoryRepository(pool)
-	analyticsService := ProvideAnalyticsService(analyticsRepository, orderRepository, productRepository, inventoryRepository, logger)
+	analyticsService := ProvideAnalyticsService(analyticsRepository, orderRepository, productRepository, inventoryRepository)
 	analyticsHandler := ProvideAnalyticsHandler(analyticsService)
 	userRepository := ProvideUserRepository(client)
 	tokenStore := ProvideTokenStore(client)
-	authService := ProvideAuthService(userRepository, tokenStore, logger, cfg)
-	auth := ProvideAuthMiddleware(authService, logger)
+	authService := ProvideAuthService(userRepository, tokenStore, cfg)
+	auth := ProvideAuthMiddleware(authService)
 	analyticsDeps := &AnalyticsDeps{
 		Config:         cfg,
-		Logger:         logger,
 		Handler:        analyticsHandler,
 		AuthMiddleware: auth,
 	}
@@ -337,23 +320,21 @@ func InitializeAnalyticsDeps(ctx context.Context, cfg *config.Config) (*Analytic
 
 // InitializeNotificationDeps creates Notification Lambda dependencies
 func InitializeNotificationDeps(ctx context.Context, cfg *config.Config) (*NotificationDeps, error) {
-	logger := ProvideLogger(cfg)
 	client, err := ProvideDynamoDBClient(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}
 	notificationRepository := ProvideNotificationRepository(client)
 	userRepository := ProvideUserRepository(client)
-	notificationService := ProvideNotificationService(notificationRepository, userRepository, logger)
+	notificationService := ProvideNotificationService(notificationRepository, userRepository)
 	service := ProvideValidator()
 	validation := ProvideValidation(service)
 	notificationHandler := ProvideNotificationHandler(notificationService, validation)
 	tokenStore := ProvideTokenStore(client)
-	authService := ProvideAuthService(userRepository, tokenStore, logger, cfg)
-	auth := ProvideAuthMiddleware(authService, logger)
+	authService := ProvideAuthService(userRepository, tokenStore, cfg)
+	auth := ProvideAuthMiddleware(authService)
 	notificationDeps := &NotificationDeps{
 		Config:         cfg,
-		Logger:         logger,
 		Handler:        notificationHandler,
 		AuthMiddleware: auth,
 	}
@@ -362,23 +343,21 @@ func InitializeNotificationDeps(ctx context.Context, cfg *config.Config) (*Notif
 
 // InitializeCouponDeps creates Coupon Lambda dependencies
 func InitializeCouponDeps(ctx context.Context, cfg *config.Config) (*CouponDeps, error) {
-	logger := ProvideLogger(cfg)
 	client, err := ProvideDynamoDBClient(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}
 	couponRepository := ProvideCouponRepository(client)
-	couponService := ProvideCouponService(couponRepository, logger)
+	couponService := ProvideCouponService(couponRepository)
 	service := ProvideValidator()
 	validation := ProvideValidation(service)
 	couponHandler := ProvideCouponHandler(couponService, validation)
 	userRepository := ProvideUserRepository(client)
 	tokenStore := ProvideTokenStore(client)
-	authService := ProvideAuthService(userRepository, tokenStore, logger, cfg)
-	auth := ProvideAuthMiddleware(authService, logger)
+	authService := ProvideAuthService(userRepository, tokenStore, cfg)
+	auth := ProvideAuthMiddleware(authService)
 	couponDeps := &CouponDeps{
 		Config:         cfg,
-		Logger:         logger,
 		Handler:        couponHandler,
 		AuthMiddleware: auth,
 	}
@@ -387,12 +366,11 @@ func InitializeCouponDeps(ctx context.Context, cfg *config.Config) (*CouponDeps,
 
 // InitializeAssetDeps creates Asset Lambda dependencies
 func InitializeAssetDeps(ctx context.Context, cfg *config.Config) (*AssetDeps, error) {
-	logger := ProvideLogger(cfg)
 	s3Client, err := ProvideS3Client(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}
-	assetService := ProvideAssetService(logger, s3Client, cfg)
+	assetService := ProvideAssetService(s3Client, cfg)
 	service := ProvideValidator()
 	validation := ProvideValidation(service)
 	assetHandler := ProvideAssetHandler(assetService, validation)
@@ -402,11 +380,10 @@ func InitializeAssetDeps(ctx context.Context, cfg *config.Config) (*AssetDeps, e
 	}
 	userRepository := ProvideUserRepository(client)
 	tokenStore := ProvideTokenStore(client)
-	authService := ProvideAuthService(userRepository, tokenStore, logger, cfg)
-	auth := ProvideAuthMiddleware(authService, logger)
+	authService := ProvideAuthService(userRepository, tokenStore, cfg)
+	auth := ProvideAuthMiddleware(authService)
 	assetDeps := &AssetDeps{
 		Config:         cfg,
-		Logger:         logger,
 		Handler:        assetHandler,
 		AuthMiddleware: auth,
 	}
@@ -415,7 +392,6 @@ func InitializeAssetDeps(ctx context.Context, cfg *config.Config) (*AssetDeps, e
 
 // InitializeReportDeps creates Report Lambda dependencies
 func InitializeReportDeps(ctx context.Context, cfg *config.Config) (*ReportDeps, error) {
-	logger := ProvideLogger(cfg)
 	client, err := ProvideDynamoDBClient(ctx, cfg)
 	if err != nil {
 		return nil, err
@@ -433,33 +409,32 @@ func InitializeReportDeps(ctx context.Context, cfg *config.Config) (*ReportDeps,
 	priceQuoteRepository := ProvidePriceQuoteRepository(client)
 	pricingRuleRepository := ProvidePricingRuleRepository(client)
 	categoryRepository := ProvideCategoryRepository(pool, cache)
-	pricingService := ProvidePricingService(pricingRuleRepository, priceQuoteRepository, categoryRepository, productRepository, logger, cfg)
-	orderService := ProvideOrderService(orderRepository, customerRepository, productRepository, inventoryRepository, priceQuoteRepository, pricingService, logger)
+	pricingService := ProvidePricingService(pricingRuleRepository, priceQuoteRepository, categoryRepository, productRepository, cfg)
+	orderService := ProvideOrderService(orderRepository, customerRepository, productRepository, inventoryRepository, priceQuoteRepository, pricingService)
 	s3Client, err := ProvideS3Client(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}
-	assetService := ProvideAssetService(logger, s3Client, cfg)
-	eventPublisher, err := ProvideEventPublisher(ctx, cfg, logger)
+	assetService := ProvideAssetService(s3Client, cfg)
+	eventPublisher, err := ProvideEventPublisher(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}
-	productService := ProvideProductService(productRepository, categoryRepository, inventoryRepository, assetService, eventPublisher, logger)
-	customerService := ProvideCustomerService(customerRepository, orderRepository, logger)
-	inventoryService := ProvideInventoryService(inventoryRepository, cache, eventPublisher, logger)
+	productService := ProvideProductService(productRepository, categoryRepository, inventoryRepository, assetService, eventPublisher)
+	customerService := ProvideCustomerService(customerRepository, orderRepository)
+	inventoryService := ProvideInventoryService(inventoryRepository, cache, eventPublisher)
 	analyticsRepository := ProvideAnalyticsRepository(client)
-	analyticsService := ProvideAnalyticsService(analyticsRepository, orderRepository, productRepository, inventoryRepository, logger)
-	reportService := ProvideReportService(reportRepository, orderService, productService, customerService, inventoryService, analyticsService, logger)
+	analyticsService := ProvideAnalyticsService(analyticsRepository, orderRepository, productRepository, inventoryRepository)
+	reportService := ProvideReportService(reportRepository, orderService, productService, customerService, inventoryService, analyticsService)
 	service := ProvideValidator()
 	validation := ProvideValidation(service)
 	reportHandler := ProvideReportHandler(reportService, validation)
 	userRepository := ProvideUserRepository(client)
 	tokenStore := ProvideTokenStore(client)
-	authService := ProvideAuthService(userRepository, tokenStore, logger, cfg)
-	auth := ProvideAuthMiddleware(authService, logger)
+	authService := ProvideAuthService(userRepository, tokenStore, cfg)
+	auth := ProvideAuthMiddleware(authService)
 	reportDeps := &ReportDeps{
 		Config:         cfg,
-		Logger:         logger,
 		Handler:        reportHandler,
 		AuthMiddleware: auth,
 	}
@@ -468,21 +443,19 @@ func InitializeReportDeps(ctx context.Context, cfg *config.Config) (*ReportDeps,
 
 // InitializeAuditDeps creates Audit Lambda dependencies
 func InitializeAuditDeps(ctx context.Context, cfg *config.Config) (*AuditDeps, error) {
-	logger := ProvideLogger(cfg)
 	client, err := ProvideDynamoDBClient(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}
 	auditRepository := ProvideAuditRepository(client)
-	auditService := ProvideAuditService(auditRepository, logger)
+	auditService := ProvideAuditService(auditRepository)
 	auditHandler := ProvideAuditHandler(auditService)
 	userRepository := ProvideUserRepository(client)
 	tokenStore := ProvideTokenStore(client)
-	authService := ProvideAuthService(userRepository, tokenStore, logger, cfg)
-	auth := ProvideAuthMiddleware(authService, logger)
+	authService := ProvideAuthService(userRepository, tokenStore, cfg)
+	auth := ProvideAuthMiddleware(authService)
 	auditDeps := &AuditDeps{
 		Config:         cfg,
-		Logger:         logger,
 		Handler:        auditHandler,
 		AuthMiddleware: auth,
 	}
@@ -491,7 +464,6 @@ func InitializeAuditDeps(ctx context.Context, cfg *config.Config) (*AuditDeps, e
 
 // InitializeStoreAuthDeps creates Store Auth Lambda dependencies
 func InitializeStoreAuthDeps(ctx context.Context, cfg *config.Config) (*StoreAuthDeps, error) {
-	logger := ProvideLogger(cfg)
 	client, err := ProvideDynamoDBClient(ctx, cfg)
 	if err != nil {
 		return nil, err
@@ -499,11 +471,11 @@ func InitializeStoreAuthDeps(ctx context.Context, cfg *config.Config) (*StoreAut
 	otpRepository := ProvideOTPRepository(client)
 	customerRepository := ProvideCustomerRepository(client)
 	customerTokenStore := ProvideCustomerTokenStore(client)
-	eventPublisher, err := ProvideEventPublisher(ctx, cfg, logger)
+	eventPublisher, err := ProvideEventPublisher(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}
-	customerAuthService := ProvideCustomerAuthService(otpRepository, customerRepository, customerTokenStore, eventPublisher, logger, cfg)
+	customerAuthService := ProvideCustomerAuthService(otpRepository, customerRepository, customerTokenStore, eventPublisher, cfg)
 	cartRepository := ProvideCartRepository(client)
 	pool, err := ProvidePostgresPool(ctx, cfg)
 	if err != nil {
@@ -512,14 +484,13 @@ func InitializeStoreAuthDeps(ctx context.Context, cfg *config.Config) (*StoreAut
 	cache := ProvideCatalogCache()
 	productRepository := ProvideProductRepository(pool, cache)
 	inventoryRepository := ProvideInventoryRepository(pool)
-	cartService := ProvideCartService(cartRepository, productRepository, inventoryRepository, logger)
+	cartService := ProvideCartService(cartRepository, productRepository, inventoryRepository)
 	service := ProvideValidator()
 	validation := ProvideValidation(service)
-	authHandler := ProvideStoreAuthHandler(customerAuthService, cartService, validation, logger)
-	customerAuth := ProvideCustomerAuthMiddleware(customerAuthService, logger)
+	authHandler := ProvideStoreAuthHandler(customerAuthService, cartService, validation)
+	customerAuth := ProvideCustomerAuthMiddleware(customerAuthService)
 	storeAuthDeps := &StoreAuthDeps{
 		Config:                 cfg,
-		Logger:                 logger,
 		Handler:                authHandler,
 		CustomerAuthMiddleware: customerAuth,
 	}
@@ -528,7 +499,6 @@ func InitializeStoreAuthDeps(ctx context.Context, cfg *config.Config) (*StoreAut
 
 // InitializeStoreCatalogDeps creates Store Catalog Lambda dependencies
 func InitializeStoreCatalogDeps(ctx context.Context, cfg *config.Config) (*StoreCatalogDeps, error) {
-	logger := ProvideLogger(cfg)
 	pool, err := ProvidePostgresPool(ctx, cfg)
 	if err != nil {
 		return nil, err
@@ -541,18 +511,17 @@ func InitializeStoreCatalogDeps(ctx context.Context, cfg *config.Config) (*Store
 	if err != nil {
 		return nil, err
 	}
-	assetService := ProvideAssetService(logger, s3Client, cfg)
-	eventPublisher, err := ProvideEventPublisher(ctx, cfg, logger)
+	assetService := ProvideAssetService(s3Client, cfg)
+	eventPublisher, err := ProvideEventPublisher(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}
-	productService := ProvideProductService(productRepository, categoryRepository, inventoryRepository, assetService, eventPublisher, logger)
-	categoryService := ProvideCategoryService(categoryRepository, productRepository, assetService, logger)
-	inventoryService := ProvideInventoryService(inventoryRepository, cache, eventPublisher, logger)
-	catalogHandler := ProvideStoreCatalogHandler(productService, categoryService, inventoryService, logger)
+	productService := ProvideProductService(productRepository, categoryRepository, inventoryRepository, assetService, eventPublisher)
+	categoryService := ProvideCategoryService(categoryRepository, productRepository, assetService)
+	inventoryService := ProvideInventoryService(inventoryRepository, cache, eventPublisher)
+	catalogHandler := ProvideStoreCatalogHandler(productService, categoryService, inventoryService)
 	storeCatalogDeps := &StoreCatalogDeps{
 		Config:  cfg,
-		Logger:  logger,
 		Handler: catalogHandler,
 	}
 	return storeCatalogDeps, nil
@@ -560,7 +529,6 @@ func InitializeStoreCatalogDeps(ctx context.Context, cfg *config.Config) (*Store
 
 // InitializeStoreCartDeps creates Store Cart Lambda dependencies
 func InitializeStoreCartDeps(ctx context.Context, cfg *config.Config) (*StoreCartDeps, error) {
-	logger := ProvideLogger(cfg)
 	client, err := ProvideDynamoDBClient(ctx, cfg)
 	if err != nil {
 		return nil, err
@@ -573,22 +541,21 @@ func InitializeStoreCartDeps(ctx context.Context, cfg *config.Config) (*StoreCar
 	cache := ProvideCatalogCache()
 	productRepository := ProvideProductRepository(pool, cache)
 	inventoryRepository := ProvideInventoryRepository(pool)
-	cartService := ProvideCartService(cartRepository, productRepository, inventoryRepository, logger)
+	cartService := ProvideCartService(cartRepository, productRepository, inventoryRepository)
 	service := ProvideValidator()
 	validation := ProvideValidation(service)
-	cartHandler := ProvideStoreCartHandler(cartService, validation, logger)
+	cartHandler := ProvideStoreCartHandler(cartService, validation)
 	otpRepository := ProvideOTPRepository(client)
 	customerRepository := ProvideCustomerRepository(client)
 	customerTokenStore := ProvideCustomerTokenStore(client)
-	eventPublisher, err := ProvideEventPublisher(ctx, cfg, logger)
+	eventPublisher, err := ProvideEventPublisher(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}
-	customerAuthService := ProvideCustomerAuthService(otpRepository, customerRepository, customerTokenStore, eventPublisher, logger, cfg)
-	optionalCartAuth := ProvideOptionalCartAuth(customerAuthService, logger)
+	customerAuthService := ProvideCustomerAuthService(otpRepository, customerRepository, customerTokenStore, eventPublisher, cfg)
+	optionalCartAuth := ProvideOptionalCartAuth(customerAuthService)
 	storeCartDeps := &StoreCartDeps{
 		Config:           cfg,
-		Logger:           logger,
 		Handler:          cartHandler,
 		OptionalCartAuth: optionalCartAuth,
 	}
@@ -597,7 +564,6 @@ func InitializeStoreCartDeps(ctx context.Context, cfg *config.Config) (*StoreCar
 
 // InitializeStoreCheckoutDeps creates Store Checkout Lambda dependencies
 func InitializeStoreCheckoutDeps(ctx context.Context, cfg *config.Config) (*StoreCheckoutDeps, error) {
-	logger := ProvideLogger(cfg)
 	client, err := ProvideDynamoDBClient(ctx, cfg)
 	if err != nil {
 		return nil, err
@@ -610,28 +576,27 @@ func InitializeStoreCheckoutDeps(ctx context.Context, cfg *config.Config) (*Stor
 	cache := ProvideCatalogCache()
 	productRepository := ProvideProductRepository(pool, cache)
 	inventoryRepository := ProvideInventoryRepository(pool)
-	cartService := ProvideCartService(cartRepository, productRepository, inventoryRepository, logger)
+	cartService := ProvideCartService(cartRepository, productRepository, inventoryRepository)
 	orderRepository := ProvideOrderRepository(client)
 	paymentRepository := ProvidePaymentRepository(client)
-	eventPublisher, err := ProvideEventPublisher(ctx, cfg, logger)
+	eventPublisher, err := ProvideEventPublisher(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}
-	paymentService := ProvidePaymentService(paymentRepository, orderRepository, inventoryRepository, eventPublisher, logger, cfg)
+	paymentService := ProvidePaymentService(paymentRepository, orderRepository, inventoryRepository, eventPublisher, cfg)
 	shipmentRepository := ProvideShipmentRepository(client)
-	shippingService := ProvideShippingService(shipmentRepository, orderRepository, logger, cfg)
+	shippingService := ProvideShippingService(shipmentRepository, orderRepository, cfg)
 	customerRepository := ProvideCustomerRepository(client)
-	checkoutService := ProvideCheckoutService(cartService, orderRepository, paymentService, shippingService, inventoryRepository, customerRepository, eventPublisher, logger)
+	checkoutService := ProvideCheckoutService(cartService, orderRepository, paymentService, shippingService, inventoryRepository, customerRepository, eventPublisher)
 	service := ProvideValidator()
 	validation := ProvideValidation(service)
-	checkoutHandler := ProvideStoreCheckoutHandler(checkoutService, validation, logger)
+	checkoutHandler := ProvideStoreCheckoutHandler(checkoutService, validation)
 	otpRepository := ProvideOTPRepository(client)
 	customerTokenStore := ProvideCustomerTokenStore(client)
-	customerAuthService := ProvideCustomerAuthService(otpRepository, customerRepository, customerTokenStore, eventPublisher, logger, cfg)
-	customerAuth := ProvideCustomerAuthMiddleware(customerAuthService, logger)
+	customerAuthService := ProvideCustomerAuthService(otpRepository, customerRepository, customerTokenStore, eventPublisher, cfg)
+	customerAuth := ProvideCustomerAuthMiddleware(customerAuthService)
 	storeCheckoutDeps := &StoreCheckoutDeps{
 		Config:                 cfg,
-		Logger:                 logger,
 		Handler:                checkoutHandler,
 		CustomerAuthMiddleware: customerAuth,
 	}
@@ -640,7 +605,6 @@ func InitializeStoreCheckoutDeps(ctx context.Context, cfg *config.Config) (*Stor
 
 // InitializeStoreOrdersDeps creates Store Orders Lambda dependencies
 func InitializeStoreOrdersDeps(ctx context.Context, cfg *config.Config) (*StoreOrdersDeps, error) {
-	logger := ProvideLogger(cfg)
 	client, err := ProvideDynamoDBClient(ctx, cfg)
 	if err != nil {
 		return nil, err
@@ -657,20 +621,19 @@ func InitializeStoreOrdersDeps(ctx context.Context, cfg *config.Config) (*StoreO
 	priceQuoteRepository := ProvidePriceQuoteRepository(client)
 	pricingRuleRepository := ProvidePricingRuleRepository(client)
 	categoryRepository := ProvideCategoryRepository(pool, cache)
-	pricingService := ProvidePricingService(pricingRuleRepository, priceQuoteRepository, categoryRepository, productRepository, logger, cfg)
-	orderService := ProvideOrderService(orderRepository, customerRepository, productRepository, inventoryRepository, priceQuoteRepository, pricingService, logger)
-	orderHandler := ProvideStoreOrderHandler(orderService, orderRepository, logger)
+	pricingService := ProvidePricingService(pricingRuleRepository, priceQuoteRepository, categoryRepository, productRepository, cfg)
+	orderService := ProvideOrderService(orderRepository, customerRepository, productRepository, inventoryRepository, priceQuoteRepository, pricingService)
+	orderHandler := ProvideStoreOrderHandler(orderService, orderRepository)
 	otpRepository := ProvideOTPRepository(client)
 	customerTokenStore := ProvideCustomerTokenStore(client)
-	eventPublisher, err := ProvideEventPublisher(ctx, cfg, logger)
+	eventPublisher, err := ProvideEventPublisher(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}
-	customerAuthService := ProvideCustomerAuthService(otpRepository, customerRepository, customerTokenStore, eventPublisher, logger, cfg)
-	customerAuth := ProvideCustomerAuthMiddleware(customerAuthService, logger)
+	customerAuthService := ProvideCustomerAuthService(otpRepository, customerRepository, customerTokenStore, eventPublisher, cfg)
+	customerAuth := ProvideCustomerAuthMiddleware(customerAuthService)
 	storeOrdersDeps := &StoreOrdersDeps{
 		Config:                 cfg,
-		Logger:                 logger,
 		Handler:                orderHandler,
 		CustomerAuthMiddleware: customerAuth,
 	}
@@ -679,17 +642,15 @@ func InitializeStoreOrdersDeps(ctx context.Context, cfg *config.Config) (*StoreO
 
 // InitializeStoreTrackingDeps creates Store Tracking Lambda dependencies
 func InitializeStoreTrackingDeps(ctx context.Context, cfg *config.Config) (*StoreTrackingDeps, error) {
-	logger := ProvideLogger(cfg)
 	client, err := ProvideDynamoDBClient(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}
 	orderRepository := ProvideOrderRepository(client)
 	shipmentRepository := ProvideShipmentRepository(client)
-	trackingHandler := ProvideStoreTrackingHandler(orderRepository, shipmentRepository, logger)
+	trackingHandler := ProvideStoreTrackingHandler(orderRepository, shipmentRepository)
 	storeTrackingDeps := &StoreTrackingDeps{
 		Config:  cfg,
-		Logger:  logger,
 		Handler: trackingHandler,
 	}
 	return storeTrackingDeps, nil
@@ -697,7 +658,6 @@ func InitializeStoreTrackingDeps(ctx context.Context, cfg *config.Config) (*Stor
 
 // InitializeStoreProfileDeps creates Store Profile Lambda dependencies
 func InitializeStoreProfileDeps(ctx context.Context, cfg *config.Config) (*StoreProfileDeps, error) {
-	logger := ProvideLogger(cfg)
 	client, err := ProvideDynamoDBClient(ctx, cfg)
 	if err != nil {
 		return nil, err
@@ -705,18 +665,17 @@ func InitializeStoreProfileDeps(ctx context.Context, cfg *config.Config) (*Store
 	customerRepository := ProvideCustomerRepository(client)
 	service := ProvideValidator()
 	validation := ProvideValidation(service)
-	profileHandler := ProvideStoreProfileHandler(customerRepository, validation, logger)
+	profileHandler := ProvideStoreProfileHandler(customerRepository, validation)
 	otpRepository := ProvideOTPRepository(client)
 	customerTokenStore := ProvideCustomerTokenStore(client)
-	eventPublisher, err := ProvideEventPublisher(ctx, cfg, logger)
+	eventPublisher, err := ProvideEventPublisher(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}
-	customerAuthService := ProvideCustomerAuthService(otpRepository, customerRepository, customerTokenStore, eventPublisher, logger, cfg)
-	customerAuth := ProvideCustomerAuthMiddleware(customerAuthService, logger)
+	customerAuthService := ProvideCustomerAuthService(otpRepository, customerRepository, customerTokenStore, eventPublisher, cfg)
+	customerAuth := ProvideCustomerAuthMiddleware(customerAuthService)
 	storeProfileDeps := &StoreProfileDeps{
 		Config:                 cfg,
-		Logger:                 logger,
 		Handler:                profileHandler,
 		CustomerAuthMiddleware: customerAuth,
 	}
@@ -725,7 +684,6 @@ func InitializeStoreProfileDeps(ctx context.Context, cfg *config.Config) (*Store
 
 // InitializeStoreWebhooksDeps creates Store Webhooks Lambda dependencies
 func InitializeStoreWebhooksDeps(ctx context.Context, cfg *config.Config) (*StoreWebhooksDeps, error) {
-	logger := ProvideLogger(cfg)
 	client, err := ProvideDynamoDBClient(ctx, cfg)
 	if err != nil {
 		return nil, err
@@ -737,15 +695,14 @@ func InitializeStoreWebhooksDeps(ctx context.Context, cfg *config.Config) (*Stor
 		return nil, err
 	}
 	inventoryRepository := ProvideInventoryRepository(pool)
-	eventPublisher, err := ProvideEventPublisher(ctx, cfg, logger)
+	eventPublisher, err := ProvideEventPublisher(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}
-	paymentService := ProvidePaymentService(paymentRepository, orderRepository, inventoryRepository, eventPublisher, logger, cfg)
-	webhookHandler := ProvideStoreWebhookHandler(paymentService, logger)
+	paymentService := ProvidePaymentService(paymentRepository, orderRepository, inventoryRepository, eventPublisher, cfg)
+	webhookHandler := ProvideStoreWebhookHandler(paymentService)
 	storeWebhooksDeps := &StoreWebhooksDeps{
 		Config:  cfg,
-		Logger:  logger,
 		Handler: webhookHandler,
 	}
 	return storeWebhooksDeps, nil
@@ -753,7 +710,6 @@ func InitializeStoreWebhooksDeps(ctx context.Context, cfg *config.Config) (*Stor
 
 // InitializeStoreEventsDeps creates Store Events Lambda dependencies
 func InitializeStoreEventsDeps(ctx context.Context, cfg *config.Config) (*StoreEventsDeps, error) {
-	logger := ProvideLogger(cfg)
 	client, err := ProvideDynamoDBClient(ctx, cfg)
 	if err != nil {
 		return nil, err
@@ -762,10 +718,9 @@ func InitializeStoreEventsDeps(ctx context.Context, cfg *config.Config) (*StoreE
 	analyticsRepository := ProvideAnalyticsRepository(client)
 	service := ProvideValidator()
 	validation := ProvideValidation(service)
-	eventsHandler := ProvideStoreEventsHandler(eventsRepository, analyticsRepository, validation, logger)
+	eventsHandler := ProvideStoreEventsHandler(eventsRepository, analyticsRepository, validation)
 	storeEventsDeps := &StoreEventsDeps{
 		Config:  cfg,
-		Logger:  logger,
 		Handler: eventsHandler,
 	}
 	return storeEventsDeps, nil
@@ -773,18 +728,16 @@ func InitializeStoreEventsDeps(ctx context.Context, cfg *config.Config) (*StoreE
 
 // InitializeApp creates the application with all dependencies (deprecated)
 func InitializeApp(ctx context.Context, cfg *config.Config) (*App, error) {
-	logger := ProvideLogger(cfg)
 	client, err := ProvideDynamoDBClient(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}
 	userRepository := ProvideUserRepository(client)
 	tokenStore := ProvideTokenStore(client)
-	authService := ProvideAuthService(userRepository, tokenStore, logger, cfg)
-	auth := ProvideAuthMiddleware(authService, logger)
+	authService := ProvideAuthService(userRepository, tokenStore, cfg)
+	auth := ProvideAuthMiddleware(authService)
 	app := &App{
 		Config:         cfg,
-		Logger:         logger,
 		DynamoDBClient: client,
 		AuthMiddleware: auth,
 	}
@@ -796,7 +749,6 @@ func InitializeApp(ctx context.Context, cfg *config.Config) (*App, error) {
 // AuthDeps holds dependencies for the Auth Lambda
 type AuthDeps struct {
 	Config         *config.Config
-	Logger         *logger.Logger
 	Handler        *handler.AuthHandler
 	AuthMiddleware *middleware.Auth
 }
@@ -804,7 +756,6 @@ type AuthDeps struct {
 // UserDeps holds dependencies for the User Lambda
 type UserDeps struct {
 	Config         *config.Config
-	Logger         *logger.Logger
 	Handler        *handler.UserHandler
 	AuthMiddleware *middleware.Auth
 }
@@ -812,7 +763,6 @@ type UserDeps struct {
 // CatalogDeps holds dependencies for the Catalog Lambda
 type CatalogDeps struct {
 	Config          *config.Config
-	Logger          *logger.Logger
 	CategoryHandler *handler.CategoryHandler
 	ProductHandler  *handler.ProductHandler
 	AuthMiddleware  *middleware.Auth
@@ -821,7 +771,6 @@ type CatalogDeps struct {
 // OrderDeps holds dependencies for the Order Lambda
 type OrderDeps struct {
 	Config          *config.Config
-	Logger          *logger.Logger
 	OrderHandler    *handler.OrderHandler
 	CustomerHandler *handler.CustomerHandler
 	AuthMiddleware  *middleware.Auth
@@ -830,7 +779,6 @@ type OrderDeps struct {
 // PricingDeps holds dependencies for the Pricing Lambda
 type PricingDeps struct {
 	Config         *config.Config
-	Logger         *logger.Logger
 	Handler        *handler.PricingHandler
 	AuthMiddleware *middleware.Auth
 }
@@ -838,7 +786,6 @@ type PricingDeps struct {
 // InventoryDeps holds dependencies for the Inventory Lambda
 type InventoryDeps struct {
 	Config         *config.Config
-	Logger         *logger.Logger
 	Handler        *handler.InventoryHandler
 	AuthMiddleware *middleware.Auth
 }
@@ -846,7 +793,6 @@ type InventoryDeps struct {
 // AnalyticsDeps holds dependencies for the Analytics Lambda
 type AnalyticsDeps struct {
 	Config         *config.Config
-	Logger         *logger.Logger
 	Handler        *handler.AnalyticsHandler
 	AuthMiddleware *middleware.Auth
 }
@@ -854,7 +800,6 @@ type AnalyticsDeps struct {
 // NotificationDeps holds dependencies for the Notification Lambda
 type NotificationDeps struct {
 	Config         *config.Config
-	Logger         *logger.Logger
 	Handler        *handler.NotificationHandler
 	AuthMiddleware *middleware.Auth
 }
@@ -862,7 +807,6 @@ type NotificationDeps struct {
 // CouponDeps holds dependencies for the Coupon Lambda
 type CouponDeps struct {
 	Config         *config.Config
-	Logger         *logger.Logger
 	Handler        *handler.CouponHandler
 	AuthMiddleware *middleware.Auth
 }
@@ -870,7 +814,6 @@ type CouponDeps struct {
 // AssetDeps holds dependencies for the Asset Lambda
 type AssetDeps struct {
 	Config         *config.Config
-	Logger         *logger.Logger
 	Handler        *handler.AssetHandler
 	AuthMiddleware *middleware.Auth
 }
@@ -878,7 +821,6 @@ type AssetDeps struct {
 // ReportDeps holds dependencies for the Report Lambda
 type ReportDeps struct {
 	Config         *config.Config
-	Logger         *logger.Logger
 	Handler        *handler.ReportHandler
 	AuthMiddleware *middleware.Auth
 }
@@ -886,7 +828,6 @@ type ReportDeps struct {
 // AuditDeps holds dependencies for the Audit Lambda
 type AuditDeps struct {
 	Config         *config.Config
-	Logger         *logger.Logger
 	Handler        *handler.AuditHandler
 	AuthMiddleware *middleware.Auth
 }
@@ -894,7 +835,6 @@ type AuditDeps struct {
 // ApiDeps holds all dependencies for the main API server
 type ApiDeps struct {
 	Config              *config.Config
-	Logger              *logger.Logger
 	DynamoDBClient      *dynamodb.Client
 	AuthHandler         *handler.AuthHandler
 	UserHandler         *handler.UserHandler
@@ -916,7 +856,6 @@ type ApiDeps struct {
 // StoreAuthDeps holds dependencies for the Store Auth Lambda
 type StoreAuthDeps struct {
 	Config                 *config.Config
-	Logger                 *logger.Logger
 	Handler                *store.AuthHandler
 	CustomerAuthMiddleware *middleware.CustomerAuth
 }
@@ -924,14 +863,12 @@ type StoreAuthDeps struct {
 // StoreCatalogDeps holds dependencies for the Store Catalog Lambda
 type StoreCatalogDeps struct {
 	Config  *config.Config
-	Logger  *logger.Logger
 	Handler *store.CatalogHandler
 }
 
 // StoreCartDeps holds dependencies for the Store Cart Lambda
 type StoreCartDeps struct {
 	Config           *config.Config
-	Logger           *logger.Logger
 	Handler          *store.CartHandler
 	OptionalCartAuth *middleware.OptionalCartAuth
 }
@@ -939,7 +876,6 @@ type StoreCartDeps struct {
 // StoreCheckoutDeps holds dependencies for the Store Checkout Lambda
 type StoreCheckoutDeps struct {
 	Config                 *config.Config
-	Logger                 *logger.Logger
 	Handler                *store.CheckoutHandler
 	CustomerAuthMiddleware *middleware.CustomerAuth
 }
@@ -947,7 +883,6 @@ type StoreCheckoutDeps struct {
 // StoreOrdersDeps holds dependencies for the Store Orders Lambda
 type StoreOrdersDeps struct {
 	Config                 *config.Config
-	Logger                 *logger.Logger
 	Handler                *store.OrderHandler
 	CustomerAuthMiddleware *middleware.CustomerAuth
 }
@@ -955,14 +890,12 @@ type StoreOrdersDeps struct {
 // StoreTrackingDeps holds dependencies for the Store Tracking Lambda
 type StoreTrackingDeps struct {
 	Config  *config.Config
-	Logger  *logger.Logger
 	Handler *store.TrackingHandler
 }
 
 // StoreProfileDeps holds dependencies for the Store Profile Lambda
 type StoreProfileDeps struct {
 	Config                 *config.Config
-	Logger                 *logger.Logger
 	Handler                *store.ProfileHandler
 	CustomerAuthMiddleware *middleware.CustomerAuth
 }
@@ -970,21 +903,18 @@ type StoreProfileDeps struct {
 // StoreWebhooksDeps holds dependencies for the Store Webhooks Lambda
 type StoreWebhooksDeps struct {
 	Config  *config.Config
-	Logger  *logger.Logger
 	Handler *store.WebhookHandler
 }
 
 // StoreEventsDeps holds dependencies for the Store Events Lambda
 type StoreEventsDeps struct {
 	Config  *config.Config
-	Logger  *logger.Logger
 	Handler *store.EventsHandler
 }
 
 // App holds all application dependencies (deprecated, use service-specific deps)
 type App struct {
 	Config         *config.Config
-	Logger         *logger.Logger
 	DynamoDBClient *dynamodb.Client
 	AuthMiddleware *middleware.Auth
 }

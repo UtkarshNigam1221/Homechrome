@@ -4,6 +4,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"sort"
 	"time"
 
@@ -12,7 +13,6 @@ import (
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/internal/event"
 	"github.com/handloom/admin/pkg/errors"
-	"github.com/handloom/admin/pkg/logger"
 )
 
 // ProductService implements domain.ProductService
@@ -22,7 +22,6 @@ type ProductService struct {
 	inventoryRepo  domain.InventoryRepository
 	assetFinalizer domain.AssetFinalizer
 	publisher      event.EventPublisher
-	logger         *logger.Logger
 }
 
 // NewProductService creates a new ProductService
@@ -32,7 +31,6 @@ func NewProductService(
 	inventoryRepo domain.InventoryRepository,
 	assetFinalizer domain.AssetFinalizer,
 	publisher event.EventPublisher,
-	logger *logger.Logger,
 ) *ProductService {
 	return &ProductService{
 		productRepo:    productRepo,
@@ -40,7 +38,6 @@ func NewProductService(
 		inventoryRepo:  inventoryRepo,
 		assetFinalizer: assetFinalizer,
 		publisher:      publisher,
-		logger:         logger,
 	}
 }
 
@@ -89,10 +86,10 @@ func (s *ProductService) Create(ctx context.Context, req domain.CreateProductReq
 	}
 
 	if pubErr := s.publisher.Publish(ctx, event.New(event.ProductCreated, product)); pubErr != nil {
-		s.logger.WithContext(ctx).WithError(pubErr).Error("failed to publish product.created event")
+		slog.ErrorContext(ctx, "Failed to publish product.created event", "error", pubErr)
 	}
 
-	s.logger.WithContext(ctx).Infof("Created product: %s", product.ID)
+	slog.InfoContext(ctx, "Created product", "product_id", product.ID)
 	return product, nil
 }
 
@@ -168,10 +165,10 @@ func (s *ProductService) Update(ctx context.Context, id string, req domain.Updat
 	}
 
 	if pubErr := s.publisher.Publish(ctx, event.New(event.ProductUpdated, product)); pubErr != nil {
-		s.logger.WithContext(ctx).WithError(pubErr).Error("failed to publish product.updated event")
+		slog.ErrorContext(ctx, "Failed to publish product.updated event", "error", pubErr)
 	}
 
-	s.logger.WithContext(ctx).Infof("Updated product: %s", id)
+	slog.InfoContext(ctx, "Updated product", "product_id", id)
 	return product, nil
 }
 
@@ -195,10 +192,10 @@ func (s *ProductService) Delete(ctx context.Context, id string) error {
 	if pubErr := s.publisher.Publish(ctx, event.New(event.ProductDeleted, map[string]interface{}{
 		"product_id": id,
 	})); pubErr != nil {
-		s.logger.WithContext(ctx).WithError(pubErr).Error("failed to publish product.deleted event")
+		slog.ErrorContext(ctx, "Failed to publish product.deleted event", "error", pubErr)
 	}
 
-	s.logger.WithContext(ctx).Infof("Deleted product: %s", id)
+	slog.InfoContext(ctx, "Deleted product", "product_id", id)
 	return nil
 }
 
@@ -355,7 +352,7 @@ func (s *ProductService) ReorderProducts(ctx context.Context, categoryID string,
 		return 0, err
 	}
 
-	s.logger.WithContext(ctx).Infof("Reordered %d products in category %s", len(toUpdate), categoryID)
+	slog.InfoContext(ctx, "Reordered products", "count", len(toUpdate), "category_id", categoryID)
 	return len(toUpdate), nil
 }
 
