@@ -290,18 +290,18 @@ This document describes the user flows for the B2C Store Checkout service, cover
 │ PhonePe sends   │
 │ webhook POST    │
 │ /webhooks/      │
-│ payment         │
-│ (with X-VERIFY  │
-│  signature)     │
+│ phonepe         │
+│ (Authorization: │
+│ SHA256(u:p))    │
 └────────┬────────┘
          │
          ▼
 ┌─────────────────┐
 │ Verify webhook  │
-│ signature:      │
-│ SHA256(payload + │
-│ salt_key) ==    │
-│ X-VERIFY header │
+│ auth header:    │
+│ SHA256(username: │
+│ password) ==    │
+│ Authorization   │
 └────────┬────────┘
          │
 ┌────────┴────────┐

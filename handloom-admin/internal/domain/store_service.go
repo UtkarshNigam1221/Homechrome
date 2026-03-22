@@ -60,13 +60,35 @@ type PaymentStatusResult struct {
 	Order         *Order        `json:"order"`
 }
 
+// PaymentWebhookEvent is a provider-agnostic payment webhook event.
+// The handler translates provider-specific payloads into this struct.
+type PaymentWebhookEvent struct {
+	MerchantTxnID string
+	TransactionID string
+	PaymentMode   string // provider-specific mode, mapped to PaymentMethod by service
+}
+
 // PaymentService defines payment operations
 type PaymentService interface {
 	InitiatePayment(ctx context.Context, req InitiatePaymentRequest) (*PaymentResponse, error)
-	HandleWebhook(ctx context.Context, payload []byte, signature string) error
+	HandlePaymentSuccess(ctx context.Context, evt PaymentWebhookEvent) error
+	HandlePaymentFailure(ctx context.Context, evt PaymentWebhookEvent) error
 	GetByOrderID(ctx context.Context, orderID string) (*Payment, error)
 	GetByMerchantTxnID(ctx context.Context, merchantTxnID string) (*Payment, error)
+	CheckProviderStatus(ctx context.Context, orderID string) (*ProviderPaymentStatus, error)
 	RefundPayment(ctx context.Context, paymentID string, amount int64, reason string) error
+}
+
+// ProviderPaymentStatus contains payment status from the payment provider
+type ProviderPaymentStatus struct {
+	OrderID         string `json:"order_id"`
+	MerchantTxnID   string `json:"merchant_txn_id"`
+	ProviderOrderID string `json:"provider_order_id"`
+	ProviderState   string `json:"provider_state"`
+	LocalStatus     string `json:"local_status"`
+	Amount          int64  `json:"amount"`
+	PaymentMode     string `json:"payment_mode,omitempty"`
+	TransactionID   string `json:"transaction_id,omitempty"`
 }
 
 // PaymentResponse contains the result of initiating a payment

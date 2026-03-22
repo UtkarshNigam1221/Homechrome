@@ -19,13 +19,13 @@ The Store Webhooks module handles asynchronous callbacks from external service p
      └─────────┬─────────┘                              └─────────┬─────────┘
                │                                                  │
                │ POST /webhooks/phonepe                           │ POST /webhooks/shiprocket
-               │ (X-VERIFY signature)                             │
+               │ (Authorization: SHA256(u:p))                      │
                ▼                                                  ▼
      ┌───────────────────┐                              ┌───────────────────┐
      │  PhonePe Webhook  │                              │  Shiprocket       │
      │  Handler          │                              │  Webhook Handler  │
-     │  - Verify sig     │                              │  - Parse status   │
-     │  - Decode base64  │                              │  - Map status     │
+     │  - Verify auth    │                              │  - Parse status   │
+     │  - Parse event    │                              │  - Map status     │
      │  - Process result │                              │  - Update order   │
      └─────────┬─────────┘                              └─────────┬─────────┘
                │                                                  │
@@ -64,27 +64,28 @@ The Store Webhooks module handles asynchronous callbacks from external service p
 │  Processing Pipeline:                                                        │
 │  ┌─────────────────────────────────────────────────────────────────────┐   │
 │  │                                                                      │   │
-│  │  Step 1: Verify Signature                                            │   │
+│  │  Step 1: Verify Authorization                                       │   │
 │  │  ┌───────────────────────────────────────────────────────────────┐ │   │
-│  │  │ • Extract X-VERIFY header                                     │ │   │
-│  │  │ • Compute: SHA256(base64Response + callbackURL + saltKey)     │ │   │
-│  │  │ • Compare computed hash with X-VERIFY value                   │ │   │
+│  │  │ • Extract Authorization header                                │ │   │
+│  │  │ • Compute: SHA256(PHONEPE_WEBHOOK_USERNAME:WEBHOOK_PASSWORD)  │ │   │
+│  │  │ • Compare computed hash with Authorization header value       │ │   │
 │  │  │ • If mismatch: log warning, return 200 (do not process)       │ │   │
 │  │  └───────────────────────────────────────────────────────────────┘ │   │
 │  │                                                                      │   │
-│  │  Step 2: Decode Response                                             │   │
+│  │  Step 2: Parse Event Payload                                         │   │
 │  │  ┌───────────────────────────────────────────────────────────────┐ │   │
-│  │  │ • Base64-decode the `response` field from request body        │ │   │
-│  │  │ • Parse decoded JSON to extract:                              │ │   │
-│  │  │   - code (PAYMENT_SUCCESS / PAYMENT_ERROR / PAYMENT_DECLINED) │ │   │
-│  │  │   - data.merchantTransactionId (maps to PaymentID)            │ │   │
-│  │  │   - data.transactionId (PhonePe transaction reference)        │ │   │
-│  │  │   - data.amount (in paise)                                    │ │   │
+│  │  │ • Parse JSON body directly (no base64 decoding)               │ │   │
+│  │  │ • Extract from payload:                                       │ │   │
+│  │  │   - event (checkout.order.completed / checkout.order.failed)   │ │   │
+│  │  │   - payload.merchantOrderId (maps to PaymentID)               │ │   │
+│  │  │   - payload.orderId (PhonePe order reference)                 │ │   │
+│  │  │   - payload.state (COMPLETED / FAILED)                        │ │   │
+│  │  │   - payload.paymentDetails (payment instrument info)          │ │   │
 │  │  └───────────────────────────────────────────────────────────────┘ │   │
 │  │                                                                      │   │
 │  │  Step 3: Idempotency Check                                           │   │
 │  │  ┌───────────────────────────────────────────────────────────────┐ │   │
-│  │  │ • Lookup payment by merchantTransactionId                     │ │   │
+│  │  │ • Lookup payment by merchantOrderId                            │ │   │
 │  │  │ • If payment.Status is already SUCCESS or FAILED:             │ │   │
 │  │  │   → Skip processing, return 200 (already handled)             │ │   │
 │  │  │ • If payment not found: log error, return 200                  │ │   │
@@ -92,13 +93,13 @@ The Store Webhooks module handles asynchronous callbacks from external service p
 │  │                                                                      │   │
 │  │  Step 4: Process Payment Result                                      │   │
 │  │  ┌───────────────────────────────────────────────────────────────┐ │   │
-│  │  │ On PAYMENT_SUCCESS:                                           │ │   │
+│  │  │ On checkout.order.completed (state=COMPLETED):                 │ │   │
 │  │  │   • Update payment status → SUCCESS                           │ │   │
 │  │  │   • Update order status → CONFIRMED                           │ │   │
 │  │  │   • Write status history record                               │ │   │
 │  │  │   • Send confirmation SMS                                     │ │   │
 │  │  │                                                               │ │   │
-│  │  │ On PAYMENT_ERROR / PAYMENT_DECLINED:                          │ │   │
+│  │  │ On checkout.order.failed (state=FAILED):                      │ │   │
 │  │  │   • Update payment status → FAILED                            │ │   │
 │  │  │   • Release reserved inventory                                │ │   │
 │  │  │   • Send failure notification SMS                             │ │   │
@@ -218,13 +219,13 @@ The Store Webhooks module handles asynchronous callbacks from external service p
 │                           SECURITY MODEL                                     │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                              │
-│  PhonePe Signature Verification:                                             │
+│  PhonePe Webhook Authorization:                                              │
 │  ┌─────────────────────────────────────────────────────────────────────┐   │
-│  │ • X-VERIFY header contains SHA256 checksum + salt index            │   │
-│  │ • Verification: SHA256(base64Response + callbackURL + saltKey)     │   │
-│  │ • Salt key stored in AWS SSM: /handloom/{env}/phonepe-salt-key    │   │
-│  │ • Salt index stored in config: PHONEPE_SALT_INDEX                  │   │
-│  │ • Signature mismatch: log, return 200, do NOT process              │   │
+│  │ • Authorization header contains SHA256(username:password)           │   │
+│  │ • Verification: SHA256(PHONEPE_WEBHOOK_USERNAME:WEBHOOK_PASSWORD)  │   │
+│  │ • Webhook credentials configured in PhonePe dashboard              │   │
+│  │ • Env vars: PHONEPE_WEBHOOK_USERNAME, PHONEPE_WEBHOOK_PASSWORD     │   │
+│  │ • Auth mismatch: log, return 200, do NOT process                   │   │
 │  └─────────────────────────────────────────────────────────────────────┘   │
 │                                                                              │
 │  Shiprocket Validation:                                                      │
@@ -300,7 +301,7 @@ The Store Webhooks module handles asynchronous callbacks from external service p
 │  │                    Payment Service                                    │   │
 │  │                                                                      │   │
 │  │  WebhookHandler ──▶ PaymentService                                  │   │
-│  │    • GetByMerchantTxnID(merchantTxnId) — lookup payment             │   │
+│  │    • GetByMerchantTxnID(merchantOrderId) — lookup payment            │   │
 │  │    • UpdateStatus(paymentID, status, providerTxnID) — save result   │   │
 │  └─────────────────────────────────────────────────────────────────────┘   │
 │                                                                              │
@@ -362,7 +363,7 @@ The Store Webhooks module handles asynchronous callbacks from external service p
 │  │ • PhonePe Payment Gateway — sends payment callbacks                │   │
 │  │ • Shiprocket Shipping — sends shipment status updates              │   │
 │  │ • AWS DynamoDB (handloom-orders) — order, payment, shipment data  │   │
-│  │ • AWS SSM Parameter Store — PhonePe salt key                       │   │
+│  │ • AWS SSM Parameter Store — PhonePe webhook credentials             │   │
 │  │ • AWS CloudWatch — logging, metrics, alarms                        │   │
 │  │ • MSG91 SMS Gateway — customer notifications                       │   │
 │  └─────────────────────────────────────────────────────────────────────┘   │
@@ -379,9 +380,11 @@ The Store Webhooks module handles asynchronous callbacks from external service p
 │                                                                              │
 │  Configuration:                                                              │
 │  ┌─────────────────────────────────────────────────────────────────────┐   │
-│  │ • PHONEPE_SALT_KEY — SHA256 signature verification                 │   │
-│  │ • PHONEPE_SALT_INDEX — salt index for X-VERIFY header              │   │
-│  │ • PHONEPE_MERCHANT_ID — merchant identifier                        │   │
+│  │ • PHONEPE_CLIENT_ID — OAuth client identifier                       │   │
+│  │ • PHONEPE_CLIENT_SECRET — OAuth client secret                      │   │
+│  │ • PHONEPE_CLIENT_VERSION — client version                          │   │
+│  │ • PHONEPE_WEBHOOK_USERNAME — webhook auth username                 │   │
+│  │ • PHONEPE_WEBHOOK_PASSWORD — webhook auth password                 │   │
 │  │ • SHIPROCKET_WEBHOOK_SECRET — (optional) additional validation     │   │
 │  └─────────────────────────────────────────────────────────────────────┘   │
 │                                                                              │

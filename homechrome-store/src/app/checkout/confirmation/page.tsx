@@ -39,7 +39,7 @@ function ConfirmationContent() {
       }
 
       // Stop polling on terminal states
-      if (['PAID', 'FAILED', 'REFUNDED'].includes(data.payment_status)) {
+      if (['PAID', 'SUCCESS', 'FAILED', 'REFUNDED'].includes(data.payment_status)) {
         setPolling(false);
         if (intervalRef.current) {
           clearInterval(intervalRef.current);
@@ -56,8 +56,13 @@ function ConfirmationContent() {
           intervalRef.current = null;
         }
       }
-    } catch {
-      setError('Unable to check payment status. Please check your orders page.');
+    } catch (err: unknown) {
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      if (status === 401) {
+        setError('Your payment has been processed. Please log in to view your order details.');
+      } else {
+        setError('Unable to check payment status. Please check your orders page.');
+      }
       setPolling(false);
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
@@ -112,7 +117,7 @@ function ConfirmationContent() {
       )}
 
       {/* Success */}
-      {status === 'PAID' && (
+      {(status === 'PAID' || status === 'SUCCESS') && (
         <>
           <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-green-100">
             <svg

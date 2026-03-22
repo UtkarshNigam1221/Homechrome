@@ -1,67 +1,97 @@
 package phonepe
 
-// Config holds PhonePe configuration
+// Config holds PhonePe Standard Checkout configuration
 type Config struct {
-	MerchantID  string
-	SaltKey     string
-	SaltIndex   string
-	BaseURL     string
-	CallbackURL string
-	RedirectURL string
+	ClientID      string
+	ClientSecret  string
+	ClientVersion string
+	BaseURL       string
+	CallbackURL   string
+	RedirectURL   string
 }
 
-// PayRequest is the payload for initiating a payment
+// --- OAuth Token ---
+
+// TokenResponse is the response from the PhonePe OAuth token endpoint
+type TokenResponse struct {
+	AccessToken string `json:"access_token"`
+	ExpiresAt   int64  `json:"expires_at"`
+	TokenType   string `json:"token_type"` // "O-Bearer"
+}
+
+// --- Create Payment (Standard Checkout v2) ---
+
+// PayRequest is the payload for creating a payment order
 type PayRequest struct {
-	MerchantID            string `json:"merchantId"`
-	MerchantTransactionID string `json:"merchantTransactionId"`
-	MerchantUserID        string `json:"merchantUserId"`
-	Amount                int64  `json:"amount"` // in paise
-	CallbackURL           string `json:"callbackUrl"`
-	RedirectURL           string `json:"redirectUrl"`
-	RedirectMode          string `json:"redirectMode"`
-	PaymentInstrument     struct {
-		Type string `json:"type"`
-	} `json:"paymentInstrument"`
+	MerchantOrderID string      `json:"merchantOrderId"`
+	Amount          int64       `json:"amount"` // in paise
+	PaymentFlow     PaymentFlow `json:"paymentFlow"`
 }
 
-// PayResponse is the response from PhonePe pay API
+// PaymentFlow specifies the checkout type and redirect URL
+type PaymentFlow struct {
+	Type         string       `json:"type"` // "PG_CHECKOUT"
+	MerchantURLs MerchantURLs `json:"merchantUrls"`
+}
+
+// MerchantURLs holds the redirect URL for post-payment
+type MerchantURLs struct {
+	RedirectURL string `json:"redirectUrl"`
+}
+
+// PayResponse is the response from the create payment API
 type PayResponse struct {
-	Success bool   `json:"success"`
-	Code    string `json:"code"`
-	Message string `json:"message"`
-	Data    struct {
-		MerchantID            string `json:"merchantId"`
-		MerchantTransactionID string `json:"merchantTransactionId"`
-		InstrumentResponse    struct {
-			Type         string `json:"type"`
-			RedirectInfo struct {
-				URL    string `json:"url"`
-				Method string `json:"method"`
-			} `json:"redirectInfo"`
-		} `json:"instrumentResponse"`
-	} `json:"data"`
+	OrderID     string `json:"orderId"`
+	State       string `json:"state"` // PENDING
+	ExpireAt    int64  `json:"expireAt"`
+	RedirectURL string `json:"redirectUrl"`
 }
 
-// StatusResponse is the response from PhonePe status check API
+// PayErrorResponse is returned on API errors
+type PayErrorResponse struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+}
+
+// --- Order Status ---
+
+// StatusResponse is the response from the order status API
 type StatusResponse struct {
-	Success bool   `json:"success"`
-	Code    string `json:"code"`
-	Message string `json:"message"`
-	Data    struct {
-		MerchantID            string `json:"merchantId"`
-		MerchantTransactionID string `json:"merchantTransactionId"`
-		TransactionID         string `json:"transactionId"`
-		Amount                int64  `json:"amount"`
-		State                 string `json:"state"` // COMPLETED, PENDING, FAILED
-		ResponseCode          string `json:"responseCode"`
-		PaymentInstrument     struct {
-			Type string `json:"type"`
-			UTR  string `json:"utr,omitempty"`
-		} `json:"paymentInstrument"`
-	} `json:"data"`
+	OrderID        string          `json:"orderId"`
+	State          string          `json:"state"` // COMPLETED, PENDING, FAILED
+	Amount         int64           `json:"amount"`
+	PayableAmount  int64           `json:"payableAmount"`
+	FeeAmount      int64           `json:"feeAmount"`
+	ExpireAt       int64           `json:"expireAt"`
+	PaymentDetails []PaymentDetail `json:"paymentDetails"`
+	ErrorCode      string          `json:"errorCode,omitempty"`
 }
 
-// WebhookPayload is the callback payload from PhonePe
+// PaymentDetail holds details of a payment attempt
+type PaymentDetail struct {
+	TransactionID string `json:"transactionId"`
+	PaymentMode   string `json:"paymentMode"` // UPI_INTENT, UPI_COLLECT, UPI_QR, CARD, NET_BANKING
+	Timestamp     int64  `json:"timestamp"`
+	Amount        int64  `json:"amount"`
+	State         string `json:"state"` // COMPLETED, PENDING, FAILED
+	ErrorCode     string `json:"errorCode,omitempty"`
+}
+
+// --- Webhook ---
+
+// WebhookPayload is the callback payload from PhonePe Standard Checkout
 type WebhookPayload struct {
-	Response string `json:"response"` // base64 encoded
+	Event   string       `json:"event"` // checkout.order.completed, checkout.order.failed
+	Payload WebhookOrder `json:"payload"`
+}
+
+// WebhookOrder holds the order details in a webhook callback
+type WebhookOrder struct {
+	OrderID         string          `json:"orderId"`
+	MerchantID      string          `json:"merchantId"`
+	MerchantOrderID string          `json:"merchantOrderId"`
+	State           string          `json:"state"` // COMPLETED, FAILED
+	Amount          int64           `json:"amount"`
+	ExpireAt        int64           `json:"expireAt"`
+	PaymentDetails  []PaymentDetail `json:"paymentDetails"`
 }

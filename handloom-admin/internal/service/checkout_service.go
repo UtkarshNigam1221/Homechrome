@@ -218,11 +218,9 @@ func (s *CheckoutService) Initiate(ctx context.Context, customerID string, req d
 		return nil, errors.Wrap(err, "Failed to initiate payment")
 	}
 
-	// 12. Clear cart
-	if err := s.cartService.ClearCart(ctx, customerID); err != nil {
-		// Log but don't fail the checkout - order and payment are already created
-		slog.ErrorContext(ctx, "Failed to clear cart after checkout", "error", err)
-	}
+	// 12. Cart is NOT cleared here — it's cleared after payment success
+	// in PaymentService.HandlePaymentSuccess. This ensures the cart
+	// is preserved if payment fails, so the user can retry.
 
 	// 13. Publish order.created event
 	if pubErr := s.publisher.Publish(ctx, event.New(event.OrderCreated, order)); pubErr != nil {

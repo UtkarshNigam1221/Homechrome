@@ -4,7 +4,7 @@ A serverless backend for the Homechrome handloom e-commerce platform. Powers bot
 
 ## Architecture
 
-The application is built as **26 AWS Lambda services** (12 admin + 9 B2C store + 4 event workers + 1 migrator), designed for high availability, scalability, and cost efficiency.
+The application is built as up to **26 AWS Lambda services** (12 admin + 9 B2C store + 4 event workers + 1 migrator), designed for high availability, scalability, and cost efficiency. In dev, only 15 Lambdas are active (5 admin + 9 store + 1 migrator); the event stack and several admin services are disabled.
 
 ### Admin Microservices
 
@@ -41,7 +41,7 @@ The application is built as **26 AWS Lambda services** (12 admin + 9 B2C store +
 
 | Gateway | Purpose | Config Prefix |
 |---------|---------|---------------|
-| **PhonePe** | Payment processing | `PHONEPE_*` |
+| **PhonePe** | Payment processing (Standard Checkout v2) | `PHONEPE_*` |
 | **Shiprocket** | Shipping & delivery tracking | `SHIPROCKET_*` |
 | **MSG91** | SMS OTP for customer auth | `MSG91_*` |
 
@@ -55,6 +55,17 @@ The application is built as **26 AWS Lambda services** (12 admin + 9 B2C store +
 | **worker-report** | report queue | Generate business reports |
 
 Domain events are published to an SNS topic and fanned out to SQS queues. Each worker Lambda processes its queue independently.
+
+> **Note:** The event stack (SNS topic, 4 SQS queues, EventBridge rule, and 4 worker Lambdas) is **disabled in dev**. The `EventStack` creation is commented out in `infra/cmd/main.go`. When events are disabled, a `NoopPublisher` is used instead of the SNS publisher.
+
+### Active Lambdas in Dev
+
+In the dev environment, only **15 Lambdas** are deployed:
+- **Admin (5):** auth, user, catalog, asset, order
+- **Store (9):** store-auth, store-catalog, store-cart, store-checkout, store-orders, store-tracking, store-profile, store-events, store-webhooks
+- **Utility (1):** migrator
+
+**Disabled in dev:** pricing, inventory, analytics, notification, coupon, report, audit (admin), + 4 event workers
 
 ### Features
 
@@ -81,8 +92,8 @@ Domain events are published to an SNS topic and fanned out to SQS queues. Each w
 .
 ├── cmd/
 │   ├── api/                    # Local development server entry point
-│   └── lambda/                 # Lambda entry points (26 services)
-│       ├── auth/               # Admin services (12)
+│   └── lambda/                 # Lambda entry points (up to 26 services; 15 active in dev)
+│       ├── auth/               # Admin services (12 total, 5 active in dev)
 │       ├── user/
 │       ├── catalog/
 │       ├── order/
@@ -299,8 +310,9 @@ Key environment variables:
 - `AWS_REGION` - AWS region (ap-southeast-1)
 - `JWT_SECRET_KEY` - Admin JWT signing key (change in production!)
 - `CUSTOMER_JWT_SECRET` - Customer JWT signing key (B2C store auth)
-- `PHONEPE_*` - PhonePe payment gateway config
-- `SHIPROCKET_*` - Shiprocket shipping config
+- `PHONEPE_CLIENT_ID` / `PHONEPE_CLIENT_SECRET` / `PHONEPE_CLIENT_VERSION` - PhonePe OAuth credentials (Standard Checkout v2). When CLIENT_ID or CLIENT_SECRET is empty, a DevClient with mock responses is used (based on credential presence, not `APP_ENV`)
+- `PHONEPE_WEBHOOK_USERNAME` / `PHONEPE_WEBHOOK_PASSWORD` - PhonePe webhook verification credentials
+- `SHIPROCKET_*` - Shiprocket shipping config (DevClient used when credentials empty)
 - `MSG91_*` - MSG91 SMS/OTP config
 - `SNS_TOPIC_ARN` - SNS event topic ARN
 - `EVENT_PUBLISHING_ENABLED` - Enable/disable event publishing

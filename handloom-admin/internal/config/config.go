@@ -33,13 +33,15 @@ type PostgresConfig struct {
 
 // StoreConfig holds B2C storefront configuration
 type StoreConfig struct {
-	// PhonePe
-	PhonePeMerchantID  string
-	PhonePeSaltKey     string
-	PhonePeSaltIndex   string
-	PhonePeBaseURL     string
-	PhonePeCallbackURL string
-	PhonePeRedirectURL string
+	// PhonePe Standard Checkout
+	PhonePeClientID        string
+	PhonePeClientSecret    string
+	PhonePeClientVersion   string
+	PhonePeBaseURL         string
+	PhonePeCallbackURL     string
+	PhonePeRedirectURL     string
+	PhonePeWebhookUsername string
+	PhonePeWebhookPassword string
 
 	// Shiprocket
 	ShiprocketEmail         string
@@ -153,12 +155,14 @@ func Load() *Config {
 			Enabled:     getBoolEnv("EVENT_PUBLISHING_ENABLED", false),
 		},
 		Store: StoreConfig{
-			PhonePeMerchantID:  getEnv("PHONEPE_MERCHANT_ID", ""),
-			PhonePeSaltKey:     getEnv("PHONEPE_SALT_KEY", ""),
-			PhonePeSaltIndex:   getEnv("PHONEPE_SALT_INDEX", "1"),
-			PhonePeBaseURL:     getEnv("PHONEPE_BASE_URL", "https://api-preprod.phonepe.com/apis/pg-sandbox"),
-			PhonePeCallbackURL: getEnv("PHONEPE_CALLBACK_URL", ""),
-			PhonePeRedirectURL: getEnv("PHONEPE_REDIRECT_URL", ""),
+			PhonePeClientID:        getEnv("PHONEPE_CLIENT_ID", ""),
+			PhonePeClientSecret:    getEnv("PHONEPE_CLIENT_SECRET", ""),
+			PhonePeClientVersion:   getEnv("PHONEPE_CLIENT_VERSION", "1"),
+			PhonePeBaseURL:         getEnv("PHONEPE_BASE_URL", "https://api-preprod.phonepe.com/apis/pg-sandbox"),
+			PhonePeCallbackURL:     getEnv("PHONEPE_CALLBACK_URL", ""),
+			PhonePeRedirectURL:     getEnv("PHONEPE_REDIRECT_URL", ""),
+			PhonePeWebhookUsername: getEnv("PHONEPE_WEBHOOK_USERNAME", ""),
+			PhonePeWebhookPassword: getEnv("PHONEPE_WEBHOOK_PASSWORD", ""),
 
 			ShiprocketEmail:         getEnv("SHIPROCKET_EMAIL", ""),
 			ShiprocketPassword:      getEnv("SHIPROCKET_PASSWORD", ""),

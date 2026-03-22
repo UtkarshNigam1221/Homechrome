@@ -156,7 +156,7 @@ func main() {
 	var smsGateway interface {
 		SendOTP(ctx context.Context, phone, code string) error
 	}
-	if cfg.IsDevelopment() {
+	if cfg.Store.MSG91AuthKey == "" || cfg.Store.MSG91OTPTemplateID == "" {
 		smsGateway = sms.NewDevClient()
 		slog.Info("Using dev SMS gateway (OTPs printed to console)")
 	} else {
@@ -168,22 +168,22 @@ func main() {
 	}
 
 	var phonePeClient phonepe.Gateway
-	if cfg.IsDevelopment() {
+	if cfg.Store.PhonePeClientID == "" || cfg.Store.PhonePeClientSecret == "" {
 		phonePeClient = phonepe.NewDevClient(cfg.Store.PhonePeRedirectURL)
 		slog.Info("Using dev PhonePe gateway (mock payments)")
 	} else {
 		phonePeClient = phonepe.NewClient(phonepe.Config{
-			MerchantID:  cfg.Store.PhonePeMerchantID,
-			SaltKey:     cfg.Store.PhonePeSaltKey,
-			SaltIndex:   cfg.Store.PhonePeSaltIndex,
-			BaseURL:     cfg.Store.PhonePeBaseURL,
-			CallbackURL: cfg.Store.PhonePeCallbackURL,
-			RedirectURL: cfg.Store.PhonePeRedirectURL,
+			ClientID:      cfg.Store.PhonePeClientID,
+			ClientSecret:  cfg.Store.PhonePeClientSecret,
+			ClientVersion: cfg.Store.PhonePeClientVersion,
+			BaseURL:       cfg.Store.PhonePeBaseURL,
+			CallbackURL:   cfg.Store.PhonePeCallbackURL,
+			RedirectURL:   cfg.Store.PhonePeRedirectURL,
 		})
 	}
 
 	var shiprocketClient shiprocket.Gateway
-	if cfg.IsDevelopment() {
+	if cfg.Store.ShiprocketEmail == "" || cfg.Store.ShiprocketPassword == "" {
 		shiprocketClient = shiprocket.NewDevClient()
 		slog.Info("Using dev Shiprocket gateway (mock courier data)")
 	} else {
@@ -211,7 +211,7 @@ func main() {
 	)
 
 	cartService := service.NewCartService(cartRepo, productRepo, inventoryRepo)
-	paymentService := service.NewPaymentService(paymentRepo, orderRepo, inventoryRepo, phonePeClient, publisher)
+	paymentService := service.NewPaymentService(paymentRepo, orderRepo, inventoryRepo, cartService, phonePeClient, publisher)
 	shippingService := service.NewShippingService(shipmentRepo, orderRepo, shiprocketClient, cfg.Store.ShiprocketPickupPincode)
 	checkoutService := service.NewCheckoutService(cartService, orderRepo, paymentService, shippingService, inventoryRepo, customerRepo, publisher)
 
@@ -226,7 +226,7 @@ func main() {
 	productHandler := handler.NewProductHandler(productService, inventoryService, validation)
 	inventoryHandler := handler.NewInventoryHandler(inventoryService)
 	pricingHandler := handler.NewPricingHandler(pricingService, validation)
-	orderHandler := handler.NewOrderHandler(orderService, validation)
+	orderHandler := handler.NewOrderHandler(orderService, paymentService, validation)
 	customerHandler := handler.NewCustomerHandler(customerService, validation)
 	auditHandler := handler.NewAuditHandler(auditService)
 	notificationHandler := handler.NewNotificationHandler(notificationService, validation)
@@ -246,7 +246,7 @@ func main() {
 	storeOrderHandler := store.NewOrderHandler(orderService, orderRepo)
 	storeTrackingHandler := store.NewTrackingHandler(orderRepo, shipmentRepo)
 	storeProfileHandler := store.NewProfileHandler(customerRepo, validation)
-	storeWebhookHandler := store.NewWebhookHandler(paymentService)
+	storeWebhookHandler := store.NewWebhookHandler(paymentService, phonePeClient, cfg.Store.PhonePeWebhookUsername, cfg.Store.PhonePeWebhookPassword)
 	storeEventsHandler := store.NewEventsHandler(eventsRepo, analyticsRepo, validation)
 
 	// Customer auth middleware

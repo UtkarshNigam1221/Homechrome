@@ -12,11 +12,11 @@ func NewOrderRouter(
 	orderHandler *handler.OrderHandler,
 	customerHandler *handler.CustomerHandler,
 ) {
-	// Orders
-	r.Route("/orders", func(r chi.Router) {
+	// Orders — mount at /admin/* to match API Gateway resource paths
+	r.Route("/admin/orders", func(r chi.Router) {
 		r.Mount("/", orderHandler.Routes())
 	})
 
 	// Customers — mounted via Routes() which includes validation middleware
-	r.Mount("/customers", customerHandler.Routes())
+	r.Mount("/admin/customers", customerHandler.Routes())
 }

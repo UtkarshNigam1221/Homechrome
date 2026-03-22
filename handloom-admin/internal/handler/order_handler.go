@@ -13,15 +13,17 @@ import (
 
 // OrderHandler handles order-related requests
 type OrderHandler struct {
-	orderService domain.OrderService
-	validation   *middleware.Validation
+	orderService   domain.OrderService
+	paymentService domain.PaymentService
+	validation     *middleware.Validation
 }
 
 // NewOrderHandler creates a new OrderHandler
-func NewOrderHandler(orderService domain.OrderService, validation *middleware.Validation) *OrderHandler {
+func NewOrderHandler(orderService domain.OrderService, paymentService domain.PaymentService, validation *middleware.Validation) *OrderHandler {
 	return &OrderHandler{
-		orderService: orderService,
-		validation:   validation,
+		orderService:   orderService,
+		paymentService: paymentService,
+		validation:     validation,
 	}
 }
 
@@ -32,6 +34,7 @@ func (h *OrderHandler) Routes() chi.Router {
 	r.Get("/", h.List)
 	r.With(middleware.ValidateJSONTyped[domain.CreateOrderRequest](h.validation)).Post("/", h.Create)
 	r.Get("/{id}", h.GetByID)
+	r.Get("/{id}/payment-status", h.CheckPaymentStatus)
 	r.With(middleware.ValidateJSONTyped[UpdateOrderStatusRequest](h.validation)).Patch("/{id}/status", h.UpdateStatus)
 	r.With(middleware.ValidateJSONTyped[AddOrderNoteRequest](h.validation)).Post("/{id}/notes", h.AddNote)
 	r.With(middleware.ValidateJSONTyped[UpdateTrackingRequest](h.validation)).Patch("/{id}/tracking", h.UpdateTracking)
@@ -105,6 +108,20 @@ func (h *OrderHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response.JSON(w, http.StatusOK, order)
+}
+
+// CheckPaymentStatus checks the payment status from PhonePe for an order
+func (h *OrderHandler) CheckPaymentStatus(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	id := chi.URLParam(r, "id")
+
+	result, err := h.paymentService.CheckProviderStatus(ctx, id)
+	if err != nil {
+		response.Error(w, err)
+		return
+	}
+
+	response.JSON(w, http.StatusOK, result)
 }
 
 // UpdateStatus handles updating order status

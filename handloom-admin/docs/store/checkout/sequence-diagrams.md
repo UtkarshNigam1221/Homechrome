@@ -199,20 +199,20 @@ This document contains sequence diagrams for the B2C Store Checkout operations i
      │                │                  │                   │                   │
      │ POST           │                  │                   │                   │
      │ /webhooks/     │                  │                   │                   │
-     │ payment        │                  │                   │                   │
-     │ X-VERIFY: sig  │                  │                   │                   │
-     │ {merchantTxnId,│                  │                   │                   │
-     │  code,         │                  │                   │                   │
-     │  providerTxnId}│                  │                   │                   │
+     │ phonepe        │                  │                   │                   │
+     │ Authorization: │                  │                   │                   │
+     │  SHA256(u:p)   │                  │                   │                   │
+     │ {event,payload}│                  │                   │                   │
      │───────────────▶│                  │                   │                   │
      │                │                  │                   │                   │
      │                │ HandleWebhook    │                   │                   │
-     │                │ (payload, sig)   │                   │                   │
+     │                │ (body, authHdr)  │                   │                   │
      │                │─────────────────▶│                   │                   │
      │                │                  │                   │                   │
-     │                │                  │ Verify signature   │                   │
-     │                │                  │ SHA256(payload     │                   │
-     │                │                  │ + salt_key)        │                   │
+     │                │                  │ Verify auth:       │                   │
+     │                │                  │ SHA256(username:   │                   │
+     │                │                  │ password) ==       │                   │
+     │                │                  │ Authorization hdr  │                   │
      │                │                  │──────┐             │                   │
      │                │                  │      │             │                   │
      │                │                  │◀─────┘             │                   │

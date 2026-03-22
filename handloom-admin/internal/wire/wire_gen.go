@@ -61,7 +61,12 @@ func InitializeApiDeps(ctx context.Context, cfg *config.Config) (*ApiDeps, error
 	orderRepository := ProvideOrderRepository(client)
 	customerRepository := ProvideCustomerRepository(client)
 	orderService := ProvideOrderService(orderRepository, customerRepository, productRepository, inventoryRepository, priceQuoteRepository, pricingService)
-	orderHandler := ProvideOrderHandler(orderService, validation)
+	paymentRepository := ProvidePaymentRepository(client)
+	cartRepository := ProvideCartRepository(client)
+	cartService := ProvideCartService(cartRepository, productRepository, inventoryRepository)
+	gateway := ProvidePhonePeGateway(cfg)
+	paymentService := ProvidePaymentService(paymentRepository, orderRepository, inventoryRepository, cartService, gateway, eventPublisher)
+	orderHandler := ProvideOrderHandler(orderService, paymentService, validation)
 	customerService := ProvideCustomerService(customerRepository, orderRepository)
 	customerHandler := ProvideCustomerHandler(customerService, validation)
 	auditRepository := ProvideAuditRepository(client)
@@ -210,9 +215,18 @@ func InitializeOrderDeps(ctx context.Context, cfg *config.Config) (*OrderDeps, e
 	categoryRepository := ProvideCategoryRepository(pool, cache)
 	pricingService := ProvidePricingService(pricingRuleRepository, priceQuoteRepository, categoryRepository, productRepository, cfg)
 	orderService := ProvideOrderService(orderRepository, customerRepository, productRepository, inventoryRepository, priceQuoteRepository, pricingService)
+	paymentRepository := ProvidePaymentRepository(client)
+	cartRepository := ProvideCartRepository(client)
+	cartService := ProvideCartService(cartRepository, productRepository, inventoryRepository)
+	gateway := ProvidePhonePeGateway(cfg)
+	eventPublisher, err := ProvideEventPublisher(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+	paymentService := ProvidePaymentService(paymentRepository, orderRepository, inventoryRepository, cartService, gateway, eventPublisher)
 	service := ProvideValidator()
 	validation := ProvideValidation(service)
-	orderHandler := ProvideOrderHandler(orderService, validation)
+	orderHandler := ProvideOrderHandler(orderService, paymentService, validation)
 	customerService := ProvideCustomerService(customerRepository, orderRepository)
 	customerHandler := ProvideCustomerHandler(customerService, validation)
 	userRepository := ProvideUserRepository(client)
@@ -579,11 +593,12 @@ func InitializeStoreCheckoutDeps(ctx context.Context, cfg *config.Config) (*Stor
 	cartService := ProvideCartService(cartRepository, productRepository, inventoryRepository)
 	orderRepository := ProvideOrderRepository(client)
 	paymentRepository := ProvidePaymentRepository(client)
+	gateway := ProvidePhonePeGateway(cfg)
 	eventPublisher, err := ProvideEventPublisher(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}
-	paymentService := ProvidePaymentService(paymentRepository, orderRepository, inventoryRepository, eventPublisher, cfg)
+	paymentService := ProvidePaymentService(paymentRepository, orderRepository, inventoryRepository, cartService, gateway, eventPublisher)
 	shipmentRepository := ProvideShipmentRepository(client)
 	shippingService := ProvideShippingService(shipmentRepository, orderRepository, cfg)
 	customerRepository := ProvideCustomerRepository(client)
@@ -695,12 +710,17 @@ func InitializeStoreWebhooksDeps(ctx context.Context, cfg *config.Config) (*Stor
 		return nil, err
 	}
 	inventoryRepository := ProvideInventoryRepository(pool)
+	cartRepository := ProvideCartRepository(client)
+	cache := ProvideCatalogCache()
+	productRepository := ProvideProductRepository(pool, cache)
+	cartService := ProvideCartService(cartRepository, productRepository, inventoryRepository)
+	gateway := ProvidePhonePeGateway(cfg)
 	eventPublisher, err := ProvideEventPublisher(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}
-	paymentService := ProvidePaymentService(paymentRepository, orderRepository, inventoryRepository, eventPublisher, cfg)
-	webhookHandler := ProvideStoreWebhookHandler(paymentService)
+	paymentService := ProvidePaymentService(paymentRepository, orderRepository, inventoryRepository, cartService, gateway, eventPublisher)
+	webhookHandler := ProvideStoreWebhookHandler(paymentService, gateway, cfg)
 	storeWebhooksDeps := &StoreWebhooksDeps{
 		Config:  cfg,
 		Handler: webhookHandler,

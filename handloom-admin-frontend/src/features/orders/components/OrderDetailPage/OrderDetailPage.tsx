@@ -20,7 +20,7 @@ import { Badge, Button, Card, ConfirmModal, Input, Modal, Select } from '@/share
 import { getStatusBadgeVariant } from '@/shared/utils/badge';
 import { formatCurrency } from '@/shared/utils/currency';
 
-import type { OrderStatus } from '../../types';
+import type { OrderStatus, ProviderPaymentStatus } from '../../types';
 import { OrderNotes } from './OrderNotes';
 import { OrderTimeline } from './OrderTimeline';
 
@@ -117,6 +117,18 @@ export function OrderDetailPage() {
     onError: (error) => toast.error(getErrorMessage(error)),
   });
 
+  // Payment status check
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [paymentStatus, setPaymentStatus] = useState<ProviderPaymentStatus | null>(null);
+  const checkPaymentMutation = useMutation({
+    mutationFn: (id: string) => ordersApi.checkPaymentStatus(id),
+    onSuccess: (data) => {
+      setPaymentStatus(data);
+      setShowPaymentModal(true);
+    },
+    onError: (error) => toast.error(getErrorMessage(error)),
+  });
+
   if (isLoading) {
     return (
       <div className="space-y-6">
@@ -186,6 +198,14 @@ export function OrderDetailPage() {
           }}
         >
           Update Tracking
+        </Button>
+        <Button
+          variant="secondary"
+          leftIcon={<CreditCard className="w-4 h-4" />}
+          onClick={() => checkPaymentMutation.mutate(order.id)}
+          loading={checkPaymentMutation.isPending}
+        >
+          Check Payment
         </Button>
         <Button
           variant="secondary"
@@ -461,6 +481,62 @@ export function OrderDetailPage() {
             </Button>
           </div>
         </div>
+      </Modal>
+
+      {/* Payment Status Modal */}
+      <Modal
+        isOpen={showPaymentModal}
+        onClose={() => setShowPaymentModal(false)}
+        title="Payment Provider Status"
+        size="sm"
+      >
+        {paymentStatus && (
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              <div>
+                <p className="text-gray-500">Provider State</p>
+                <Badge variant={getStatusBadgeVariant(paymentStatus.provider_state)}>
+                  {paymentStatus.provider_state}
+                </Badge>
+              </div>
+              <div>
+                <p className="text-gray-500">Local Status</p>
+                <Badge variant={getStatusBadgeVariant(paymentStatus.local_status)}>
+                  {paymentStatus.local_status}
+                </Badge>
+              </div>
+              <div>
+                <p className="text-gray-500">Merchant Txn ID</p>
+                <p className="font-mono text-xs break-all">{paymentStatus.merchant_txn_id}</p>
+              </div>
+              <div>
+                <p className="text-gray-500">Provider Order ID</p>
+                <p className="font-mono text-xs break-all">{paymentStatus.provider_order_id}</p>
+              </div>
+              <div>
+                <p className="text-gray-500">Amount</p>
+                <p className="font-medium">{formatCurrency(paymentStatus.amount)}</p>
+              </div>
+              {paymentStatus.payment_mode && (
+                <div>
+                  <p className="text-gray-500">Payment Mode</p>
+                  <p className="font-medium">{paymentStatus.payment_mode}</p>
+                </div>
+              )}
+              {paymentStatus.transaction_id && (
+                <div className="col-span-2">
+                  <p className="text-gray-500">Transaction ID</p>
+                  <p className="font-mono text-xs break-all">{paymentStatus.transaction_id}</p>
+                </div>
+              )}
+            </div>
+            <div className="flex justify-end pt-4">
+              <Button variant="secondary" onClick={() => setShowPaymentModal(false)}>
+                Close
+              </Button>
+            </div>
+          </div>
+        )}
       </Modal>
 
       {/* Cancel Order Modal */}

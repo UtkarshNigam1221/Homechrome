@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Handloom Admin is a Go serverless backend for the Homechrome handloom e-commerce platform. It powers both the admin dashboard and the B2C customer storefront. It runs as 26 Lambda services in production (12 admin + 9 store + 4 event workers + 1 migrator) and a single monolithic server locally (port 8081). Go module: `github.com/handloom/admin`, Go 1.25.
+Handloom Admin is a Go serverless backend for the Homechrome handloom e-commerce platform. It powers both the admin dashboard and the B2C customer storefront. It runs as 22 Lambda services in dev (12 admin + 9 store + 1 migrator; event stack disabled) or 26 with event stack enabled (+ 4 workers), and a single monolithic server locally (port 8081). Go module: `github.com/handloom/admin`, Go 1.25.
 
 ## Common Commands
 
@@ -73,7 +73,7 @@ domain/ (entities + interfaces) ← handler/ → service/ → repository/dynamod
 - `internal/repository/postgres/` — PostgreSQL implementations for catalog data (categories, products, inventory)
 - `internal/router/` — mounts handlers onto Chi routers; `lambda.go` provides the Lambda adapter
 - `internal/wire/` — Google Wire compile-time DI; one `Initialize*Deps()` per Lambda
-- `internal/gateway/` — External service integrations (PhonePe payments, Shiprocket shipping, MSG91 SMS/OTP)
+- `internal/gateway/` — External service integrations (PhonePe Standard Checkout v2 payments, Shiprocket shipping, MSG91 SMS/OTP). Each gateway uses a DevClient fallback when credentials are not configured (SMS: `MSG91_AUTH_KEY`/`MSG91_OTP_TEMPLATE_ID`, PhonePe: `PHONEPE_CLIENT_ID`/`PHONEPE_CLIENT_SECRET`, Shiprocket: `SHIPROCKET_EMAIL`/`SHIPROCKET_PASSWORD`).
 - `internal/event/` — SNS event publisher + types; `handlers/` subdir for SQS consumer handlers
 - `internal/middleware/` — RequestID, Logger, Recoverer, Auth (admin JWT), CustomerAuth (customer JWT), Validation (generics-based)
 - `pkg/errors/` — typed `AppError` with error codes mapping to HTTP statuses
@@ -151,8 +151,9 @@ Mounted at `/api/v1/store/*` in the monolith (`cmd/api/main.go`):
 - `/webhooks/*` — Payment callbacks (signature-verified)
 
 ### Event-Driven Architecture
-- **Dual publisher**: `SNSPublisher` (Lambda mode, publishes to SNS) vs `LocalPublisher` (monolith mode, calls handler functions in-process). Controlled by `EVENT_PUBLISHING_ENABLED` env var.
-- **SNS fan-out**: Single `handloom-events-{env}` topic → 4 SQS queues with filter policies → 4 worker Lambdas
+- **Three publishers**: `SNSPublisher` (Lambda mode with events enabled, publishes to SNS), `LocalPublisher` (monolith mode, calls handler functions in-process), `NoopPublisher` (Lambda mode with events disabled — logs and discards). Controlled by `EVENT_PUBLISHING_ENABLED` env var.
+- **Dev: event stack disabled** — EventStack (SNS + SQS + 4 worker Lambdas + EventBridge rule) is commented out in `infra/cmd/main.go` for cost savings. `nil` is passed to APIStack, which handles it gracefully (no `SNS_TOPIC_ARN`, no `EVENT_PUBLISHING_ENABLED` set). `NoopPublisher` is used when events are disabled. To re-enable: uncomment the EventStack block in `infra/cmd/main.go` and pass `eventStack` to APIStack.
+- **SNS fan-out** (when enabled): Single `handloom-events-{env}` topic → 4 SQS queues with filter policies → 4 worker Lambdas
 - **Workers**: `worker-notification`, `worker-report`, `worker-analytics`, `worker-audit` — entry points at `cmd/lambda/worker-*/main.go`, use `SQSBatchResponse` with `BatchItemFailures` for partial failure reporting
 - **Event handlers**: `internal/event/handlers/` — each implements `EventHandler` interface (`CanHandle`/`Handle`) for `LocalPublisher` and `HandleSQSEvent` for Lambda mode
 - **20 event types** across 7 categories: `order.*` (3), `payment.*` (3), `shipment.*` (3), `product.*` (3), `inventory.*` (3), `customer.*` (2), `admin.*` (2) — defined in `internal/event/types.go`
@@ -169,7 +170,22 @@ Mounted at `/api/v1/store/*` in the monolith (`cmd/api/main.go`):
 - To add a migration: create `migrations/NNN_description.sql`, then `make cdk-deploy-dev`
 
 ### Infrastructure (infra/)
-AWS CDK in Go. Four stacks per environment: DatabaseStack, StorageStack, APIStack, EventStack. All Lambdas use ARM64/128MB(dev)/256MB(prod)/provided.al2023.
+AWS CDK in Go. Four stacks per environment: DatabaseStack, StorageStack, APIStack, EventStack — EventStack is currently disabled in dev (commented out in `infra/cmd/main.go`). All Lambdas use ARM64/128MB(dev)/256MB(prod)/provided.al2023. Lambda count: 22 in dev (12 admin + 9 store + 1 migrator), 26 with event stack (+ 4 workers).
+
+### Payment Integration (PhonePe Standard Checkout v2)
+- **Auth**: OAuth token flow — `POST /v1/oauth/token` with `PHONEPE_CLIENT_ID` + `PHONEPE_CLIENT_SECRET` to obtain `O-Bearer` token
+- **Payment initiation**: `POST /checkout/v2/pay` with `O-Bearer` token header
+- **Status check**: `GET /checkout/v2/order/{id}/status` with `O-Bearer` token header
+- **Env vars**: `PHONEPE_CLIENT_ID`, `PHONEPE_CLIENT_SECRET`, `PHONEPE_CLIENT_VERSION`, `PHONEPE_WEBHOOK_USERNAME`, `PHONEPE_WEBHOOK_PASSWORD`
+- **Webhook auth**: `Authorization: SHA256(username:password)` header verification
+- **Webhook events**: `checkout.order.completed`, `checkout.order.failed`
+- **DevClient**: Used when `PHONEPE_CLIENT_ID` or `PHONEPE_CLIENT_SECRET` is empty (simulates successful payments)
+
+### Dev Client Selection
+External service clients no longer use `IsDevelopment()` to decide dev vs real mode. Each gateway checks if its specific credentials are configured:
+- **SMS (MSG91)**: DevClient when `MSG91_AUTH_KEY` or `MSG91_OTP_TEMPLATE_ID` is empty
+- **PhonePe**: DevClient when `PHONEPE_CLIENT_ID` or `PHONEPE_CLIENT_SECRET` is empty
+- **Shiprocket**: DevClient when `SHIPROCKET_EMAIL` or `SHIPROCKET_PASSWORD` is empty
 
 ## Key Conventions
 

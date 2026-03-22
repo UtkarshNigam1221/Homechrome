@@ -62,19 +62,17 @@ client.interceptors.response.use(
     }
 
     if (error.response?.status === 401 && !originalRequest._retry) {
-      // Skip refresh for auth-check calls — just let them fail quietly
-      const isAuthCheck = originalRequest.url?.includes('/store/me');
-      if (isAuthCheck) {
-        return Promise.reject(error);
-      }
-
       originalRequest._retry = true;
       try {
         await client.post('/api/v1/store/auth/refresh');
         return client(originalRequest);
       } catch {
-        // Refresh failed — redirect to login only if not already there
+        // Refresh failed — redirect to login unless on auth-check, login, or confirmation page
+        const isAuthCheck = originalRequest.url?.includes('/store/me');
+        const isConfirmation = typeof window !== 'undefined' && window.location.pathname.startsWith('/checkout/confirmation');
         if (
+          !isAuthCheck &&
+          !isConfirmation &&
           typeof window !== 'undefined' &&
           !window.location.pathname.startsWith('/login')
         ) {
