@@ -55,6 +55,17 @@ export interface Order {
   updated_at: string;
 }
 
+export interface ProviderPaymentStatus {
+  order_id: string;
+  merchant_txn_id: string;
+  provider_order_id: string;
+  provider_state: string;
+  local_status: string;
+  amount: number;
+  payment_mode?: string;
+  transaction_id?: string;
+}
+
 export interface CreateOrderRequest {
   customer_id: string;
   items: {

@@ -3,7 +3,6 @@ package phonepe
 import (
 	"context"
 	"crypto/sha256"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -14,40 +13,101 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// fakeTokenThenHandler returns a handler that serves an OAuth token on /v1/oauth/token
+// and delegates all other requests to the provided handler.
+func fakeTokenThenHandler(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/oauth/token" {
+			w.WriteHeader(http.StatusOK)
+			json.NewEncoder(w).Encode(TokenResponse{
+				AccessToken: "test-token",
+				ExpiresAt:   9999999999,
+				TokenType:   "O-Bearer",
+			})
+			return
+		}
+		next(w, r)
+	}
+}
+
 func TestClient_InitiatePayment_Success(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "/pg/v1/pay", r.URL.Path)
-		assert.Contains(t, r.Header.Get("X-VERIFY"), "###1")
+	server := httptest.NewServer(fakeTokenThenHandler(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/checkout/v2/pay", r.URL.Path)
+		assert.Equal(t, "O-Bearer test-token", r.Header.Get("Authorization"))
 
 		w.WriteHeader(http.StatusOK)
 		json.NewEncoder(w).Encode(PayResponse{
-			Success: true,
-			Code:    "PAYMENT_INITIATED",
-			Data: struct {
-				MerchantID            string `json:"merchantId"`
-				MerchantTransactionID string `json:"merchantTransactionId"`
-				InstrumentResponse    struct {
-					Type         string `json:"type"`
-					RedirectInfo struct {
-						URL    string `json:"url"`
-						Method string `json:"method"`
-					} `json:"redirectInfo"`
-				} `json:"instrumentResponse"`
-			}{
-				InstrumentResponse: struct {
-					Type         string `json:"type"`
-					RedirectInfo struct {
-						URL    string `json:"url"`
-						Method string `json:"method"`
-					} `json:"redirectInfo"`
-				}{
-					RedirectInfo: struct {
-						URL    string `json:"url"`
-						Method string `json:"method"`
-					}{
-						URL:    "https://phonepe.com/pay/redirect",
-						Method: "GET",
-					},
+			OrderID:     "OMO123",
+			State:       "PENDING",
+			RedirectURL: "https://phonepe.com/pay/redirect",
+		})
+	}))
+	defer server.Close()
+
+	client := NewClient(Config{
+		ClientID:      "TEST_CLIENT",
+		ClientSecret:  "test-secret",
+		ClientVersion: "1",
+		BaseURL:       server.URL,
+		RedirectURL:   "https://example.com/confirmation",
+	})
+
+	redirectURL, err := client.InitiatePayment(context.Background(), "txn_123", "cust_456", 10000, "order_789")
+	require.NoError(t, err)
+	assert.Equal(t, "https://phonepe.com/pay/redirect", redirectURL)
+}
+
+func TestClient_InitiatePayment_Failure(t *testing.T) {
+	server := httptest.NewServer(fakeTokenThenHandler(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(PayErrorResponse{
+			Code:    "BAD_REQUEST",
+			Message: "Invalid merchant",
+		})
+	}))
+	defer server.Close()
+
+	client := NewClient(Config{
+		ClientID:      "BAD_CLIENT",
+		ClientSecret:  "test-secret",
+		ClientVersion: "1",
+		BaseURL:       server.URL,
+	})
+
+	_, err := client.InitiatePayment(context.Background(), "txn_123", "cust_456", 10000, "order_789")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "Invalid merchant")
+}
+
+func TestClient_VerifyWebhookSignature(t *testing.T) {
+	client := NewClient(Config{
+		ClientID:     "C",
+		ClientSecret: "S",
+	})
+
+	username := "homechrome"
+	password := "secret123"
+	expectedHash := fmt.Sprintf("%x", sha256.Sum256([]byte(username+":"+password)))
+
+	assert.True(t, client.VerifyWebhookSignature(username, password, expectedHash))
+	assert.False(t, client.VerifyWebhookSignature(username, password, "invalid-signature"))
+}
+
+func TestClient_CheckPaymentStatus(t *testing.T) {
+	server := httptest.NewServer(fakeTokenThenHandler(func(w http.ResponseWriter, r *http.Request) {
+		assert.Contains(t, r.URL.Path, "/checkout/v2/order/txn_123/status")
+		assert.Equal(t, "O-Bearer test-token", r.Header.Get("Authorization"))
+
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(StatusResponse{
+			OrderID: "OMO123",
+			State:   "COMPLETED",
+			Amount:  10000,
+			PaymentDetails: []PaymentDetail{
+				{
+					TransactionID: "TXN456",
+					PaymentMode:   "UPI_QR",
+					State:         "COMPLETED",
 				},
 			},
 		})
@@ -55,96 +115,40 @@ func TestClient_InitiatePayment_Success(t *testing.T) {
 	defer server.Close()
 
 	client := NewClient(Config{
-		MerchantID:  "TEST_MERCHANT",
-		SaltKey:     "test-salt-key",
-		SaltIndex:   "1",
-		BaseURL:     server.URL,
-		CallbackURL: "https://example.com/callback",
-		RedirectURL: "https://example.com/redirect",
-	})
-
-	redirectURL, err := client.InitiatePayment(context.Background(), "txn_123", "cust_456", 10000)
-	require.NoError(t, err)
-	assert.Equal(t, "https://phonepe.com/pay/redirect", redirectURL)
-}
-
-func TestClient_InitiatePayment_Failure(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(PayResponse{
-			Success: false,
-			Code:    "PAYMENT_ERROR",
-			Message: "Invalid merchant",
-		})
-	}))
-	defer server.Close()
-
-	client := NewClient(Config{
-		MerchantID: "BAD_MERCHANT",
-		SaltKey:    "test-salt-key",
-		BaseURL:    server.URL,
-	})
-
-	_, err := client.InitiatePayment(context.Background(), "txn_123", "cust_456", 10000)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "Invalid merchant")
-}
-
-func TestClient_VerifyWebhookSignature(t *testing.T) {
-	client := NewClient(Config{
-		SaltKey:   "test-salt-key",
-		SaltIndex: "1",
-	})
-
-	responseBase64 := base64.StdEncoding.EncodeToString([]byte(`{"success":true}`))
-	expectedHash := fmt.Sprintf("%x", sha256.Sum256([]byte(responseBase64+"test-salt-key")))
-	validSignature := expectedHash + "###1"
-
-	assert.True(t, client.VerifyWebhookSignature(responseBase64, validSignature))
-	assert.False(t, client.VerifyWebhookSignature(responseBase64, "invalid-signature"))
-}
-
-func TestClient_CheckPaymentStatus(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Contains(t, r.URL.Path, "/pg/v1/status/TEST_MERCHANT/txn_123")
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(StatusResponse{
-			Success: true,
-			Code:    "PAYMENT_SUCCESS",
-			Data: struct {
-				MerchantID            string `json:"merchantId"`
-				MerchantTransactionID string `json:"merchantTransactionId"`
-				TransactionID         string `json:"transactionId"`
-				Amount                int64  `json:"amount"`
-				State                 string `json:"state"`
-				ResponseCode          string `json:"responseCode"`
-				PaymentInstrument     struct {
-					Type string `json:"type"`
-					UTR  string `json:"utr,omitempty"`
-				} `json:"paymentInstrument"`
-			}{
-				State:                 "COMPLETED",
-				MerchantTransactionID: "txn_123",
-				Amount:                10000,
-			},
-		})
-	}))
-	defer server.Close()
-
-	client := NewClient(Config{
-		MerchantID: "TEST_MERCHANT",
-		SaltKey:    "test-salt-key",
-		BaseURL:    server.URL,
+		ClientID:      "TEST_CLIENT",
+		ClientSecret:  "test-secret",
+		ClientVersion: "1",
+		BaseURL:       server.URL,
 	})
 
 	status, err := client.CheckPaymentStatus(context.Background(), "txn_123")
 	require.NoError(t, err)
-	assert.True(t, status.Success)
-	assert.Equal(t, "COMPLETED", status.Data.State)
+	assert.Equal(t, "COMPLETED", status.State)
+	assert.Equal(t, "OMO123", status.OrderID)
+	assert.Len(t, status.PaymentDetails, 1)
+	assert.Equal(t, "UPI_QR", status.PaymentDetails[0].PaymentMode)
+}
+
+func TestClient_CheckPaymentStatus_Error(t *testing.T) {
+	server := httptest.NewServer(fakeTokenThenHandler(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		w.Write([]byte(`{"code":"INVALID_MERCHANT_ORDER_ID","message":"No entry found"}`))
+	}))
+	defer server.Close()
+
+	client := NewClient(Config{
+		ClientID:      "TEST_CLIENT",
+		ClientSecret:  "test-secret",
+		ClientVersion: "1",
+		BaseURL:       server.URL,
+	})
+
+	_, err := client.CheckPaymentStatus(context.Background(), "bad_txn")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "status 404")
 }
 
 func TestNewClient_Defaults(t *testing.T) {
-	client := NewClient(Config{MerchantID: "M", SaltKey: "K"})
+	client := NewClient(Config{ClientID: "C", ClientSecret: "S"})
 	assert.Equal(t, "https://api-preprod.phonepe.com/apis/pg-sandbox", client.config.BaseURL)
-	assert.Equal(t, "1", client.config.SaltIndex)
 }

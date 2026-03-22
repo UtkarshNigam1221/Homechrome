@@ -83,6 +83,7 @@ func (r *PaymentRepository) GetByOrderID(ctx context.Context, orderID string) (*
 		KeyConditionExpression: aws.String("GSI1PK = :pk"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
 			":pk": &types.AttributeValueMemberS{Value: "ORDER#" + orderID},
+			":et": &types.AttributeValueMemberS{Value: "PAYMENT"},
 		},
 		FilterExpression: aws.String("entity_type = :et"),
 		ScanIndexForward: aws.Bool(false), // newest first

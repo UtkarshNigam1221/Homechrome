@@ -2,4 +2,4 @@
 .worktrees/
 
 # IDE
-.idea/
+.idea/build/

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/internal/middleware"
@@ -145,12 +146,14 @@ func (h *AuthHandler) VerifyOTP(w http.ResponseWriter, r *http.Request) {
 
 	h.setStoreCookies(w, tokens)
 
-	// Merge guest cart if guest_session cookie is present
+	// Merge guest cart if guest_session cookie is present and valid UUID
 	if cookie, err := r.Cookie("guest_session"); err == nil && cookie.Value != "" {
-		if mergeErr := h.cartService.MergeGuestSession(ctx, customer.ID, cookie.Value); mergeErr != nil {
-			slog.WarnContext(ctx, "failed to merge guest cart", "customer_id", customer.ID, "error", mergeErr)
+		if _, parseErr := uuid.Parse(cookie.Value); parseErr == nil {
+			if mergeErr := h.cartService.MergeGuestSession(ctx, customer.ID, cookie.Value); mergeErr != nil {
+				slog.WarnContext(ctx, "failed to merge guest cart", "customer_id", customer.ID, "error", mergeErr)
+			}
 		}
-		// Clear the guest_session cookie
+		// Clear the guest_session cookie regardless of validity
 		secure, sameSite, domain := cookieSettings()
 		http.SetCookie(w, &http.Cookie{
 			Name:     "guest_session",

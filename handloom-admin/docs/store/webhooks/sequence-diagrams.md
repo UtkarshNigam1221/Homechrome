@@ -15,23 +15,22 @@ This document contains sequence diagrams for the B2C store webhook processing op
      │               │                │               │              │               │              │
      │ POST /webhooks│                │               │              │               │              │
      │ /phonepe      │                │               │              │               │              │
-     │ X-VERIFY: xxx │                │               │              │               │              │
-     │ {response:b64}│                │               │              │               │              │
+     │ Authorization:│                │               │              │               │              │
+     │  SHA256(u:p)  │                │               │              │               │              │
+     │ {event,       │                │               │              │               │              │
+     │  payload}     │                │               │              │               │              │
      │──────────────▶│                │               │              │               │              │
      │               │                │               │              │               │              │
-     │               │ Verify SHA256  │               │              │               │              │
-     │               │ signature      │               │              │               │              │
+     │               │ Verify auth    │               │              │               │              │
+     │               │ SHA256(user:   │               │              │               │              │
+     │               │ pass) == hdr   │               │              │               │              │
      │               │──────┐         │               │              │               │              │
      │               │      │         │               │              │               │              │
      │               │◀─────┘ Valid   │               │              │               │              │
      │               │                │               │              │               │              │
-     │               │ Base64 decode  │               │              │               │              │
-     │               │ response       │               │              │               │              │
-     │               │──────┐         │               │              │               │              │
-     │               │      │         │               │              │               │              │
-     │               │◀─────┘         │               │              │               │              │
-     │               │ code=          │               │              │               │              │
-     │               │ PAYMENT_SUCCESS│               │              │               │              │
+     │               │ Parse event:   │               │              │               │              │
+     │               │ checkout.order │               │              │               │              │
+     │               │ .completed     │               │              │               │              │
      │               │                │               │              │               │              │
      │               │ GetByMerchant  │               │              │               │              │
      │               │ TxnID(id)      │               │              │               │              │
@@ -92,11 +91,14 @@ This document contains sequence diagrams for the B2C store webhook processing op
      │               │                │              │               │              │
      │ POST /webhooks│                │              │               │              │
      │ /phonepe      │                │              │               │              │
-     │ code=PAYMENT_ │                │              │               │              │
-     │ ERROR         │                │              │               │              │
+     │ Authorization:│                │              │               │              │
+     │  SHA256(u:p)  │                │              │               │              │
+     │ {event:       │                │              │               │              │
+     │  checkout.    │                │              │               │              │
+     │  order.failed}│                │              │               │              │
      │──────────────▶│                │              │               │              │
      │               │                │              │               │              │
-     │               │ Verify + decode│              │               │              │
+     │               │ Verify + parse │              │               │              │
      │               │──────┐         │              │               │              │
      │               │      │         │              │               │              │
      │               │◀─────┘         │              │               │              │

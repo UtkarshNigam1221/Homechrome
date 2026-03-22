@@ -23,40 +23,43 @@ This document describes the webhook processing flows for external service callba
     ┌─────────────────┐
     │ POST /webhooks/ │
     │ phonepe         │
-    │ X-VERIFY: xxx   │
-    │ {response: b64} │
+    │ Authorization:  │
+    │ SHA256(u:p)     │
+    │ {event,payload} │
     └────────┬────────┘
              │
              ▼
     ┌─────────────────┐
-    │ Verify SHA256   │
-    │ signature using │
-    │ X-VERIFY header │
+    │ Verify auth:    │
+    │ SHA256(username: │
+    │ password) ==    │
+    │ Authorization   │
     └────────┬────────┘
              │
-             ├── Invalid Signature ──┐
+             ├── Invalid Auth ───────┐
              │                       │
              ▼                       ▼
     ┌─────────────────┐    ┌─────────────────┐
-    │ Decode base64   │    │ Log warning:    │
-    │ response        │    │ "Signature      │
-    │ payload         │    │ mismatch"       │
+    │ Parse JSON      │    │ Log warning:    │
+    │ event payload   │    │ "Auth           │
+    │                 │    │ mismatch"       │
     └────────┬────────┘    │                 │
              │             │ Return 200 OK   │
              ▼             └─────────────────┘
     ┌─────────────────┐
     │ Extract:        │
-    │ - code:         │
-    │   PAYMENT_      │
-    │   SUCCESS       │
-    │ - merchantTxnId │
-    │ - amount        │
+    │ - event:        │
+    │   checkout.order│
+    │   .completed    │
+    │ - merchantOrder │
+    │   Id, amount    │
     └────────┬────────┘
              │
              ▼
     ┌─────────────────┐
     │ Lookup payment  │
-    │ by merchantTxnId│
+    │ by merchantOrder│
+    │ Id              │
     └────────┬────────┘
              │
              ├── Already Processed ──┐
@@ -128,36 +131,38 @@ This document describes the webhook processing flows for external service callba
     ┌─────────────────┐
     │ POST /webhooks/ │
     │ phonepe         │
-    │ X-VERIFY: xxx   │
-    │ {response: b64} │
+    │ Authorization:  │
+    │ SHA256(u:p)     │
+    │ {event,payload} │
     └────────┬────────┘
              │
              ▼
     ┌─────────────────┐
-    │ Verify SHA256   │
-    │ signature       │
+    │ Verify auth     │
+    │ header          │
     └────────┬────────┘
              │
              ▼
     ┌─────────────────┐
-    │ Decode base64   │
-    │ response        │
+    │ Parse JSON      │
+    │ event payload   │
     └────────┬────────┘
              │
              ▼
     ┌─────────────────┐
     │ Extract:        │
-    │ - code:         │
-    │   PAYMENT_ERROR │
-    │   or PAYMENT_   │
-    │   DECLINED      │
-    │ - merchantTxnId │
+    │ - event:        │
+    │   checkout.order│
+    │   .failed       │
+    │ - merchantOrder │
+    │   Id            │
     └────────┬────────┘
              │
              ▼
     ┌─────────────────┐
     │ Lookup payment  │
-    │ by merchantTxnId│
+    │ by merchantOrder│
+    │ Id              │
     └────────┬────────┘
              │
              ├── Already Processed ──┐

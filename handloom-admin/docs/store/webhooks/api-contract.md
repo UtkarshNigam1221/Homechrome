@@ -9,46 +9,45 @@ Webhook handlers for external service callbacks. These endpoints receive payment
 
 ### PhonePe Payment Callback
 
-Receive payment status callback from PhonePe. The payload contains a base64-encoded response with the transaction result. The `X-VERIFY` header contains a SHA256 checksum for signature verification. This endpoint is idempotent: if the payment has already been processed, it skips the update and still returns 200.
+Receive payment status callback from PhonePe Standard Checkout v2. The payload contains a JSON body with an `event` field and payment details. The `Authorization` header contains `SHA256(username:password)` for webhook verification. This endpoint is idempotent: if the payment has already been processed, it skips the update and still returns 200.
 
 **Endpoint:** `POST /api/v1/store/webhooks/phonepe`
-**Authentication:** None (signature-verified via `X-VERIFY` header)
+**Authentication:** None (verified via `Authorization` header with SHA256 of webhook credentials)
 
 **Request Headers:**
 | Header | Type | Required | Description |
 |--------|------|----------|-------------|
-| `X-VERIFY` | string | Yes | SHA256 checksum: `SHA256(base64Response + /pg/v1/status/{merchantId}/{merchantTxnId} + saltKey) + ### + saltIndex` |
+| `Authorization` | string | Yes | `SHA256(PHONEPE_WEBHOOK_USERNAME:PHONEPE_WEBHOOK_PASSWORD)` |
 
 **Request Body:**
 ```json
 {
-  "response": "eyJzdWNjZXNzIjp0cnVlLCJjb2RlIjoiUEFZTUVOVF9TVUNDRVNTIiw..."
+  "event": "checkout.order.completed",
+  "payload": {
+    "orderId": "OMO2502070957301614536178",
+    "merchantOrderId": "HC-ord-f47ac10b-58cc-4372",
+    "state": "COMPLETED",
+    "amount": 1354644,
+    "paymentDetails": [
+      {
+        "paymentMode": "UPI",
+        "transactionId": "T2026022012345678901234",
+        "amount": 1354644
+      }
+    ]
+  }
 }
 ```
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `response` | string | Yes | Base64-encoded JSON response from PhonePe |
-
-**Decoded Response Payload (for reference):**
-```json
-{
-  "success": true,
-  "code": "PAYMENT_SUCCESS",
-  "message": "Your payment is successful.",
-  "data": {
-    "merchantId": "HOMECHROME",
-    "merchantTransactionId": "pay-a1b2c3d4-e5f6-7890",
-    "transactionId": "T2026022012345678901234",
-    "amount": 1354644,
-    "state": "COMPLETED",
-    "responseCode": "SUCCESS",
-    "paymentInstrument": {
-      "type": "UPI",
-      "utr": "223456789012"
-    }
-  }
-}
+| `event` | string | Yes | Event type: `checkout.order.completed` or `checkout.order.failed` |
+| `payload` | object | Yes | Payment result details |
+| `payload.orderId` | string | Yes | PhonePe order reference |
+| `payload.merchantOrderId` | string | Yes | Our merchant transaction ID (maps to PaymentID) |
+| `payload.state` | string | Yes | `COMPLETED` or `FAILED` |
+| `payload.amount` | number | Yes | Amount in paise |
+| `payload.paymentDetails` | array | Yes | Payment instrument details |
 ```
 
 **Response (200 OK):**
@@ -58,19 +57,19 @@ Receive payment status callback from PhonePe. The payload contains a base64-enco
 }
 ```
 
-**Side Effects (on PAYMENT_SUCCESS):**
-- Verifies SHA256 signature using PhonePe salt key
-- Decodes base64 response payload
-- Looks up payment by `merchantTransactionId`
+**Side Effects (on `checkout.order.completed`):**
+- Verifies Authorization header against SHA256(webhook_username:webhook_password)
+- Parses JSON payload directly (no base64 decoding)
+- Looks up payment by `payload.merchantOrderId`
 - If payment already processed (idempotent check): skip, return 200
 - Updates payment status to `SUCCESS`
 - Updates order status from `PENDING` to `CONFIRMED`
 - Sends order confirmation SMS to customer
 
-**Side Effects (on PAYMENT_FAILED / PAYMENT_DECLINED):**
-- Verifies SHA256 signature using PhonePe salt key
-- Decodes base64 response payload
-- Looks up payment by `merchantTransactionId`
+**Side Effects (on `checkout.order.failed`):**
+- Verifies Authorization header against SHA256(webhook_username:webhook_password)
+- Parses JSON payload directly (no base64 decoding)
+- Looks up payment by `payload.merchantOrderId`
 - If payment already processed (idempotent check): skip, return 200
 - Updates payment status to `FAILED`
 - Releases reserved inventory for all order items
@@ -78,7 +77,7 @@ Receive payment status callback from PhonePe. The payload contains a base64-enco
 
 **Error Handling:**
 - Always returns `200 OK` regardless of internal processing outcome to prevent PhonePe retries
-- Signature verification failure is logged but still returns 200
+- Authorization verification failure is logged but still returns 200
 - Internal errors are logged and monitored via CloudWatch
 
 ---

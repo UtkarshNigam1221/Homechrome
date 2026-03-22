@@ -2,6 +2,7 @@ package stacks
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/aws/aws-cdk-go/awscdk/v2"
@@ -100,6 +101,13 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 		commonEnv["COOKIE_DOMAIN"] = jsii.String("." + props.BaseDomain)
 	}
 
+	// Add PhonePe env vars when configured
+	for _, key := range []string{"PHONEPE_CLIENT_ID", "PHONEPE_CLIENT_SECRET", "PHONEPE_CLIENT_VERSION", "PHONEPE_BASE_URL", "PHONEPE_CALLBACK_URL", "PHONEPE_REDIRECT_URL", "PHONEPE_WEBHOOK_USERNAME", "PHONEPE_WEBHOOK_PASSWORD"} {
+		if v := os.Getenv(key); v != "" {
+			commonEnv[key] = jsii.String(v)
+		}
+	}
+
 	// Add event publishing env vars when EventStack is available
 	if props.EventStack != nil {
 		commonEnv["SNS_TOPIC_ARN"] = props.EventStack.TopicARN
@@ -137,7 +145,7 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 		"store-profile",
 		"store-events",
 		"store-webhooks",
-		// "order",
+		"order",
 		// "pricing",
 		// "inventory",
 		// "analytics",
@@ -391,6 +399,37 @@ func setupAPIRoutes(api awsapigateway.RestApi, lambdas map[string]*ServiceLambda
 		assets.AddProxy(&awsapigateway.ProxyResourceOptions{
 			AnyMethod:          jsii.Bool(true),
 			DefaultIntegration: assetIntegration,
+		})
+	}
+
+	// Order routes
+	if orderLambda, ok := lambdas["order"]; ok {
+		orderLambda.Function.AddPermission(jsii.String("OrderApiInvoke"), &awslambda.Permission{
+			Principal: awsiam.NewServicePrincipal(jsii.String("apigateway.amazonaws.com"), nil),
+			Action:    jsii.String("lambda:InvokeFunction"),
+			SourceArn: jsii.String(fmt.Sprintf("arn:aws:execute-api:%s:%s:%s/*",
+				*awscdk.Aws_REGION(),
+				*awscdk.Aws_ACCOUNT_ID(),
+				*api.RestApiId(),
+			)),
+		})
+
+		orderIntegration := awsapigateway.NewLambdaIntegration(orderLambda.Function, &awsapigateway.LambdaIntegrationOptions{
+			Proxy: jsii.Bool(true),
+		})
+
+		orders := admin.AddResource(jsii.String("orders"), nil)
+		orders.AddMethod(jsii.String("ANY"), orderIntegration, &awsapigateway.MethodOptions{})
+		orders.AddProxy(&awsapigateway.ProxyResourceOptions{
+			AnyMethod:          jsii.Bool(true),
+			DefaultIntegration: orderIntegration,
+		})
+
+		customers := admin.AddResource(jsii.String("customers"), nil)
+		customers.AddMethod(jsii.String("ANY"), orderIntegration, &awsapigateway.MethodOptions{})
+		customers.AddProxy(&awsapigateway.ProxyResourceOptions{
+			AnyMethod:          jsii.Bool(true),
+			DefaultIntegration: orderIntegration,
 		})
 	}
 

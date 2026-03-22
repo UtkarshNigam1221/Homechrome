@@ -90,7 +90,7 @@ The Handloom Admin Portal is built as a **serverless microservices architecture*
 
 ### Microservices Architecture
 
-The application is decomposed into **26 Lambda services** (12 admin + 9 B2C store + 4 event workers), each responsible for a specific domain:
+The application is decomposed into up to **26 Lambda services** (12 admin + 9 B2C store + 4 event workers), each responsible for a specific domain. In dev, only **15 Lambdas** are active (5 admin: auth, user, catalog, asset, order + 9 store + 1 migrator). The event stack and several admin services (pricing, inventory, analytics, notification, coupon, report, audit) are disabled in dev:
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────────────┐
@@ -221,17 +221,18 @@ Infrastructure is defined as code using **AWS CDK for Go**:
 │  │      │                                                                        │  │
 │  │      ├── APIStack (stacks/api.go)                                              │  │
 │  │      │     ├── JWT Secret (SSM Parameter)                                     │  │
-│  │      │     ├── 26 Lambda Functions (ARM64, Go runtime)                        │  │
+│  │      │     ├── Up to 26 Lambda Functions (ARM64, Go runtime; 15 in dev)       │  │
 │  │      │     │     └── IAM Roles with least-privilege access                    │  │
 │  │      │     └── API Gateway (REST API)                                         │  │
 │  │      │           ├── CORS configuration                                       │  │
 │  │      │           ├── Throttling (100 rps, burst 200)                          │  │
 │  │      │           └── Route integrations to Lambdas                            │  │
 │  │      │                                                                        │  │
-│  │      └── EventStack (stacks/events.go)                                        │  │
+│  │      └── EventStack (stacks/events.go) [DISABLED IN DEV]                      │  │
 │  │            ├── SNS Topic (domain events)                                      │  │
 │  │            ├── 4 SQS Queues (analytics, audit, notification, report)          │  │
-│  │            └── 4 Worker Lambdas (SQS consumers)                               │  │
+│  │            ├── 4 Worker Lambdas (SQS consumers)                               │  │
+│  │            └── EventStack creation commented out in infra/cmd/main.go (dev)   │  │
 │  │                                                                                │  │
 │  └───────────────────────────────────────────────────────────────────────────────┘  │
 │                                                                                      │
@@ -462,7 +463,7 @@ We're using a **hybrid multi-table design** that groups related entities togethe
 
 ### Data Flow Architecture (Detailed View)
 
-> **Note:** This section provides additional detail on data flows. See the [System Architecture Overview](#system-architecture-overview) above for the complete microservices architecture with all 26 Lambda services.
+> **Note:** This section provides additional detail on data flows. See the [System Architecture Overview](#system-architecture-overview) above for the complete microservices architecture (up to 26 Lambda services; 15 active in dev).
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -553,7 +554,7 @@ We're using a **hybrid multi-table design** that groups related entities togethe
 
 #### 2. Lambda Functions
 
-> See [Lambda Service Details](#lambda-service-details) above for the complete list of 26 Lambda services (12 admin + 9 store + 4 workers).
+> See [Lambda Service Details](#lambda-service-details) above for the complete list of up to 26 Lambda services (12 admin + 9 store + 4 workers). In dev, only 15 are active (5 admin + 9 store + 1 migrator); the event stack uses a `NoopPublisher` when disabled.
 
 #### 3. Database Design (Hybrid)
 
@@ -6970,19 +6971,20 @@ The B2C storefront is fully integrated with 9 dedicated Lambda services:
 - **Store Auth**: Phone OTP login via MSG91, customer JWT in HttpOnly cookies
 - **Store Catalog**: Public product/category browsing (backed by PostgreSQL)
 - **Store Cart**: Shopping cart management (customer-authenticated)
-- **Store Checkout**: Order placement + PhonePe payment initiation
+- **Store Checkout**: Order placement + PhonePe Standard Checkout v2 payment initiation (OAuth token auth, `/checkout/v2/pay`)
 - **Store Orders**: Customer order history
 - **Store Profile**: Customer account and address management
 - **Store Tracking**: Public order tracking via Shiprocket
 - **Store Events**: Storefront analytics event ingestion (rate-limited)
-- **Store Webhooks**: Payment callback handling (signature-verified)
+- **Store Webhooks**: Payment callback handling (webhook auth: `SHA256(username:password)` in Authorization header; events: `checkout.order.completed`, `checkout.order.failed`)
 
-### Event-Driven Architecture (Implemented)
+### Event-Driven Architecture (Implemented, Disabled in Dev)
 
 Domain events flow through SNS → SQS → Worker Lambdas:
 - **SNS Topic**: Publishes order.created, payment.confirmed, shipment.updated, etc.
 - **4 Worker Lambdas**: analytics, audit, notification, report — each consumes its own SQS queue
-- **CDK EventStack**: Defines SNS topic, SQS queues with DLQs, and worker Lambda functions
+- **CDK EventStack**: Defines SNS topic, SQS queues with DLQs, EventBridge rule, and worker Lambda functions
+- **Dev**: EventStack creation is commented out in `infra/cmd/main.go`. A `NoopPublisher` is used when `EVENT_PUBLISHING_ENABLED` is false or the SNS topic is not configured
 
 ### API Count Summary
 

@@ -147,6 +147,8 @@ var RepositorySet = wire.NewSet(
 	ProvideProductRepository,
 	ProvideInventoryRepository,
 	ProvideOrderRepository,
+	ProvidePaymentRepository,
+	ProvideCartRepository,
 	ProvideCustomerRepository,
 	ProvidePricingRuleRepository,
 	ProvidePriceQuoteRepository,
@@ -331,6 +333,9 @@ var ServiceSet = wire.NewSet(
 	ProvideReportService,
 	ProvideAuditService,
 	ProvideEventPublisher,
+	ProvideCartService,
+	ProvidePhonePeGateway,
+	ProvidePaymentService,
 )
 
 // ============================================================================
@@ -381,9 +386,10 @@ func ProvideInventoryHandler(
 // ProvideOrderHandler creates a new OrderHandler
 func ProvideOrderHandler(
 	orderService *service.OrderService,
+	paymentService *service.PaymentService,
 	validation *middleware.Validation,
 ) *handler.OrderHandler {
-	return handler.NewOrderHandler(orderService, validation)
+	return handler.NewOrderHandler(orderService, paymentService, validation)
 }
 
 // ProvideCustomerHandler creates a new CustomerHandler
@@ -536,7 +542,7 @@ func ProvideCustomerAuthService(
 	cfg *config.Config,
 ) *service.CustomerAuthService {
 	var smsGateway domain.SMSGateway
-	if cfg.IsDevelopment() {
+	if cfg.Store.MSG91AuthKey == "" || cfg.Store.MSG91OTPTemplateID == "" {
 		smsGateway = sms.NewDevClient()
 	} else {
 		smsGateway = sms.NewClient(sms.Config{
@@ -565,28 +571,31 @@ func ProvideCartService(
 	return service.NewCartService(cartRepo, productRepo, inventoryRepo)
 }
 
-// ProvidePaymentService creates a new PaymentService with PhonePe gateway
+// ProvidePhonePeGateway creates the PhonePe gateway (real or dev client)
+func ProvidePhonePeGateway(cfg *config.Config) phonepe.Gateway {
+	if cfg.Store.PhonePeClientID == "" || cfg.Store.PhonePeClientSecret == "" {
+		return phonepe.NewDevClient(cfg.Store.PhonePeRedirectURL)
+	}
+	return phonepe.NewClient(phonepe.Config{
+		ClientID:      cfg.Store.PhonePeClientID,
+		ClientSecret:  cfg.Store.PhonePeClientSecret,
+		ClientVersion: cfg.Store.PhonePeClientVersion,
+		BaseURL:       cfg.Store.PhonePeBaseURL,
+		CallbackURL:   cfg.Store.PhonePeCallbackURL,
+		RedirectURL:   cfg.Store.PhonePeRedirectURL,
+	})
+}
+
+// ProvidePaymentService creates a new PaymentService
 func ProvidePaymentService(
 	paymentRepo domain.PaymentRepository,
 	orderRepo domain.OrderRepository,
 	inventoryRepo domain.InventoryRepository,
+	cartService *service.CartService,
+	phonePeClient phonepe.Gateway,
 	publisher event.EventPublisher,
-	cfg *config.Config,
 ) *service.PaymentService {
-	var phonePeClient phonepe.Gateway
-	if cfg.IsDevelopment() {
-		phonePeClient = phonepe.NewDevClient(cfg.Store.PhonePeRedirectURL)
-	} else {
-		phonePeClient = phonepe.NewClient(phonepe.Config{
-			MerchantID:  cfg.Store.PhonePeMerchantID,
-			SaltKey:     cfg.Store.PhonePeSaltKey,
-			SaltIndex:   cfg.Store.PhonePeSaltIndex,
-			BaseURL:     cfg.Store.PhonePeBaseURL,
-			CallbackURL: cfg.Store.PhonePeCallbackURL,
-			RedirectURL: cfg.Store.PhonePeRedirectURL,
-		})
-	}
-	return service.NewPaymentService(paymentRepo, orderRepo, inventoryRepo, phonePeClient, publisher)
+	return service.NewPaymentService(paymentRepo, orderRepo, inventoryRepo, cartService, phonePeClient, publisher)
 }
 
 // ProvideShippingService creates a new ShippingService with Shiprocket gateway
@@ -596,7 +605,7 @@ func ProvideShippingService(
 	cfg *config.Config,
 ) *service.ShippingService {
 	var shiprocketClient shiprocket.Gateway
-	if cfg.IsDevelopment() {
+	if cfg.Store.ShiprocketEmail == "" || cfg.Store.ShiprocketPassword == "" {
 		shiprocketClient = shiprocket.NewDevClient()
 	} else {
 		shiprocketClient = shiprocket.NewClient(shiprocket.Config{
@@ -687,8 +696,10 @@ func ProvideStoreProfileHandler(
 // ProvideStoreWebhookHandler creates a new store WebhookHandler
 func ProvideStoreWebhookHandler(
 	paymentService *service.PaymentService,
+	phonePe phonepe.Gateway,
+	cfg *config.Config,
 ) *store.WebhookHandler {
-	return store.NewWebhookHandler(paymentService)
+	return store.NewWebhookHandler(paymentService, phonePe, cfg.Store.PhonePeWebhookUsername, cfg.Store.PhonePeWebhookPassword)
 }
 
 // ProvideStoreEventsHandler creates a new store EventsHandler

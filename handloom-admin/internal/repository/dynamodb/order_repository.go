@@ -157,8 +157,9 @@ func (r *OrderRepository) List(ctx context.Context, req domain.ListOrdersRequest
 		ScanIndexForward: aws.Bool(false), // newest first
 	}
 
-	// Build filter expressions
-	var filters []string
+	// Build filter expressions — always filter by entity_type to exclude non-order records
+	filters := []string{"entity_type = :et"}
+	input.ExpressionAttributeValues[":et"] = &types.AttributeValueMemberS{Value: "ORDER"}
 	exprAttrNames := map[string]string{}
 
 	if req.Status != nil {
@@ -182,10 +183,7 @@ func (r *OrderRepository) List(ctx context.Context, req domain.ListOrdersRequest
 		input.ExpressionAttributeValues[":search"] = &types.AttributeValueMemberS{Value: req.Search}
 	}
 
-	if len(filters) > 0 {
-		filterExpr := strings.Join(filters, " AND ")
-		input.FilterExpression = aws.String(filterExpr)
-	}
+	input.FilterExpression = aws.String(strings.Join(filters, " AND "))
 	if len(exprAttrNames) > 0 {
 		input.ExpressionAttributeNames = exprAttrNames
 	}

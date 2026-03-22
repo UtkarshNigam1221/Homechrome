@@ -122,12 +122,12 @@ The `Initiate` method follows this strict sequence:
 │                         DEV MODE BEHAVIOR                                    │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                              │
-│  PhonePe DevClient:                                                          │
+│  PhonePe DevClient (used when PHONEPE_CLIENT_ID or CLIENT_SECRET empty):    │
 │  ┌─────────────────────────────────────────────────────────────────────┐   │
-│  │ - Returns redirect_url pointing to storefront callback:             │   │
-│  │   https://store.homechrome.in/account/orders               │   │
-│  │   ?dev_payment=<merchant_txn_id>                                    │   │
-│  │ - Auto-marks payment as PAID after initiation                       │   │
+│  │ - Activated by credential presence, NOT by APP_ENV / IsDevelopment()│   │
+│  │ - Returns redirect_url pointing to storefront confirmation page:    │   │
+│  │   /order-confirmation?order_id=<order_id>&dev_payment=<txn_id>     │   │
+│  │ - CheckPaymentStatus always returns COMPLETED                       │   │
 │  │ - No actual PhonePe API calls made                                  │   │
 │  │ - OTP printed to console (not sent via SMS)                         │   │
 │  └─────────────────────────────────────────────────────────────────────┘   │
@@ -285,7 +285,8 @@ Order numbers follow the pattern `ORD-YYYY-NNNNNN`:
 │                                                                              │
 │  Payment Security:                                                           │
 │  ┌─────────────────────────────────────────────────────────────────────┐   │
-│  │ - PhonePe webhook signature verification (X-VERIFY header)          │   │
+│  │ - PhonePe webhook auth: SHA256(username:password) in Authorization  │   │
+│  │   header (webhook credentials: PHONEPE_WEBHOOK_USERNAME/PASSWORD)   │   │
 │  │ - Merchant transaction ID format: HC-<order_id>                     │   │
 │  │ - Payment amount validated against order total (server-side)        │   │
 │  │ - No client-side amount manipulation possible                       │   │
@@ -429,8 +430,8 @@ Order numbers follow the pattern `ORD-YYYY-NNNNNN`:
 │  External Services:                                                          │
 │  ┌─────────────────────────────────────────────────────────────────────┐   │
 │  │ - PhonePe Payment Gateway — UPI, card, net banking, wallet          │   │
-│  │   API: https://api.phonepe.com/apis/hermes                          │   │
-│  │   Dev: DevClient with mock responses                                │   │
+│  │   API: Standard Checkout v2 (OAuth token + /checkout/v2/pay)         │   │
+│  │   Dev: DevClient when PHONEPE_CLIENT_ID/SECRET empty                │   │
 │  │                                                                      │   │
 │  │ - Shiprocket Shipping API — Serviceability, rates, tracking         │   │
 │  │   API: https://apiv2.shiprocket.in/v1/external                      │   │
@@ -452,7 +453,7 @@ Order numbers follow the pattern `ORD-YYYY-NNNNNN`:
 │  │ - github.com/aws/aws-sdk-go-v2/service/dynamodb — DynamoDB client  │   │
 │  │ - github.com/google/wire — Compile-time dependency injection        │   │
 │  │ - github.com/go-playground/validator/v10 — Request validation       │   │
-│  │ - crypto/sha256 — PhonePe webhook signature verification            │   │
+│  │ - crypto/sha256 — PhonePe webhook Authorization header verification │   │
 │  └─────────────────────────────────────────────────────────────────────┘   │
 │                                                                              │
 └─────────────────────────────────────────────────────────────────────────────┘

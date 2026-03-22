@@ -1,7 +1,7 @@
 import apiClient, { normalizeListResponse } from '@/shared/api/client';
 import type { ListResponse, PaginationParams } from '@/shared/types/common';
 
-import type { CreateOrderRequest, Order } from './types';
+import type { CreateOrderRequest, Order, ProviderPaymentStatus } from './types';
 
 export const ordersApi = {
   list: async (
@@ -49,5 +49,12 @@ export const ordersApi = {
 
   refund: async (id: string, amount: number, reason?: string) => {
     await apiClient.post(`/admin/orders/${id}/refund`, { amount, reason });
+  },
+
+  checkPaymentStatus: async (id: string): Promise<ProviderPaymentStatus> => {
+    const response = await apiClient.get<ProviderPaymentStatus>(
+      `/admin/orders/${id}/payment-status`
+    );
+    return response.data;
   },
 };
