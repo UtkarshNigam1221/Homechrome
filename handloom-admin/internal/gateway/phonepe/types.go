@@ -81,8 +81,8 @@ type PaymentDetail struct {
 
 // WebhookPayload is the callback payload from PhonePe Standard Checkout
 type WebhookPayload struct {
-	Event   string         `json:"event"`   // checkout.order.completed, checkout.order.failed
-	Payload WebhookOrder   `json:"payload"`
+	Event   string       `json:"event"` // checkout.order.completed, checkout.order.failed
+	Payload WebhookOrder `json:"payload"`
 }
 
 // WebhookOrder holds the order details in a webhook callback

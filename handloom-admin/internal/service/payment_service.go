@@ -19,9 +19,9 @@ const (
 	defaultCurrency   = "INR"
 
 	// Metadata keys stored alongside payment status updates
-	metaProviderTxnID  = "provider_transaction_id"
-	metaPaymentMethod  = "payment_method"
-	metaCompletedAt    = "completed_at"
+	metaProviderTxnID    = "provider_transaction_id"
+	metaPaymentMethod    = "payment_method"
+	metaCompletedAt      = "completed_at"
 	metaProviderResponse = "provider_response"
 )
 
