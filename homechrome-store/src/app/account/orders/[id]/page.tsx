@@ -1,12 +1,28 @@
 'use client';
 
+import { CheckIcon } from '@heroicons/react/24/outline';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 
-import Button from '@/components/common/Button';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
+import Button from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Separator } from '@/components/ui/separator';
+import Skeleton from '@/components/skeleton/Skeleton';
 import api from '@/lib/api';
+import { ROUTES } from '@/lib/routes';
 import { formatDateTime as formatDate, formatPrice, statusColors } from '@/lib/utils';
 import { Order, OrderStatus } from '@/types';
 
@@ -36,7 +52,7 @@ export default function OrderDetailPage() {
   const fetchOrder = useCallback(async () => {
     try {
       setLoading(true);
-      const { data } = await api.get<Order>(`/api/v1/store/orders/${orderId}`);
+      const { data } = await api.get<Order>(ROUTES.ORDERS.DETAIL(orderId));
       setOrder(data);
     } catch {
       router.replace('/account/orders');
@@ -51,16 +67,12 @@ export default function OrderDetailPage() {
 
   const handleCancel = async () => {
     if (!order) return;
-    const confirmed = window.confirm(
-      'Are you sure you want to cancel this order? This action cannot be undone.',
-    );
-    if (!confirmed) return;
 
     setCancelling(true);
     setCancelError(null);
 
     try {
-      await api.post(`/api/v1/store/orders/${orderId}/cancel`);
+      await api.post(ROUTES.ORDERS.CANCEL(orderId));
       await fetchOrder();
     } catch {
       setCancelError('Failed to cancel order. Please try again or contact support.');
@@ -71,9 +83,43 @@ export default function OrderDetailPage() {
 
   if (loading) {
     return (
-      <div className="space-y-4">
-        <div className="h-8 w-48 animate-pulse rounded bg-gray-200" />
-        <div className="h-64 animate-pulse rounded-lg border border-border bg-white" />
+      <div role="status" aria-label="Loading order details" className="space-y-6">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="space-y-1">
+            <Skeleton className="h-4 w-28" />
+            <Skeleton className="h-6 w-44" />
+            <Skeleton className="h-4 w-40" />
+          </div>
+          <Skeleton variant="rectangular" className="h-7 w-24 self-start rounded-full" />
+        </div>
+        <Card>
+          <CardContent>
+            <div className="flex items-center justify-between">
+              {[1, 2, 3, 4, 5].map((i) => (
+                <div key={i} className="flex flex-1 items-center">
+                  <div className="flex flex-col items-center">
+                    <Skeleton variant="circular" className="h-8 w-8" />
+                    <Skeleton className="mt-1 h-3 w-12" />
+                  </div>
+                  {i < 5 && <Skeleton className="mx-1 h-0.5 flex-1" />}
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="space-y-4">
+            {[1, 2].map((i) => (
+              <div key={i} className="flex gap-4">
+                <Skeleton variant="rectangular" className="h-20 w-20 flex-shrink-0 rounded-md" />
+                <div className="flex-1 space-y-2">
+                  <Skeleton className="h-5 w-48" />
+                  <Skeleton className="h-4 w-24" />
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
       </div>
     );
   }
@@ -98,7 +144,7 @@ export default function OrderDetailPage() {
           <h2 className="text-lg font-semibold text-foreground">
             Order #{order.order_number}
           </h2>
-          <p className="text-sm text-muted">Placed on {formatDate(order.created_at)}</p>
+          <p className="text-sm text-muted-foreground">Placed on {formatDate(order.created_at)}</p>
         </div>
         <span
           className={`inline-block self-start rounded-full px-3 py-1 text-sm font-medium ${statusColors[order.status]}`}
@@ -115,216 +161,229 @@ export default function OrderDetailPage() {
 
       {/* Status Timeline */}
       {!isCancelled && (
-        <div className="rounded-lg border border-border bg-white p-6">
-          <h3 className="mb-4 text-sm font-semibold text-foreground">Order Status</h3>
-          <div className="flex items-center justify-between">
-            {statusTimeline.map((status, idx) => (
-              <div key={status} className="flex flex-1 items-center">
-                <div className="flex flex-col items-center">
-                  <div
-                    className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold ${
-                      idx <= currentStatusIdx
-                        ? 'bg-primary text-white'
-                        : 'bg-gray-200 text-muted'
-                    }`}
-                  >
-                    {idx < currentStatusIdx ? (
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        strokeWidth={2.5}
-                        stroke="currentColor"
-                        className="h-4 w-4"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          d="m4.5 12.75 6 6 9-13.5"
-                        />
-                      </svg>
-                    ) : (
-                      idx + 1
-                    )}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm">Order Status</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center justify-between">
+              {statusTimeline.map((status, idx) => (
+                <div key={status} className="flex flex-1 items-center">
+                  <div className="flex flex-col items-center">
+                    <div
+                      className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold ${
+                        idx <= currentStatusIdx
+                          ? 'bg-primary text-white'
+                          : 'bg-gray-200 text-muted-foreground'
+                      }`}
+                    >
+                      {idx < currentStatusIdx ? (
+                        <CheckIcon className="h-4 w-4" strokeWidth={2.5} />
+                      ) : (
+                        idx + 1
+                      )}
+                    </div>
+                    <span className="mt-1 text-center text-[10px] text-muted-foreground sm:text-xs">
+                      {status}
+                    </span>
                   </div>
-                  <span className="mt-1 text-center text-[10px] text-muted sm:text-xs">
-                    {status}
-                  </span>
+                  {idx < statusTimeline.length - 1 && (
+                    <div
+                      className={`mx-1 h-0.5 flex-1 ${
+                        idx < currentStatusIdx ? 'bg-primary' : 'bg-gray-200'
+                      }`}
+                    />
+                  )}
                 </div>
-                {idx < statusTimeline.length - 1 && (
-                  <div
-                    className={`mx-1 h-0.5 flex-1 ${
-                      idx < currentStatusIdx ? 'bg-primary' : 'bg-gray-200'
-                    }`}
-                  />
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       {/* Tracking Info */}
       {order.tracking_number && (
-        <div className="rounded-lg border border-border bg-white p-6">
-          <h3 className="mb-3 text-sm font-semibold text-foreground">
-            Tracking Information
-          </h3>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            {order.shipping_carrier && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm">Tracking Information</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              {order.shipping_carrier && (
+                <div>
+                  <p className="text-xs text-muted-foreground">Courier</p>
+                  <p className="font-medium text-foreground">{order.shipping_carrier}</p>
+                </div>
+              )}
               <div>
-                <p className="text-xs text-muted">Courier</p>
-                <p className="font-medium text-foreground">{order.shipping_carrier}</p>
+                <p className="text-xs text-muted-foreground">AWB Number</p>
+                <p className="font-medium text-foreground">{order.tracking_number}</p>
               </div>
-            )}
-            <div>
-              <p className="text-xs text-muted">AWB Number</p>
-              <p className="font-medium text-foreground">{order.tracking_number}</p>
+              {order.tracking_url && (
+                <div>
+                  <p className="text-xs text-muted-foreground">Track Shipment</p>
+                  <a
+                    href={order.tracking_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm font-medium text-primary hover:text-primary-dark"
+                  >
+                    Track on courier website
+                  </a>
+                </div>
+              )}
             </div>
-            {order.tracking_url && (
-              <div>
-                <p className="text-xs text-muted">Track Shipment</p>
-                <a
-                  href={order.tracking_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-sm font-medium text-primary hover:text-primary-dark"
-                >
-                  Track on courier website
-                </a>
-              </div>
+            {order.shipped_at && (
+              <p className="mt-2 text-xs text-muted-foreground">
+                Shipped on {formatDate(order.shipped_at)}
+              </p>
             )}
-          </div>
-          {order.shipped_at && (
-            <p className="mt-2 text-xs text-muted">
-              Shipped on {formatDate(order.shipped_at)}
-            </p>
-          )}
-          {order.delivered_at && (
-            <p className="mt-1 text-xs text-muted">
-              Delivered on {formatDate(order.delivered_at)}
-            </p>
-          )}
-        </div>
+            {order.delivered_at && (
+              <p className="mt-1 text-xs text-muted-foreground">
+                Delivered on {formatDate(order.delivered_at)}
+              </p>
+            )}
+          </CardContent>
+        </Card>
       )}
 
       {/* Items */}
-      <div className="rounded-lg border border-border bg-white p-6">
-        <h3 className="mb-4 text-sm font-semibold text-foreground">Items</h3>
-        <div className="divide-y divide-border">
-          {order.items.map((item) => (
-            <div key={item.id} className="flex gap-4 py-4 first:pt-0 last:pb-0">
-              <div className="relative h-20 w-20 flex-shrink-0 overflow-hidden rounded-md bg-gray-100">
-                {item.product_image ? (
-                  <Image
-                    src={item.product_image}
-                    alt={item.product_name}
-                    fill
-                    className="object-cover"
-                    sizes="80px"
-                  />
-                ) : (
-                  <div className="flex h-full w-full items-center justify-center text-xs text-muted">
-                    No image
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm">Items</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="divide-y divide-border">
+            {order.items.map((item) => (
+              <div key={item.id} className="flex gap-4 py-4 first:pt-0 last:pb-0">
+                <div className="relative h-20 w-20 flex-shrink-0 overflow-hidden rounded-md bg-gray-100">
+                  {item.product_image ? (
+                    <Image
+                      src={item.product_image}
+                      alt={item.product_name}
+                      fill
+                      className="object-cover"
+                      sizes="80px"
+                    />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center text-xs text-muted-foreground">
+                      No image
+                    </div>
+                  )}
+                </div>
+                <div className="flex flex-1 flex-col justify-between">
+                  <div>
+                    <p className="font-medium text-foreground">{item.product_name}</p>
+                    <p className="text-sm text-muted-foreground">SKU: {item.product_sku}</p>
                   </div>
-                )}
-              </div>
-              <div className="flex flex-1 flex-col justify-between">
-                <div>
-                  <p className="font-medium text-foreground">{item.product_name}</p>
-                  <p className="text-sm text-muted">SKU: {item.product_sku}</p>
-                </div>
-                <div className="flex items-center justify-between">
-                  <p className="text-sm text-muted">Qty: {item.quantity}</p>
-                  <p className="font-medium text-foreground">
-                    {formatPrice(item.total_price)}
-                  </p>
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm text-muted-foreground">Qty: {item.quantity}</p>
+                    <p className="font-medium text-foreground">
+                      {formatPrice(item.total_price)}
+                    </p>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
-        </div>
-      </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Order Summary + Shipping Address */}
       <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-        <div className="rounded-lg border border-border bg-white p-6">
-          <h3 className="mb-3 text-sm font-semibold text-foreground">
-            Payment Summary
-          </h3>
-          <div className="space-y-2 text-sm">
-            <div className="flex justify-between">
-              <span className="text-muted">Subtotal</span>
-              <span className="text-foreground">{formatPrice(order.subtotal)}</span>
-            </div>
-            {order.discount_amount > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm">Payment Summary</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2 text-sm">
               <div className="flex justify-between">
-                <span className="text-muted">Discount</span>
-                <span className="text-green-600">
-                  -{formatPrice(order.discount_amount)}
+                <span className="text-muted-foreground">Subtotal</span>
+                <span className="text-foreground">{formatPrice(order.subtotal)}</span>
+              </div>
+              {order.discount_amount > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Discount</span>
+                  <span className="text-green-600">-{formatPrice(order.discount_amount)}</span>
+                </div>
+              )}
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Shipping</span>
+                <span className="text-foreground">
+                  {order.shipping_amount === 0 ? 'FREE' : formatPrice(order.shipping_amount)}
                 </span>
               </div>
-            )}
-            <div className="flex justify-between">
-              <span className="text-muted">Shipping</span>
-              <span className="text-foreground">
-                {order.shipping_amount === 0
-                  ? 'FREE'
-                  : formatPrice(order.shipping_amount)}
-              </span>
-            </div>
-            {order.tax_amount > 0 && (
-              <div className="flex justify-between">
-                <span className="text-muted">Tax</span>
-                <span className="text-foreground">{formatPrice(order.tax_amount)}</span>
+              {order.tax_amount > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Tax</span>
+                  <span className="text-foreground">{formatPrice(order.tax_amount)}</span>
+                </div>
+              )}
+              <Separator />
+              <div className="flex justify-between font-semibold">
+                <span className="text-foreground">Total</span>
+                <span className="text-foreground">{formatPrice(order.total_amount)}</span>
               </div>
-            )}
-            <div className="flex justify-between border-t border-border pt-2 font-semibold">
-              <span className="text-foreground">Total</span>
-              <span className="text-foreground">{formatPrice(order.total_amount)}</span>
             </div>
-          </div>
-        </div>
+          </CardContent>
+        </Card>
 
-        <div className="rounded-lg border border-border bg-white p-6">
-          <h3 className="mb-3 text-sm font-semibold text-foreground">
-            Shipping Address
-          </h3>
-          <div className="text-sm">
-            <p className="font-medium text-foreground">
-              {order.shipping_address.first_name} {order.shipping_address.last_name}
-            </p>
-            <p className="mt-1 text-muted">{order.shipping_address.address_line1}</p>
-            {order.shipping_address.address_line2 && (
-              <p className="text-muted">{order.shipping_address.address_line2}</p>
-            )}
-            <p className="text-muted">
-              {order.shipping_address.city}, {order.shipping_address.state} -{' '}
-              {order.shipping_address.postal_code}
-            </p>
-            <p className="text-muted">Phone: {order.shipping_address.phone}</p>
-          </div>
-        </div>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm">Shipping Address</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-sm">
+              <p className="font-medium text-foreground">
+                {order.shipping_address.first_name} {order.shipping_address.last_name}
+              </p>
+              <p className="mt-1 text-muted-foreground">{order.shipping_address.address_line1}</p>
+              {order.shipping_address.address_line2 && (
+                <p className="text-muted-foreground">{order.shipping_address.address_line2}</p>
+              )}
+              <p className="text-muted-foreground">
+                {order.shipping_address.city}, {order.shipping_address.state} -{' '}
+                {order.shipping_address.postal_code}
+              </p>
+              <p className="text-muted-foreground">Phone: {order.shipping_address.phone}</p>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Cancel button */}
       {canCancel && (
-        <div className="rounded-lg border border-border bg-white p-6">
-          <h3 className="mb-2 text-sm font-semibold text-foreground">
-            Cancel Order
-          </h3>
-          <p className="mb-4 text-sm text-muted">
-            You can cancel this order since it has not been processed yet.
-          </p>
-          <Button
-            variant="outline"
-            onClick={handleCancel}
-            loading={cancelling}
-            className="border-red-300 text-red-600 hover:bg-red-50 hover:text-red-700"
-          >
-            Cancel Order
-          </Button>
-        </div>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm">Cancel Order</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="mb-4 text-sm text-muted-foreground">
+              You can cancel this order since it has not been processed yet.
+            </p>
+            <AlertDialog>
+              <AlertDialogTrigger
+                render={<Button variant="destructive" loading={cancelling} />}
+              >
+                Cancel Order
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Cancel Order</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Are you sure you want to cancel this order? This action cannot be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Keep Order</AlertDialogCancel>
+                  <AlertDialogAction variant="destructive" onClick={handleCancel}>
+                    Cancel Order
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </CardContent>
+        </Card>
       )}
     </div>
   );

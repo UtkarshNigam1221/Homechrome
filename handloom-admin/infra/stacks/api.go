@@ -85,6 +85,7 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 		"DYNAMODB_EVENTS_TABLE":        props.DatabaseStack.EventsTable.TableName(),
 		"POSTGRES_DSN":                 props.DatabaseStack.PostgresDSN,
 		"S3_ASSETS_BUCKET":             assetsBucket.BucketName(),
+		"CDN_DOMAIN":                   jsii.String(props.StorageStack.CDNDomain),
 		"JWT_SECRET_PARAM":             jwtSecret.ParameterName(),
 		"CUSTOMER_JWT_SECRET_PARAM":    jsii.String(fmt.Sprintf("/handloom/%s/customer-jwt-secret", props.Environment)),
 		"JWT_ISSUER":                   jsii.String("handloom-admin"),
@@ -203,14 +204,14 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 	// Create integrations and routes
 	setupAPIRoutes(api, lambdas)
 
-	// Custom domain for API Gateway (edge-optimized)
+	// Custom domain for API Gateway (regional — lowest latency for ap-south-1 origin)
 	if props.CertArn != "" && props.DomainName != "" {
 		cert := awscertificatemanager.Certificate_FromCertificateArn(stack, jsii.String("ApiCertificate"), jsii.String(props.CertArn))
 
 		customDomain := awsapigateway.NewDomainName(stack, jsii.String("ApiCustomDomain"), &awsapigateway.DomainNameProps{
 			DomainName:     jsii.String(props.DomainName),
 			Certificate:    cert,
-			EndpointType:   awsapigateway.EndpointType_EDGE,
+			EndpointType:   awsapigateway.EndpointType_REGIONAL,
 			SecurityPolicy: awsapigateway.SecurityPolicy_TLS_1_2,
 		})
 
@@ -223,7 +224,7 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 
 		awscdk.NewCfnOutput(stack, jsii.String("ApiCustomDomainTarget"), &awscdk.CfnOutputProps{
 			Value:       customDomain.DomainNameAliasDomainName(),
-			Description: jsii.String("CNAME target for API custom domain (add to Cloudflare DNS)"),
+			Description: jsii.String("CNAME target for API custom domain (add to GoDaddy DNS)"),
 		})
 	}
 

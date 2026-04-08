@@ -4,6 +4,7 @@ import { cache, Suspense } from 'react';
 import CategoryProductsView from './CategoryProductsView';
 
 import { API_BASE, SITE_URL } from '@/lib/constants';
+import { ROUTES } from '@/lib/routes';
 import { Category, Product } from '@/types';
 
 export const revalidate = 3600;
@@ -14,7 +15,7 @@ interface PageProps {
 
 const getCategory = cache(async function getCategory(slug: string): Promise<Category | null> {
   try {
-    const res = await fetch(`${API_BASE}/api/v1/store/catalog/categories/${slug}`, {
+    const res = await fetch(`${API_BASE}${ROUTES.CATALOG.CATEGORY(slug)}`, {
       next: { revalidate: 3600 },
     });
     if (!res.ok) return null;
@@ -28,7 +29,7 @@ const getCategory = cache(async function getCategory(slug: string): Promise<Cate
 const getCategoryProducts = cache(async function getCategoryProducts(categoryId: string): Promise<Product[]> {
   try {
     const res = await fetch(
-      `${API_BASE}/api/v1/store/catalog/products?category_id=${categoryId}`,
+      `${API_BASE}${ROUTES.CATALOG.PRODUCTS}?category_id=${categoryId}`,
       { next: { revalidate: 3600 } },
     );
     if (!res.ok) return [];
@@ -41,7 +42,7 @@ const getCategoryProducts = cache(async function getCategoryProducts(categoryId:
 
 export async function generateStaticParams() {
   try {
-    const res = await fetch(`${API_BASE}/api/v1/store/catalog/categories`);
+    const res = await fetch(`${API_BASE}${ROUTES.CATALOG.CATEGORIES}`);
     if (!res.ok) return [];
     const json = await res.json();
     return (json.data || []).map((c: Category) => ({ slug: c.slug }));

@@ -11,3 +11,6 @@ const (
 const (
 	SKMetadata = "METADATA"
 )
+
+// DateLayout is the standard date format used across the application.
+const DateLayout = "2006-01-02"

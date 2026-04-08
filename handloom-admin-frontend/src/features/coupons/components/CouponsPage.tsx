@@ -1,16 +1,13 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { Calendar, Edit, Percent, Plus, Search, Trash2 } from 'lucide-react';
 import { useState } from 'react';
-import toast from 'react-hot-toast';
 
 import { couponsApi } from '@/features/coupons/api';
-import { getErrorMessage } from '@/shared/api/client';
 import {
   Badge,
   Button,
   Card,
-  ConfirmModal,
   Input,
   Pagination,
   Table,
@@ -22,14 +19,14 @@ import {
   TableLoading,
   TableRow,
 } from '@/shared/components/ui';
-import { useCursorPagination, useDebounce } from '@/shared/hooks';
+import { useCursorPagination, useDebounce, useDeleteWithConfirm } from '@/shared/hooks';
 import { getStatusBadgeVariant } from '@/shared/utils/badge';
+import { formatCurrency } from '@/shared/utils/currency';
 
 import type { Coupon } from '../types';
 import { CouponFormModal } from './CouponFormModal';
 
 export function CouponsPage() {
-  const queryClient = useQueryClient();
   const {
     limit,
     cursor,
@@ -43,24 +40,17 @@ export function CouponsPage() {
   const debouncedSearch = useDebounce(searchQuery, 300);
   const [showFormModal, setShowFormModal] = useState(false);
   const [editingCoupon, setEditingCoupon] = useState<Coupon | null>(null);
-  const [deleteCoupon, setDeleteCoupon] = useState<Coupon | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ['coupons', { limit, cursor, search: debouncedSearch }],
     queryFn: () => couponsApi.list({ limit, cursor, search: debouncedSearch || undefined }),
   });
 
-  // Delete mutation
-  const deleteMutation = useMutation({
-    mutationFn: couponsApi.delete,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['coupons'] });
-      toast.success('Coupon deleted successfully');
-      setDeleteCoupon(null);
-    },
-    onError: (error) => {
-      toast.error(getErrorMessage(error));
-    },
+  const { setDeleteTarget: setDeleteCoupon, DeleteConfirmModal } = useDeleteWithConfirm<Coupon>({
+    queryKey: 'coupons',
+    deleteFn: couponsApi.delete,
+    entityName: 'Coupon',
+    getEntityName: (c) => c.code,
   });
 
   const coupons = data?.items || [];
@@ -78,7 +68,7 @@ export function CouponsPage() {
 
   const formatDiscount = (coupon: Coupon) => {
     if (coupon.type === 'PERCENTAGE') return `${coupon.discount_value}% off`;
-    if (coupon.type === 'FIXED_AMOUNT') return `₹${coupon.discount_value / 100} off`;
+    if (coupon.type === 'FIXED_AMOUNT') return `${formatCurrency(coupon.discount_value)} off`;
     return 'Free Shipping';
   };
 
@@ -155,7 +145,7 @@ export function CouponsPage() {
                     {coupon.used_count || 0} / {coupon.max_uses || '∞'}
                   </TableCell>
                   <TableCell>
-                    {coupon.min_order_value ? `₹${coupon.min_order_value / 100}` : '-'}
+                    {coupon.min_order_value ? formatCurrency(coupon.min_order_value) : '-'}
                   </TableCell>
                   <TableCell>
                     {coupon.expiry_date ? (
@@ -228,15 +218,7 @@ export function CouponsPage() {
       />
 
       {/* Delete Confirmation Modal */}
-      <ConfirmModal
-        isOpen={!!deleteCoupon}
-        onClose={() => setDeleteCoupon(null)}
-        onConfirm={() => deleteCoupon && deleteMutation.mutate(deleteCoupon.id)}
-        title="Delete Coupon"
-        message={`Are you sure you want to delete coupon "${deleteCoupon?.code}"? This action cannot be undone.`}
-        confirmText="Delete"
-        loading={deleteMutation.isPending}
-      />
+      <DeleteConfirmModal />
     </div>
   );
 }

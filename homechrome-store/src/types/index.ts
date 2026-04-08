@@ -180,11 +180,3 @@ export interface CheckoutResult {
 }
 
 // Pagination
-export interface PaginatedResponse<T> {
-  data: T[];
-  meta: {
-    limit: number;
-    next_cursor: string;
-    has_more: boolean;
-  };
-}

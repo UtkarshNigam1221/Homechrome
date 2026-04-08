@@ -284,7 +284,7 @@ func ProvideAssetService(
 	s3Client *s3client.S3Client,
 	cfg *config.Config,
 ) *service.AssetService {
-	return service.NewAssetService(s3Client, cfg.AWS.S3Bucket, cfg.AWS.Endpoint)
+	return service.NewAssetService(s3Client, cfg.AWS.S3Bucket, cfg.AWS.Region, cfg.AWS.CDNUrl, cfg.AWS.Endpoint)
 }
 
 // ProvideReportService creates a new ReportService

@@ -1,7 +1,16 @@
+import { clsx, type ClassValue } from 'clsx';
+import { twMerge } from 'tailwind-merge';
+
 import { OrderStatus } from '@/types';
 
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
+}
+
+const priceFormatter = new Intl.NumberFormat('en-IN', { minimumFractionDigits: 0 });
+
 export function formatPrice(paise: number): string {
-  return `₹${(paise / 100).toLocaleString('en-IN', { minimumFractionDigits: 0 })}`;
+  return `₹${priceFormatter.format(paise / 100)}`;
 }
 
 export function formatDate(dateStr: string): string {
@@ -20,6 +29,11 @@ export function formatDateTime(dateStr: string): string {
     hour: '2-digit',
     minute: '2-digit',
   });
+}
+
+export function calculateDiscountPercent(mrp: number, sellingPrice: number): number {
+  if (mrp <= sellingPrice) return 0;
+  return Math.round(((mrp - sellingPrice) / mrp) * 100);
 }
 
 export const statusColors: Record<OrderStatus, string> = {

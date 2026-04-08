@@ -45,7 +45,7 @@ function SidebarContent({
   onNavClick?: () => void;
 }) {
   const location = useLocation();
-  const { user } = useAuthStore();
+  const user = useAuthStore((s) => s.user);
   const isAdmin = user?.role === 'ADMIN';
 
   return (
@@ -134,7 +134,10 @@ function SidebarLogo({ collapsed }: { collapsed: boolean }) {
 }
 
 export function Sidebar() {
-  const { sidebarCollapsed, toggleSidebarCollapse, sidebarOpen, setSidebarOpen } = useUIStore();
+  const sidebarCollapsed = useUIStore((s) => s.sidebarCollapsed);
+  const toggleSidebarCollapse = useUIStore((s) => s.toggleSidebarCollapse);
+  const sidebarOpen = useUIStore((s) => s.sidebarOpen);
+  const setSidebarOpen = useUIStore((s) => s.setSidebarOpen);
 
   return (
     <>

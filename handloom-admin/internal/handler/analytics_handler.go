@@ -42,13 +42,13 @@ func (h *AnalyticsHandler) GetSalesAnalytics(w http.ResponseWriter, r *http.Requ
 	}
 
 	if start := r.URL.Query().Get("start_date"); start != "" {
-		if t, err := time.Parse("2006-01-02", start); err == nil {
+		if t, err := time.Parse(domain.DateLayout, start); err == nil {
 			req.StartDate = t
 		}
 	}
 
 	if end := r.URL.Query().Get("end_date"); end != "" {
-		if t, err := time.Parse("2006-01-02", end); err == nil {
+		if t, err := time.Parse(domain.DateLayout, end); err == nil {
 			req.EndDate = t
 		}
 	}
@@ -82,12 +82,12 @@ func (h *AnalyticsHandler) GetTopProducts(w http.ResponseWriter, r *http.Request
 
 	var startDate, endDate time.Time
 	if start := r.URL.Query().Get("start_date"); start != "" {
-		if t, err := time.Parse("2006-01-02", start); err == nil {
+		if t, err := time.Parse(domain.DateLayout, start); err == nil {
 			startDate = t
 		}
 	}
 	if end := r.URL.Query().Get("end_date"); end != "" {
-		if t, err := time.Parse("2006-01-02", end); err == nil {
+		if t, err := time.Parse(domain.DateLayout, end); err == nil {
 			endDate = t
 		}
 	}
@@ -108,8 +108,8 @@ func (h *AnalyticsHandler) GetTopProducts(w http.ResponseWriter, r *http.Request
 
 	response.JSON(w, http.StatusOK, map[string]interface{}{
 		"products":   products,
-		"start_date": startDate.Format("2006-01-02"),
-		"end_date":   endDate.Format("2006-01-02"),
+		"start_date": startDate.Format(domain.DateLayout),
+		"end_date":   endDate.Format(domain.DateLayout),
 	})
 }
 
@@ -125,12 +125,12 @@ func (h *AnalyticsHandler) GetTopCategories(w http.ResponseWriter, r *http.Reque
 
 	var startDate, endDate time.Time
 	if start := r.URL.Query().Get("start_date"); start != "" {
-		if t, err := time.Parse("2006-01-02", start); err == nil {
+		if t, err := time.Parse(domain.DateLayout, start); err == nil {
 			startDate = t
 		}
 	}
 	if end := r.URL.Query().Get("end_date"); end != "" {
-		if t, err := time.Parse("2006-01-02", end); err == nil {
+		if t, err := time.Parse(domain.DateLayout, end); err == nil {
 			endDate = t
 		}
 	}
@@ -151,8 +151,8 @@ func (h *AnalyticsHandler) GetTopCategories(w http.ResponseWriter, r *http.Reque
 
 	response.JSON(w, http.StatusOK, map[string]interface{}{
 		"categories": categories,
-		"start_date": startDate.Format("2006-01-02"),
-		"end_date":   endDate.Format("2006-01-02"),
+		"start_date": startDate.Format(domain.DateLayout),
+		"end_date":   endDate.Format(domain.DateLayout),
 	})
 }
 
@@ -161,12 +161,12 @@ func (h *AnalyticsHandler) GetTopCategories(w http.ResponseWriter, r *http.Reque
 func (h *AnalyticsHandler) GetCustomerAnalytics(w http.ResponseWriter, r *http.Request) {
 	var startDate, endDate time.Time
 	if start := r.URL.Query().Get("start_date"); start != "" {
-		if t, err := time.Parse("2006-01-02", start); err == nil {
+		if t, err := time.Parse(domain.DateLayout, start); err == nil {
 			startDate = t
 		}
 	}
 	if end := r.URL.Query().Get("end_date"); end != "" {
-		if t, err := time.Parse("2006-01-02", end); err == nil {
+		if t, err := time.Parse(domain.DateLayout, end); err == nil {
 			endDate = t
 		}
 	}
@@ -208,8 +208,8 @@ func (h *AnalyticsHandler) GetFunnelAnalytics(w http.ResponseWriter, r *http.Req
 
 	// Default to last 7 days if not provided
 	if startDate == "" || endDate == "" {
-		endDate = time.Now().Format("2006-01-02")
-		startDate = time.Now().AddDate(0, 0, -7).Format("2006-01-02")
+		endDate = time.Now().Format(domain.DateLayout)
+		startDate = time.Now().AddDate(0, 0, -7).Format(domain.DateLayout)
 	}
 
 	result, err := h.analyticsService.GetFunnelAnalytics(r.Context(), startDate, endDate)
@@ -229,8 +229,8 @@ func (h *AnalyticsHandler) GetEngagementAnalytics(w http.ResponseWriter, r *http
 
 	// Default to last 7 days if not provided
 	if startDate == "" || endDate == "" {
-		endDate = time.Now().Format("2006-01-02")
-		startDate = time.Now().AddDate(0, 0, -7).Format("2006-01-02")
+		endDate = time.Now().Format(domain.DateLayout)
+		startDate = time.Now().AddDate(0, 0, -7).Format(domain.DateLayout)
 	}
 
 	result, err := h.analyticsService.GetEngagementAnalytics(r.Context(), startDate, endDate)

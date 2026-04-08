@@ -8,6 +8,16 @@ export type OrderStatus =
   | 'DELIVERED'
   | 'CANCELLED'
   | 'RETURNED';
+
+export const ORDER_STATUSES: OrderStatus[] = [
+  'PENDING',
+  'CONFIRMED',
+  'PROCESSING',
+  'SHIPPED',
+  'DELIVERED',
+  'CANCELLED',
+  'RETURNED',
+];
 export type PaymentStatus = 'PENDING' | 'PAID' | 'FAILED' | 'REFUNDED';
 
 export interface OrderItem {

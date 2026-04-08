@@ -32,8 +32,8 @@ export function CategoriesPage() {
 
   // Fetch categories list
   const { data, isLoading } = useQuery({
-    queryKey: ['categories', { limit, cursor }],
-    queryFn: () => categoriesApi.list({ limit, cursor }),
+    queryKey: ['categories', { limit, cursor, search: debouncedSearch }],
+    queryFn: () => categoriesApi.list({ limit, cursor, search: debouncedSearch || undefined }),
   });
 
   // Delete mutation
@@ -72,14 +72,6 @@ export function CategoriesPage() {
   const categories = data?.items ?? [];
   const pagination = data?.pagination;
 
-  const filteredCategories = debouncedSearch
-    ? categories.filter(
-        (cat: Category) =>
-          cat.name.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
-          cat.slug.toLowerCase().includes(debouncedSearch.toLowerCase())
-      )
-    : categories;
-
   return (
     <div className="space-y-6">
       {/* Page Header */}
@@ -108,7 +100,7 @@ export function CategoriesPage() {
 
       {/* Categories Table */}
       <Card padding="none">
-        {filteredCategories.length > 0 ? (
+        {categories.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
@@ -134,7 +126,7 @@ export function CategoriesPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {filteredCategories.map((category: Category) => (
+                {categories.map((category: Category) => (
                   <tr key={category.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
@@ -221,7 +213,7 @@ export function CategoriesPage() {
             onNextPage={() => pagination?.next_cursor && goToNextPage(pagination.next_cursor)}
             onPreviousPage={goToPreviousPage}
             onPerPageChange={changeLimit}
-            itemCount={filteredCategories.length}
+            itemCount={categories.length}
           />
         </div>
       </Card>

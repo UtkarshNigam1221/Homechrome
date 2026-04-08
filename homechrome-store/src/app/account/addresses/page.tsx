@@ -1,10 +1,25 @@
 'use client';
 
+import { MapPinIcon } from '@heroicons/react/24/outline';
 import { useState } from 'react';
 
-import Button from '@/components/common/Button';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
+import Button from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { EmptyState } from '@/components/ui/empty-state';
 import AddressForm from '@/components/checkout/AddressForm';
 import api from '@/lib/api';
+import { ROUTES } from '@/lib/routes';
 import { useAuthStore } from '@/stores/auth';
 import { Address } from '@/types';
 
@@ -23,7 +38,7 @@ export default function AddressesPage() {
     setSaving(true);
     setError(null);
     try {
-      await api.post('/api/v1/store/me/addresses', data);
+      await api.post(ROUTES.ME.ADDRESSES, data);
       await checkAuth();
       setShowForm(false);
     } catch {
@@ -38,7 +53,7 @@ export default function AddressesPage() {
     setSaving(true);
     setError(null);
     try {
-      await api.put(`/api/v1/store/me/addresses/${editingAddress.id}`, data);
+      await api.put(ROUTES.ME.ADDRESS(editingAddress.id), data);
       await checkAuth();
       setEditingAddress(null);
     } catch {
@@ -49,15 +64,10 @@ export default function AddressesPage() {
   };
 
   const handleDelete = async (addressId: string) => {
-    const confirmed = window.confirm(
-      'Are you sure you want to delete this address?',
-    );
-    if (!confirmed) return;
-
     setDeletingId(addressId);
     setError(null);
     try {
-      await api.delete(`/api/v1/store/me/addresses/${addressId}`);
+      await api.delete(ROUTES.ME.ADDRESS(addressId));
       await checkAuth();
     } catch {
       setError('Failed to delete address. Please try again.');
@@ -85,72 +95,56 @@ export default function AddressesPage() {
         </div>
       )}
 
-      {/* Add form */}
       {showForm && (
-        <div className="rounded-lg border border-border bg-white p-6">
-          <h3 className="mb-4 font-semibold text-foreground">Add New Address</h3>
-          <AddressForm
-            onSubmit={handleAdd}
-            onCancel={() => setShowForm(false)}
-            loading={saving}
-          />
-        </div>
+        <Card>
+          <CardHeader>
+            <CardTitle>Add New Address</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <AddressForm
+              onSubmit={handleAdd}
+              onCancel={() => setShowForm(false)}
+              loading={saving}
+            />
+          </CardContent>
+        </Card>
       )}
 
-      {/* Edit form */}
       {editingAddress && (
-        <div className="rounded-lg border border-border bg-white p-6">
-          <h3 className="mb-4 font-semibold text-foreground">Edit Address</h3>
-          <AddressForm
-            initialData={editingAddress}
-            onSubmit={handleUpdate}
-            onCancel={() => setEditingAddress(null)}
-            loading={saving}
-          />
-        </div>
+        <Card>
+          <CardHeader>
+            <CardTitle>Edit Address</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <AddressForm
+              initialData={editingAddress}
+              onSubmit={handleUpdate}
+              onCancel={() => setEditingAddress(null)}
+              loading={saving}
+            />
+          </CardContent>
+        </Card>
       )}
 
-      {/* Address cards */}
       {addresses.length === 0 && !showForm && (
-        <div className="rounded-lg border border-border bg-white p-12 text-center">
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            fill="none"
-            viewBox="0 0 24 24"
-            strokeWidth={1}
-            stroke="currentColor"
-            className="mx-auto mb-4 h-16 w-16 text-muted"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"
-            />
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1 1 15 0Z"
-            />
-          </svg>
-          <h3 className="mb-2 text-lg font-semibold text-foreground">
-            No saved addresses
-          </h3>
-          <p className="mb-4 text-muted">
-            Add an address to speed up your checkout.
-          </p>
-          <Button onClick={() => setShowForm(true)}>Add Address</Button>
-        </div>
+        <Card className="p-6">
+          <EmptyState
+            icon={<MapPinIcon strokeWidth={1} className="h-16 w-16 text-muted-foreground" />}
+            title="No saved addresses"
+            description="Add an address to speed up your checkout."
+          />
+          <div className="text-center">
+            <Button onClick={() => setShowForm(true)}>Add Address</Button>
+          </div>
+        </Card>
       )}
 
       {addresses.length > 0 && !showForm && !editingAddress && (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           {addresses.map((addr) => (
-            <div
-              key={addr.id}
-              className="rounded-lg border border-border bg-white p-5"
-            >
-              <div className="mb-3 flex items-start justify-between">
-                <div>
+            <Card key={addr.id}>
+              <CardContent>
+                <div className="mb-3 flex items-start justify-between">
                   <p className="font-medium text-foreground">
                     {addr.first_name} {addr.last_name}
                     {addr.is_default && (
@@ -160,35 +154,51 @@ export default function AddressesPage() {
                     )}
                   </p>
                 </div>
-              </div>
 
-              <div className="mb-4 text-sm text-muted">
-                <p>{addr.address_line1}</p>
-                {addr.address_line2 && <p>{addr.address_line2}</p>}
-                <p>
-                  {addr.city}, {addr.state} - {addr.postal_code}
-                </p>
-                <p>Phone: {addr.phone}</p>
-              </div>
+                <div className="mb-4 text-sm text-muted-foreground">
+                  <p>{addr.address_line1}</p>
+                  {addr.address_line2 && <p>{addr.address_line2}</p>}
+                  <p>
+                    {addr.city}, {addr.state} - {addr.postal_code}
+                  </p>
+                  <p>Phone: {addr.phone}</p>
+                </div>
 
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => setEditingAddress(addr)}
-                  className="rounded-md border border-border px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-background"
-                >
-                  Edit
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleDelete(addr.id)}
-                  disabled={deletingId === addr.id}
-                  className="rounded-md border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50"
-                >
-                  {deletingId === addr.id ? 'Deleting...' : 'Delete'}
-                </button>
-              </div>
-            </div>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setEditingAddress(addr)}
+                  >
+                    Edit
+                  </Button>
+                  <AlertDialog>
+                    <AlertDialogTrigger
+                      render={<Button variant="destructive" size="sm" loading={deletingId === addr.id} />}
+                    >
+                      Delete
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Delete Address</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Are you sure you want to delete this address? This action cannot be undone.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                          variant="destructive"
+                          onClick={() => handleDelete(addr.id)}
+                        >
+                          Delete
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                </div>
+              </CardContent>
+            </Card>
           ))}
         </div>
       )}

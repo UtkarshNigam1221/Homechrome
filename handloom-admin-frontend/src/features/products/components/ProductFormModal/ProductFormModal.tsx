@@ -316,15 +316,12 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
             .map((t) => t.trim())
             .filter(Boolean)
         : undefined,
-      images:
-        data.images && data.images.length > 0
-          ? data.images.map((url, index) => ({
-              url,
-              alt_text: data.name,
-              is_primary: index === 0,
-              sort_order: index,
-            }))
-          : undefined,
+      images: (data.images || []).map((url, index) => ({
+        url,
+        alt_text: data.name,
+        is_primary: index === 0,
+        sort_order: index,
+      })),
       attributes: Object.keys(cleanAttributes).length > 0 ? cleanAttributes : undefined,
     };
 

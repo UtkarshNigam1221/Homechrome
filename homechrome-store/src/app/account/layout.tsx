@@ -4,6 +4,9 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { Container } from '@/components/ui/container';
 import { useAuthStore } from '@/stores/auth';
 
 const navItems = [
@@ -21,6 +24,8 @@ export default function AccountLayout({
   const router = useRouter();
   const { isAuthenticated, isLoading, logout } = useAuthStore();
 
+  // Middleware handles the primary redirect; this is a client-side fallback
+  // for edge cases (e.g. token expires mid-session).
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
       router.replace('/login?redirect=/account');
@@ -32,7 +37,7 @@ export default function AccountLayout({
     router.replace('/');
   };
 
-  if (isLoading) {
+  if (isLoading || !isAuthenticated) {
     return (
       <div className="flex items-center justify-center py-20">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
@@ -40,12 +45,8 @@ export default function AccountLayout({
     );
   }
 
-  if (!isAuthenticated) {
-    return null;
-  }
-
   return (
-    <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
+    <Container size="narrow" className="py-8">
       <h1 className="mb-6 text-2xl font-bold text-foreground sm:text-3xl">
         My Account
       </h1>
@@ -53,7 +54,8 @@ export default function AccountLayout({
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-4">
         {/* Sidebar */}
         <aside className="lg:col-span-1">
-          <nav className="rounded-lg border border-border bg-white p-4">
+          <Card>
+            <CardContent>
             <ul className="space-y-1">
               {navItems.map((item) => {
                 const isActive =
@@ -77,21 +79,22 @@ export default function AccountLayout({
                 );
               })}
               <li>
-                <button
-                  type="button"
+                <Button
+                  variant="ghost"
+                  className="w-full justify-start text-red-600 hover:bg-red-50 hover:text-red-700"
                   onClick={handleLogout}
-                  className="w-full rounded-md px-3 py-2 text-left text-sm font-medium text-red-600 transition-colors hover:bg-red-50"
                 >
                   Logout
-                </button>
+                </Button>
               </li>
             </ul>
-          </nav>
+            </CardContent>
+          </Card>
         </aside>
 
         {/* Content */}
         <main className="lg:col-span-3">{children}</main>
       </div>
-    </div>
+    </Container>
   );
 }

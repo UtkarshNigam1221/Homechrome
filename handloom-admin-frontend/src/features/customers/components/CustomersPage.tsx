@@ -1,16 +1,13 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { Edit, Mail, MapPin, Phone, Plus, Search, ShoppingBag, Trash2 } from 'lucide-react';
 import { useState } from 'react';
-import toast from 'react-hot-toast';
 
 import { customersApi } from '@/features/customers/api';
-import { getErrorMessage } from '@/shared/api/client';
 import {
   Badge,
   Button,
   Card,
-  ConfirmModal,
   Input,
   Modal,
   Pagination,
@@ -23,7 +20,7 @@ import {
   TableLoading,
   TableRow,
 } from '@/shared/components/ui';
-import { useCursorPagination, useDebounce } from '@/shared/hooks';
+import { useCursorPagination, useDebounce, useDeleteWithConfirm } from '@/shared/hooks';
 import { getStatusBadgeVariant } from '@/shared/utils/badge';
 import { formatCurrency } from '@/shared/utils/currency';
 
@@ -31,7 +28,6 @@ import type { Customer } from '../types';
 import { CustomerFormModal } from './CustomerFormModal';
 
 export function CustomersPage() {
-  const queryClient = useQueryClient();
   const {
     limit,
     cursor,
@@ -44,7 +40,6 @@ export function CustomersPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const debouncedSearch = useDebounce(searchQuery, 300);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
-  const [deleteCustomer, setDeleteCustomer] = useState<Customer | null>(null);
   const [showFormModal, setShowFormModal] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
 
@@ -59,18 +54,14 @@ export function CustomersPage() {
       }),
   });
 
-  // Delete mutation
-  const deleteMutation = useMutation({
-    mutationFn: customersApi.delete,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['customers'] });
-      toast.success('Customer deleted successfully');
-      setDeleteCustomer(null);
-    },
-    onError: (error) => {
-      toast.error(getErrorMessage(error));
-    },
-  });
+  const { setDeleteTarget: setDeleteCustomer, DeleteConfirmModal } = useDeleteWithConfirm<Customer>(
+    {
+      queryKey: 'customers',
+      deleteFn: customersApi.delete,
+      entityName: 'Customer',
+      getEntityName: (c) => c.name || c.email,
+    }
+  );
 
   const customers = customersData?.items || [];
   const pagination = customersData?.pagination;
@@ -324,15 +315,7 @@ export function CustomersPage() {
       />
 
       {/* Delete Confirmation */}
-      <ConfirmModal
-        isOpen={!!deleteCustomer}
-        onClose={() => setDeleteCustomer(null)}
-        onConfirm={() => deleteCustomer && deleteMutation.mutate(deleteCustomer.id)}
-        title="Delete Customer"
-        message={`Are you sure you want to delete "${deleteCustomer?.name}"? This action cannot be undone.`}
-        confirmText="Delete"
-        loading={deleteMutation.isPending}
-      />
+      <DeleteConfirmModal />
     </div>
   );
 }

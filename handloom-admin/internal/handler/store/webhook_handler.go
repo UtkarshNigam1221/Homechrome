@@ -104,6 +104,10 @@ func (h *WebhookHandler) PhonePeWebhook(w http.ResponseWriter, r *http.Request) 
 		if err := h.paymentService.HandlePaymentFailure(ctx, evt); err != nil {
 			slog.ErrorContext(ctx, "failed to handle payment failure", "error", err)
 		}
+	case "checkout.order.pending":
+		if err := h.paymentService.HandlePaymentPending(ctx, evt); err != nil {
+			slog.ErrorContext(ctx, "failed to handle payment pending", "error", err)
+		}
 	default:
 		slog.WarnContext(ctx, "Unhandled PhonePe webhook event", "event", webhookPayload.Event)
 	}

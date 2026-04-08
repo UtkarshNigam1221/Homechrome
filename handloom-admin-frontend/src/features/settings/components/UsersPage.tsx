@@ -24,7 +24,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/shared/components/ui';
-import { useCursorPagination, useDebounce } from '@/shared/hooks';
+import { useCursorPagination, useDebounce, useDeleteWithConfirm } from '@/shared/hooks';
 import { getStatusBadgeVariant } from '@/shared/utils/badge';
 
 import { UserFormModal } from './UserFormModal';
@@ -93,7 +93,6 @@ export function UsersPage() {
   const [searchInput, setSearchInput] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
-  const [deleteUser, setDeleteUser] = useState<UserType | null>(null);
   const [showFormModal, setShowFormModal] = useState(false);
   const [editingUser, setEditingUser] = useState<UserType | null>(null);
   const [statusChangeUser, setStatusChangeUser] = useState<{
@@ -101,7 +100,7 @@ export function UsersPage() {
     newStatus: UserStatus;
   } | null>(null);
 
-  // Debounce search query with 2 second delay
+  // Debounce search query with 400ms delay
   const debouncedSearch = useDebounce(searchInput, 400);
 
   const { data, isLoading } = useQuery({
@@ -119,16 +118,11 @@ export function UsersPage() {
       }),
   });
 
-  const deleteMutation = useMutation({
-    mutationFn: usersApi.delete,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['users'] });
-      toast.success('User deleted successfully');
-      setDeleteUser(null);
-    },
-    onError: (error) => {
-      toast.error(getErrorMessage(error));
-    },
+  const { setDeleteTarget: setDeleteUser, DeleteConfirmModal } = useDeleteWithConfirm<UserType>({
+    queryKey: 'users',
+    deleteFn: usersApi.delete,
+    entityName: 'User',
+    getEntityName: (u) => u.email,
   });
 
   const updateStatusMutation = useMutation({
@@ -367,15 +361,7 @@ export function UsersPage() {
       />
 
       {/* Delete Confirmation */}
-      <ConfirmModal
-        isOpen={!!deleteUser}
-        onClose={() => setDeleteUser(null)}
-        onConfirm={() => deleteUser && deleteMutation.mutate(deleteUser.id)}
-        title="Delete User"
-        message={`Are you sure you want to delete "${deleteUser?.email}"? This action cannot be undone.`}
-        confirmText="Delete"
-        loading={deleteMutation.isPending}
-      />
+      <DeleteConfirmModal />
 
       {/* Status Change Confirmation */}
       <ConfirmModal

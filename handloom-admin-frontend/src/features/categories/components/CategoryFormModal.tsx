@@ -1,5 +1,4 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Controller, useFieldArray, useForm } from 'react-hook-form';
@@ -9,6 +8,7 @@ import { z } from 'zod';
 import { categoriesApi } from '@/features/categories/api';
 import { getErrorMessage } from '@/shared/api/client';
 import { Button, ImageUpload, Input, Modal, Select } from '@/shared/components/ui';
+import { useFormMutation } from '@/shared/hooks';
 
 import type { AttributeType, Category, CategoryAttribute, CreateCategoryRequest } from '../types';
 
@@ -64,7 +64,6 @@ const ATTRIBUTE_TYPES: { value: AttributeType; label: string }[] = [
 ];
 
 export function CategoryFormModal({ isOpen, onClose, category }: Readonly<CategoryFormModalProps>) {
-  const queryClient = useQueryClient();
   const isEditing = !!category?.id;
   const [activeTab, setActiveTab] = useState<'basic' | 'attributes'>('basic');
 
@@ -136,31 +135,15 @@ export function CategoryFormModal({ isOpen, onClose, category }: Readonly<Catego
     };
   }, [isOpen, category, reset, replaceAttributes]);
 
-  // Create mutation
-  const createMutation = useMutation({
-    mutationFn: (data: CreateCategoryRequest) => categoriesApi.create(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['categories'] });
-      toast.success('Category created successfully');
-      onClose();
-    },
-    onError: (error) => {
-      toast.error(getErrorMessage(error));
-    },
-  });
-
-  // Update mutation
-  const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: Partial<CreateCategoryRequest> }) =>
-      categoriesApi.update(id, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['categories'] });
-      toast.success('Category updated successfully');
-      onClose();
-    },
-    onError: (error) => {
-      toast.error(getErrorMessage(error));
-    },
+  const { isLoading, onSubmit: submitMutation } = useFormMutation<
+    CreateCategoryRequest & { own_attributes?: CategoryAttribute[] },
+    Partial<CreateCategoryRequest> & { own_attributes?: CategoryAttribute[] }
+  >({
+    queryKey: 'categories',
+    createFn: categoriesApi.create,
+    updateFn: categoriesApi.update,
+    entityName: 'Category',
+    onSuccess: onClose,
   });
 
   const onSubmit = (data: CategoryFormData) => {
@@ -172,11 +155,7 @@ export function CategoryFormModal({ isOpen, onClose, category }: Readonly<Catego
       own_attributes: data.own_attributes as CategoryAttribute[],
     };
 
-    if (isEditing && category?.id) {
-      updateMutation.mutate({ id: category.id, data: requestData });
-    } else {
-      createMutation.mutate(requestData);
-    }
+    submitMutation(category?.id, requestData, requestData);
   };
 
   const addNewAttribute = () => {
@@ -206,8 +185,6 @@ export function CategoryFormModal({ isOpen, onClose, category }: Readonly<Catego
       currentOptions.filter((_, idx) => idx !== optionIndex)
     );
   };
-
-  const isLoading = createMutation.isPending || updateMutation.isPending;
 
   return (
     <Modal

@@ -41,7 +41,7 @@ func NewStorefrontStack(scope constructs.Construct, id string, props *Storefront
 
 	// ─── S3 Bucket (static assets + ISR cache) ───
 	bucket := awss3.NewBucket(stack, jsii.String("AssetsBucket"), &awss3.BucketProps{
-		BucketName:        jsii.String(fmt.Sprintf("homechrome-store-%s", env)),
+		BucketName:        jsii.String(fmt.Sprintf("homechrome-store-%s-mumbai", env)),
 		RemovalPolicy:     awscdk.RemovalPolicy_DESTROY,
 		AutoDeleteObjects: jsii.Bool(true),
 		BlockPublicAccess: awss3.BlockPublicAccess_BLOCK_ALL(),
@@ -229,7 +229,7 @@ func NewStorefrontStack(scope constructs.Construct, id string, props *Storefront
 			},
 		},
 		HttpVersion: awscloudfront.HttpVersion_HTTP2_AND_3,
-		PriceClass:  awscloudfront.PriceClass_PRICE_CLASS_100,
+		PriceClass:  awscloudfront.PriceClass_PRICE_CLASS_200,
 		Comment:     jsii.String(fmt.Sprintf("Homechrome Store - %s", env)),
 	}
 
@@ -268,6 +268,11 @@ func NewStorefrontStack(scope constructs.Construct, id string, props *Storefront
 		DestinationBucket:    bucket,
 		DestinationKeyPrefix: jsii.String("_assets"),
 		Prune:                jsii.Bool(true),
+		CacheControl: &[]awss3deployment.CacheControl{
+			awss3deployment.CacheControl_MaxAge(awscdk.Duration_Days(jsii.Number(365))),
+			awss3deployment.CacheControl_SetPublic(),
+			awss3deployment.CacheControl_Immutable(),
+		},
 	})
 
 	// Deploy ISR cache seed to S3 (prune=false to preserve runtime cache)

@@ -1,31 +1,24 @@
 'use client';
 
+import Image from 'next/image';
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 
-import { api } from '@/lib/api';
+import logo28 from '@/assets/logo-28.png';
+
+import { Button } from '@/components/ui/button';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import {
+  Sheet,
+  SheetClose,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet';
+import api from '@/lib/api';
+import { ROUTES } from '@/lib/routes';
 import { useAuthStore } from '@/stores/auth';
 import { Category } from '@/types';
-
-let categoriesCache: Category[] | null = null;
-let categoriesPromise: Promise<Category[]> | null = null;
-
-function fetchCategories(): Promise<Category[]> {
-  if (categoriesCache) return Promise.resolve(categoriesCache);
-  if (!categoriesPromise) {
-    categoriesPromise = api
-      .get<Category[]>('/api/v1/store/catalog/categories')
-      .then((res) => {
-        categoriesCache = res.data;
-        return res.data;
-      })
-      .catch(() => {
-        categoriesPromise = null;
-        return [];
-      });
-  }
-  return categoriesPromise;
-}
 
 interface MobileNavProps {
   isOpen: boolean;
@@ -36,145 +29,125 @@ export default function MobileNav({ isOpen, onClose }: MobileNavProps) {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const customer = useAuthStore((s) => s.customer);
   const logout = useAuthStore((s) => s.logout);
-  const [categories, setCategories] = useState<Category[]>(categoriesCache || []);
 
-  useEffect(() => {
-    let cancelled = false;
-    fetchCategories().then((data) => {
-      if (!cancelled) setCategories(data);
-    });
-    return () => { cancelled = true; };
-  }, []);
-
-  // Prevent body scroll when menu is open
-  useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = '';
-    }
-    return () => {
-      document.body.style.overflow = '';
-    };
-  }, [isOpen]);
-
-  if (!isOpen) return null;
+  const { data: categories = [] } = useQuery<Category[]>({
+    queryKey: ['categories'],
+    queryFn: async () => {
+      const { data } = await api.get<Category[]>(ROUTES.CATALOG.CATEGORIES);
+      return data;
+    },
+  });
 
   return (
-    <div className="fixed inset-0 z-50 lg:hidden">
-      {/* Backdrop */}
-      <div
-        className="fixed inset-0 bg-black/40"
-        onClick={onClose}
-        aria-hidden="true"
-      />
+    <Sheet
+      open={isOpen}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
+      <SheetContent side="left" className="w-full max-w-xs p-0">
+        <SheetHeader className="border-b border-border px-4 py-4">
+          <SheetTitle>
+            <Link href="/" className="flex items-center gap-2" onClick={onClose}>
+              <Image src={logo28} alt="Homechrome" className="h-7 w-auto" unoptimized />
+              <span className="text-lg font-bold tracking-tight text-foreground">
+                HOME<span className="text-primary">CHROME</span>
+              </span>
+            </Link>
+          </SheetTitle>
+        </SheetHeader>
 
-      {/* Slide-out panel */}
-      <div className="fixed inset-y-0 left-0 w-full max-w-xs bg-white shadow-xl">
-        <div className="flex h-full flex-col">
-          {/* Header */}
-          <div className="flex items-center justify-between border-b border-border px-4 py-4">
-            <span className="text-lg font-bold tracking-tight text-foreground">
-              HOME<span className="text-primary">CHROME</span>
-            </span>
-            <button
-              type="button"
-              onClick={onClose}
-              className="text-foreground"
-              aria-label="Close menu"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-                strokeWidth={1.5}
-                stroke="currentColor"
-                className="h-6 w-6"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M6 18 18 6M6 6l12 12"
+        {/* Navigation links */}
+        <ScrollArea className="flex-1">
+        <nav className="px-4 py-4">
+          <div className="space-y-1">
+            <SheetClose
+              render={
+                <Link
+                  href="/products"
+                  className="block rounded-lg px-3 py-2.5 text-base font-medium text-foreground transition-colors hover:bg-background"
                 />
-              </svg>
-            </button>
+              }
+            >
+              All Products
+            </SheetClose>
           </div>
 
-          {/* Navigation links */}
-          <nav className="flex-1 overflow-y-auto px-4 py-4">
-            <div className="space-y-1">
-              <Link
-                href="/products"
-                onClick={onClose}
-                className="block rounded-lg px-3 py-2.5 text-base font-medium text-foreground transition-colors hover:bg-background"
-              >
-                All Products
-              </Link>
+          <div className="mt-6">
+            <h3 className="px-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Categories
+            </h3>
+            <div className="mt-2 space-y-1">
+              {categories.map((category) => (
+                <SheetClose
+                  key={category.id}
+                  render={
+                    <Link
+                      href={`/c/${category.slug}`}
+                      className="block rounded-lg px-3 py-2.5 text-base text-foreground transition-colors hover:bg-background"
+                    />
+                  }
+                >
+                  {category.name}
+                </SheetClose>
+              ))}
             </div>
+          </div>
+        </nav>
+        </ScrollArea>
 
-            <div className="mt-6">
-              <h3 className="px-3 text-xs font-semibold uppercase tracking-wider text-muted">
-                Categories
-              </h3>
-              <div className="mt-2 space-y-1">
-                {categories.map((category) => (
+        {/* Account section */}
+        <div className="border-t border-border px-4 py-4">
+          {isAuthenticated ? (
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                Hello, {customer?.first_name || 'there'}
+              </p>
+              <SheetClose
+                render={
                   <Link
-                    key={category.id}
-                    href={`/c/${category.slug}`}
-                    onClick={onClose}
-                    className="block rounded-lg px-3 py-2.5 text-base text-foreground transition-colors hover:bg-background"
-                  >
-                    {category.name}
-                  </Link>
-                ))}
-              </div>
-            </div>
-          </nav>
-
-          {/* Account section */}
-          <div className="border-t border-border px-4 py-4">
-            {isAuthenticated ? (
-              <div className="space-y-3">
-                <p className="text-sm text-muted">
-                  Hello, {customer?.first_name || 'there'}
-                </p>
-                <Link
-                  href="/account"
-                  onClick={onClose}
-                  className="block rounded-lg px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-background"
-                >
-                  My Account
-                </Link>
-                <Link
-                  href="/account/orders"
-                  onClick={onClose}
-                  className="block rounded-lg px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-background"
-                >
-                  My Orders
-                </Link>
-                <button
-                  type="button"
-                  onClick={() => {
-                    logout();
-                    onClose();
-                  }}
-                  className="block w-full rounded-lg px-3 py-2 text-left text-sm font-medium text-red-600 transition-colors hover:bg-red-50"
-                >
-                  Sign Out
-                </button>
-              </div>
-            ) : (
-              <Link
-                href="/login"
-                onClick={onClose}
-                className="block rounded-lg bg-primary px-4 py-2.5 text-center text-sm font-medium text-white transition-colors hover:bg-primary-dark"
+                    href="/account"
+                    className="block rounded-lg px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-background"
+                  />
+                }
               >
-                Sign In
-              </Link>
-            )}
-          </div>
+                My Account
+              </SheetClose>
+              <SheetClose
+                render={
+                  <Link
+                    href="/account/orders"
+                    className="block rounded-lg px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-background"
+                  />
+                }
+              >
+                My Orders
+              </SheetClose>
+              <Button
+                variant="ghost"
+                className="w-full justify-start text-red-600 hover:bg-red-50 hover:text-red-700"
+                onClick={() => {
+                  logout();
+                  onClose();
+                }}
+              >
+                Sign Out
+              </Button>
+            </div>
+          ) : (
+            <SheetClose
+              render={
+                <Link
+                  href="/login"
+                  className="block rounded-lg bg-primary px-4 py-2.5 text-center text-sm font-medium text-white transition-colors hover:bg-primary-dark"
+                />
+              }
+            >
+              Sign In
+            </SheetClose>
+          )}
         </div>
-      </div>
-    </div>
+      </SheetContent>
+    </Sheet>
   );
 }

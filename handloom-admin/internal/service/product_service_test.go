@@ -322,11 +322,11 @@ func TestProductService_GetByID(t *testing.T) {
 			Return(product, nil)
 
 		mockCatRepo.EXPECT().
-			GetByID(ctx, "cat_123").
+			GetByID(gomock.Any(), "cat_123").
 			Return(category, nil)
 
 		mockInvRepo.EXPECT().
-			GetByProductID(ctx, "prod_123").
+			GetByProductID(gomock.Any(), "prod_123").
 			Return(inventory, nil)
 
 		result, err := svc.GetByID(ctx, "prod_123")
@@ -365,11 +365,11 @@ func TestProductService_GetByID(t *testing.T) {
 			Return(product, nil)
 
 		mockCatRepo.EXPECT().
-			GetByID(ctx, "cat_deleted").
+			GetByID(gomock.Any(), "cat_deleted").
 			Return(nil, errors.NotFound("Category"))
 
 		mockInvRepo.EXPECT().
-			GetByProductID(ctx, "prod_123").
+			GetByProductID(gomock.Any(), "prod_123").
 			Return(nil, errors.NotFound("Inventory"))
 
 		result, err := svc.GetByID(ctx, "prod_123")

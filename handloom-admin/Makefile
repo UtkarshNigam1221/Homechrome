@@ -13,8 +13,11 @@
 	init-s3 deploy-local redeploy-local teardown-local \
 	logs logs-lambda
 
-# ACM certificate ARN for custom domain (*.homechrome.in) - must be in us-east-1
-CERT_ARN ?= arn:aws:acm:us-east-1:163053486005:certificate/4e15c02f-e7ef-48df-8eff-5097eefed2e8
+# AWS region for deployment
+AWS_REGION ?= ap-south-1
+
+# ACM certificate ARN for custom domain (*.homechrome.in) - regional API Gateway, must be in ap-south-1
+CERT_ARN ?= arn:aws:acm:ap-south-1:163053486005:certificate/c20f97ff-ba58-4821-8f3d-6f50f772df89
 
 # Go parameters
 GOCMD=go
@@ -66,7 +69,7 @@ run:
 	APP_DEBUG=true \
 	SERVER_PORT=8081 \
 	AWS_ENDPOINT=http://localhost:4566 \
-	AWS_REGION=ap-south-1 \
+	AWS_REGION=$(AWS_REGION) \
 	AWS_ACCESS_KEY_ID=local \
 	AWS_SECRET_ACCESS_KEY=local \
 	JWT_SECRET_KEY=dev-secret-key-change-in-production \
@@ -81,7 +84,7 @@ run-watch:
 	APP_DEBUG=true \
 	SERVER_PORT=8081 \
 	AWS_ENDPOINT=http://localhost:4566 \
-	AWS_REGION=ap-south-1 \
+	AWS_REGION=$(AWS_REGION) \
 	AWS_ACCESS_KEY_ID=local \
 	AWS_SECRET_ACCESS_KEY=local \
 	JWT_SECRET_KEY=dev-secret-key-change-in-production \
@@ -465,59 +468,59 @@ create-events:
 ## CDK commands
 cdk-synth:
 	@echo "Synthesizing CDK stacks..."
-	cd infra && cdk synth
+	export AWS_REGION=$(AWS_REGION) && cd infra && cdk synth
 
 cdk-synth-dev:
 	@echo "Synthesizing CDK stacks for dev..."
-	cd infra && cdk synth -c environment=dev -c certArn=$(CERT_ARN)
+	export AWS_REGION=$(AWS_REGION) && cd infra && cdk synth -c environment=dev -c certArn=$(CERT_ARN)
 
 cdk-synth-prod:
 	@echo "Synthesizing CDK stacks for prod..."
-	cd infra && cdk synth -c environment=prod -c certArn=$(CERT_ARN)
+	export AWS_REGION=$(AWS_REGION) && cd infra && cdk synth -c environment=prod -c certArn=$(CERT_ARN)
 
 cdk-synth-all:
 	@echo "Synthesizing CDK stacks for all environments..."
-	cd infra && cdk synth -c deployMode=all -c certArn=$(CERT_ARN)
+	export AWS_REGION=$(AWS_REGION) && cd infra && cdk synth -c deployMode=all -c certArn=$(CERT_ARN)
 
 cdk-deploy-dev: build-lambdas-active
 	@echo "Deploying to development environment..."
-	set -a && . ./.env.dev && set +a && cd infra && cdk deploy --all --require-approval never -c environment=dev -c certArn=$(CERT_ARN)
+	set -a && . ./.env.dev && set +a && export AWS_REGION=$(AWS_REGION) && cd infra && cdk deploy --all --require-approval never -c environment=dev -c certArn=$(CERT_ARN)
 
 cdk-deploy-prod: build-lambdas-active
 	@echo "Deploying to production environment..."
-	set -a && . ./.env.prod && set +a && cd infra && cdk deploy --all --require-approval broadening -c environment=prod -c certArn=$(CERT_ARN)
+	set -a && . ./.env.prod && set +a && export AWS_REGION=$(AWS_REGION) && cd infra && cdk deploy --all --require-approval broadening -c environment=prod -c certArn=$(CERT_ARN)
 
 cdk-deploy-all: build-lambdas-active
 	@echo "Deploying to all environments..."
-	cd infra && cdk deploy --all --require-approval broadening -c deployMode=all -c certArn=$(CERT_ARN)
+	export AWS_REGION=$(AWS_REGION) && cd infra && cdk deploy --all --require-approval broadening -c deployMode=all -c certArn=$(CERT_ARN)
 
 cdk-destroy-dev:
 	@echo "Destroying dev CDK stacks..."
-	cd infra && cdk destroy --all -c environment=dev
+	export AWS_REGION=$(AWS_REGION) && cd infra && cdk destroy --all -c environment=dev
 
 cdk-destroy-prod:
 	@echo "Destroying prod CDK stacks..."
-	cd infra && cdk destroy --all -c environment=prod
+	export AWS_REGION=$(AWS_REGION) && cd infra && cdk destroy --all -c environment=prod
 
 cdk-destroy:
 	@echo "Destroying CDK stacks..."
-	cd infra && cdk destroy --all
+	export AWS_REGION=$(AWS_REGION) && cd infra && cdk destroy --all
 
 cdk-diff:
 	@echo "Showing CDK diff..."
-	cd infra && cdk diff
+	export AWS_REGION=$(AWS_REGION) && cd infra && cdk diff
 
 cdk-diff-dev:
 	@echo "Showing CDK diff for dev..."
-	cd infra && cdk diff -c environment=dev -c certArn=$(CERT_ARN)
+	export AWS_REGION=$(AWS_REGION) && cd infra && cdk diff -c environment=dev -c certArn=$(CERT_ARN)
 
 cdk-diff-prod:
 	@echo "Showing CDK diff for prod..."
-	cd infra && cdk diff -c environment=prod -c certArn=$(CERT_ARN)
+	export AWS_REGION=$(AWS_REGION) && cd infra && cdk diff -c environment=prod -c certArn=$(CERT_ARN)
 
 cdk-bootstrap:
 	@echo "Bootstrapping CDK (required once per account/region)..."
-	cd infra && cdk bootstrap
+	export AWS_REGION=$(AWS_REGION) && cd infra && cdk bootstrap
 
 ## Show available commands
 help:

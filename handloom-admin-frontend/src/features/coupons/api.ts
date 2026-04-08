@@ -1,4 +1,5 @@
 import apiClient, { normalizeListResponse } from '@/shared/api/client';
+import { ROUTES } from '@/shared/constants/routes';
 import type { ListResponse, PaginationParams } from '@/shared/types/common';
 
 import type { Coupon, CreateCouponRequest } from './types';
@@ -12,32 +13,32 @@ export const couponsApi = {
       search?: string;
     }
   ): Promise<ListResponse<Coupon>> => {
-    const response = await apiClient.get('/admin/coupons', { params });
+    const response = await apiClient.get(ROUTES.COUPONS.LIST, { params });
     return normalizeListResponse<Coupon>(response.data as Record<string, unknown>, 'coupons');
   },
 
   get: async (id: string) => {
-    const response = await apiClient.get<Coupon>(`/admin/coupons/${id}`);
+    const response = await apiClient.get<Coupon>(ROUTES.COUPONS.DETAIL(id));
     return response.data;
   },
 
   getByCode: async (code: string) => {
-    const response = await apiClient.get<Coupon>(`/admin/coupons/code/${code}`);
+    const response = await apiClient.get<Coupon>(ROUTES.COUPONS.BY_CODE(code));
     return response.data;
   },
 
   create: async (data: CreateCouponRequest) => {
-    const response = await apiClient.post<Coupon>('/admin/coupons', data);
+    const response = await apiClient.post<Coupon>(ROUTES.COUPONS.LIST, data);
     return response.data;
   },
 
   update: async (id: string, data: Partial<CreateCouponRequest>) => {
-    const response = await apiClient.patch<Coupon>(`/admin/coupons/${id}`, data);
+    const response = await apiClient.patch<Coupon>(ROUTES.COUPONS.DETAIL(id), data);
     return response.data;
   },
 
   delete: async (id: string) => {
-    await apiClient.delete(`/admin/coupons/${id}`);
+    await apiClient.delete(ROUTES.COUPONS.DETAIL(id));
   },
 
   validate: async (
@@ -46,7 +47,7 @@ export const couponsApi = {
     customerId?: string,
     productIds?: string[]
   ) => {
-    const response = await apiClient.post('/admin/coupons/validate', {
+    const response = await apiClient.post(ROUTES.COUPONS.VALIDATE, {
       code,
       order_total: orderTotal,
       customer_id: customerId,

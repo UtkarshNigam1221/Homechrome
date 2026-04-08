@@ -165,8 +165,11 @@ func getAWSEnv() *awscdk.Environment {
 	if region == "" {
 		region = os.Getenv("AWS_REGION")
 	}
+	if region == "" {
+		region = "ap-south-1"
+	}
 
-	if account == "" || region == "" {
+	if account == "" {
 		return nil
 	}
 

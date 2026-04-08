@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 
 import api from '@/lib/api';
+import { ROUTES } from '@/lib/routes';
 import { Customer } from '@/types';
 
 interface AuthState {
@@ -25,21 +26,21 @@ export const useAuthStore = create<AuthState>((set) => ({
   setCustomer: (customer) => set({ customer, isAuthenticated: !!customer }),
 
   sendOTP: async (phone: string) => {
-    await api.post('/api/v1/store/auth/otp/send', { phone });
+    await api.post(ROUTES.AUTH.SEND_OTP, { phone });
   },
 
   verifyOTP: async (phone: string, code: string) => {
     const { data } = await api.post<{
       customer: Customer;
       is_new_customer: boolean;
-    }>('/api/v1/store/auth/otp/verify', { phone, code });
+    }>(ROUTES.AUTH.VERIFY_OTP, { phone, code });
     set({ customer: data.customer, isAuthenticated: true });
     return data;
   },
 
   logout: async () => {
     try {
-      await api.post('/api/v1/store/auth/logout');
+      await api.post(ROUTES.AUTH.LOGOUT);
     } finally {
       set({ customer: null, isAuthenticated: false });
     }
@@ -47,7 +48,7 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   checkAuth: async () => {
     try {
-      const { data } = await api.get<Customer>('/api/v1/store/me');
+      const { data } = await api.get<Customer>(ROUTES.ME.PROFILE);
       set({ customer: data, isAuthenticated: true, isLoading: false });
     } catch {
       set({ customer: null, isAuthenticated: false, isLoading: false });

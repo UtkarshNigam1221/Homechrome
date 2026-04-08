@@ -116,7 +116,7 @@ func createS3OnlyStack(stack awscdk.Stack, props *FrontendStackProps, isProd boo
 func createCloudFrontStack(stack awscdk.Stack, props *FrontendStackProps, isProd bool) *FrontendStack {
 	// S3 bucket - private, accessed only via CloudFront OAC
 	bucket := awss3.NewBucket(stack, jsii.String("WebsiteBucket"), &awss3.BucketProps{
-		BucketName:        jsii.String(fmt.Sprintf("handloom-admin-frontend-%s", props.Environment)),
+		BucketName:        jsii.String(fmt.Sprintf("handloom-admin-frontend-%s-mumbai", props.Environment)),
 		RemovalPolicy:     getRemovalPolicy(isProd),
 		AutoDeleteObjects: jsii.Bool(!isProd),
 		BlockPublicAccess: awss3.BlockPublicAccess_BLOCK_ALL(),
@@ -187,7 +187,7 @@ func createCloudFrontStack(stack awscdk.Stack, props *FrontendStackProps, isProd
 		},
 		DefaultRootObject: jsii.String("index.html"),
 		HttpVersion:       awscloudfront.HttpVersion_HTTP2_AND_3,
-		PriceClass:        getPriceClass(isProd),
+		PriceClass:        awscloudfront.PriceClass_PRICE_CLASS_200,
 		Comment:           jsii.String(fmt.Sprintf("Handloom Admin Frontend - %s", props.Environment)),
 		// SPA routing - return index.html for 404s
 		ErrorResponses: &[]*awscloudfront.ErrorResponse{
@@ -276,11 +276,4 @@ func getRemovalPolicy(isProd bool) awscdk.RemovalPolicy {
 		return awscdk.RemovalPolicy_RETAIN
 	}
 	return awscdk.RemovalPolicy_DESTROY
-}
-
-func getPriceClass(isProd bool) awscloudfront.PriceClass {
-	if isProd {
-		return awscloudfront.PriceClass_PRICE_CLASS_100
-	}
-	return awscloudfront.PriceClass_PRICE_CLASS_100
 }

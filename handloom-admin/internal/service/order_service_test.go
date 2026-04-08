@@ -258,8 +258,8 @@ func TestOrderService_GetByID(t *testing.T) {
 			Return(customer, nil)
 
 		mockProductRepo.EXPECT().
-			GetByID(ctx, "prod_123").
-			Return(product, nil)
+			BatchGetByIDs(ctx, []string{"prod_123"}).
+			Return([]*domain.Product{product}, nil)
 
 		result, err := service.GetByID(ctx, "order_123")
 

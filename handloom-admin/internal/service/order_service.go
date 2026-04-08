@@ -79,7 +79,9 @@ func (s *OrderService) Create(ctx context.Context, req domain.CreateOrderRequest
 			priceQuoteID = itemInput.QuoteID
 
 			// Mark quote as used
-			_ = s.priceQuoteRepo.MarkAsUsed(ctx, *itemInput.QuoteID, orderNumber)
+			if markErr := s.priceQuoteRepo.MarkAsUsed(ctx, *itemInput.QuoteID, orderNumber); markErr != nil {
+				slog.ErrorContext(ctx, "Failed to mark price quote as used", "quote_id", *itemInput.QuoteID, "order_number", orderNumber, "error", markErr)
+			}
 		} else if itemInput.CustomDimensions != nil && product.AllowCustomDimensions {
 			// Calculate custom price
 			calcReq := domain.CalculatePriceRequest{
@@ -196,20 +198,31 @@ func (s *OrderService) GetByID(ctx context.Context, id string) (*domain.OrderWit
 		result.Customer = customer
 	}
 
-	// Get item details
+	// Batch-fetch all products for images in a single round-trip
+	productIDs := make([]string, 0, len(order.Items))
+	for _, item := range order.Items {
+		productIDs = append(productIDs, item.ProductID)
+	}
+	productsByID := make(map[string]*domain.Product, len(productIDs))
+	if len(productIDs) > 0 {
+		products, batchErr := s.productRepo.BatchGetByIDs(ctx, productIDs)
+		if batchErr == nil {
+			for _, p := range products {
+				productsByID[p.ID] = p
+			}
+		}
+	}
+
+	// Build item details
 	for _, item := range order.Items {
 		itemDetail := domain.OrderItemDetails{
 			OrderItem:   item,
 			ProductName: item.ProductName,
 			ProductSKU:  item.ProductSKU,
 		}
-
-		// Get product images
-		product, err := s.productRepo.GetByID(ctx, item.ProductID)
-		if err == nil {
-			itemDetail.ProductImages = product.Images
+		if p, ok := productsByID[item.ProductID]; ok {
+			itemDetail.ProductImages = p.Images
 		}
-
 		result.ItemDetails = append(result.ItemDetails, itemDetail)
 	}
 
@@ -238,11 +251,7 @@ func (s *OrderService) UpdateStatus(ctx context.Context, id string, status domai
 	order.UpdatedBy = updatedBy
 	order.UpdatedAt = time.Now()
 
-	if err := s.orderRepo.Update(ctx, order); err != nil {
-		return err
-	}
-
-	// Handle status-specific logic
+	// Handle status-specific logic before persisting
 	switch status {
 	case domain.OrderStatusShipped:
 		// Update shipped date
@@ -260,6 +269,10 @@ func (s *OrderService) UpdateStatus(ctx context.Context, id string, status domai
 				slog.ErrorContext(ctx, "Failed to release stock", "product_id", item.ProductID, "error", releaseErr)
 			}
 		}
+	}
+
+	if err := s.orderRepo.Update(ctx, order); err != nil {
+		return err
 	}
 
 	slog.InfoContext(ctx, "Updated order status", "order_id", id, "status", status)
@@ -359,16 +372,17 @@ func generateOrderNumber() string {
 	return fmt.Sprintf("HL%s%s", now.Format("20060102"), uuid.New().String()[:6])
 }
 
+// validTransitions defines allowed order status transitions.
+var validTransitions = map[domain.OrderStatus][]domain.OrderStatus{
+	domain.OrderStatusPending:    {domain.OrderStatusConfirmed, domain.OrderStatusCancelled},
+	domain.OrderStatusConfirmed:  {domain.OrderStatusProcessing, domain.OrderStatusCancelled},
+	domain.OrderStatusProcessing: {domain.OrderStatusShipped, domain.OrderStatusCancelled},
+	domain.OrderStatusShipped:    {domain.OrderStatusDelivered, domain.OrderStatusReturned},
+	domain.OrderStatusDelivered:  {domain.OrderStatusReturned},
+}
+
 // isValidStatusTransition checks if a status transition is valid
 func isValidStatusTransition(from, to domain.OrderStatus) bool {
-	validTransitions := map[domain.OrderStatus][]domain.OrderStatus{
-		domain.OrderStatusPending:    {domain.OrderStatusConfirmed, domain.OrderStatusCancelled},
-		domain.OrderStatusConfirmed:  {domain.OrderStatusProcessing, domain.OrderStatusCancelled},
-		domain.OrderStatusProcessing: {domain.OrderStatusShipped, domain.OrderStatusCancelled},
-		domain.OrderStatusShipped:    {domain.OrderStatusDelivered, domain.OrderStatusReturned},
-		domain.OrderStatusDelivered:  {domain.OrderStatusReturned},
-	}
-
 	allowed, ok := validTransitions[from]
 	if !ok {
 		return false

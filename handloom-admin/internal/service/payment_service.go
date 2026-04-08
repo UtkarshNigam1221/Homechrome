@@ -76,9 +76,11 @@ func (s *PaymentService) InitiatePayment(ctx context.Context, req domain.Initiat
 
 	redirectURL, err := s.phonePe.InitiatePayment(ctx, merchantTxnID, req.CustomerID, req.Amount, req.OrderID)
 	if err != nil {
-		_ = s.paymentRepo.UpdateStatus(ctx, payment.ID, domain.PaymentStatusFailed, map[string]interface{}{
+		if updateErr := s.paymentRepo.UpdateStatus(ctx, payment.ID, domain.PaymentStatusFailed, map[string]interface{}{
 			metaProviderResponse: err.Error(),
-		})
+		}); updateErr != nil {
+			slog.ErrorContext(ctx, "Failed to update payment status to failed", "payment_id", payment.ID, "error", updateErr)
+		}
 		return nil, errors.Wrap(err, "Failed to initiate payment with provider")
 	}
 
@@ -91,7 +93,7 @@ func (s *PaymentService) InitiatePayment(ctx context.Context, req domain.Initiat
 
 // HandlePaymentSuccess processes a successful payment webhook event.
 func (s *PaymentService) HandlePaymentSuccess(ctx context.Context, evt domain.PaymentWebhookEvent) error {
-	payment, err := s.resolvePayment(ctx, evt.MerchantTxnID)
+	payment, err := s.resolvePayment(ctx, evt.MerchantTxnID, domain.PaymentStatusInitiated, domain.PaymentStatusPending)
 	if err != nil || payment == nil {
 		return err
 	}
@@ -117,7 +119,7 @@ func (s *PaymentService) HandlePaymentSuccess(ctx context.Context, evt domain.Pa
 
 // HandlePaymentFailure processes a failed payment webhook event.
 func (s *PaymentService) HandlePaymentFailure(ctx context.Context, evt domain.PaymentWebhookEvent) error {
-	payment, err := s.resolvePayment(ctx, evt.MerchantTxnID)
+	payment, err := s.resolvePayment(ctx, evt.MerchantTxnID, domain.PaymentStatusInitiated, domain.PaymentStatusPending)
 	if err != nil || payment == nil {
 		return err
 	}
@@ -133,20 +135,42 @@ func (s *PaymentService) HandlePaymentFailure(ctx context.Context, evt domain.Pa
 	return nil
 }
 
+// HandlePaymentPending processes a pending payment webhook event.
+// This occurs when PhonePe has received the payment attempt but it's still
+// being processed (e.g., UPI mandate pending, bank processing).
+func (s *PaymentService) HandlePaymentPending(ctx context.Context, evt domain.PaymentWebhookEvent) error {
+	payment, err := s.resolvePayment(ctx, evt.MerchantTxnID, domain.PaymentStatusInitiated)
+	if err != nil || payment == nil {
+		return err
+	}
+
+	if err := s.updatePaymentStatus(ctx, payment.ID, domain.PaymentStatusPending, evt, nil); err != nil {
+		return err
+	}
+
+	// Update order payment status to PENDING (order status stays PENDING)
+	s.updateOrderStatus(ctx, payment.OrderID, domain.OrderStatusPending, domain.PaymentStatusPending, payment.ID)
+
+	slog.InfoContext(ctx, "Payment pending", "payment_id", payment.ID, "order_id", payment.OrderID)
+	return nil
+}
+
 // --- internal helpers ---
 
 // resolvePayment looks up a payment and checks idempotency.
-// Returns (nil, nil) if already processed.
-func (s *PaymentService) resolvePayment(ctx context.Context, merchantTxnID string) (*domain.Payment, error) {
+// Returns (nil, nil) if the payment is not in one of the allowed statuses.
+func (s *PaymentService) resolvePayment(ctx context.Context, merchantTxnID string, allowedStatuses ...domain.PaymentStatus) (*domain.Payment, error) {
 	payment, err := s.paymentRepo.GetByMerchantTxnID(ctx, merchantTxnID)
 	if err != nil {
 		return nil, errors.NotFound("Payment not found")
 	}
-	if payment.Status != domain.PaymentStatusInitiated {
-		slog.InfoContext(ctx, "Payment already processed, skipping", "payment_id", payment.ID, "status", payment.Status)
-		return nil, nil
+	for _, status := range allowedStatuses {
+		if payment.Status == status {
+			return payment, nil
+		}
 	}
-	return payment, nil
+	slog.InfoContext(ctx, "Payment already processed, skipping", "payment_id", payment.ID, "status", payment.Status)
+	return nil, nil
 }
 
 // updatePaymentStatus updates the payment record with provider details.

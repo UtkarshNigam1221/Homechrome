@@ -2,9 +2,13 @@
 
 import { useState } from 'react';
 
-import Button from '@/components/common/Button';
-import Input from '@/components/common/Input';
+import Button from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Container } from '@/components/ui/container';
+import { PageHeader } from '@/components/ui/page-header';
+import Input from '@/components/ui/form-field';
 import api from '@/lib/api';
+import { ROUTES } from '@/lib/routes';
 import { formatDateTime as formatDate } from '@/lib/utils';
 
 interface StatusHistoryEntry {
@@ -41,7 +45,7 @@ export default function TrackOrderPage() {
 
     try {
       const { data } = await api.get<TrackingResult>(
-        `/api/v1/store/track/${encodeURIComponent(trimmed)}`,
+        ROUTES.TRACK(trimmed),
       );
       setTracking(data);
     } catch {
@@ -54,15 +58,12 @@ export default function TrackOrderPage() {
   };
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-12 sm:px-6 lg:px-8">
-      <div className="mb-8 text-center">
-        <h1 className="mb-2 text-2xl font-bold text-foreground sm:text-3xl">
-          Track Your Order
-        </h1>
-        <p className="text-muted">
-          Enter your order number to check the delivery status.
-        </p>
-      </div>
+    <Container size="narrow" className="max-w-2xl py-12">
+      <PageHeader
+        title="Track Your Order"
+        description="Enter your order number to check the delivery status."
+        className="text-center"
+      />
 
       <form onSubmit={handleSubmit} className="mb-8">
         <div className="flex gap-3">
@@ -80,120 +81,114 @@ export default function TrackOrderPage() {
         </div>
       </form>
 
-      {/* Results */}
       {tracking && (
         <div className="space-y-6">
-          {/* Order info */}
-          <div className="rounded-lg border border-border bg-white p-6">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h2 className="text-lg font-semibold text-foreground">
-                  Order #{tracking.order_number}
-                </h2>
-                <p className="text-sm text-muted">
-                  Current Status:{' '}
-                  <span className="font-medium text-foreground">
-                    {tracking.status}
-                  </span>
-                </p>
-              </div>
-            </div>
+          <Card>
+            <CardHeader>
+              <CardTitle>Order #{tracking.order_number}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground">
+                Current Status:{' '}
+                <span className="font-medium text-foreground">
+                  {tracking.status}
+                </span>
+              </p>
 
-            {/* Shipment info */}
-            {(tracking.shipping_carrier || tracking.tracking_number) && (
-              <div className="mt-4 rounded-lg bg-background p-4">
-                <h3 className="mb-2 text-sm font-semibold text-foreground">
-                  Shipment Details
-                </h3>
-                <div className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-3">
-                  {tracking.shipping_carrier && (
-                    <div>
-                      <span className="text-muted">Courier: </span>
-                      <span className="font-medium text-foreground">
-                        {tracking.shipping_carrier}
-                      </span>
-                    </div>
-                  )}
-                  {tracking.tracking_number && (
-                    <div>
-                      <span className="text-muted">AWB: </span>
-                      <span className="font-medium text-foreground">
-                        {tracking.tracking_number}
-                      </span>
-                    </div>
-                  )}
-                  {tracking.estimated_delivery && (
-                    <div>
-                      <span className="text-muted">Est. Delivery: </span>
-                      <span className="font-medium text-foreground">
-                        {formatDate(tracking.estimated_delivery)}
-                      </span>
-                    </div>
-                  )}
-                </div>
-                {tracking.tracking_url && (
-                  <a
-                    href={tracking.tracking_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="mt-2 inline-block text-sm font-medium text-primary hover:text-primary-dark"
-                  >
-                    Track on courier website &rarr;
-                  </a>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* Status Timeline */}
-          {tracking.status_history && tracking.status_history.length > 0 && (
-            <div className="rounded-lg border border-border bg-white p-6">
-              <h3 className="mb-4 text-sm font-semibold text-foreground">
-                Order Timeline
-              </h3>
-              <div className="relative">
-                {/* Vertical line */}
-                <div className="absolute left-3 top-2 bottom-2 w-0.5 bg-border" />
-
-                <div className="space-y-6">
-                  {tracking.status_history.map((entry, idx) => (
-                    <div key={idx} className="relative flex gap-4 pl-10">
-                      {/* Dot */}
-                      <div
-                        className={`absolute left-1 top-1 h-5 w-5 rounded-full border-2 ${
-                          idx === 0
-                            ? 'border-primary bg-primary'
-                            : 'border-border bg-white'
-                        }`}
-                      >
-                        {idx === 0 && (
-                          <div className="flex h-full w-full items-center justify-center">
-                            <div className="h-1.5 w-1.5 rounded-full bg-white" />
-                          </div>
-                        )}
-                      </div>
-
+              {(tracking.shipping_carrier || tracking.tracking_number) && (
+                <div className="mt-4 rounded-lg bg-background p-4">
+                  <h3 className="mb-2 text-sm font-semibold text-foreground">
+                    Shipment Details
+                  </h3>
+                  <div className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-3">
+                    {tracking.shipping_carrier && (
                       <div>
-                        <p className="font-medium text-foreground">
-                          {entry.status}
-                        </p>
-                        <p className="text-xs text-muted">
-                          {formatDate(entry.timestamp)}
-                        </p>
-                        {entry.description && (
-                          <p className="mt-0.5 text-sm text-muted">
-                            {entry.description}
-                          </p>
-                        )}
+                        <span className="text-muted-foreground">Courier: </span>
+                        <span className="font-medium text-foreground">
+                          {tracking.shipping_carrier}
+                        </span>
                       </div>
-                    </div>
-                  ))}
+                    )}
+                    {tracking.tracking_number && (
+                      <div>
+                        <span className="text-muted-foreground">AWB: </span>
+                        <span className="font-medium text-foreground">
+                          {tracking.tracking_number}
+                        </span>
+                      </div>
+                    )}
+                    {tracking.estimated_delivery && (
+                      <div>
+                        <span className="text-muted-foreground">Est. Delivery: </span>
+                        <span className="font-medium text-foreground">
+                          {formatDate(tracking.estimated_delivery)}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  {tracking.tracking_url && (
+                    <a
+                      href={tracking.tracking_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-2 inline-block text-sm font-medium text-primary hover:text-primary-dark"
+                    >
+                      Track on courier website &rarr;
+                    </a>
+                  )}
                 </div>
-              </div>
-            </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {tracking.status_history && tracking.status_history.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm">Order Timeline</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="relative">
+                  <div className="absolute left-3 top-2 bottom-2 w-0.5 bg-border" />
+
+                  <div className="space-y-6">
+                    {tracking.status_history.map((entry, idx) => (
+                      <div key={idx} className="relative flex gap-4 pl-10">
+                        <div
+                          className={`absolute left-1 top-1 h-5 w-5 rounded-full border-2 ${
+                            idx === 0
+                              ? 'border-primary bg-primary'
+                              : 'border-border bg-white'
+                          }`}
+                        >
+                          {idx === 0 && (
+                            <div className="flex h-full w-full items-center justify-center">
+                              <div className="h-1.5 w-1.5 rounded-full bg-white" />
+                            </div>
+                          )}
+                        </div>
+
+                        <div>
+                          <p className="font-medium text-foreground">
+                            {entry.status}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {formatDate(entry.timestamp)}
+                          </p>
+                          {entry.description && (
+                            <p className="mt-0.5 text-sm text-muted-foreground">
+                              {entry.description}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
           )}
         </div>
       )}
-    </div>
+    </Container>
   );
 }

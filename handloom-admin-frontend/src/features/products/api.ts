@@ -1,5 +1,6 @@
 import type { Inventory, InventoryTransaction } from '@/features/inventory/types';
 import apiClient, { normalizeListResponse } from '@/shared/api/client';
+import { ROUTES } from '@/shared/constants/routes';
 import type { ListResponse, PaginationParams } from '@/shared/types/common';
 
 import type { CreateProductRequest, Product } from './types';
@@ -23,38 +24,38 @@ export const productsApi = {
     if (attribute_filters && Object.keys(attribute_filters).length > 0) {
       queryParams.attribute_filters = JSON.stringify(attribute_filters);
     }
-    const response = await apiClient.get('/admin/products', {
+    const response = await apiClient.get(ROUTES.PRODUCTS.LIST, {
       params: queryParams,
     });
     return normalizeListResponse<Product>(response.data as Record<string, unknown>, 'products');
   },
 
   get: async (id: string) => {
-    const response = await apiClient.get<Product>(`/admin/products/${id}`);
+    const response = await apiClient.get<Product>(ROUTES.PRODUCTS.DETAIL(id));
     return response.data;
   },
 
   create: async (data: CreateProductRequest) => {
-    const response = await apiClient.post<Product>('/admin/products', data);
+    const response = await apiClient.post<Product>(ROUTES.PRODUCTS.LIST, data);
     return response.data;
   },
 
   update: async (id: string, data: Partial<CreateProductRequest>) => {
-    const response = await apiClient.patch<Product>(`/admin/products/${id}`, data);
+    const response = await apiClient.patch<Product>(ROUTES.PRODUCTS.DETAIL(id), data);
     return response.data;
   },
 
   delete: async (id: string) => {
-    await apiClient.delete(`/admin/products/${id}`);
+    await apiClient.delete(ROUTES.PRODUCTS.DETAIL(id));
   },
 
   getInventory: async (id: string) => {
-    const response = await apiClient.get<Inventory>(`/admin/products/${id}/inventory`);
+    const response = await apiClient.get<Inventory>(ROUTES.PRODUCTS.INVENTORY(id));
     return response.data;
   },
 
   addStock: async (id: string, quantity: number, reason?: string) => {
-    const response = await apiClient.post(`/admin/products/${id}/inventory/add`, {
+    const response = await apiClient.post(ROUTES.PRODUCTS.INVENTORY_ADD(id), {
       quantity,
       reason,
     });
@@ -62,7 +63,7 @@ export const productsApi = {
   },
 
   removeStock: async (id: string, quantity: number, reason?: string) => {
-    const response = await apiClient.post(`/admin/products/${id}/inventory/remove`, {
+    const response = await apiClient.post(ROUTES.PRODUCTS.INVENTORY_REMOVE(id), {
       quantity,
       reason,
     });
@@ -70,7 +71,7 @@ export const productsApi = {
   },
 
   adjustStock: async (id: string, newQuantity: number, reason?: string) => {
-    const response = await apiClient.post(`/admin/products/${id}/inventory/adjust`, {
+    const response = await apiClient.post(ROUTES.PRODUCTS.INVENTORY_ADJUST(id), {
       new_quantity: newQuantity,
       reason,
     });
@@ -79,7 +80,7 @@ export const productsApi = {
 
   getInventoryTransactions: async (id: string, params?: PaginationParams) => {
     const response = await apiClient.get<ListResponse<InventoryTransaction>>(
-      `/admin/products/${id}/inventory/transactions`,
+      ROUTES.PRODUCTS.INVENTORY_TRANSACTIONS(id),
       { params }
     );
     return response.data;
@@ -87,13 +88,13 @@ export const productsApi = {
 
   getFilterOptions: async (categoryId: string): Promise<Record<string, string[]>> => {
     const response = await apiClient.get<Record<string, string[]>>(
-      `/admin/products/filter-options/${categoryId}`
+      ROUTES.PRODUCTS.FILTER_OPTIONS(categoryId)
     );
     return response.data;
   },
 
   reorder: async (categoryId: string, productIds: string[]) => {
-    const response = await apiClient.put(`/admin/products/categories/${categoryId}/reorder`, {
+    const response = await apiClient.put(ROUTES.PRODUCTS.REORDER(categoryId), {
       product_ids: productIds,
     });
     return response.data;

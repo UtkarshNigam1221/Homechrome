@@ -2,7 +2,6 @@ package dynamodb
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"time"
 
@@ -543,11 +542,6 @@ func (r *CustomerRepository) Search(ctx context.Context, query string, paginatio
 		Pagination: pagination,
 	}
 	return r.List(ctx, req)
-}
-
-// helper function
-func intToString(n int) string {
-	return fmt.Sprintf("%d", n)
 }
 
 // Ensure interface compliance

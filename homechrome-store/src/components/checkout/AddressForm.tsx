@@ -2,8 +2,10 @@
 
 import { useState } from 'react';
 
-import Button from '@/components/common/Button';
-import Input from '@/components/common/Input';
+import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
+import FormField from '@/components/ui/form-field';
+import { Label } from '@/components/ui/label';
 import { Address } from '@/types';
 
 interface AddressFormData {
@@ -114,14 +116,14 @@ export default function AddressForm({
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <Input
+        <FormField
           label="First Name"
           value={form.first_name}
           onChange={(e) => handleChange('first_name', e.target.value)}
           error={errors.first_name}
           placeholder="First name"
         />
-        <Input
+        <FormField
           label="Last Name"
           value={form.last_name}
           onChange={(e) => handleChange('last_name', e.target.value)}
@@ -130,7 +132,7 @@ export default function AddressForm({
         />
       </div>
 
-      <Input
+      <FormField
         label="Phone Number"
         type="tel"
         value={form.phone}
@@ -140,7 +142,7 @@ export default function AddressForm({
         maxLength={10}
       />
 
-      <Input
+      <FormField
         label="Address Line 1"
         value={form.address_line1}
         onChange={(e) => handleChange('address_line1', e.target.value)}
@@ -148,7 +150,7 @@ export default function AddressForm({
         placeholder="House number, street name"
       />
 
-      <Input
+      <FormField
         label="Address Line 2 (Optional)"
         value={form.address_line2}
         onChange={(e) => handleChange('address_line2', e.target.value)}
@@ -156,21 +158,21 @@ export default function AddressForm({
       />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <Input
+        <FormField
           label="City"
           value={form.city}
           onChange={(e) => handleChange('city', e.target.value)}
           error={errors.city}
           placeholder="City"
         />
-        <Input
+        <FormField
           label="State"
           value={form.state}
           onChange={(e) => handleChange('state', e.target.value)}
           error={errors.state}
           placeholder="State"
         />
-        <Input
+        <FormField
           label="PIN Code"
           value={form.postal_code}
           onChange={(e) => handleChange('postal_code', e.target.value)}
@@ -180,18 +182,13 @@ export default function AddressForm({
         />
       </div>
 
-      <div className="flex items-center gap-2">
-        <input
-          type="checkbox"
-          id="is_default"
+      <Label className="cursor-pointer gap-2">
+        <Checkbox
           checked={form.is_default}
-          onChange={(e) => handleChange('is_default', e.target.checked)}
-          className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
+          onCheckedChange={(checked) => handleChange('is_default', !!checked)}
         />
-        <label htmlFor="is_default" className="text-sm text-foreground">
-          Set as default address
-        </label>
-      </div>
+        Set as default address
+      </Label>
 
       <div className="flex gap-3 pt-2">
         <Button type="submit" loading={loading}>

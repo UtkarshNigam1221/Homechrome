@@ -171,6 +171,7 @@ export function ReportsPage() {
                           variant="ghost"
                           size="sm"
                           leftIcon={<Download className="w-4 h-4" />}
+                          onClick={() => window.open(report.file_url, '_blank')}
                         >
                           Download
                         </Button>

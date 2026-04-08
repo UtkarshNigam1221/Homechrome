@@ -1,13 +1,11 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
-import toast from 'react-hot-toast';
 import { z } from 'zod';
 
 import { couponsApi } from '@/features/coupons/api';
-import { getErrorMessage } from '@/shared/api/client';
 import { Button, Input, Modal, Select } from '@/shared/components/ui';
+import { useFormMutation } from '@/shared/hooks';
 
 import type { Coupon, CreateCouponRequest } from '../types';
 
@@ -38,7 +36,6 @@ interface CouponFormModalProps {
 }
 
 export function CouponFormModal({ isOpen, onClose, coupon }: CouponFormModalProps) {
-  const queryClient = useQueryClient();
   const isEditing = !!coupon?.id;
 
   const {
@@ -93,31 +90,15 @@ export function CouponFormModal({ isOpen, onClose, coupon }: CouponFormModalProp
     }
   }, [isOpen, coupon, reset]);
 
-  // Create mutation
-  const createMutation = useMutation({
-    mutationFn: (data: CreateCouponRequest) => couponsApi.create(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['coupons'] });
-      toast.success('Coupon created successfully');
-      onClose();
-    },
-    onError: (error) => {
-      toast.error(getErrorMessage(error));
-    },
-  });
-
-  // Update mutation
-  const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: Partial<CreateCouponRequest> }) =>
-      couponsApi.update(id, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['coupons'] });
-      toast.success('Coupon updated successfully');
-      onClose();
-    },
-    onError: (error) => {
-      toast.error(getErrorMessage(error));
-    },
+  const { isLoading, onSubmit: submitMutation } = useFormMutation<
+    CreateCouponRequest,
+    Partial<CreateCouponRequest>
+  >({
+    queryKey: 'coupons',
+    createFn: couponsApi.create,
+    updateFn: couponsApi.update,
+    entityName: 'Coupon',
+    onSuccess: onClose,
   });
 
   const onSubmit = (data: CouponFormData) => {
@@ -133,14 +114,8 @@ export function CouponFormModal({ isOpen, onClose, coupon }: CouponFormModalProp
       status: data.status,
     };
 
-    if (isEditing && coupon?.id) {
-      updateMutation.mutate({ id: coupon.id, data: requestData });
-    } else {
-      createMutation.mutate(requestData);
-    }
+    submitMutation(coupon?.id, requestData, requestData);
   };
-
-  const isLoading = createMutation.isPending || updateMutation.isPending;
 
   return (
     <Modal

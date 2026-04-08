@@ -2,15 +2,17 @@ import Link from 'next/link';
 
 import CategoryCard from '@/components/catalog/CategoryCard';
 import ProductCard from '@/components/catalog/ProductCard';
+import { Container } from '@/components/ui/container';
 import { Category, Product } from '@/types';
+
+import { API_BASE } from '@/lib/constants';
+import { ROUTES } from '@/lib/routes';
 
 import HomePageTracker from './HomePageTracker';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8081';
-
 async function getCategories(): Promise<Category[]> {
   try {
-    const res = await fetch(`${API_BASE}/api/v1/store/catalog/categories`, {
+    const res = await fetch(`${API_BASE}${ROUTES.CATALOG.CATEGORIES}`, {
       next: { revalidate: 3600 },
     });
     if (!res.ok) return [];
@@ -23,7 +25,7 @@ async function getCategories(): Promise<Category[]> {
 
 async function getFeaturedProducts(): Promise<Product[]> {
   try {
-    const res = await fetch(`${API_BASE}/api/v1/store/catalog/products?limit=8`, {
+    const res = await fetch(`${API_BASE}${ROUTES.CATALOG.PRODUCTS}?limit=8`, {
       next: { revalidate: 3600 },
     });
     if (!res.ok) return [];
@@ -45,7 +47,7 @@ export default async function HomePage() {
       <HomePageTracker />
       {/* Hero Section */}
       <section className="relative bg-foreground">
-        <div className="mx-auto max-w-7xl px-4 py-24 sm:px-6 sm:py-32 lg:px-8">
+        <Container className="py-24 sm:py-32">
           <div className="text-center">
             <h1 className="text-4xl font-bold tracking-tight text-white sm:text-5xl lg:text-6xl">
               Handwoven with{' '}
@@ -71,12 +73,12 @@ export default async function HomePage() {
               </Link>
             </div>
           </div>
-        </div>
+        </Container>
       </section>
 
       {/* Features Section */}
       <section className="bg-white py-16">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <Container>
           <div className="grid grid-cols-1 gap-8 sm:grid-cols-3">
             <div className="text-center">
               <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
@@ -152,13 +154,13 @@ export default async function HomePage() {
               </p>
             </div>
           </div>
-        </div>
+        </Container>
       </section>
 
       {/* Featured Categories */}
       {categories.length > 0 && (
         <section className="py-16">
-          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <Container>
             <div className="flex items-center justify-between">
               <h2 className="text-2xl font-bold text-foreground sm:text-3xl">
                 Shop by Category
@@ -175,14 +177,14 @@ export default async function HomePage() {
                 <CategoryCard key={category.id} category={category} />
               ))}
             </div>
-          </div>
+          </Container>
         </section>
       )}
 
       {/* Featured Products / New Arrivals */}
       {products.length > 0 && (
         <section className="bg-white py-16">
-          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <Container>
             <div className="flex items-center justify-between">
               <h2 className="text-2xl font-bold text-foreground sm:text-3xl">
                 New Arrivals
@@ -199,7 +201,7 @@ export default async function HomePage() {
                 <ProductCard key={product.id} product={product} />
               ))}
             </div>
-          </div>
+          </Container>
         </section>
       )}
     </div>

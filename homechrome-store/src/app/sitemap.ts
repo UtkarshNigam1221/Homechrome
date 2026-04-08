@@ -1,11 +1,12 @@
 import type { MetadataRoute } from 'next';
 
 import { API_BASE, SITE_URL } from '@/lib/constants';
+import { ROUTES } from '@/lib/routes';
 import { Category, Product } from '@/types';
 
 async function getAllCategories(): Promise<Category[]> {
   try {
-    const res = await fetch(`${API_BASE}/api/v1/store/catalog/categories`, {
+    const res = await fetch(`${API_BASE}${ROUTES.CATALOG.CATEGORIES}`, {
       next: { revalidate: 3600 },
     });
     if (!res.ok) return [];
@@ -18,7 +19,7 @@ async function getAllCategories(): Promise<Category[]> {
 
 async function getAllProducts(): Promise<Product[]> {
   try {
-    const res = await fetch(`${API_BASE}/api/v1/store/catalog/products`, {
+    const res = await fetch(`${API_BASE}${ROUTES.CATALOG.PRODUCTS}`, {
       next: { revalidate: 3600 },
     });
     if (!res.ok) return [];

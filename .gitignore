@@ -1,5 +1,96 @@
 # Worktrees
 .worktrees/
 
+# Claude Code
+.claude/worktrees/
+
+# Superpowers
+.superpowers/
+docs/superpowers/
+
 # IDE
-.idea/build/
+.idea/
+.vscode/
+*.swp
+*.swo
+*.sw?
+*~
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env files
+.env
+.env.*
+!.env.example
+!**/.env.example
+
+# Logs
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# --- Go (handloom-admin) ---
+handloom-admin/bin/
+handloom-admin/api
+handloom-admin/vendor/
+handloom-admin/dynamodb-data/
+handloom-admin/tmp/
+handloom-admin/temp/
+handloom-admin/coverage.html
+handloom-admin/internal/mocks/*_mock.go
+handloom-admin/infra/cdk.out/
+handloom-admin/cdk.out/
+handloom-admin/scripts/seed-aws-dev.sh
+
+# --- Admin Frontend (handloom-admin-frontend) ---
+handloom-admin-frontend/node_modules/
+handloom-admin-frontend/dist/
+handloom-admin-frontend/dist-ssr/
+handloom-admin-frontend/infra/cdk.out/
+
+# npm cache
+~/.npm/
+
+# Package locks
+package-lock.json
+
+# --- B2C Storefront (homechrome-store) ---
+homechrome-store/node_modules/
+homechrome-store/.next/
+homechrome-store/out/
+homechrome-store/coverage/
+homechrome-store/.open-next/
+homechrome-store/.vercel/
+homechrome-store/.pnp
+homechrome-store/.pnp.*
+homechrome-store/.yarn/*
+!homechrome-store/.yarn/patches
+!homechrome-store/.yarn/plugins
+!homechrome-store/.yarn/releases
+!homechrome-store/.yarn/versions
+homechrome-store/infra/cdk.out/
+
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+*.pem
+*.tsbuildinfo
+build/
+
+# TypeScript
+next-env.d.ts

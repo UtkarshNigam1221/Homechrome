@@ -1,6 +1,7 @@
 'use client';
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { isAxiosError } from 'axios';
 import { useEffect, useState } from 'react';
 
 import { initAnalytics, stopAnalytics } from '@/lib/analytics';
@@ -28,11 +29,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
       new QueryClient({
         defaultOptions: {
           queries: {
-            staleTime: 60 * 1000,
+            staleTime: 5 * 60 * 1000,
             retry: (failureCount, error) => {
-              // Don't retry 429s at React Query level — axios interceptor handles backoff
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              if ((error as any)?.response?.status === 429) return false;
+              if (isAxiosError(error) && error.response?.status === 429) return false;
               return failureCount < 1;
             },
           },

@@ -4,8 +4,9 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 
-import Button from '@/components/common/Button';
-import Input from '@/components/common/Input';
+import Button from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import Input from '@/components/ui/form-field';
 import { useAuthStore } from '@/stores/auth';
 
 const OTP_RESEND_SECONDS = 30;
@@ -26,14 +27,12 @@ function LoginForm() {
   const [countdown, setCountdown] = useState(0);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // If already authenticated, redirect
   useEffect(() => {
     if (isAuthenticated) {
       router.replace(redirect);
     }
   }, [isAuthenticated, redirect, router]);
 
-  // Countdown timer — start interval only once, let it self-clear at 0
   const startCountdown = useCallback((seconds: number) => {
     setCountdown(seconds);
     if (countdownRef.current) clearInterval(countdownRef.current);
@@ -116,128 +115,127 @@ function LoginForm() {
               HOME<span className="text-primary">CHROME</span>
             </span>
           </Link>
-          <p className="mt-3 text-sm text-muted">
-            Sign in to your account
-          </p>
+          <p className="mt-3 text-sm text-muted-foreground">Sign in to your account</p>
         </div>
 
-        <div className="rounded-xl bg-white p-6 shadow-sm">
-          {step === 'phone' ? (
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                handleSendOTP();
-              }}
-            >
-              <div>
-                <label
-                  htmlFor="phone"
-                  className="mb-1.5 block text-sm font-medium text-foreground"
-                >
-                  Phone Number
-                </label>
-                <div className="flex gap-2">
-                  <div className="flex items-center rounded-lg border border-border bg-gray-50 px-3 text-sm text-muted">
-                    +91
-                  </div>
-                  <Input
-                    id="phone"
-                    type="tel"
-                    placeholder="10-digit number"
-                    value={phone}
-                    onChange={(e) => {
-                      setPhone(e.target.value.replace(/\D/g, '').slice(0, 10));
-                      setError('');
-                    }}
-                    maxLength={10}
-                    error={error && step === 'phone' ? error : undefined}
-                  />
-                </div>
-              </div>
-
-              <Button
-                type="submit"
-                variant="primary"
-                size="md"
-                className="mt-4 w-full"
-                loading={sending}
-                disabled={phone.replace(/\D/g, '').length !== 10}
-              >
-                Send OTP
-              </Button>
-            </form>
-          ) : (
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                handleVerifyOTP();
-              }}
-            >
-              <p className="mb-4 text-sm text-muted">
-                We sent a 6-digit code to{' '}
-                <span className="font-medium text-foreground">
-                  +91 {phone}
-                </span>
-              </p>
-
-              <Input
-                id="otp"
-                label="Enter OTP"
-                type="text"
-                inputMode="numeric"
-                placeholder="000000"
-                value={otp}
-                onChange={(e) => {
-                  setOtp(e.target.value.replace(/\D/g, '').slice(0, 6));
-                  setError('');
+        <Card>
+          <CardContent>
+            {step === 'phone' ? (
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  handleSendOTP();
                 }}
-                maxLength={6}
-                error={error || undefined}
-              />
-
-              <Button
-                type="submit"
-                variant="primary"
-                size="md"
-                className="mt-4 w-full"
-                loading={verifying}
-                disabled={otp.length !== 6}
               >
-                Verify OTP
-              </Button>
-
-              <div className="mt-4 text-center">
-                {countdown > 0 ? (
-                  <p className="text-sm text-muted">
-                    Resend OTP in{' '}
-                    <span className="font-medium text-foreground">{countdown}s</span>
-                  </p>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={handleResendOTP}
-                    disabled={sending}
-                    className="text-sm text-primary hover:text-primary-dark disabled:opacity-50"
+                <div>
+                  <label
+                    htmlFor="phone"
+                    className="mb-1.5 block text-sm font-medium text-foreground"
                   >
-                    Resend OTP
-                  </button>
-                )}
-              </div>
+                    Phone Number
+                  </label>
+                  <div className="flex gap-2">
+                    <div className="flex items-center rounded-lg border border-input bg-gray-50 px-3 text-sm text-muted-foreground">
+                      +91
+                    </div>
+                    <Input
+                      id="phone"
+                      type="tel"
+                      placeholder="10-digit number"
+                      value={phone}
+                      onChange={(e) => {
+                        setPhone(e.target.value.replace(/\D/g, '').slice(0, 10));
+                        setError('');
+                      }}
+                      maxLength={10}
+                      error={error && step === 'phone' ? error : undefined}
+                    />
+                  </div>
+                </div>
 
-              <button
-                type="button"
-                onClick={() => {
-                  setStep('phone');
-                  setOtp('');
-                  setError('');
+                <Button
+                  type="submit"
+                  variant="primary"
+                  size="default"
+                  className="mt-4 w-full"
+                  loading={sending}
+                  disabled={phone.replace(/\D/g, '').length !== 10}
+                >
+                  Send OTP
+                </Button>
+              </form>
+            ) : (
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  handleVerifyOTP();
                 }}
-                className="mt-3 w-full text-center text-sm text-muted hover:text-foreground"
               >
-                Change phone number
-              </button>
-            </form>
-          )}
-        </div>
+                <p className="mb-4 text-sm text-muted-foreground">
+                  We sent a 6-digit code to{' '}
+                  <span className="font-medium text-foreground">+91 {phone}</span>
+                </p>
+
+                <Input
+                  id="otp"
+                  label="Enter OTP"
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="000000"
+                  value={otp}
+                  onChange={(e) => {
+                    setOtp(e.target.value.replace(/\D/g, '').slice(0, 6));
+                    setError('');
+                  }}
+                  maxLength={6}
+                  error={error || undefined}
+                />
+
+                <Button
+                  type="submit"
+                  variant="primary"
+                  size="default"
+                  className="mt-4 w-full"
+                  loading={verifying}
+                  disabled={otp.length !== 6}
+                >
+                  Verify OTP
+                </Button>
+
+                <div className="mt-4 text-center">
+                  {countdown > 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      Resend OTP in{' '}
+                      <span className="font-medium text-foreground">{countdown}s</span>
+                    </p>
+                  ) : (
+                    <Button
+                      variant="link"
+                      size="sm"
+                      onClick={handleResendOTP}
+                      disabled={sending}
+                    >
+                      Resend OTP
+                    </Button>
+                  )}
+                </div>
+
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="mt-3 w-full text-muted-foreground"
+                  onClick={() => {
+                    setStep('phone');
+                    setOtp('');
+                    setError('');
+                  }}
+                >
+                  Change phone number
+                </Button>
+              </form>
+            )}
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

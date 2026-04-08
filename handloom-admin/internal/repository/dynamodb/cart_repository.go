@@ -2,6 +2,7 @@ package dynamodb
 
 import (
 	"context"
+	"strconv"
 	"strings"
 	"time"
 
@@ -116,9 +117,9 @@ func (r *CartRepository) UpdateCartItem(ctx context.Context, cartPK, productID s
 			"#ttl": "ttl",
 		},
 		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":qty": &types.AttributeValueMemberN{Value: intToString(quantity)},
-			":tp":  &types.AttributeValueMemberN{Value: intToString(int(totalPrice))},
-			":ttl": &types.AttributeValueMemberN{Value: intToString(int(ttl))},
+			":qty": &types.AttributeValueMemberN{Value: strconv.Itoa(quantity)},
+			":tp":  &types.AttributeValueMemberN{Value: strconv.Itoa(int(totalPrice))},
+			":ttl": &types.AttributeValueMemberN{Value: strconv.Itoa(int(ttl))},
 		},
 		ConditionExpression: aws.String("attribute_exists(PK)"),
 	})

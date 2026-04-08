@@ -120,7 +120,7 @@ func main() {
 	)
 
 	userService := service.NewUserService(userRepo, tokenStore)
-	assetService := service.NewAssetService(s3c, cfg.AWS.S3Bucket, cfg.AWS.Endpoint)
+	assetService := service.NewAssetService(s3c, cfg.AWS.S3Bucket, cfg.AWS.Region, cfg.AWS.CDNUrl, cfg.AWS.Endpoint)
 	inventoryService := service.NewInventoryService(inventoryRepo, catalogCache, publisher)
 	categoryService := service.NewCategoryService(categoryRepo, productRepo, assetService)
 	productService := service.NewProductService(

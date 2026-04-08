@@ -4,6 +4,7 @@ import { cache } from 'react';
 import ProductDetailView from './ProductDetailView';
 
 import { API_BASE, SITE_URL } from '@/lib/constants';
+import { ROUTES } from '@/lib/routes';
 import { Product } from '@/types';
 
 export const revalidate = 3600;
@@ -14,7 +15,7 @@ interface PageProps {
 
 const getProduct = cache(async function getProduct(slug: string): Promise<Product | null> {
   try {
-    const res = await fetch(`${API_BASE}/api/v1/store/catalog/products/${slug}`, {
+    const res = await fetch(`${API_BASE}${ROUTES.CATALOG.PRODUCT(slug)}`, {
       next: { revalidate: 3600 },
     });
     if (!res.ok) return null;
@@ -27,7 +28,7 @@ const getProduct = cache(async function getProduct(slug: string): Promise<Produc
 
 export async function generateStaticParams() {
   try {
-    const res = await fetch(`${API_BASE}/api/v1/store/catalog/products`);
+    const res = await fetch(`${API_BASE}${ROUTES.CATALOG.PRODUCTS}`);
     if (!res.ok) return [];
     const json = await res.json();
     return (json.data || []).map((p: Product) => ({ slug: p.slug }));
