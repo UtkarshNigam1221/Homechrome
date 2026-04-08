@@ -32,7 +32,7 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Generate lock file
-        run: npm install --package-lock-only
+        run: npm install --package-lock-only --ignore-scripts
         working-directory: homechrome-store
 
       - uses: actions/setup-node@v6
@@ -62,7 +62,7 @@ jobs:
           aws-region: ${{ vars.AWS_REGION }}
 
       - name: Generate lock file
-        run: npm install --package-lock-only
+        run: npm install --package-lock-only --ignore-scripts
         working-directory: homechrome-store
 
       - uses: actions/setup-node@v6
