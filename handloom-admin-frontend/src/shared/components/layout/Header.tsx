@@ -10,8 +10,10 @@ import { useUIStore } from '@/shared/stores/uiStore';
 
 export function Header() {
   const navigate = useNavigate();
-  const { user, logout } = useAuthStore();
-  const { sidebarCollapsed, toggleSidebar } = useUIStore();
+  const user = useAuthStore((s) => s.user);
+  const logout = useAuthStore((s) => s.logout);
+  const sidebarCollapsed = useUIStore((s) => s.sidebarCollapsed);
+  const toggleSidebar = useUIStore((s) => s.toggleSidebar);
 
   const handleLogout = async () => {
     try {

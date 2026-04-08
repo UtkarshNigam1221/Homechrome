@@ -4,6 +4,8 @@ import axios, {
   InternalAxiosRequestConfig,
 } from 'axios';
 
+import { ROUTES } from '@/lib/routes';
+
 interface ApiResponse<T> {
   success: boolean;
   data: T;
@@ -61,10 +63,13 @@ client.interceptors.response.use(
       }
     }
 
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    // Skip refresh for the refresh endpoint itself to prevent infinite loop
+    const isRefreshRequest = originalRequest.url?.includes('/auth/refresh');
+
+    if (error.response?.status === 401 && !originalRequest._retry && !isRefreshRequest) {
       originalRequest._retry = true;
       try {
-        await client.post('/api/v1/store/auth/refresh');
+        await client.post(ROUTES.AUTH.REFRESH);
         return client(originalRequest);
       } catch {
         // Refresh failed — redirect to login unless on auth-check, login, or confirmation page
@@ -85,7 +90,7 @@ client.interceptors.response.use(
   },
 );
 
-export const api = {
+const api = {
   get: <T>(url: string, params?: Record<string, unknown>) =>
     client.get<T>(url, { params }),
   post: <T>(url: string, data?: unknown) => client.post<T>(url, data),

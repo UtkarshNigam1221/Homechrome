@@ -2,16 +2,13 @@
 
 import Image from 'next/image';
 
+import { formatPrice } from '@/lib/utils';
 import { CartItem, CourierOption } from '@/types';
 
 interface OrderSummaryProps {
   items: CartItem[];
   subtotal: number;
   shippingCourier?: CourierOption | null;
-}
-
-function formatPrice(paise: number): string {
-  return `₹${(paise / 100).toLocaleString('en-IN')}`;
 }
 
 export default function OrderSummary({

@@ -29,16 +29,7 @@ import { getStatusBadgeVariant } from '@/shared/utils/badge';
 import { formatCurrency } from '@/shared/utils/currency';
 
 import type { Order, OrderStatus } from '../types';
-
-const ORDER_STATUSES: OrderStatus[] = [
-  'PENDING',
-  'CONFIRMED',
-  'PROCESSING',
-  'SHIPPED',
-  'DELIVERED',
-  'CANCELLED',
-  'RETURNED',
-];
+import { ORDER_STATUSES } from '../types';
 
 export function OrdersPage() {
   const navigate = useNavigate();

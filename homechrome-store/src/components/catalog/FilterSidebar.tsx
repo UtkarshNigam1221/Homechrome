@@ -1,8 +1,13 @@
 'use client';
 
+import { ChevronDownIcon } from '@heroicons/react/24/outline';
 import { useCallback, useState } from 'react';
 
-import Button from '@/components/common/Button';
+import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { CategoryAttribute } from '@/types';
 
 export interface FilterValues {
@@ -31,7 +36,6 @@ export default function FilterSidebar({
   const [maxInput, setMaxInput] = useState(
     filters.maxPrice !== null ? String(filters.maxPrice / 100) : '',
   );
-  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
 
   const handleApplyPrice = useCallback(() => {
     const min = minInput ? Math.round(parseFloat(minInput) * 100) : null;
@@ -62,17 +66,12 @@ export default function FilterSidebar({
     [filters, onFiltersChange],
   );
 
-  const toggleSection = useCallback((name: string) => {
-    setCollapsedSections((prev) => ({ ...prev, [name]: !prev[name] }));
-  }, []);
-
   const hasActiveFilters =
     filters.minPrice !== null ||
     filters.maxPrice !== null ||
     filters.inStockOnly ||
     Object.keys(filters.attributeFilters).length > 0;
 
-  // Build attribute sections from filterOptions + categoryAttributes metadata
   const attributeSections = categoryAttributes
     ?.filter((attr) => attr.searchable && filterOptions?.[attr.name]?.length)
     .sort((a, b) => a.display_order - b.display_order);
@@ -82,13 +81,9 @@ export default function FilterSidebar({
       <div className="flex items-center justify-between">
         <h3 className="text-base font-semibold text-foreground">Filters</h3>
         {hasActiveFilters && (
-          <button
-            type="button"
-            onClick={handleClearAll}
-            className="text-sm text-primary hover:text-primary-dark"
-          >
+          <Button variant="link" size="sm" onClick={handleClearAll}>
             Clear all
-          </button>
+          </Button>
         )}
       </div>
 
@@ -96,27 +91,23 @@ export default function FilterSidebar({
       <div>
         <h4 className="text-sm font-medium text-foreground">Price Range</h4>
         <div className="mt-3 flex items-center gap-2">
-          <div className="flex-1">
-            <input
-              type="number"
-              value={minInput}
-              onChange={(e) => setMinInput(e.target.value)}
-              placeholder="Min"
-              min={0}
-              className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-foreground placeholder:text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
-            />
-          </div>
-          <span className="text-sm text-muted">to</span>
-          <div className="flex-1">
-            <input
-              type="number"
-              value={maxInput}
-              onChange={(e) => setMaxInput(e.target.value)}
-              placeholder="Max"
-              min={0}
-              className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-foreground placeholder:text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
-            />
-          </div>
+          <Input
+            type="number"
+            value={minInput}
+            onChange={(e) => setMinInput(e.target.value)}
+            placeholder="Min"
+            min={0}
+            className="h-9 px-3"
+          />
+          <span className="text-sm text-muted-foreground">to</span>
+          <Input
+            type="number"
+            value={maxInput}
+            onChange={(e) => setMaxInput(e.target.value)}
+            placeholder="Max"
+            min={0}
+            className="h-9 px-3"
+          />
         </div>
         <Button
           variant="outline"
@@ -129,61 +120,41 @@ export default function FilterSidebar({
       </div>
 
       {/* In-stock toggle */}
-      <div>
-        <label className="flex cursor-pointer items-center gap-3">
-          <input
-            type="checkbox"
-            checked={filters.inStockOnly}
-            onChange={(e) =>
-              onFiltersChange({ ...filters, inStockOnly: e.target.checked })
-            }
-            className="h-4 w-4 rounded border-border text-primary focus:ring-primary/30"
-          />
-          <span className="text-sm text-foreground">In stock only</span>
-        </label>
-      </div>
+      <Label className="cursor-pointer gap-3">
+        <Checkbox
+          checked={filters.inStockOnly}
+          onCheckedChange={(checked) =>
+            onFiltersChange({ ...filters, inStockOnly: !!checked })
+          }
+        />
+        In stock only
+      </Label>
 
       {/* Dynamic attribute filters */}
       {attributeSections?.map((attr) => {
         const values = filterOptions?.[attr.name] || [];
         const selected = filters.attributeFilters[attr.name] || [];
-        const isCollapsed = collapsedSections[attr.name];
 
         return (
-          <div key={attr.name}>
-            <button
-              type="button"
-              onClick={() => toggleSection(attr.name)}
-              className="flex w-full items-center justify-between text-sm font-medium text-foreground"
-            >
+          <Collapsible key={attr.name} defaultOpen>
+            <CollapsibleTrigger className="flex w-full items-center justify-between text-sm font-medium text-foreground">
               <span>{attr.label || attr.name}</span>
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-                strokeWidth={1.5}
-                stroke="currentColor"
-                className={`h-4 w-4 transition-transform ${isCollapsed ? '' : 'rotate-180'}`}
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
-              </svg>
-            </button>
-            {!isCollapsed && (
+              <ChevronDownIcon className="h-4 w-4 transition-transform data-[panel-open]:rotate-180" />
+            </CollapsibleTrigger>
+            <CollapsibleContent>
               <div className="mt-2 space-y-2">
                 {values.map((value) => (
-                  <label key={value} className="flex cursor-pointer items-center gap-3">
-                    <input
-                      type="checkbox"
+                  <Label key={value} className="cursor-pointer gap-3">
+                    <Checkbox
                       checked={selected.includes(value)}
-                      onChange={() => handleAttributeToggle(attr.name, value)}
-                      className="h-4 w-4 rounded border-border text-primary focus:ring-primary/30"
+                      onCheckedChange={() => handleAttributeToggle(attr.name, value)}
                     />
-                    <span className="text-sm text-foreground capitalize">{value}</span>
-                  </label>
+                    <span className="capitalize">{value}</span>
+                  </Label>
                 ))}
               </div>
-            )}
-          </div>
+            </CollapsibleContent>
+          </Collapsible>
         );
       })}
     </aside>

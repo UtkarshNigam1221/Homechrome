@@ -45,11 +45,7 @@ func (h *NotificationHandler) Routes() chi.Router {
 func (h *NotificationHandler) Send(w http.ResponseWriter, r *http.Request) {
 	req := middleware.MustGetValidatedBody[domain.SendNotificationRequest](r.Context())
 
-	user := getUserFromContext(r.Context())
-	createdBy := ""
-	if user != nil {
-		createdBy = user.ID
-	}
+	createdBy := middleware.GetCreatedBy(r.Context())
 
 	notification, err := h.notificationService.Send(r.Context(), *req, createdBy)
 	if err != nil {
@@ -65,11 +61,7 @@ func (h *NotificationHandler) Send(w http.ResponseWriter, r *http.Request) {
 func (h *NotificationHandler) SendBulk(w http.ResponseWriter, r *http.Request) {
 	req := middleware.MustGetValidatedBody[domain.SendBulkNotificationRequest](r.Context())
 
-	user := getUserFromContext(r.Context())
-	createdBy := ""
-	if user != nil {
-		createdBy = user.ID
-	}
+	createdBy := middleware.GetCreatedBy(r.Context())
 
 	result, err := h.notificationService.SendBulk(r.Context(), *req, createdBy)
 	if err != nil {

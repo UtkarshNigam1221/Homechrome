@@ -21,18 +21,9 @@ import { getStatusBadgeVariant } from '@/shared/utils/badge';
 import { formatCurrency } from '@/shared/utils/currency';
 
 import type { OrderStatus, ProviderPaymentStatus } from '../../types';
+import { ORDER_STATUSES } from '../../types';
 import { OrderNotes } from './OrderNotes';
 import { OrderTimeline } from './OrderTimeline';
-
-const ORDER_STATUSES: OrderStatus[] = [
-  'PENDING',
-  'CONFIRMED',
-  'PROCESSING',
-  'SHIPPED',
-  'DELIVERED',
-  'CANCELLED',
-  'RETURNED',
-];
 
 export function OrderDetailPage() {
   const { id } = useParams<{ id: string }>();

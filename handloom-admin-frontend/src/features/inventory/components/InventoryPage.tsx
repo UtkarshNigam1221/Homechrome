@@ -42,7 +42,7 @@ export function InventoryPage() {
   const [showAdjustmentModal, setShowAdjustmentModal] = useState(false);
 
   const { data: lowStockData } = useQuery({
-    queryKey: ['low-stock-inventory', { limit, cursor }],
+    queryKey: ['low-stock', { limit, cursor }],
     queryFn: () => inventoryApi.getLowStock({ limit, cursor }),
   });
 
@@ -159,6 +159,7 @@ export function InventoryPage() {
                             src={product.images[0].url}
                             alt={product.images[0].alt_text || product.name}
                             className="w-10 h-10 rounded-lg object-cover"
+                            loading="lazy"
                           />
                         ) : (
                           <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center">

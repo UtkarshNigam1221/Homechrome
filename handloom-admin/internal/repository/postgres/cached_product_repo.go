@@ -142,7 +142,10 @@ func (r *CachedProductRepository) Update(ctx context.Context, product *domain.Pr
 }
 
 func (r *CachedProductRepository) Delete(ctx context.Context, id string) error {
-	p, _ := r.inner.GetByID(ctx, id)
+	// Use the cached GetByID so we avoid a DB round-trip when the entry is warm.
+	// If the cache misses we still pay the cost, but that is unavoidable without
+	// a dedicated "SELECT sku, category_id FROM products WHERE id=$1" query.
+	p, _ := r.GetByID(ctx, id)
 	err := r.inner.Delete(ctx, id)
 	if err == nil {
 		r.cache.Delete(prodKey(id))

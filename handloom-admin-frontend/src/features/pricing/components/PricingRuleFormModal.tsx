@@ -1,15 +1,14 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
-import toast from 'react-hot-toast';
 import { z } from 'zod';
 
 import { categoriesApi } from '@/features/categories/api';
 import type { Category } from '@/features/categories/types';
 import { pricingApi } from '@/features/pricing/api';
-import { getErrorMessage } from '@/shared/api/client';
 import { Button, Input, Modal, Select } from '@/shared/components/ui';
+import { useFormMutation } from '@/shared/hooks';
 
 import type { PricingRule, PricingUnit } from '../types';
 
@@ -37,7 +36,6 @@ interface PricingRuleFormModalProps {
 }
 
 export function PricingRuleFormModal({ isOpen, onClose, rule }: PricingRuleFormModalProps) {
-  const queryClient = useQueryClient();
   const isEditing = !!rule?.id;
 
   // Fetch categories
@@ -111,31 +109,15 @@ export function PricingRuleFormModal({ isOpen, onClose, rule }: PricingRuleFormM
     }
   }, [isOpen, rule, reset]);
 
-  // Create mutation
-  const createMutation = useMutation({
-    mutationFn: (data: Partial<PricingRule>) => pricingApi.createRule(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['pricing-rules'] });
-      toast.success('Pricing rule created successfully');
-      onClose();
-    },
-    onError: (error) => {
-      toast.error(getErrorMessage(error));
-    },
-  });
-
-  // Update mutation
-  const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: Partial<PricingRule> }) =>
-      pricingApi.updateRule(id, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['pricing-rules'] });
-      toast.success('Pricing rule updated successfully');
-      onClose();
-    },
-    onError: (error) => {
-      toast.error(getErrorMessage(error));
-    },
+  const { isLoading, onSubmit: submitMutation } = useFormMutation<
+    Partial<PricingRule>,
+    Partial<PricingRule>
+  >({
+    queryKey: 'pricing-rules',
+    createFn: pricingApi.createRule,
+    updateFn: pricingApi.updateRule,
+    entityName: 'Pricing rule',
+    onSuccess: onClose,
   });
 
   const onSubmit = (data: PricingRuleFormData) => {
@@ -154,11 +136,7 @@ export function PricingRuleFormModal({ isOpen, onClose, rule }: PricingRuleFormM
       is_active: data.is_active,
     };
 
-    if (isEditing && rule?.id) {
-      updateMutation.mutate({ id: rule.id, data: requestData });
-    } else {
-      createMutation.mutate(requestData);
-    }
+    submitMutation(rule?.id, requestData, requestData);
   };
 
   // Map categories to select options (flat list, no hierarchy)
@@ -174,8 +152,6 @@ export function PricingRuleFormModal({ isOpen, onClose, rule }: PricingRuleFormM
     { value: '', label: 'Select a category' },
     ...flattenCategories(categories),
   ];
-
-  const isLoading = createMutation.isPending || updateMutation.isPending;
 
   return (
     <Modal

@@ -46,11 +46,7 @@ func (h *CouponHandler) Routes() chi.Router {
 func (h *CouponHandler) Create(w http.ResponseWriter, r *http.Request) {
 	req := middleware.MustGetValidatedBody[domain.CreateCouponRequest](r.Context())
 
-	user := getUserFromContext(r.Context())
-	createdBy := ""
-	if user != nil {
-		createdBy = user.ID
-	}
+	createdBy := middleware.GetCreatedBy(r.Context())
 
 	coupon, err := h.couponService.Create(r.Context(), *req, createdBy)
 	if err != nil {
@@ -81,11 +77,7 @@ func (h *CouponHandler) Update(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	req := middleware.MustGetValidatedBody[domain.UpdateCouponRequest](r.Context())
 
-	user := getUserFromContext(r.Context())
-	updatedBy := ""
-	if user != nil {
-		updatedBy = user.ID
-	}
+	updatedBy := middleware.GetCreatedBy(r.Context())
 
 	coupon, err := h.couponService.Update(r.Context(), id, *req, updatedBy)
 	if err != nil {

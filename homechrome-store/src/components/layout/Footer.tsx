@@ -1,16 +1,25 @@
+import Image from 'next/image';
 import Link from 'next/link';
+
+import logo40 from '@/assets/logo-40.png';
+
+import { Container } from '@/components/ui/container';
+import { Separator } from '@/components/ui/separator';
 
 export default function Footer() {
   return (
     <footer className="border-t border-border bg-white">
-      <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
+      <Container className="py-12">
         <div className="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-4">
           {/* Brand */}
           <div>
-            <span className="text-xl font-bold tracking-tight text-foreground">
-              HOME<span className="text-primary">CHROME</span>
-            </span>
-            <p className="mt-3 text-sm leading-relaxed text-muted">
+            <Link href="/" className="inline-flex items-center gap-2.5">
+              <Image src={logo40} alt="Homechrome" className="h-10 w-auto" unoptimized />
+              <span className="text-xl font-bold tracking-tight text-foreground">
+                HOME<span className="text-primary">CHROME</span>
+              </span>
+            </Link>
+            <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
               Premium handloom textiles from across India.
               Celebrating the art of traditional weaving.
             </p>
@@ -25,7 +34,7 @@ export default function Footer() {
               <li>
                 <Link
                   href="/products"
-                  className="text-sm text-muted transition-colors hover:text-primary"
+                  className="text-sm text-muted-foreground transition-colors hover:text-primary"
                 >
                   All Products
                 </Link>
@@ -33,7 +42,7 @@ export default function Footer() {
               <li>
                 <Link
                   href="/categories"
-                  className="text-sm text-muted transition-colors hover:text-primary"
+                  className="text-sm text-muted-foreground transition-colors hover:text-primary"
                 >
                   Categories
                 </Link>
@@ -50,7 +59,7 @@ export default function Footer() {
               <li>
                 <Link
                   href="/track"
-                  className="text-sm text-muted transition-colors hover:text-primary"
+                  className="text-sm text-muted-foreground transition-colors hover:text-primary"
                 >
                   Track Order
                 </Link>
@@ -58,7 +67,7 @@ export default function Footer() {
               <li>
                 <Link
                   href="/account"
-                  className="text-sm text-muted transition-colors hover:text-primary"
+                  className="text-sm text-muted-foreground transition-colors hover:text-primary"
                 >
                   My Account
                 </Link>
@@ -67,12 +76,11 @@ export default function Footer() {
           </div>
         </div>
 
-        <div className="mt-10 border-t border-border pt-6">
-          <p className="text-center text-xs text-muted">
-            &copy; {new Date().getFullYear()} Homechrome. All rights reserved.
-          </p>
-        </div>
-      </div>
+        <Separator className="mt-10 mb-6" />
+        <p className="text-center text-xs text-muted-foreground">
+          &copy; {new Date().getFullYear()} Homechrome. All rights reserved.
+        </p>
+      </Container>
     </footer>
   );
 }

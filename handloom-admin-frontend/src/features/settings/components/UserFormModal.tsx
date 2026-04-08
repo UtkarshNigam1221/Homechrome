@@ -1,5 +1,4 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
@@ -7,8 +6,8 @@ import { z } from 'zod';
 
 import type { CreateUserRequest, User } from '@/features/auth/types';
 import { usersApi } from '@/features/settings/api';
-import { getErrorMessage } from '@/shared/api/client';
 import { Button, Input, Modal, Select } from '@/shared/components/ui';
+import { useFormMutation } from '@/shared/hooks';
 
 const userSchema = z.object({
   first_name: z
@@ -35,7 +34,6 @@ interface UserFormModalProps {
 }
 
 export function UserFormModal({ isOpen, onClose, user }: UserFormModalProps) {
-  const queryClient = useQueryClient();
   const isEditing = !!user?.id;
 
   const {
@@ -83,31 +81,15 @@ export function UserFormModal({ isOpen, onClose, user }: UserFormModalProps) {
     }
   }, [isOpen, user, reset]);
 
-  // Create mutation
-  const createMutation = useMutation({
-    mutationFn: (data: CreateUserRequest) => usersApi.create(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['users'] });
-      toast.success('User created successfully');
-      onClose();
-    },
-    onError: (error) => {
-      toast.error(getErrorMessage(error));
-    },
-  });
-
-  // Update mutation
-  const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: Partial<CreateUserRequest> }) =>
-      usersApi.update(id, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['users'] });
-      toast.success('User updated successfully');
-      onClose();
-    },
-    onError: (error) => {
-      toast.error(getErrorMessage(error));
-    },
+  const { isLoading, onSubmit: submitMutation } = useFormMutation<
+    CreateUserRequest,
+    Partial<CreateUserRequest>
+  >({
+    queryKey: 'users',
+    createFn: usersApi.create,
+    updateFn: usersApi.update,
+    entityName: 'User',
+    onSuccess: onClose,
   });
 
   const onSubmit = (data: UserFormData) => {
@@ -122,13 +104,13 @@ export function UserFormModal({ isOpen, onClose, user }: UserFormModalProps) {
       if (data.password) {
         updateData.password = data.password;
       }
-      updateMutation.mutate({ id: user.id, data: updateData });
+      submitMutation(user.id, data as unknown as CreateUserRequest, updateData);
     } else {
       if (!data.password) {
         toast.error('Password is required for new users');
         return;
       }
-      createMutation.mutate({
+      const createData: CreateUserRequest = {
         first_name: data.first_name,
         last_name: data.last_name,
         email: data.email,
@@ -136,11 +118,10 @@ export function UserFormModal({ isOpen, onClose, user }: UserFormModalProps) {
         role: data.role,
         password: data.password,
         status: data.status,
-      });
+      };
+      submitMutation(undefined, createData, {});
     }
   };
-
-  const isLoading = createMutation.isPending || updateMutation.isPending;
 
   return (
     <Modal

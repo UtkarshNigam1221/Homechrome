@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowUpDown, Edit, Eye, Filter, Package, Plus, Search, Trash2, X } from 'lucide-react';
+import { ArrowUpDown, Edit, Filter, Package, Plus, Search, Trash2, X } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 
@@ -123,7 +123,7 @@ export function ProductsPage() {
   const pagination = productsData?.pagination;
 
   // Build category attributes enriched with distinct values from GSI
-  const categoryAttributes: CategoryAttribute[] = (() => {
+  const categoryAttributes: CategoryAttribute[] = useMemo(() => {
     if (!categoryFilter) return [];
     const rawAttrs = categoryAttributesData?.own_attributes || [];
     const filterOptions: Record<string, string[]> = filterOptionsData || {};
@@ -142,7 +142,7 @@ export function ProductsPage() {
       const discoveredOptions = distinctValues.map((v) => ({ value: v, label: v }));
       return { ...attr, options: discoveredOptions };
     });
-  })();
+  }, [categoryFilter, categoryAttributesData, filterOptionsData]);
 
   const categories = categoriesData?.items ?? [];
   const categoryOptions = [
@@ -320,7 +320,7 @@ export function ProductsPage() {
       </Card>
 
       {/* Products Table with Optional Filter Sidebar */}
-      <div className={`flex gap-6 ${showAttributeFilters ? '' : ''}`}>
+      <div className="flex gap-6">
         {/* Attribute Filter Sidebar */}
         {showAttributeFilters && categoryFilter && (
           <div className="w-64 flex-shrink-0">
@@ -399,6 +399,7 @@ export function ProductsPage() {
                             src={product.images[0].url}
                             alt={product.images[0].alt_text || product.name}
                             className="w-10 h-10 rounded-lg object-cover"
+                            loading="lazy"
                           />
                         ) : (
                           <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center">
@@ -454,18 +455,6 @@ export function ProductsPage() {
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setEditingProduct(product);
-                            setShowFormModal(true);
-                          }}
-                          title="View product"
-                        >
-                          <Eye className="w-4 h-4" />
-                        </Button>
                         <Button
                           variant="ghost"
                           size="sm"

@@ -83,7 +83,7 @@ func (h *AuthHandler) setStoreCookies(w http.ResponseWriter, tokens *domain.Toke
 	http.SetCookie(w, &http.Cookie{
 		Name:     "store_refresh",
 		Value:    tokens.RefreshToken,
-		Path:     "/api/v1/store/auth",
+		Path:     "/",
 		Domain:   domain,
 		HttpOnly: true,
 		Secure:   secure,
@@ -109,7 +109,7 @@ func (h *AuthHandler) clearStoreCookies(w http.ResponseWriter) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     "store_refresh",
 		Value:    "",
-		Path:     "/api/v1/store/auth",
+		Path:     "/",
 		Domain:   domain,
 		HttpOnly: true,
 		Secure:   secure,

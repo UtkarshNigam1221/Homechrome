@@ -1,13 +1,11 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
-import toast from 'react-hot-toast';
 import { z } from 'zod';
 
 import { customersApi } from '@/features/customers/api';
-import { getErrorMessage } from '@/shared/api/client';
 import { Button, Input, Modal, Select } from '@/shared/components/ui';
+import { useFormMutation } from '@/shared/hooks';
 
 import type { CreateCustomerRequest, Customer, UpdateCustomerRequest } from '../types';
 
@@ -35,7 +33,6 @@ interface CustomerFormModalProps {
 }
 
 export function CustomerFormModal({ isOpen, onClose, customer }: CustomerFormModalProps) {
-  const queryClient = useQueryClient();
   const isEditing = !!customer?.id;
 
   const {
@@ -96,31 +93,15 @@ export function CustomerFormModal({ isOpen, onClose, customer }: CustomerFormMod
     }
   }, [isOpen, customer, reset]);
 
-  // Create mutation
-  const createMutation = useMutation({
-    mutationFn: (data: CreateCustomerRequest) => customersApi.create(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['customers'] });
-      toast.success('Customer created successfully');
-      onClose();
-    },
-    onError: (error) => {
-      toast.error(getErrorMessage(error));
-    },
-  });
-
-  // Update mutation
-  const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: Partial<CreateCustomerRequest> }) =>
-      customersApi.update(id, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['customers'] });
-      toast.success('Customer updated successfully');
-      onClose();
-    },
-    onError: (error) => {
-      toast.error(getErrorMessage(error));
-    },
+  const { isLoading, onSubmit: submitMutation } = useFormMutation<
+    CreateCustomerRequest,
+    UpdateCustomerRequest
+  >({
+    queryKey: 'customers',
+    createFn: customersApi.create,
+    updateFn: customersApi.update,
+    entityName: 'Customer',
+    onSuccess: onClose,
   });
 
   const onSubmit = (data: CustomerFormData) => {
@@ -147,17 +128,10 @@ export function CustomerFormModal({ isOpen, onClose, customer }: CustomerFormMod
         : undefined,
     };
 
-    if (isEditing && customer?.id) {
-      updateMutation.mutate({
-        id: customer.id,
-        data: { ...requestData, status: data.status } as UpdateCustomerRequest,
-      });
-    } else {
-      createMutation.mutate(requestData);
-    }
-  };
+    const updateData: UpdateCustomerRequest = { ...requestData, status: data.status };
 
-  const isLoading = createMutation.isPending || updateMutation.isPending;
+    submitMutation(customer?.id, requestData, updateData);
+  };
 
   return (
     <Modal

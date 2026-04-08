@@ -13,6 +13,14 @@ export interface ModalProps {
   showCloseButton?: boolean;
 }
 
+const sizes = {
+  sm: 'max-w-md',
+  md: 'max-w-lg',
+  lg: 'max-w-2xl',
+  xl: 'max-w-4xl',
+  full: 'max-w-[90vw]',
+};
+
 export function Modal({
   isOpen,
   onClose,
@@ -22,14 +30,6 @@ export function Modal({
   size = 'md',
   showCloseButton = true,
 }: ModalProps) {
-  const sizes = {
-    sm: 'max-w-md',
-    md: 'max-w-lg',
-    lg: 'max-w-2xl',
-    xl: 'max-w-4xl',
-    full: 'max-w-[90vw]',
-  };
-
   return (
     <Transition appear show={isOpen} as={Fragment}>
       <Dialog as="div" className="relative z-50" onClose={onClose}>

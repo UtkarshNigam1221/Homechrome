@@ -97,12 +97,12 @@ func (h *ReportHandler) List(w http.ResponseWriter, r *http.Request) {
 		req.Status = domain.ReportStatus(status)
 	}
 	if start := r.URL.Query().Get("start_date"); start != "" {
-		if t, err := time.Parse("2006-01-02", start); err == nil {
+		if t, err := time.Parse(domain.DateLayout, start); err == nil {
 			req.StartDate = t
 		}
 	}
 	if end := r.URL.Query().Get("end_date"); end != "" {
-		if t, err := time.Parse("2006-01-02", end); err == nil {
+		if t, err := time.Parse(domain.DateLayout, end); err == nil {
 			req.EndDate = t
 		}
 	}
@@ -183,12 +183,12 @@ func (h *ReportHandler) GenerateSalesReport(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	startDate, err := time.Parse("2006-01-02", req.StartDate)
+	startDate, err := time.Parse(domain.DateLayout, req.StartDate)
 	if err != nil {
 		startDate = time.Now().AddDate(0, -1, 0) // Default to last month
 	}
 
-	endDate, err := time.Parse("2006-01-02", req.EndDate)
+	endDate, err := time.Parse(domain.DateLayout, req.EndDate)
 	if err != nil {
 		endDate = time.Now()
 	}
@@ -247,12 +247,12 @@ func (h *ReportHandler) GenerateOrdersReport(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	startDate, err := time.Parse("2006-01-02", req.StartDate)
+	startDate, err := time.Parse(domain.DateLayout, req.StartDate)
 	if err != nil {
 		startDate = time.Now().AddDate(0, -1, 0)
 	}
 
-	endDate, err := time.Parse("2006-01-02", req.EndDate)
+	endDate, err := time.Parse(domain.DateLayout, req.EndDate)
 	if err != nil {
 		endDate = time.Now()
 	}
@@ -285,12 +285,12 @@ func (h *ReportHandler) GenerateCustomersReport(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	startDate, err := time.Parse("2006-01-02", req.StartDate)
+	startDate, err := time.Parse(domain.DateLayout, req.StartDate)
 	if err != nil {
 		startDate = time.Now().AddDate(0, -1, 0)
 	}
 
-	endDate, err := time.Parse("2006-01-02", req.EndDate)
+	endDate, err := time.Parse(domain.DateLayout, req.EndDate)
 	if err != nil {
 		endDate = time.Now()
 	}

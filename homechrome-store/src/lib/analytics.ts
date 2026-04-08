@@ -1,6 +1,8 @@
+import { ROUTES } from '@/lib/routes';
+
 const BATCH_SIZE = 10;
 const FLUSH_INTERVAL_MS = 30_000;
-const API_URL = '/api/v1/store/events';
+const API_URL = ROUTES.EVENTS;
 
 interface TrackingEvent {
   event_type: string;
@@ -86,26 +88,25 @@ export function track(
   }
 }
 
+function handleVisibilityChange() {
+  if (document.visibilityState === 'hidden') flush();
+}
+
 export function initAnalytics() {
   if (typeof window === 'undefined') return;
   if (initialized) return;
   initialized = true;
 
-  // Periodic flush
   flushTimer = setInterval(flush, FLUSH_INTERVAL_MS);
-
-  // Flush on page unload
   window.addEventListener('beforeunload', flush);
-
-  // Flush on visibility change (tab backgrounded)
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden') flush();
-  });
+  document.addEventListener('visibilitychange', handleVisibilityChange);
 }
 
 export function stopAnalytics() {
   if (flushTimer) clearInterval(flushTimer);
   flushTimer = null;
   initialized = false;
+  window.removeEventListener('beforeunload', flush);
+  document.removeEventListener('visibilitychange', handleVisibilityChange);
   flush();
 }

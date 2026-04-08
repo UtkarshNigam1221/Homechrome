@@ -5,6 +5,8 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/pkg/errors"
 )
@@ -219,6 +221,9 @@ func (s *CartService) recalculateAndGetCart(ctx context.Context, pk, cartOwner s
 	}
 
 	header := cart.Cart
+	if header.ID == "" {
+		header.ID = uuid.New().String()
+	}
 	if isGuest {
 		header.SessionID = cartOwner
 		header.CustomerID = ""

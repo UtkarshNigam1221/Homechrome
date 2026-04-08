@@ -1,13 +1,22 @@
 'use client';
 
+import { Bars3Icon, ShoppingBagIcon, UserIcon } from '@heroicons/react/24/outline';
+import dynamic from 'next/dynamic';
+import Image from 'next/image';
 import Link from 'next/link';
+
+import logo32 from '@/assets/logo-32.png';
+import logo40 from '@/assets/logo-40.png';
 import { useRouter } from 'next/navigation';
 import { useCallback, useState } from 'react';
 
+import { Button } from '@/components/ui/button';
+import { SearchInput } from '@/components/ui/search-input';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useAuthStore } from '@/stores/auth';
 import { useCartStore } from '@/stores/cart';
 
-import MobileNav from './MobileNav';
+const MobileNav = dynamic(() => import('./MobileNav'), { ssr: false });
 
 export default function Header() {
   const router = useRouter();
@@ -31,119 +40,81 @@ export default function Header() {
   return (
     <>
       <header className="sticky top-0 z-40 border-b border-border bg-white/95 backdrop-blur-sm">
-        {/* Top bar */}
-        <div className="bg-foreground px-4 py-1.5 text-center text-xs text-white sm:text-sm">
-          Free shipping on orders above Rs. 999
-        </div>
-
         {/* Main header */}
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-8">
-          {/* Mobile menu button */}
-          <button
-            type="button"
-            className="text-foreground lg:hidden"
-            onClick={() => setMobileMenuOpen(true)}
-            aria-label="Open menu"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              viewBox="0 0 24 24"
-              strokeWidth={1.5}
-              stroke="currentColor"
-              className="h-6 w-6"
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-2 sm:gap-4 sm:px-6 sm:py-3 lg:px-8">
+          {/* Left: hamburger + logo */}
+          <div className="flex items-center gap-2 sm:gap-3">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="lg:hidden"
+              onClick={() => setMobileMenuOpen(true)}
+              aria-label="Open menu"
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5"
+              <Bars3Icon className="h-5 w-5" />
+            </Button>
+
+            <Link href="/" className="flex flex-shrink-0 items-center gap-2">
+              <Image
+                src={logo32}
+                alt="Homechrome"
+                className="h-8 w-auto sm:hidden"
+                priority
+                unoptimized
               />
-            </svg>
-          </button>
+              <Image
+                src={logo40}
+                alt="Homechrome"
+                className="hidden h-10 w-auto sm:block"
+                priority
+                unoptimized
+              />
+              <span className="hidden text-lg font-bold tracking-tight text-foreground sm:inline sm:text-xl">
+                HOME<span className="text-primary">CHROME</span>
+              </span>
+            </Link>
+          </div>
 
-          {/* Logo */}
-          <Link href="/" className="flex-shrink-0">
-            <span className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">
-              HOME<span className="text-primary">CHROME</span>
-            </span>
-          </Link>
-
-          {/* Search bar - hidden on mobile */}
-          <form
+          {/* Center: search */}
+          <SearchInput
+            value={searchQuery}
+            onChange={setSearchQuery}
             onSubmit={handleSearch}
-            className="hidden max-w-md flex-1 lg:flex"
-          >
-            <div className="relative w-full">
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search handloom textiles..."
-                className="w-full rounded-full border border-border bg-background py-2 pl-4 pr-10 text-sm transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
-              />
-              <button
-                type="submit"
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-primary"
-                aria-label="Search"
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  strokeWidth={1.5}
-                  stroke="currentColor"
-                  className="h-5 w-5"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"
-                  />
-                </svg>
-              </button>
-            </div>
-          </form>
+            placeholder="Search handloom textiles..."
+            className="hidden max-w-md flex-1 lg:block"
+          />
 
-          {/* Nav links - hidden on mobile */}
-          <nav className="hidden items-center gap-6 lg:flex">
-            <Link
-              href="/products"
-              className="text-sm font-medium text-foreground transition-colors hover:text-primary"
-            >
-              Shop
-            </Link>
-            <Link
-              href="/categories"
-              className="text-sm font-medium text-foreground transition-colors hover:text-primary"
-            >
-              Categories
-            </Link>
-          </nav>
-
-          {/* Right actions */}
-          <div className="flex items-center gap-3">
-            {/* Account */}
-            {isAuthenticated ? (
+          {/* Right: nav + actions */}
+          <div className="flex items-center gap-3 sm:gap-4">
+            <nav className="hidden items-center gap-5 lg:flex">
               <Link
-                href="/account"
-                className="hidden text-sm font-medium text-foreground transition-colors hover:text-primary sm:block"
-                title={customer?.first_name || 'Account'}
+                href="/products"
+                className="text-sm font-medium text-foreground transition-colors hover:text-primary"
               >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  strokeWidth={1.5}
-                  stroke="currentColor"
-                  className="h-6 w-6"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z"
-                  />
-                </svg>
+                Shop
               </Link>
+              <Link
+                href="/categories"
+                className="text-sm font-medium text-foreground transition-colors hover:text-primary"
+              >
+                Categories
+              </Link>
+            </nav>
+
+            {isAuthenticated ? (
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Link
+                      href="/account"
+                      className="hidden text-foreground transition-colors hover:text-primary sm:block"
+                    />
+                  }
+                >
+                  <UserIcon className="h-5 w-5 sm:h-6 sm:w-6" />
+                </TooltipTrigger>
+                <TooltipContent>{customer?.first_name || 'Account'}</TooltipContent>
+              </Tooltip>
             ) : (
               <Link
                 href="/login"
@@ -153,64 +124,32 @@ export default function Header() {
               </Link>
             )}
 
-            {/* Cart */}
-            <Link href="/cart" className="relative">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-                strokeWidth={1.5}
-                stroke="currentColor"
-                className="h-6 w-6 text-foreground transition-colors hover:text-primary"
+            <Tooltip>
+              <TooltipTrigger
+                render={<Link href="/cart" className="relative" />}
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M15.75 10.5V6a3.75 3.75 0 1 0-7.5 0v4.5m11.356-1.993 1.263 12c.07.665-.45 1.243-1.119 1.243H4.25a1.125 1.125 0 0 1-1.12-1.243l1.264-12A1.125 1.125 0 0 1 5.513 7.5h12.974c.576 0 1.059.435 1.119 1.007ZM8.625 10.5a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm7.5 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z"
-                />
-              </svg>
-              {cartCount > 0 && (
-                <span className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-xs font-bold text-white">
-                  {cartCount}
-                </span>
-              )}
-            </Link>
+                <ShoppingBagIcon className="h-5 w-5 text-foreground transition-colors hover:text-primary sm:h-6 sm:w-6" />
+                {cartCount > 0 && (
+                  <span className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-white sm:h-5 sm:w-5 sm:text-xs">
+                    {cartCount}
+                  </span>
+                )}
+              </TooltipTrigger>
+              <TooltipContent>
+                {cartCount > 0 ? `Cart (${cartCount})` : 'Cart'}
+              </TooltipContent>
+            </Tooltip>
           </div>
         </div>
 
         {/* Mobile search bar */}
-        <div className="border-t border-border px-4 pb-3 pt-1 lg:hidden">
-          <form onSubmit={handleSearch}>
-            <div className="relative">
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search handloom textiles..."
-                className="w-full rounded-full border border-border bg-background py-2 pl-4 pr-10 text-sm transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
-              />
-              <button
-                type="submit"
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-primary"
-                aria-label="Search"
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  strokeWidth={1.5}
-                  stroke="currentColor"
-                  className="h-5 w-5"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"
-                  />
-                </svg>
-              </button>
-            </div>
-          </form>
+        <div className="border-t border-border px-4 pb-2 pt-1 lg:hidden">
+          <SearchInput
+            value={searchQuery}
+            onChange={setSearchQuery}
+            onSubmit={handleSearch}
+            placeholder="Search handloom textiles..."
+          />
         </div>
       </header>
 

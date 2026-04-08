@@ -43,16 +43,18 @@ func (m *mockS3Client) DeleteObject(ctx context.Context, bucket, key string) err
 // ---------------------------------------------------------------------------
 
 const testBucket = "test-bucket"
+const testRegion = "ap-south-1"
 
 func newTestAssetService(s3 *mockS3Client) *AssetService {
 	return &AssetService{
 		s3Client: s3,
 		bucket:   testBucket,
+		region:   testRegion,
 	}
 }
 
 func s3URL(key string) string {
-	return fmt.Sprintf("https://%s.s3.amazonaws.com/%s", testBucket, key)
+	return fmt.Sprintf("https://%s.s3.%s.amazonaws.com/%s", testBucket, testRegion, key)
 }
 
 // ---------------------------------------------------------------------------

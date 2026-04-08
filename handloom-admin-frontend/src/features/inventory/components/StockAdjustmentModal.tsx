@@ -67,6 +67,7 @@ export function StockAdjustmentModal({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['products'] });
       queryClient.invalidateQueries({ queryKey: ['products-inventory'] });
+      queryClient.invalidateQueries({ queryKey: ['inventory'] });
       queryClient.invalidateQueries({ queryKey: ['low-stock'] });
       toast.success('Stock added successfully');
       reset();
@@ -91,6 +92,7 @@ export function StockAdjustmentModal({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['products'] });
       queryClient.invalidateQueries({ queryKey: ['products-inventory'] });
+      queryClient.invalidateQueries({ queryKey: ['inventory'] });
       queryClient.invalidateQueries({ queryKey: ['low-stock'] });
       toast.success('Stock removed successfully');
       reset();
@@ -115,6 +117,7 @@ export function StockAdjustmentModal({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['products'] });
       queryClient.invalidateQueries({ queryKey: ['products-inventory'] });
+      queryClient.invalidateQueries({ queryKey: ['inventory'] });
       queryClient.invalidateQueries({ queryKey: ['low-stock'] });
       toast.success('Stock adjusted successfully');
       reset();

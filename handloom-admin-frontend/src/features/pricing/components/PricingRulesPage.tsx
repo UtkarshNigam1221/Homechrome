@@ -1,15 +1,12 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { DollarSign, Edit, Plus, Search, Trash2 } from 'lucide-react';
 import { useState } from 'react';
-import toast from 'react-hot-toast';
 
 import { pricingApi } from '@/features/pricing/api';
-import { getErrorMessage } from '@/shared/api/client';
 import {
   Badge,
   Button,
   Card,
-  ConfirmModal,
   Input,
   Pagination,
   Table,
@@ -21,14 +18,13 @@ import {
   TableLoading,
   TableRow,
 } from '@/shared/components/ui';
-import { useCursorPagination, useDebounce } from '@/shared/hooks';
+import { useCursorPagination, useDebounce, useDeleteWithConfirm } from '@/shared/hooks';
 import { formatCurrency } from '@/shared/utils/currency';
 
 import type { PricingRule } from '../types';
 import { PricingRuleFormModal } from './PricingRuleFormModal';
 
 export function PricingRulesPage() {
-  const queryClient = useQueryClient();
   const {
     limit,
     cursor,
@@ -42,24 +38,17 @@ export function PricingRulesPage() {
   const debouncedSearch = useDebounce(searchQuery, 300);
   const [showFormModal, setShowFormModal] = useState(false);
   const [editingRule, setEditingRule] = useState<PricingRule | null>(null);
-  const [deleteRule, setDeleteRule] = useState<PricingRule | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ['pricing-rules', { limit, cursor }],
     queryFn: () => pricingApi.listRules({ limit, cursor }),
   });
 
-  // Delete mutation
-  const deleteMutation = useMutation({
-    mutationFn: pricingApi.deleteRule,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['pricing-rules'] });
-      toast.success('Pricing rule deleted successfully');
-      setDeleteRule(null);
-    },
-    onError: (error) => {
-      toast.error(getErrorMessage(error));
-    },
+  const { setDeleteTarget: setDeleteRule, DeleteConfirmModal } = useDeleteWithConfirm<PricingRule>({
+    queryKey: 'pricing-rules',
+    deleteFn: pricingApi.deleteRule,
+    entityName: 'Pricing rule',
+    getEntityName: (r) => r.name,
   });
 
   const rules = data?.items || [];
@@ -217,15 +206,7 @@ export function PricingRulesPage() {
       />
 
       {/* Delete Confirmation Modal */}
-      <ConfirmModal
-        isOpen={!!deleteRule}
-        onClose={() => setDeleteRule(null)}
-        onConfirm={() => deleteRule && deleteMutation.mutate(deleteRule.id)}
-        title="Delete Pricing Rule"
-        message={`Are you sure you want to delete "${deleteRule?.name}"? This action cannot be undone.`}
-        confirmText="Delete"
-        loading={deleteMutation.isPending}
-      />
+      <DeleteConfirmModal />
     </div>
   );
 }

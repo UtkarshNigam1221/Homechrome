@@ -2,13 +2,21 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useReducer } from 'react';
 
-import Button from '@/components/common/Button';
+import Button from '@/components/ui/button';
+import { Alert } from '@/components/ui/alert';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Container } from '@/components/ui/container';
+import { PageHeader } from '@/components/ui/page-header';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import AddressForm from '@/components/checkout/AddressForm';
+import CheckoutSkeleton from '@/components/skeleton/CheckoutSkeleton';
 import OrderSummary from '@/components/checkout/OrderSummary';
 import ShippingOptions from '@/components/checkout/ShippingOptions';
 import api from '@/lib/api';
+import { ROUTES } from '@/lib/routes';
+import { cn, formatPrice } from '@/lib/utils';
 import { useAuthStore } from '@/stores/auth';
 import {
   Address,
@@ -20,46 +28,144 @@ import {
 
 type Step = 'address' | 'shipping' | 'review';
 
+interface CheckoutState {
+  cart: CartWithItems | null;
+  cartLoading: boolean;
+  step: Step;
+  selectedAddressId: string | null;
+  showAddressForm: boolean;
+  addressSaving: boolean;
+  couriers: CourierOption[];
+  selectedCourierId: number | null;
+  serviceabilityLoading: boolean;
+  serviceabilityError: string | null;
+  initiating: boolean;
+  error: string | null;
+}
+
+type CheckoutAction =
+  | { type: 'CART_LOADING' }
+  | { type: 'CART_LOADED'; cart: CartWithItems }
+  | { type: 'GO_TO_STEP'; step: Step }
+  | { type: 'SELECT_ADDRESS'; id: string }
+  | { type: 'TOGGLE_ADDRESS_FORM'; show: boolean }
+  | { type: 'ADDRESS_SAVE_START' }
+  | { type: 'ADDRESS_SAVED'; addressId: string }
+  | { type: 'ADDRESS_SAVE_FAILED'; error: string }
+  | { type: 'SERVICEABILITY_START' }
+  | { type: 'SERVICEABILITY_SUCCESS'; couriers: CourierOption[] }
+  | { type: 'SERVICEABILITY_FAIL'; error: string }
+  | { type: 'SELECT_COURIER'; id: number }
+  | { type: 'PAYMENT_START' }
+  | { type: 'PAYMENT_FAILED'; error: string }
+  | { type: 'CLEAR_ERROR' };
+
+const initialState: CheckoutState = {
+  cart: null,
+  cartLoading: true,
+  step: 'address',
+  selectedAddressId: null,
+  showAddressForm: false,
+  addressSaving: false,
+  couriers: [],
+  selectedCourierId: null,
+  serviceabilityLoading: false,
+  serviceabilityError: null,
+  initiating: false,
+  error: null,
+};
+
+function checkoutReducer(state: CheckoutState, action: CheckoutAction): CheckoutState {
+  switch (action.type) {
+    case 'CART_LOADING':
+      return { ...state, cartLoading: true };
+    case 'CART_LOADED':
+      return { ...state, cart: action.cart, cartLoading: false };
+    case 'GO_TO_STEP':
+      return { ...state, step: action.step, error: null };
+    case 'SELECT_ADDRESS':
+      return { ...state, selectedAddressId: action.id };
+    case 'TOGGLE_ADDRESS_FORM':
+      return { ...state, showAddressForm: action.show };
+    case 'ADDRESS_SAVE_START':
+      return { ...state, addressSaving: true, error: null };
+    case 'ADDRESS_SAVED':
+      return {
+        ...state,
+        addressSaving: false,
+        showAddressForm: false,
+        selectedAddressId: action.addressId,
+      };
+    case 'ADDRESS_SAVE_FAILED':
+      return { ...state, addressSaving: false, error: action.error };
+    case 'SERVICEABILITY_START':
+      return {
+        ...state,
+        serviceabilityLoading: true,
+        serviceabilityError: null,
+        couriers: [],
+        selectedCourierId: null,
+      };
+    case 'SERVICEABILITY_SUCCESS': {
+      const autoSelect =
+        action.couriers.length === 1 ? action.couriers[0].id : null;
+      return {
+        ...state,
+        serviceabilityLoading: false,
+        couriers: action.couriers,
+        selectedCourierId: autoSelect,
+      };
+    }
+    case 'SERVICEABILITY_FAIL':
+      return {
+        ...state,
+        serviceabilityLoading: false,
+        serviceabilityError: action.error,
+      };
+    case 'SELECT_COURIER':
+      return { ...state, selectedCourierId: action.id };
+    case 'PAYMENT_START':
+      return { ...state, initiating: true, error: null };
+    case 'PAYMENT_FAILED':
+      return { ...state, initiating: false, error: action.error };
+    case 'CLEAR_ERROR':
+      return { ...state, error: null };
+    default:
+      return state;
+  }
+}
+
 export default function CheckoutPage() {
   const router = useRouter();
   const { isAuthenticated, isLoading: authLoading, customer } = useAuthStore();
+  const [state, dispatch] = useReducer(checkoutReducer, initialState);
 
-  const [cart, setCart] = useState<CartWithItems | null>(null);
-  const [cartLoading, setCartLoading] = useState(true);
-
-  const [step, setStep] = useState<Step>('address');
-  const [selectedAddressId, setSelectedAddressId] = useState<string | null>(null);
-  const [showAddressForm, setShowAddressForm] = useState(false);
-  const [addressSaving, setAddressSaving] = useState(false);
-
-  const [couriers, setCouriers] = useState<CourierOption[]>([]);
-  const [selectedCourierId, setSelectedCourierId] = useState<number | null>(null);
-  const [serviceabilityLoading, setServiceabilityLoading] = useState(false);
-  const [serviceabilityError, setServiceabilityError] = useState<string | null>(null);
-
-  const [initiating, setInitiating] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  // Redirect unauthenticated users
-  useEffect(() => {
-    if (!authLoading && !isAuthenticated) {
-      router.replace('/login?redirect=/checkout');
-    }
-  }, [authLoading, isAuthenticated, router]);
+  const {
+    cart,
+    cartLoading,
+    step,
+    selectedAddressId,
+    showAddressForm,
+    addressSaving,
+    couriers,
+    selectedCourierId,
+    serviceabilityLoading,
+    serviceabilityError,
+    initiating,
+    error,
+  } = state;
 
   // Fetch cart
   const fetchCart = useCallback(async () => {
+    dispatch({ type: 'CART_LOADING' });
     try {
-      setCartLoading(true);
-      const { data } = await api.get<CartWithItems>('/api/v1/store/cart');
-      setCart(data);
+      const { data } = await api.get<CartWithItems>(ROUTES.CART.ROOT);
+      dispatch({ type: 'CART_LOADED', cart: data });
       if (!data.items || data.items.length === 0) {
         router.replace('/cart');
       }
     } catch {
       router.replace('/cart');
-    } finally {
-      setCartLoading(false);
     }
   }, [router]);
 
@@ -73,7 +179,10 @@ export default function CheckoutPage() {
   useEffect(() => {
     if (customer?.addresses && customer.addresses.length > 0 && !selectedAddressId) {
       const defaultAddr = customer.addresses.find((a) => a.is_default);
-      setSelectedAddressId(defaultAddr?.id || customer.addresses[0].id);
+      dispatch({
+        type: 'SELECT_ADDRESS',
+        id: defaultAddr?.id || customer.addresses[0].id,
+      });
     }
   }, [customer?.addresses, selectedAddressId]);
 
@@ -84,69 +193,63 @@ export default function CheckoutPage() {
   const checkServiceability = useCallback(async () => {
     if (!selectedAddress) return;
 
-    setServiceabilityLoading(true);
-    setServiceabilityError(null);
-    setCouriers([]);
-    setSelectedCourierId(null);
+    dispatch({ type: 'SERVICEABILITY_START' });
 
     try {
       const { data } = await api.post<ServiceabilityResult>(
-        '/api/v1/store/checkout/serviceability',
+        ROUTES.CHECKOUT.SERVICEABILITY,
         { pincode: selectedAddress.postal_code },
       );
 
       if (!data.serviceable) {
-        setServiceabilityError(
-          'Delivery is not available to this PIN code. Please choose a different address.',
-        );
+        dispatch({
+          type: 'SERVICEABILITY_FAIL',
+          error: 'Delivery is not available to this PIN code. Please choose a different address.',
+        });
         return;
       }
 
-      setCouriers(data.couriers);
-      if (data.couriers.length === 1) {
-        setSelectedCourierId(data.couriers[0].id);
-      }
+      dispatch({ type: 'SERVICEABILITY_SUCCESS', couriers: data.couriers });
     } catch {
-      setServiceabilityError('Failed to check delivery availability. Please try again.');
-    } finally {
-      setServiceabilityLoading(false);
+      dispatch({
+        type: 'SERVICEABILITY_FAIL',
+        error: 'Failed to check delivery availability. Please try again.',
+      });
     }
   }, [selectedAddress]);
 
   const handleAddressNext = () => {
     if (!selectedAddressId) return;
-    setStep('shipping');
+    dispatch({ type: 'GO_TO_STEP', step: 'shipping' });
     checkServiceability();
   };
 
   const handleShippingNext = () => {
     if (!selectedCourierId) return;
-    setStep('review');
+    dispatch({ type: 'GO_TO_STEP', step: 'review' });
   };
 
   const handleAddAddress = async (data: Omit<Address, 'id'>) => {
-    setAddressSaving(true);
+    dispatch({ type: 'ADDRESS_SAVE_START' });
     try {
       const { data: newAddr } = await api.post<Address>(
-        '/api/v1/store/me/addresses',
+        ROUTES.ME.ADDRESSES,
         data,
       );
-      // Refresh customer data to get updated addresses
       await useAuthStore.getState().checkAuth();
-      setSelectedAddressId(newAddr.id);
-      setShowAddressForm(false);
+      dispatch({ type: 'ADDRESS_SAVED', addressId: newAddr.id });
     } catch {
-      setError('Failed to save address. Please try again.');
-    } finally {
-      setAddressSaving(false);
+      dispatch({
+        type: 'ADDRESS_SAVE_FAILED',
+        error: 'Failed to save address. Please try again.',
+      });
     }
   };
 
   const handlePayNow = async () => {
     if (!selectedAddressId) return;
 
-    setInitiating(true);
-    setError(null);
+    dispatch({ type: 'PAYMENT_START' });
 
     try {
       const payload: { shipping_address_id: string; courier_id?: number } = {
@@ -157,29 +260,23 @@ export default function CheckoutPage() {
       }
 
       const { data } = await api.post<CheckoutResult>(
-        '/api/v1/store/checkout/initiate',
+        ROUTES.CHECKOUT.INITIATE,
         payload,
       );
 
-      // Redirect to PhonePe payment
       window.location.href = data.redirect_url;
     } catch {
-      setError('Failed to initiate payment. Please try again.');
-      setInitiating(false);
+      dispatch({
+        type: 'PAYMENT_FAILED',
+        error: 'Failed to initiate payment. Please try again.',
+      });
     }
   };
 
   const selectedCourier = couriers.find((c) => c.id === selectedCourierId) || null;
 
-  // Loading states
   if (authLoading || cartLoading) {
-    return (
-      <div className="mx-auto max-w-4xl px-4 py-12 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-center py-20">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-        </div>
-      </div>
-    );
+    return <CheckoutSkeleton />;
   }
 
   if (!cart || !cart.items || cart.items.length === 0) {
@@ -187,31 +284,35 @@ export default function CheckoutPage() {
   }
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
-      <h1 className="mb-2 text-2xl font-bold text-foreground sm:text-3xl">Checkout</h1>
-      <p className="mb-8 text-sm text-muted">
-        Complete your order in a few simple steps.
-      </p>
+    <Container size="narrow" className="py-8">
+      <PageHeader
+        title="Checkout"
+        description="Complete your order in a few simple steps."
+      />
 
       {/* Progress steps */}
-      <div className="mb-8 flex items-center gap-2 text-sm">
+      <nav className="mb-8 flex items-center gap-2 text-sm" aria-label="Checkout steps">
         {(['address', 'shipping', 'review'] as const).map((s, i) => (
           <div key={s} className="flex items-center gap-2">
             {i > 0 && <div className="h-px w-6 bg-border sm:w-12" />}
-            <button
-              type="button"
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={() => {
-                if (s === 'address') setStep('address');
+                if (s === 'address') dispatch({ type: 'GO_TO_STEP', step: 'address' });
                 else if (s === 'shipping' && selectedAddressId) {
-                  setStep('shipping');
+                  dispatch({ type: 'GO_TO_STEP', step: 'shipping' });
                   if (couriers.length === 0) checkServiceability();
-                } else if (s === 'review' && selectedCourierId) setStep('review');
+                } else if (s === 'review' && selectedCourierId) {
+                  dispatch({ type: 'GO_TO_STEP', step: 'review' });
+                }
               }}
-              className={`flex items-center gap-1.5 rounded-full px-3 py-1 font-medium transition-colors ${
+              className={cn(
+                'rounded-full',
                 step === s
-                  ? 'bg-primary text-white'
-                  : 'bg-white text-muted hover:text-foreground'
-              }`}
+                  ? 'bg-primary text-white hover:bg-primary-dark hover:text-white'
+                  : 'bg-card text-muted-foreground hover:text-foreground',
+              )}
             >
               <span className="flex h-5 w-5 items-center justify-center rounded-full bg-white/20 text-xs">
                 {i + 1}
@@ -219,41 +320,41 @@ export default function CheckoutPage() {
               <span className="hidden sm:inline">
                 {s === 'address' ? 'Address' : s === 'shipping' ? 'Shipping' : 'Review'}
               </span>
-            </button>
+            </Button>
           </div>
         ))}
-      </div>
+      </nav>
 
-      {error && (
-        <div className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-          {error}
-        </div>
-      )}
+      {error && <Alert className="mb-6">{error}</Alert>}
 
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
         {/* Main content */}
         <div className="lg:col-span-2">
           {/* Step 1: Address */}
           {step === 'address' && (
-            <div className="rounded-lg border border-border bg-white p-6">
-              <h2 className="mb-4 text-lg font-semibold text-foreground">
-                Shipping Address
-              </h2>
+            <Card>
+              <CardHeader>
+                <CardTitle>Shipping Address</CardTitle>
+              </CardHeader>
+              <CardContent>
 
               {addresses.length > 0 && !showAddressForm && (
                 <div className="space-y-3">
-                  {addresses.map((addr) => (
-                    <button
-                      key={addr.id}
-                      type="button"
-                      onClick={() => setSelectedAddressId(addr.id)}
-                      className={`w-full rounded-lg border p-4 text-left transition-colors ${
-                        selectedAddressId === addr.id
-                          ? 'border-primary bg-primary/5 ring-1 ring-primary'
-                          : 'border-border hover:border-primary/50'
-                      }`}
-                    >
-                      <div className="flex items-start justify-between">
+                  <RadioGroup
+                    value={selectedAddressId || ''}
+                    onValueChange={(val) => dispatch({ type: 'SELECT_ADDRESS', id: val })}
+                    aria-label="Select address"
+                  >
+                    {addresses.map((addr) => (
+                      <label
+                        key={addr.id}
+                        className={cn(
+                          'flex cursor-pointer items-start justify-between rounded-lg border p-4 transition-colors',
+                          selectedAddressId === addr.id
+                            ? 'border-primary bg-primary/5 ring-1 ring-primary'
+                            : 'border-border hover:border-primary/50',
+                        )}
+                      >
                         <div>
                           <p className="font-medium text-foreground">
                             {addr.first_name} {addr.last_name}
@@ -263,37 +364,26 @@ export default function CheckoutPage() {
                               </span>
                             )}
                           </p>
-                          <p className="mt-1 text-sm text-muted">
+                          <p className="mt-1 text-sm text-muted-foreground">
                             {addr.address_line1}
                             {addr.address_line2 && `, ${addr.address_line2}`}
                           </p>
-                          <p className="text-sm text-muted">
+                          <p className="text-sm text-muted-foreground">
                             {addr.city}, {addr.state} - {addr.postal_code}
                           </p>
-                          <p className="text-sm text-muted">Phone: {addr.phone}</p>
+                          <p className="text-sm text-muted-foreground">Phone: {addr.phone}</p>
                         </div>
-                        <div
-                          className={`flex h-5 w-5 items-center justify-center rounded-full border-2 ${
-                            selectedAddressId === addr.id
-                              ? 'border-primary'
-                              : 'border-muted'
-                          }`}
-                        >
-                          {selectedAddressId === addr.id && (
-                            <div className="h-2.5 w-2.5 rounded-full bg-primary" />
-                          )}
-                        </div>
-                      </div>
-                    </button>
-                  ))}
+                        <RadioGroupItem value={addr.id} />
+                      </label>
+                    ))}
+                  </RadioGroup>
 
-                  <button
-                    type="button"
-                    onClick={() => setShowAddressForm(true)}
-                    className="mt-2 text-sm font-medium text-primary hover:text-primary-dark"
+                  <Button
+                    variant="link"
+                    onClick={() => dispatch({ type: 'TOGGLE_ADDRESS_FORM', show: true })}
                   >
                     + Add a new address
-                  </button>
+                  </Button>
 
                   <div className="mt-4 pt-4">
                     <Button
@@ -311,7 +401,7 @@ export default function CheckoutPage() {
                   onSubmit={handleAddAddress}
                   onCancel={() => {
                     if (addresses.length > 0) {
-                      setShowAddressForm(false);
+                      dispatch({ type: 'TOGGLE_ADDRESS_FORM', show: false });
                     } else {
                       router.push('/cart');
                     }
@@ -319,15 +409,17 @@ export default function CheckoutPage() {
                   loading={addressSaving}
                 />
               )}
-            </div>
+              </CardContent>
+            </Card>
           )}
 
           {/* Step 2: Shipping */}
           {step === 'shipping' && (
-            <div className="rounded-lg border border-border bg-white p-6">
-              <h2 className="mb-4 text-lg font-semibold text-foreground">
-                Shipping Method
-              </h2>
+            <Card>
+              <CardHeader>
+                <CardTitle>Shipping Method</CardTitle>
+              </CardHeader>
+              <CardContent>
 
               {selectedAddress && (
                 <div className="mb-4 rounded-lg bg-background p-3 text-sm">
@@ -339,33 +431,34 @@ export default function CheckoutPage() {
                     {selectedAddress.address_line1}, {selectedAddress.city},{' '}
                     {selectedAddress.state} - {selectedAddress.postal_code}
                   </p>
-                  <button
-                    type="button"
-                    onClick={() => setStep('address')}
-                    className="mt-1 text-xs font-medium text-primary hover:text-primary-dark"
+                  <Button
+                    variant="link"
+                    size="sm"
+                    className="mt-1 h-auto p-0 text-xs"
+                    onClick={() => dispatch({ type: 'GO_TO_STEP', step: 'address' })}
                   >
                     Change address
-                  </button>
+                  </Button>
                 </div>
               )}
 
               {serviceabilityError && (
-                <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+                <Alert className="mb-4">
                   {serviceabilityError}
-                  <button
-                    type="button"
-                    onClick={() => setStep('address')}
-                    className="mt-2 block font-medium text-red-800 underline"
+                  <Button
+                    variant="link"
+                    className="mt-2 block h-auto p-0 text-red-800 underline"
+                    onClick={() => dispatch({ type: 'GO_TO_STEP', step: 'address' })}
                   >
                     Choose a different address
-                  </button>
-                </div>
+                  </Button>
+                </Alert>
               )}
 
               <ShippingOptions
                 couriers={couriers}
                 selectedId={selectedCourierId}
-                onSelect={setSelectedCourierId}
+                onSelect={(id) => dispatch({ type: 'SELECT_COURIER', id })}
                 loading={serviceabilityLoading}
               />
 
@@ -377,20 +470,25 @@ export default function CheckoutPage() {
                   >
                     Continue to Review
                   </Button>
-                  <Button variant="outline" onClick={() => setStep('address')}>
+                  <Button
+                    variant="outline"
+                    onClick={() => dispatch({ type: 'GO_TO_STEP', step: 'address' })}
+                  >
                     Back
                   </Button>
                 </div>
               )}
-            </div>
+              </CardContent>
+            </Card>
           )}
 
           {/* Step 3: Review */}
           {step === 'review' && (
-            <div className="rounded-lg border border-border bg-white p-6">
-              <h2 className="mb-4 text-lg font-semibold text-foreground">
-                Review Your Order
-              </h2>
+            <Card>
+              <CardHeader>
+                <CardTitle>Review Your Order</CardTitle>
+              </CardHeader>
+              <CardContent>
 
               {/* Address summary */}
               {selectedAddress && (
@@ -399,15 +497,16 @@ export default function CheckoutPage() {
                     <h3 className="text-sm font-semibold text-foreground">
                       Shipping Address
                     </h3>
-                    <button
-                      type="button"
-                      onClick={() => setStep('address')}
-                      className="text-xs font-medium text-primary hover:text-primary-dark"
+                    <Button
+                      variant="link"
+                      size="sm"
+                      className="h-auto p-0 text-xs"
+                      onClick={() => dispatch({ type: 'GO_TO_STEP', step: 'address' })}
                     >
                       Change
-                    </button>
+                    </Button>
                   </div>
-                  <p className="mt-1 text-sm text-muted">
+                  <p className="mt-1 text-sm text-muted-foreground">
                     {selectedAddress.first_name} {selectedAddress.last_name},{' '}
                     {selectedAddress.address_line1}, {selectedAddress.city},{' '}
                     {selectedAddress.state} - {selectedAddress.postal_code}
@@ -422,15 +521,16 @@ export default function CheckoutPage() {
                     <h3 className="text-sm font-semibold text-foreground">
                       Shipping Method
                     </h3>
-                    <button
-                      type="button"
-                      onClick={() => setStep('shipping')}
-                      className="text-xs font-medium text-primary hover:text-primary-dark"
+                    <Button
+                      variant="link"
+                      size="sm"
+                      className="h-auto p-0 text-xs"
+                      onClick={() => dispatch({ type: 'GO_TO_STEP', step: 'shipping' })}
                     >
                       Change
-                    </button>
+                    </Button>
                   </div>
-                  <p className="mt-1 text-sm text-muted">
+                  <p className="mt-1 text-sm text-muted-foreground">
                     {selectedCourier.name} - Est. {selectedCourier.estimated_days}{' '}
                     {selectedCourier.estimated_days === 1 ? 'day' : 'days'}
                   </p>
@@ -446,7 +546,7 @@ export default function CheckoutPage() {
                       {item.product_name} x {item.quantity}
                     </span>
                     <span className="text-foreground">
-                      {`₹${(item.total_price / 100).toLocaleString('en-IN')}`}
+                      {formatPrice(item.total_price)}
                     </span>
                   </div>
                 ))}
@@ -456,11 +556,15 @@ export default function CheckoutPage() {
                 <Button onClick={handlePayNow} loading={initiating}>
                   Pay Now
                 </Button>
-                <Button variant="outline" onClick={() => setStep('shipping')}>
+                <Button
+                  variant="outline"
+                  onClick={() => dispatch({ type: 'GO_TO_STEP', step: 'shipping' })}
+                >
                   Back
                 </Button>
               </div>
-            </div>
+              </CardContent>
+            </Card>
           )}
         </div>
 
@@ -483,6 +587,6 @@ export default function CheckoutPage() {
           </div>
         </div>
       </div>
-    </div>
+    </Container>
   );
 }

@@ -214,18 +214,27 @@ func (s *ReportService) GenerateArtisansReport(ctx context.Context, format domai
 	return s.Generate(ctx, req, createdBy)
 }
 
+// validReportTypes lists all supported report types.
+var validReportTypes = []domain.ReportType{
+	domain.ReportTypeSales,
+	domain.ReportTypeOrders,
+	domain.ReportTypeInventory,
+	domain.ReportTypeCustomers,
+	domain.ReportTypeProducts,
+	domain.ReportTypeArtisans,
+}
+
+// validReportFormats lists all supported report formats.
+var validReportFormats = []domain.ReportFormat{
+	domain.ReportFormatCSV,
+	domain.ReportFormatXLSX,
+	domain.ReportFormatPDF,
+}
+
 // Helpers
 
 func (s *ReportService) isValidReportType(t domain.ReportType) bool {
-	validTypes := []domain.ReportType{
-		domain.ReportTypeSales,
-		domain.ReportTypeOrders,
-		domain.ReportTypeInventory,
-		domain.ReportTypeCustomers,
-		domain.ReportTypeProducts,
-		domain.ReportTypeArtisans,
-	}
-	for _, vt := range validTypes {
+	for _, vt := range validReportTypes {
 		if t == vt {
 			return true
 		}
@@ -234,12 +243,7 @@ func (s *ReportService) isValidReportType(t domain.ReportType) bool {
 }
 
 func (s *ReportService) isValidFormat(f domain.ReportFormat) bool {
-	validFormats := []domain.ReportFormat{
-		domain.ReportFormatCSV,
-		domain.ReportFormatXLSX,
-		domain.ReportFormatPDF,
-	}
-	for _, vf := range validFormats {
+	for _, vf := range validReportFormats {
 		if f == vf {
 			return true
 		}

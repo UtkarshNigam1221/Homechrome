@@ -47,6 +47,8 @@ type s3Ops interface {
 type AssetService struct {
 	s3Client s3Ops
 	bucket   string
+	region   string
+	cdnHost  string // CloudFront domain (empty → fall back to direct S3 URL)
 	endpoint string // AWS_ENDPOINT for local dev (empty in production)
 }
 
@@ -54,22 +56,51 @@ type AssetService struct {
 func NewAssetService(
 	s3Client *s3client.S3Client,
 	bucket string,
+	region string,
+	cdnHost string,
 	endpoint string,
 ) *AssetService {
 	return &AssetService{
 		s3Client: s3Client,
 		bucket:   bucket,
+		region:   region,
+		cdnHost:  cdnHost,
 		endpoint: strings.TrimRight(endpoint, "/"),
 	}
 }
 
-// s3URL builds a public S3 URL for the given key.
-// When endpoint is set (local dev), it uses path-style URLs pointing at LocalStack.
+// s3URL builds a public URL for the given key.
+// Priority: local endpoint (LocalStack) → CloudFront CDN → direct S3.
 func (s *AssetService) s3URL(key string) string {
 	if s.endpoint != "" {
 		return fmt.Sprintf("%s/%s/%s", toBrowserEndpoint(s.endpoint), s.bucket, key)
 	}
-	return fmt.Sprintf("https://%s.s3.amazonaws.com/%s", s.bucket, key)
+	if s.cdnHost != "" {
+		return fmt.Sprintf("https://%s/%s", s.cdnHost, key)
+	}
+	return fmt.Sprintf("https://%s.s3.%s.amazonaws.com/%s", s.bucket, s.region, key)
+}
+
+// keyFromURL extracts the S3 object key from a public asset URL.
+// Handles CDN URLs, regional S3 URLs, and legacy global S3 URLs.
+func (s *AssetService) keyFromURL(assetURL string) string {
+	var prefixes []string
+	if s.cdnHost != "" {
+		prefixes = append(prefixes, fmt.Sprintf("https://%s/", s.cdnHost))
+	}
+	prefixes = append(prefixes,
+		fmt.Sprintf("https://%s.s3.%s.amazonaws.com/", s.bucket, s.region),
+		fmt.Sprintf("https://%s.s3.amazonaws.com/", s.bucket),
+	)
+	if s.endpoint != "" {
+		prefixes = append(prefixes, fmt.Sprintf("%s/%s/", toBrowserEndpoint(s.endpoint), s.bucket))
+	}
+	for _, prefix := range prefixes {
+		if prefix != "/" && strings.HasPrefix(assetURL, prefix) {
+			return strings.TrimPrefix(assetURL, prefix)
+		}
+	}
+	return ""
 }
 
 // GetUploadURL generates a presigned PUT URL for a temporary upload.
@@ -154,14 +185,13 @@ func (s *AssetService) FinalizeIfTemp(ctx context.Context, value string) (string
 var _ domain.AssetFinalizer = (*AssetService)(nil)
 
 // DeleteAsset deletes a file from the assets/ prefix by its public URL.
+// Handles both CDN URLs and direct S3 URLs (for pre-CDN assets).
 func (s *AssetService) DeleteAsset(ctx context.Context, assetURL string) error {
-	// Parse key from URL: https://{bucket}.s3.amazonaws.com/{key}
-	prefix := s.s3URL("")
-	if !strings.HasPrefix(assetURL, prefix) {
+	key := s.keyFromURL(assetURL)
+	if key == "" {
 		return errors.BadRequest("Invalid asset URL")
 	}
 
-	key := strings.TrimPrefix(assetURL, prefix)
 	if !strings.HasPrefix(key, assetsPrefix) {
 		return errors.BadRequest("Can only delete files in assets/ prefix")
 	}

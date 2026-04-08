@@ -3,16 +3,12 @@ package service
 import (
 	"context"
 	"log/slog"
-	"regexp"
-	"strings"
 
 	"github.com/google/uuid"
 
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/pkg/errors"
 )
-
-var slugDashCollapse = regexp.MustCompile("-+")
 
 // CategoryService implements domain.CategoryService
 type CategoryService struct {
@@ -198,22 +194,6 @@ func (s *CategoryService) GetAttributes(ctx context.Context, categoryID string) 
 		OwnAttributes: category.OwnAttributes,
 		TotalCount:    len(category.OwnAttributes),
 	}, nil
-}
-
-// generateSlug creates a URL-friendly slug from a name
-func generateSlug(name string) string {
-	slug := strings.ToLower(name)
-	slug = strings.ReplaceAll(slug, " ", "-")
-	// Remove special characters
-	var result strings.Builder
-	for _, r := range slug {
-		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' {
-			result.WriteRune(r)
-		}
-	}
-	slug = slugDashCollapse.ReplaceAllString(result.String(), "-")
-	slug = strings.Trim(slug, "-")
-	return slug
 }
 
 // Ensure interface compliance

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/internal/event"
@@ -104,19 +105,33 @@ func (s *ProductService) GetByID(ctx context.Context, id string) (*domain.Produc
 		Product: product,
 	}
 
-	// Get category info
-	category, err := s.categoryRepo.GetByID(ctx, product.CategoryID)
-	if err == nil {
+	// Fetch category and inventory concurrently — they are independent
+	var category *domain.Category
+	var inventory *domain.Inventory
+
+	g, gctx := errgroup.WithContext(ctx)
+	g.Go(func() error {
+		var catErr error
+		category, catErr = s.categoryRepo.GetByID(gctx, product.CategoryID)
+		return catErr
+	})
+	g.Go(func() error {
+		var invErr error
+		inventory, invErr = s.inventoryRepo.GetByProductID(gctx, product.ID)
+		return invErr
+	})
+	// Errors from enrichment calls are non-fatal; ignore them so partial
+	// data is still returned (mirrors the prior sequential behavior).
+	_ = g.Wait()
+
+	if category != nil {
 		result.Category = &domain.CategorySummary{
 			ID:   category.ID,
 			Name: category.Name,
 			Slug: category.Slug,
 		}
 	}
-
-	// Get inventory info
-	inventory, err := s.inventoryRepo.GetByProductID(ctx, product.ID)
-	if err == nil {
+	if inventory != nil {
 		result.Inventory = inventory
 	}
 

@@ -31,11 +31,16 @@ make test                 # go test -v -race -cover ./...
 make test-unit            # Unit tests only (internal/service/...)
 make test-integration     # Integration tests (needs LocalStack)
 go test -v -run TestName ./internal/service/...   # Single test
+make test-coverage        # Tests with HTML coverage report → coverage.html
 make wire                 # Regenerate DI after wiring changes
 make generate-mocks       # Regenerate mocks after interface changes
+make install-tools        # Install Wire, mockgen, golangci-lint, air
 golangci-lint run         # Lint (uses .golangci.yml)
 make build-lambdas-active # Build active lambdas (auth, user, catalog, asset)
 make cdk-deploy-dev       # Build + deploy to dev
+make cdk-diff-dev         # CDK diff against dev (preview changes)
+make reset-db             # Drop and recreate DynamoDB + PostgreSQL tables
+make health               # Check local service health
 ```
 
 ### Admin Frontend (`handloom-admin-frontend/`)
@@ -53,6 +58,8 @@ npm run format            # Prettier write
 npm run format:check      # Prettier check
 npm run typecheck         # tsc --noEmit
 npm run check             # typecheck + lint + format:check (full CI check)
+npm run test              # Vitest (Testing Library + JSDOM)
+npm run test:watch        # Vitest in watch mode
 npm run cdk:deploy:dev    # Build + CDK deploy to dev
 npm run cdk:deploy:prod   # Build + CDK deploy to prod
 ```
@@ -63,8 +70,13 @@ cd homechrome-store
 npm run dev               # Next.js on :3000 → localhost:8081 (monolith backend)
 npm run dev:lambda        # Next.js on :3000 → localhost:4566 (LocalStack Lambda)
 npm run build             # Next.js production build
+npm run build:dev         # Build for dev environment
+npm run build:prod        # Build for prod environment
+npm run open-next:build   # OpenNext build (.next/ → .open-next/ for Lambda deployment)
 npm run start             # Start production server
 npm run lint              # ESLint
+npm run cdk:deploy:dev    # Build + OpenNext + CDK deploy to dev
+npm run cdk:deploy:prod   # Build + OpenNext + CDK deploy to prod
 ```
 
 ## Architecture
@@ -106,6 +118,7 @@ domain/ (entities + interfaces) ← handler/ → service/ → repository/{dynamo
 - **SEO**: JSON-LD structured data, dynamic sitemap.ts, robots.ts
 - **API rewrites**: Next.js rewrites `/api/*` to backend (`NEXT_PUBLIC_API_URL`)
 - **Backend routes**: Consumes `/api/v1/store/*` (auth, catalog, cart, checkout, orders, profile, tracking, events, webhooks)
+- **Deployment**: OpenNext (`@opennextjs/aws`) compiles `.next/` → `.open-next/` for Lambda. CDK deploys CloudFront + Server Lambda (Node.js 20, ARM64, 128MB) + Image Lambda (256MB for Sharp). 3 cache behaviors: default, `_next/static/*`, `_next/image`. S3 for static assets (`_assets/`, `_cache/`) and ISR cache seeding.
 
 ### Event-Driven Architecture
 - **Three publishers**: `SNSPublisher` (Lambda mode with events enabled), `LocalPublisher` (monolith mode, calls handlers in-process), `NoopPublisher` (Lambda mode with events disabled — logs and discards)
@@ -117,11 +130,13 @@ domain/ (entities + interfaces) ← handler/ → service/ → repository/{dynamo
 - Config: `SNS_TOPIC_ARN`, `EVENT_PUBLISHING_ENABLED`
 
 ### Infrastructure
+- **All CDK stacks are Go** — each project has its own `infra/` directory with `cmd/main.go` entry point
 - Backend CDK: 4 stacks (DatabaseStack, StorageStack, APIStack, EventStack) — EventStack is currently disabled in dev (commented out in `infra/cmd/main.go`)
 - Admin Frontend CDK: S3 static hosting (dev) or CloudFront + S3 (prod), custom domain via ACM cert
-- All Lambdas: ARM64, `provided.al2023`, 128MB (dev) / 256MB (prod)
+- Storefront CDK: CloudFront + S3 + Server Lambda + Image Lambda (OpenNext architecture), custom domain via ACM cert (requires `certArn` context param in us-east-1)
+- All backend Lambdas: ARM64, `provided.al2023`, 128MB (dev) / 256MB (prod)
 - Lambda count: 22 in dev (12 admin + 9 store + 1 migrator), 26 with event stack (+ 4 workers)
-- Region: `ap-southeast-1`
+- Region: `ap-south-1` (Mumbai)
 
 ## Key Conventions
 

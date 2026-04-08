@@ -2,31 +2,23 @@ import type { Metadata } from 'next';
 
 import ProductsView from './ProductsView';
 
+import { API_BASE } from '@/lib/constants';
+import { ROUTES } from '@/lib/routes';
 import { Product } from '@/types';
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8081';
 
 export const metadata: Metadata = {
   title: 'Shop All Products | Homechrome',
   description: 'Browse and search our complete collection of handloom textiles.',
 };
 
-interface PageProps {
-  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
-}
+// Cache the default product list at the edge for 5 minutes.
+// Filtered/search results are fetched client-side by ProductsView.
+export const revalidate = 300;
 
-async function searchProducts(
-  query: string,
-  filterParams: Record<string, string>,
-): Promise<Product[]> {
+async function getProducts(): Promise<Product[]> {
   try {
-    const url = new URL(`${API_BASE}/api/v1/store/catalog/products`);
-    if (query) url.searchParams.set('search', query);
-    for (const [key, value] of Object.entries(filterParams)) {
-      if (value) url.searchParams.set(key, value);
-    }
-    const res = await fetch(url.toString(), {
-      next: { revalidate: 60 },
+    const res = await fetch(`${API_BASE}${ROUTES.CATALOG.PRODUCTS}`, {
+      next: { revalidate: 300 },
     });
     if (!res.ok) return [];
     const json = await res.json();
@@ -36,16 +28,8 @@ async function searchProducts(
   }
 }
 
-export default async function ProductsPage({ searchParams }: PageProps) {
-  const params = await searchParams;
-  const search = typeof params.search === 'string' ? params.search : '';
+export default async function ProductsPage() {
+  const products = await getProducts();
 
-  const filterParams: Record<string, string> = {};
-  if (typeof params.min_price === 'string') filterParams.min_price = params.min_price;
-  if (typeof params.max_price === 'string') filterParams.max_price = params.max_price;
-  if (typeof params.in_stock === 'string') filterParams.in_stock = params.in_stock;
-
-  const products = await searchProducts(search, filterParams);
-
-  return <ProductsView products={products} initialSearch={search} />;
+  return <ProductsView products={products} initialSearch="" />;
 }

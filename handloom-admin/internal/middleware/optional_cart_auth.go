@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/handloom/admin/internal/domain"
+	"github.com/handloom/admin/pkg/response"
 	"github.com/handloom/admin/pkg/slogx"
 )
 
@@ -35,9 +36,10 @@ func (m *OptionalCartAuth) Resolve(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 
-		// 1. Try authenticated path: extract and validate store_token
+		// 1. Try authenticated path: extract and validate store_token.
 		if token, err := extractBearerToken(r, "store_token"); err == nil {
-			if claims, err := m.customerAuthService.ValidateCustomerToken(ctx, token); err == nil && claims.CustomerID != "" {
+			claims, validateErr := m.customerAuthService.ValidateCustomerToken(ctx, token)
+			if validateErr == nil && claims.CustomerID != "" {
 				ctx = context.WithValue(ctx, CustomerIDKey, claims.CustomerID)
 				ctx = slogx.SetUserID(ctx, claims.CustomerID)
 				ctx = context.WithValue(ctx, CustomerKey, &domain.Customer{
@@ -46,6 +48,14 @@ func (m *OptionalCartAuth) Resolve(next http.Handler) http.Handler {
 					Email: claims.Email,
 				})
 				next.ServeHTTP(w, r.WithContext(ctx))
+				return
+			}
+			// Token is invalid/expired. If a refresh cookie exists, the user
+			// intends to stay authenticated — return 401 so the frontend's
+			// axios interceptor can refresh the token and retry.
+			// If no refresh cookie, the session is over — fall through to guest.
+			if _, refreshErr := r.Cookie("store_refresh"); refreshErr == nil {
+				response.Unauthorized(w, "Token expired")
 				return
 			}
 		}
