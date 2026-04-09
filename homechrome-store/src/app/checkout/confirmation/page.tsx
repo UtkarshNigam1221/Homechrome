@@ -56,6 +56,7 @@ function ConfirmationContent() {
   const [error, setError] = useState<string | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollCountRef = useRef(0);
+  const checkStatusRef = useRef<() => Promise<void>>(undefined);
 
   const stopPolling = useCallback(() => {
     setPolling(false);
@@ -65,45 +66,48 @@ function ConfirmationContent() {
     }
   }, []);
 
-  const checkPaymentStatus = useCallback(async () => {
-    if (!orderId) return;
+  // Keep the ref updated with the latest closure — no dependency array issues
+  useEffect(() => {
+    checkStatusRef.current = async () => {
+      if (!orderId) return;
 
-    try {
-      const { data } = await api.get<PaymentStatusResponse>(
-        ROUTES.CHECKOUT.PAYMENT_STATUS(orderId),
-      );
+      try {
+        const { data } = await api.get<PaymentStatusResponse>(
+          ROUTES.CHECKOUT.PAYMENT_STATUS(orderId),
+        );
 
-      setStatus(data.payment_status);
-      if (data.order_number) setOrderNumber(data.order_number);
+        setStatus(data.payment_status);
+        if (data.order_number) setOrderNumber(data.order_number);
 
-      if (['PAID', 'SUCCESS', 'FAILED', 'REFUNDED'].includes(data.payment_status)) {
+        if (['PAID', 'SUCCESS', 'FAILED', 'REFUNDED'].includes(data.payment_status)) {
+          stopPolling();
+        }
+
+        pollCountRef.current += 1;
+        if (pollCountRef.current >= 60) stopPolling();
+      } catch (err: unknown) {
+        const httpStatus = (err as { response?: { status?: number } })?.response?.status;
+        if (httpStatus === 401) {
+          setError('Your payment has been processed. Please log in to view your order details.');
+        } else {
+          setError('Unable to check payment status. Please check your orders page.');
+        }
         stopPolling();
       }
-
-      pollCountRef.current += 1;
-      if (pollCountRef.current >= 60) stopPolling();
-    } catch (err: unknown) {
-      const httpStatus = (err as { response?: { status?: number } })?.response?.status;
-      if (httpStatus === 401) {
-        setError('Your payment has been processed. Please log in to view your order details.');
-      } else {
-        setError('Unable to check payment status. Please check your orders page.');
-      }
-      stopPolling();
-    }
+    };
   }, [orderId, stopPolling]);
 
   useEffect(() => {
     if (!orderId) return;
 
-    const initialTimer = setTimeout(checkPaymentStatus, 0);
-    intervalRef.current = setInterval(checkPaymentStatus, 3000);
+    // Fire immediately, then poll every 3s
+    checkStatusRef.current?.();
+    intervalRef.current = setInterval(() => checkStatusRef.current?.(), 3000);
 
     return () => {
-      clearTimeout(initialTimer);
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, [orderId, checkPaymentStatus]);
+  }, [orderId]);
 
   if (!orderId) {
     return (

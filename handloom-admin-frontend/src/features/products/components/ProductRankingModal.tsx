@@ -195,7 +195,7 @@ export function ProductRankingModal({
           <Button
             onClick={() => reorderMutation.mutate()}
             loading={reorderMutation.isPending}
-            disabled={orderedProducts.length === 0}
+            disabled={orderedProducts.length === 0 || reorderMutation.isPending}
           >
             Save Order
           </Button>

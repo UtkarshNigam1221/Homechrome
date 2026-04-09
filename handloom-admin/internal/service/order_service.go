@@ -168,13 +168,26 @@ func (s *OrderService) Create(ctx context.Context, req domain.CreateOrderRequest
 		return nil, err
 	}
 
-	// Reserve inventory
+	// Reserve inventory — track failures for visibility
+	var reservationFailures []string
 	for _, item := range items {
 		_, err := s.inventoryRepo.ReserveStock(ctx, item.ProductID, item.Quantity, order.ID)
 		if err != nil {
-			slog.ErrorContext(ctx, "Failed to reserve stock", "product_id", item.ProductID, "error", err)
-			// Continue - order is created but stock reservation failed
+			slog.ErrorContext(ctx, "Failed to reserve stock",
+				"product_id", item.ProductID,
+				"order_id", order.ID,
+				"quantity", item.Quantity,
+				"error", err,
+			)
+			reservationFailures = append(reservationFailures, item.ProductID)
 		}
+	}
+
+	if len(reservationFailures) > 0 {
+		slog.WarnContext(ctx, "Order created with inventory reservation failures",
+			"order_id", order.ID,
+			"failed_products", reservationFailures,
+		)
 	}
 
 	slog.InfoContext(ctx, "Created order", "order_id", order.ID)
