@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/aws/aws-cdk-go/awscdk/v2"
@@ -13,34 +14,12 @@ func main() {
 	defer jsii.Close()
 
 	app := awscdk.NewApp(nil)
-
-	environment := getEnvironment(app)
 	env := getAWSEnv()
+	environment := getEnvironment(app)
 
-	createEnvironmentStack(app, environment, env)
-
-	app.Synth(nil)
-}
-
-func createEnvironmentStack(app awscdk.App, environment string, env *awscdk.Environment) {
-	certArn := getCertArn(app)
-	baseDomain := getBaseDomain(app)
-	var domainName string
-	if certArn != "" {
-		switch environment {
-		case "prod":
-			domainName = baseDomain
-		default:
-			domainName = "dev-store." + baseDomain
-		}
-	}
-
-	var backendApiUrl string
-	switch environment {
-	case "prod":
-		backendApiUrl = "https://api." + baseDomain
-	default:
-		backendApiUrl = "https://dev-api." + baseDomain
+	cfg, ok := envConfigs[environment]
+	if !ok {
+		panic(fmt.Sprintf("unknown environment: %s (valid: dev, prod)", environment))
 	}
 
 	stacks.NewStorefrontStack(app, "HomechromeStoreStack-"+environment, &stacks.StorefrontStackProps{
@@ -54,10 +33,12 @@ func createEnvironmentStack(app awscdk.App, environment string, env *awscdk.Envi
 			},
 		},
 		Environment:   environment,
-		DomainName:    domainName,
-		CertArn:       certArn,
-		BackendApiUrl: backendApiUrl,
+		DomainName:    cfg.DomainName,
+		CertArn:       cfg.CertArn,
+		BackendApiUrl: cfg.BackendApiUrl,
 	})
+
+	app.Synth(nil)
 }
 
 func getEnvironment(app constructs.Construct) string {
@@ -68,26 +49,6 @@ func getEnvironment(app constructs.Construct) string {
 		return env
 	}
 	return "dev"
-}
-
-func getCertArn(app constructs.Construct) string {
-	if arn := app.Node().TryGetContext(jsii.String("certArn")); arn != nil {
-		return arn.(string)
-	}
-	if arn := os.Getenv("ACM_CERT_ARN"); arn != "" {
-		return arn
-	}
-	return ""
-}
-
-func getBaseDomain(app constructs.Construct) string {
-	if d := app.Node().TryGetContext(jsii.String("baseDomain")); d != nil {
-		return d.(string)
-	}
-	if d := os.Getenv("BASE_DOMAIN"); d != "" {
-		return d
-	}
-	return "homechrome.in"
 }
 
 func getAWSEnv() *awscdk.Environment {

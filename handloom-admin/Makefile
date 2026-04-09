@@ -16,8 +16,7 @@
 # AWS region for deployment
 AWS_REGION ?= ap-south-1
 
-# ACM certificate ARN for custom domain (*.homechrome.in) - regional API Gateway, must be in ap-south-1
-CERT_ARN ?= arn:aws:acm:ap-south-1:163053486005:certificate/c20f97ff-ba58-4821-8f3d-6f50f772df89
+# Config (certs, domains) lives in infra/cmd/config.go
 
 # Go parameters
 GOCMD=go
@@ -472,27 +471,19 @@ cdk-synth:
 
 cdk-synth-dev:
 	@echo "Synthesizing CDK stacks for dev..."
-	export AWS_REGION=$(AWS_REGION) && cd infra && cdk synth -c environment=dev -c certArn=$(CERT_ARN)
+	export AWS_REGION=$(AWS_REGION) && cd infra && cdk synth -c environment=dev
 
 cdk-synth-prod:
 	@echo "Synthesizing CDK stacks for prod..."
-	export AWS_REGION=$(AWS_REGION) && cd infra && cdk synth -c environment=prod -c certArn=$(CERT_ARN)
-
-cdk-synth-all:
-	@echo "Synthesizing CDK stacks for all environments..."
-	export AWS_REGION=$(AWS_REGION) && cd infra && cdk synth -c deployMode=all -c certArn=$(CERT_ARN)
+	export AWS_REGION=$(AWS_REGION) && cd infra && cdk synth -c environment=prod
 
 cdk-deploy-dev: build-lambdas-active
 	@echo "Deploying to development environment..."
-	set -a && . ./.env.dev && set +a && export AWS_REGION=$(AWS_REGION) && cd infra && cdk deploy --all --require-approval never -c environment=dev -c certArn=$(CERT_ARN)
+	set -a && . ./.env.dev && set +a && export AWS_REGION=$(AWS_REGION) && cd infra && cdk deploy --all --require-approval never -c environment=dev
 
 cdk-deploy-prod: build-lambdas-active
 	@echo "Deploying to production environment..."
-	set -a && . ./.env.prod && set +a && export AWS_REGION=$(AWS_REGION) && cd infra && cdk deploy --all --require-approval broadening -c environment=prod -c certArn=$(CERT_ARN)
-
-cdk-deploy-all: build-lambdas-active
-	@echo "Deploying to all environments..."
-	export AWS_REGION=$(AWS_REGION) && cd infra && cdk deploy --all --require-approval broadening -c deployMode=all -c certArn=$(CERT_ARN)
+	set -a && . ./.env.prod && set +a && export AWS_REGION=$(AWS_REGION) && cd infra && cdk deploy --all --require-approval broadening -c environment=prod
 
 cdk-destroy-dev:
 	@echo "Destroying dev CDK stacks..."
@@ -512,11 +503,11 @@ cdk-diff:
 
 cdk-diff-dev:
 	@echo "Showing CDK diff for dev..."
-	export AWS_REGION=$(AWS_REGION) && cd infra && cdk diff -c environment=dev -c certArn=$(CERT_ARN)
+	export AWS_REGION=$(AWS_REGION) && cd infra && cdk diff -c environment=dev
 
 cdk-diff-prod:
 	@echo "Showing CDK diff for prod..."
-	export AWS_REGION=$(AWS_REGION) && cd infra && cdk diff -c environment=prod -c certArn=$(CERT_ARN)
+	export AWS_REGION=$(AWS_REGION) && cd infra && cdk diff -c environment=prod
 
 cdk-bootstrap:
 	@echo "Bootstrapping CDK (required once per account/region)..."

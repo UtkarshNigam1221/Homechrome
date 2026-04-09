@@ -17,9 +17,6 @@ permissions:
   id-token: write
   contents: read
 
-env:
-  CERT_ARN: arn:aws:acm:us-east-1:163053486005:certificate/4e15c02f-e7ef-48df-8eff-5097eefed2e8
-
 jobs:
   check:
     name: Lint
@@ -74,21 +71,19 @@ jobs:
       - name: Install CDK
         run: npm install -g aws-cdk
 
+      - run: npm ci
+
       - name: Set environment URLs
         id: urls
         run: |
-          DOMAIN="${{ vars.BASE_DOMAIN }}"
+          DOMAIN="homechrome.in"
           if [ "${{ inputs.environment }}" = "prod" ]; then
             echo "api_url=https://api.${DOMAIN}" >> "$GITHUB_OUTPUT"
             echo "site_url=https://${DOMAIN}" >> "$GITHUB_OUTPUT"
-            echo "stack_name=HomechromeStoreStack-prod" >> "$GITHUB_OUTPUT"
           else
             echo "api_url=https://dev-api.${DOMAIN}" >> "$GITHUB_OUTPUT"
             echo "site_url=https://dev-store.${DOMAIN}" >> "$GITHUB_OUTPUT"
-            echo "stack_name=HomechromeStoreStack-dev" >> "$GITHUB_OUTPUT"
           fi
-
-      - run: npm ci
 
       - name: Build with OpenNext
         env:
@@ -99,13 +94,13 @@ jobs:
       - name: CDK Deploy
         run: |
           cd infra && cdk deploy --all --require-approval never \
-            -c environment=${{ inputs.environment }} \
-            -c certArn=${{ env.CERT_ARN }}
+            -c environment=${{ inputs.environment }}
 
       - name: Invalidate CloudFront Cache
         run: |
+          STACK_NAME="HomechromeStoreStack-${{ inputs.environment }}"
           DIST_ID=$(aws cloudformation describe-stacks \
-            --stack-name ${{ steps.urls.outputs.stack_name }} \
+            --stack-name "$STACK_NAME" \
             --query "Stacks[0].Outputs[?OutputKey=='DistributionId'].OutputValue" \
             --output text)
           aws cloudfront create-invalidation --distribution-id "$DIST_ID" --paths '/*'

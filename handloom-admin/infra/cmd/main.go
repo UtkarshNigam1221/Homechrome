@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/aws/aws-cdk-go/awscdk/v2"
@@ -14,28 +15,14 @@ func main() {
 	defer jsii.Close()
 
 	app := awscdk.NewApp(nil)
-
-	// Get deployment mode: "single" deploys one env, "all" deploys both
-	deployMode := getDeployMode(app)
-
-	// Get AWS environment configuration
 	env := getAWSEnv()
+	environment := getEnvironment(app)
 
-	if deployMode == "all" {
-		// Deploy both dev and prod environments
-		createEnvironmentStacks(app, "dev", env)
-		createEnvironmentStacks(app, "prod", env)
-	} else {
-		// Deploy single environment (default: dev)
-		environment := getEnvironment(app)
-		createEnvironmentStacks(app, environment, env)
+	cfg, ok := envConfigs[environment]
+	if !ok {
+		panic(fmt.Sprintf("unknown environment: %s (valid: dev, prod)", environment))
 	}
 
-	app.Synth(nil)
-}
-
-// createEnvironmentStacks creates all stacks for a given environment
-func createEnvironmentStacks(app awscdk.App, environment string, env *awscdk.Environment) {
 	postgresDSN := getPostgresDSN(app)
 
 	// Database stack
@@ -83,21 +70,6 @@ func createEnvironmentStacks(app awscdk.App, environment string, env *awscdk.Env
 	// 	DatabaseStack: databaseStack,
 	// })
 
-	// Compute custom domain config from CDK context
-	certArn := getCertArn(app)
-	baseDomain := getBaseDomain(app)
-	var domainName, frontendOrigin string
-	if certArn != "" {
-		switch environment {
-		case "prod":
-			domainName = "api." + baseDomain
-			frontendOrigin = "https://admin." + baseDomain
-		default:
-			domainName = "dev-api." + baseDomain
-			frontendOrigin = "https://dev-admin." + baseDomain
-		}
-	}
-
 	// API stack (depends on database, storage, and events)
 	stacks.NewAPIStack(app, "HandloomAPIStack-"+environment, &stacks.APIStackProps{
 		StackProps: awscdk.StackProps{
@@ -113,51 +85,23 @@ func createEnvironmentStacks(app awscdk.App, environment string, env *awscdk.Env
 		DatabaseStack:  databaseStack,
 		StorageStack:   storageStack,
 		EventStack:     nil, // DISABLED: pass eventStack here when re-enabling
-		BaseDomain:     baseDomain,
-		DomainName:     domainName,
-		FrontendOrigin: frontendOrigin,
-		CertArn:        certArn,
+		BaseDomain:     cfg.BaseDomain,
+		DomainName:     cfg.DomainName,
+		FrontendOrigin: cfg.FrontendOrigin,
+		CertArn:        cfg.CertArn,
 	})
-}
 
-func getDeployMode(app constructs.Construct) string {
-	// Try to get from CDK context
-	if mode := app.Node().TryGetContext(jsii.String("deployMode")); mode != nil {
-		return mode.(string)
-	}
-
-	// Try to get from environment variable
-	if mode := os.Getenv("CDK_DEPLOY_MODE"); mode != "" {
-		return mode
-	}
-
-	// Default to single environment deployment
-	return "single"
+	app.Synth(nil)
 }
 
 func getEnvironment(app constructs.Construct) string {
-	// Try to get from CDK context
 	if env := app.Node().TryGetContext(jsii.String("environment")); env != nil {
 		return env.(string)
 	}
-
-	// Try to get from environment variable
 	if env := os.Getenv("CDK_ENVIRONMENT"); env != "" {
 		return env
 	}
-
-	// Default to dev
 	return "dev"
-}
-
-func getCertArn(app constructs.Construct) string {
-	if arn := app.Node().TryGetContext(jsii.String("certArn")); arn != nil {
-		return arn.(string)
-	}
-	if arn := os.Getenv("ACM_CERT_ARN"); arn != "" {
-		return arn
-	}
-	return ""
 }
 
 func getPostgresDSN(app constructs.Construct) string {
@@ -170,18 +114,7 @@ func getPostgresDSN(app constructs.Construct) string {
 	return ""
 }
 
-func getBaseDomain(app constructs.Construct) string {
-	if d := app.Node().TryGetContext(jsii.String("baseDomain")); d != nil {
-		return d.(string)
-	}
-	if d := os.Getenv("BASE_DOMAIN"); d != "" {
-		return d
-	}
-	return "homechrome.in"
-}
-
 func getAWSEnv() *awscdk.Environment {
-	// Try to get from environment variables
 	account := os.Getenv("CDK_DEFAULT_ACCOUNT")
 	region := os.Getenv("CDK_DEFAULT_REGION")
 

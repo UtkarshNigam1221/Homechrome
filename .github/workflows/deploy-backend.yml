@@ -17,9 +17,6 @@ permissions:
   id-token: write
   contents: read
 
-env:
-  CERT_ARN: arn:aws:acm:ap-south-1:163053486005:certificate/c20f97ff-ba58-4821-8f3d-6f50f772df89
-
 jobs:
   check:
     name: Lint & Test
@@ -96,5 +93,4 @@ jobs:
           set -a && . ./.env.deploy && set +a
           cd infra && cdk deploy --all --require-approval never \
             -c environment=${{ inputs.environment }} \
-            -c certArn=${{ env.CERT_ARN }} \
             -c postgresDsn="${{ secrets.POSTGRES_DSN }}"

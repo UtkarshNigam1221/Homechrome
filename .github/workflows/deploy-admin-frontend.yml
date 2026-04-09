@@ -17,9 +17,6 @@ permissions:
   id-token: write
   contents: read
 
-env:
-  CERT_ARN: arn:aws:acm:us-east-1:163053486005:certificate/4e15c02f-e7ef-48df-8eff-5097eefed2e8
-
 jobs:
   check:
     name: Typecheck, Lint & Format
@@ -82,5 +79,4 @@ jobs:
       - name: CDK Deploy
         run: |
           cd infra && cdk deploy --all --require-approval never \
-            -c environment=${{ inputs.environment }} \
-            -c certArn=${{ env.CERT_ARN }}
+            -c environment=${{ inputs.environment }}
