@@ -12,8 +12,8 @@ export default function CheckoutError({ error, reset }: { error: Error; reset: (
       </p>
       <div className="mt-8 flex gap-4">
         <Button onClick={reset}>Try again</Button>
-        <Button variant="outline" asChild>
-          <a href="/cart">Back to Cart</a>
+        <Button variant="outline" onClick={() => (window.location.href = '/cart')}>
+          Back to Cart
         </Button>
       </div>
     </Container>

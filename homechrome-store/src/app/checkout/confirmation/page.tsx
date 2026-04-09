@@ -56,7 +56,7 @@ function ConfirmationContent() {
   const [error, setError] = useState<string | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollCountRef = useRef(0);
-  const checkStatusRef = useRef<() => Promise<void>>();
+  const checkStatusRef = useRef<() => Promise<void>>(undefined);
 
   const stopPolling = useCallback(() => {
     setPolling(false);
