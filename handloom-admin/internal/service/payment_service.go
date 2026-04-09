@@ -3,6 +3,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -24,6 +25,10 @@ const (
 	metaCompletedAt      = "completed_at"
 	metaProviderResponse = "provider_response"
 )
+
+// errPaymentAlreadyProcessed is returned when a webhook arrives for a payment
+// that has already transitioned past the allowed statuses (idempotent replay).
+var errPaymentAlreadyProcessed = fmt.Errorf("payment already processed")
 
 // PaymentService implements domain.PaymentService
 type PaymentService struct {
@@ -94,7 +99,10 @@ func (s *PaymentService) InitiatePayment(ctx context.Context, req domain.Initiat
 // HandlePaymentSuccess processes a successful payment webhook event.
 func (s *PaymentService) HandlePaymentSuccess(ctx context.Context, evt domain.PaymentWebhookEvent) error {
 	payment, err := s.resolvePayment(ctx, evt.MerchantTxnID, domain.PaymentStatusInitiated, domain.PaymentStatusPending)
-	if err != nil || payment == nil {
+	if err != nil {
+		if err == errPaymentAlreadyProcessed {
+			return nil // Idempotent — not an error
+		}
 		return err
 	}
 
@@ -105,7 +113,10 @@ func (s *PaymentService) HandlePaymentSuccess(ctx context.Context, evt domain.Pa
 	}
 
 	// Update order to CONFIRMED + PAID
-	s.updateOrderStatus(ctx, payment.OrderID, domain.OrderStatusConfirmed, domain.PaymentStatusPaid, payment.ID)
+	if err := s.updateOrderStatus(ctx, payment.OrderID, domain.OrderStatusConfirmed, domain.PaymentStatusPaid, payment.ID); err != nil {
+		slog.ErrorContext(ctx, "Failed to update order status after payment success", "order_id", payment.OrderID, "error", err)
+		return err
+	}
 
 	// Clear cart now that payment is confirmed
 	if err := s.cartService.ClearCart(ctx, payment.CustomerID); err != nil {
@@ -120,7 +131,10 @@ func (s *PaymentService) HandlePaymentSuccess(ctx context.Context, evt domain.Pa
 // HandlePaymentFailure processes a failed payment webhook event.
 func (s *PaymentService) HandlePaymentFailure(ctx context.Context, evt domain.PaymentWebhookEvent) error {
 	payment, err := s.resolvePayment(ctx, evt.MerchantTxnID, domain.PaymentStatusInitiated, domain.PaymentStatusPending)
-	if err != nil || payment == nil {
+	if err != nil {
+		if err == errPaymentAlreadyProcessed {
+			return nil // Idempotent — not an error
+		}
 		return err
 	}
 
@@ -140,7 +154,10 @@ func (s *PaymentService) HandlePaymentFailure(ctx context.Context, evt domain.Pa
 // being processed (e.g., UPI mandate pending, bank processing).
 func (s *PaymentService) HandlePaymentPending(ctx context.Context, evt domain.PaymentWebhookEvent) error {
 	payment, err := s.resolvePayment(ctx, evt.MerchantTxnID, domain.PaymentStatusInitiated)
-	if err != nil || payment == nil {
+	if err != nil {
+		if err == errPaymentAlreadyProcessed {
+			return nil // Idempotent — not an error
+		}
 		return err
 	}
 
@@ -149,7 +166,10 @@ func (s *PaymentService) HandlePaymentPending(ctx context.Context, evt domain.Pa
 	}
 
 	// Update order payment status to PENDING (order status stays PENDING)
-	s.updateOrderStatus(ctx, payment.OrderID, domain.OrderStatusPending, domain.PaymentStatusPending, payment.ID)
+	if err := s.updateOrderStatus(ctx, payment.OrderID, domain.OrderStatusPending, domain.PaymentStatusPending, payment.ID); err != nil {
+		slog.ErrorContext(ctx, "Failed to update order status for pending payment", "order_id", payment.OrderID, "error", err)
+		return err
+	}
 
 	slog.InfoContext(ctx, "Payment pending", "payment_id", payment.ID, "order_id", payment.OrderID)
 	return nil
@@ -170,7 +190,7 @@ func (s *PaymentService) resolvePayment(ctx context.Context, merchantTxnID strin
 		}
 	}
 	slog.InfoContext(ctx, "Payment already processed, skipping", "payment_id", payment.ID, "status", payment.Status)
-	return nil, nil
+	return nil, errPaymentAlreadyProcessed
 }
 
 // updatePaymentStatus updates the payment record with provider details.
@@ -189,11 +209,10 @@ func (s *PaymentService) updatePaymentStatus(ctx context.Context, paymentID stri
 }
 
 // updateOrderStatus fetches the order and updates its status fields.
-func (s *PaymentService) updateOrderStatus(ctx context.Context, orderID string, orderStatus domain.OrderStatus, paymentStatus domain.PaymentStatus, paymentID string) {
+func (s *PaymentService) updateOrderStatus(ctx context.Context, orderID string, orderStatus domain.OrderStatus, paymentStatus domain.PaymentStatus, paymentID string) error {
 	order, err := s.orderRepo.GetByID(ctx, orderID)
 	if err != nil {
-		slog.ErrorContext(ctx, "Failed to get order for status update", "order_id", orderID, "error", err)
-		return
+		return fmt.Errorf("failed to get order %s for status update: %w", orderID, err)
 	}
 
 	order.Status = orderStatus
@@ -201,8 +220,9 @@ func (s *PaymentService) updateOrderStatus(ctx context.Context, orderID string, 
 	order.PaymentID = paymentID
 
 	if err := s.orderRepo.Update(ctx, order); err != nil {
-		slog.ErrorContext(ctx, "Failed to update order status", "order_id", orderID, "error", err)
+		return fmt.Errorf("failed to update order %s status: %w", orderID, err)
 	}
+	return nil
 }
 
 // releaseOrderInventory releases reserved stock for each item in an order.

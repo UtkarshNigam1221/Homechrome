@@ -83,7 +83,13 @@ func (s *InventoryService) RemoveStock(ctx context.Context, productID string, re
 	}
 
 	// Check stock levels and emit appropriate events
-	inventory, _ := s.inventoryRepo.GetByProductID(ctx, productID)
+	inventory, invErr := s.inventoryRepo.GetByProductID(ctx, productID)
+	if invErr != nil {
+		slog.ErrorContext(ctx, "Failed to fetch inventory for stock event check",
+			"product_id", productID,
+			"error", invErr,
+		)
+	}
 	if inventory != nil {
 		if inventory.AvailableQty <= 0 {
 			if pubErr := s.publisher.Publish(ctx, event.New(event.InventoryOutOfStock, map[string]interface{}{

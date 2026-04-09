@@ -18,14 +18,14 @@ export function useCart() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const setCartStore = useCartStore((s) => s.setCart);
 
-  const { data, isLoading, refetch } = useQuery({
+  const { data, isLoading, error, refetch } = useQuery({
     queryKey: CART_QUERY_KEY,
     queryFn: async (): Promise<CartWithItems> => {
       const { data } = await api.get<CartWithItems>(ROUTES.CART.ROOT);
       return data;
     },
-    enabled: isAuthenticated,
     staleTime: 5 * 60 * 1000,
+    retry: 1,
   });
 
   const cart = data ?? null;
@@ -36,11 +36,11 @@ export function useCart() {
     setCartStore(cart?.items ?? []);
   }, [cart, setCartStore]);
 
-  // Clear cache on logout (authenticated → unauthenticated transition)
+  // Invalidate cart on any auth transition (login merges guest→customer; logout needs fresh state)
   const wasAuthenticated = useRef(isAuthenticated);
   useEffect(() => {
-    if (wasAuthenticated.current && !isAuthenticated) {
-      queryClient.removeQueries({ queryKey: CART_QUERY_KEY });
+    if (wasAuthenticated.current !== isAuthenticated) {
+      queryClient.invalidateQueries({ queryKey: CART_QUERY_KEY });
     }
     wasAuthenticated.current = isAuthenticated;
   }, [isAuthenticated, queryClient]);
@@ -128,6 +128,7 @@ export function useCart() {
   return {
     cart,
     loading,
+    error,
     fetchCart: refetch,
     addItem,
     updateQuantity,

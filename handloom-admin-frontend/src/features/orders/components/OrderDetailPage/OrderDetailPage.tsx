@@ -375,7 +375,7 @@ export function OrderDetailPage() {
             <Button
               onClick={() => updateStatusMutation.mutate({ id: order.id, status: newStatus })}
               loading={updateStatusMutation.isPending}
-              disabled={!newStatus || newStatus === order.status}
+              disabled={!newStatus || newStatus === order.status || updateStatusMutation.isPending}
             >
               Update Status
             </Button>

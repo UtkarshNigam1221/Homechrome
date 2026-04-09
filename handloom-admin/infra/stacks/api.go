@@ -130,6 +130,17 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 		logRetention = awslogs.RetentionDays_ONE_WEEK
 	}
 
+	// Shared log group for all API Lambdas — single pane of glass for all services.
+	logRemovalPolicy := awscdk.RemovalPolicy_DESTROY
+	if isProd {
+		logRemovalPolicy = awscdk.RemovalPolicy_RETAIN
+	}
+	sharedLogGroup := awslogs.NewLogGroup(stack, jsii.String("SharedApiLogGroup"), &awslogs.LogGroupProps{
+		LogGroupName:  jsii.String(fmt.Sprintf("/aws/lambda/handloom-api-%s", props.Environment)),
+		Retention:     logRetention,
+		RemovalPolicy: logRemovalPolicy,
+	})
+
 	// Create Lambda functions for each service
 	// TODO: Uncomment services as they are implemented
 	services := []string{
@@ -158,7 +169,7 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 
 	lambdas := make(map[string]*ServiceLambda)
 	for _, svc := range services {
-		lambdaFn := createServiceLambda(stack, svc, props.Environment, commonEnv, memorySize, logRetention)
+		lambdaFn := createServiceLambda(stack, svc, props.Environment, commonEnv, memorySize, sharedLogGroup)
 		lambdas[svc] = &ServiceLambda{
 			Function: lambdaFn,
 			Name:     svc,
@@ -254,7 +265,7 @@ func createServiceLambda(
 	environment string,
 	commonEnv map[string]*string,
 	memorySize float64,
-	logRetention awslogs.RetentionDays,
+	logGroup awslogs.LogGroup,
 ) awslambda.Function {
 	// Add service-specific environment variable
 	env := make(map[string]*string)
@@ -262,13 +273,6 @@ func createServiceLambda(
 		env[k] = v
 	}
 	env["SERVICE_NAME"] = jsii.String(serviceName)
-
-	// Explicit log group (replaces deprecated LogRetention on Lambda)
-	logGroup := awslogs.NewLogGroup(stack, jsii.String(fmt.Sprintf("%sLogGroup", capitalize(serviceName))), &awslogs.LogGroupProps{
-		LogGroupName:  jsii.String(fmt.Sprintf("/aws/lambda/handloom-%s-%s", serviceName, environment)),
-		Retention:     logRetention,
-		RemovalPolicy: awscdk.RemovalPolicy_DESTROY,
-	})
 
 	// Lambda function optimized for AWS Free Tier
 	// Free tier: 1M requests/month, 400,000 GB-seconds compute

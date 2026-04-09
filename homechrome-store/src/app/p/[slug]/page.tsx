@@ -18,10 +18,14 @@ const getProduct = cache(async function getProduct(slug: string): Promise<Produc
     const res = await fetch(`${API_BASE}${ROUTES.CATALOG.PRODUCT(slug)}`, {
       next: { revalidate: 3600 },
     });
-    if (!res.ok) return null;
+    if (res.status === 404) return null;
+    if (!res.ok) throw new Error(`Failed to load product (${res.status})`);
     const json = await res.json();
     return json.data || null;
-  } catch {
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith('Failed to load')) {
+      throw error;
+    }
     return null;
   }
 });
