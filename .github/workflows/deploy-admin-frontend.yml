@@ -28,10 +28,6 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Generate lock file
-        run: npm install --package-lock-only --ignore-scripts
-        working-directory: handloom-admin-frontend
-
       - uses: actions/setup-node@v6
         with:
           node-version: 22
@@ -57,10 +53,6 @@ jobs:
         with:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
-
-      - name: Generate lock file
-        run: npm install --package-lock-only --ignore-scripts
-        working-directory: handloom-admin-frontend
 
       - uses: actions/setup-node@v6
         with:
