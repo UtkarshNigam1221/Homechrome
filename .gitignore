@@ -61,9 +61,6 @@ handloom-admin-frontend/infra/cdk.out/
 # npm cache
 ~/.npm/
 
-# Package locks
-package-lock.json
-
 # --- B2C Storefront (homechrome-store) ---
 homechrome-store/node_modules/
 homechrome-store/.next/
