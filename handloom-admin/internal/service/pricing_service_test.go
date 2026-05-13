@@ -265,7 +265,7 @@ func TestPricingService_CalculatePrice_AreaBased(t *testing.T) {
 		Dimensions: &domain.Dimensions{
 			Length: 100,
 			Width:  90,
-			Unit:   "inches",
+			Unit:   dimensionUnitInches,
 		},
 		Attributes: map[string]interface{}{
 			"material":     "silk",
@@ -359,7 +359,7 @@ func TestPricingService_CalculatePrice_NoPricingRule(t *testing.T) {
 
 	req := domain.CalculatePriceRequest{
 		CategoryID: "cat_orphan",
-		Dimensions: &domain.Dimensions{Length: 10, Width: 10, Unit: "inches"},
+		Dimensions: &domain.Dimensions{Length: 10, Width: 10, Unit: dimensionUnitInches},
 		Attributes: map[string]interface{}{"material": "cotton"},
 		Quantity:   1,
 	}
@@ -451,12 +451,12 @@ func TestPricingService_BulkCalculatePrice(t *testing.T) {
 		CategoryID: "cat_bedsheets",
 		Configurations: []domain.PriceConfiguration{
 			{
-				Dimensions: &domain.Dimensions{Length: 75, Width: 36, Unit: "inches"},
+				Dimensions: &domain.Dimensions{Length: 75, Width: 36, Unit: dimensionUnitInches},
 				Attributes: map[string]interface{}{"material": "cotton"},
 				Quantity:   1,
 			},
 			{
-				Dimensions: &domain.Dimensions{Length: 100, Width: 90, Unit: "inches"},
+				Dimensions: &domain.Dimensions{Length: 100, Width: 90, Unit: dimensionUnitInches},
 				Attributes: map[string]interface{}{"material": "silk"},
 				Quantity:   2,
 			},
@@ -494,7 +494,7 @@ func TestPricingService_BulkCalculatePrice_MaxLimit(t *testing.T) {
 	configs := make([]domain.PriceConfiguration, 11)
 	for i := range configs {
 		configs[i] = domain.PriceConfiguration{
-			Dimensions: &domain.Dimensions{Length: 10, Width: 10, Unit: "inches"},
+			Dimensions: &domain.Dimensions{Length: 10, Width: 10, Unit: dimensionUnitInches},
 			Attributes: map[string]interface{}{"material": "cotton"},
 			Quantity:   1,
 		}
@@ -762,7 +762,7 @@ func TestPricingService_CalculatePrice_FixedPricing(t *testing.T) {
 
 	req := domain.CalculatePriceRequest{
 		CategoryID: "cat_fixed",
-		Dimensions: &domain.Dimensions{Length: 10, Width: 10, Unit: "inches"},
+		Dimensions: &domain.Dimensions{Length: 10, Width: 10, Unit: dimensionUnitInches},
 		Attributes: map[string]interface{}{},
 		Quantity:   3,
 	}
@@ -804,7 +804,7 @@ func TestPricingService_CalculatePrice_LengthBased(t *testing.T) {
 
 	req := domain.CalculatePriceRequest{
 		CategoryID: "cat_length",
-		Dimensions: &domain.Dimensions{Length: 50, Width: 10, Unit: "inches"},
+		Dimensions: &domain.Dimensions{Length: 50, Width: 10, Unit: dimensionUnitInches},
 		Attributes: map[string]interface{}{},
 		Quantity:   1,
 	}

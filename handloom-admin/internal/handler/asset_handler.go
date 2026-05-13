@@ -60,6 +60,6 @@ func (h *AssetHandler) DeleteAsset(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response.JSON(w, http.StatusOK, map[string]string{
-		"message": "Asset deleted successfully",
+		response.KeyMessage: "Asset deleted successfully",
 	})
 }

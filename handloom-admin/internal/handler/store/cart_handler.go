@@ -95,5 +95,5 @@ func (h *CartHandler) ClearCart(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, err)
 		return
 	}
-	response.JSON(w, http.StatusOK, map[string]string{"message": "Cart cleared successfully"})
+	response.JSON(w, http.StatusOK, map[string]string{response.KeyMessage: "Cart cleared successfully"})
 }

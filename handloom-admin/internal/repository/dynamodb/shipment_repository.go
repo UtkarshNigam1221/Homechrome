@@ -56,7 +56,7 @@ func (r *ShipmentRepository) GetByOrderID(ctx context.Context, orderID string) (
 		TableName:              aws.String(r.client.ordersTable),
 		KeyConditionExpression: aws.String("PK = :pk AND begins_with(SK, :skPrefix)"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":pk":       &types.AttributeValueMemberS{Value: "ORDER#" + orderID},
+			exprPK:      &types.AttributeValueMemberS{Value: "ORDER#" + orderID},
 			":skPrefix": &types.AttributeValueMemberS{Value: "SHIPMENT#"},
 		},
 		Limit:            aws.Int32(1),

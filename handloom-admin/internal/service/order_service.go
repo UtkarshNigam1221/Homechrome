@@ -157,7 +157,7 @@ func (s *OrderService) Create(ctx context.Context, req domain.CreateOrderRequest
 		ShippingAmount:  shippingCost,
 		TaxAmount:       taxAmount,
 		TotalAmount:     totalAmount,
-		Currency:        "INR",
+		Currency:        defaultCurrency,
 		ShippingAddress: &req.ShippingAddress,
 		BillingAddress:  req.BillingAddress,
 		CouponCode:      req.CouponCode,
@@ -174,7 +174,7 @@ func (s *OrderService) Create(ctx context.Context, req domain.CreateOrderRequest
 		_, err := s.inventoryRepo.ReserveStock(ctx, item.ProductID, item.Quantity, order.ID)
 		if err != nil {
 			slog.ErrorContext(ctx, "Failed to reserve stock",
-				"product_id", item.ProductID,
+				keyProductID, item.ProductID,
 				"order_id", order.ID,
 				"quantity", item.Quantity,
 				"error", err,
@@ -279,7 +279,7 @@ func (s *OrderService) UpdateStatus(ctx context.Context, id string, status domai
 		// Release reserved stock
 		for _, item := range order.Items {
 			if _, releaseErr := s.inventoryRepo.ReleaseStock(ctx, item.ProductID, item.Quantity, order.ID); releaseErr != nil {
-				slog.ErrorContext(ctx, "Failed to release stock", "product_id", item.ProductID, "error", releaseErr)
+				slog.ErrorContext(ctx, "Failed to release stock", keyProductID, item.ProductID, "error", releaseErr)
 			}
 		}
 	}
@@ -345,7 +345,7 @@ func (s *OrderService) CancelOrder(ctx context.Context, id string, reason string
 	for _, item := range order.Items {
 		_, err := s.inventoryRepo.ReleaseStock(ctx, item.ProductID, item.Quantity, order.ID)
 		if err != nil {
-			slog.ErrorContext(ctx, "Failed to release stock", "product_id", item.ProductID, "error", err)
+			slog.ErrorContext(ctx, "Failed to release stock", keyProductID, item.ProductID, "error", err)
 		}
 	}
 

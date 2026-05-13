@@ -52,7 +52,7 @@ func (r *OTPRepository) Get(ctx context.Context, phone string) (*domain.OTP, err
 		TableName: aws.String(r.client.sessionsTable),
 		Key: map[string]types.AttributeValue{
 			"PK": &types.AttributeValueMemberS{Value: "OTP#" + phone},
-			"SK": &types.AttributeValueMemberS{Value: "METADATA"},
+			"SK": &types.AttributeValueMemberS{Value: skMetadata},
 		},
 	})
 	if err != nil {
@@ -82,7 +82,7 @@ func (r *OTPRepository) IncrementAttempts(ctx context.Context, phone string) err
 		TableName: aws.String(r.client.sessionsTable),
 		Key: map[string]types.AttributeValue{
 			"PK": &types.AttributeValueMemberS{Value: "OTP#" + phone},
-			"SK": &types.AttributeValueMemberS{Value: "METADATA"},
+			"SK": &types.AttributeValueMemberS{Value: skMetadata},
 		},
 		UpdateExpression: aws.String("SET attempts = attempts + :one"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
@@ -102,7 +102,7 @@ func (r *OTPRepository) Delete(ctx context.Context, phone string) error {
 		TableName: aws.String(r.client.sessionsTable),
 		Key: map[string]types.AttributeValue{
 			"PK": &types.AttributeValueMemberS{Value: "OTP#" + phone},
-			"SK": &types.AttributeValueMemberS{Value: "METADATA"},
+			"SK": &types.AttributeValueMemberS{Value: skMetadata},
 		},
 	})
 	if err != nil {

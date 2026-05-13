@@ -46,12 +46,12 @@ func (d *DevClient) InitiatePayment(_ context.Context, merchantTxnID, _ string, 
 func (d *DevClient) CheckPaymentStatus(_ context.Context, merchantTxnID string) (*StatusResponse, error) {
 	return &StatusResponse{
 		OrderID: merchantTxnID,
-		State:   "COMPLETED",
+		State:   StateCompleted,
 		PaymentDetails: []PaymentDetail{
 			{
 				TransactionID: "DEV-TXN-" + merchantTxnID,
 				PaymentMode:   "UPI_INTENT",
-				State:         "COMPLETED",
+				State:         StateCompleted,
 			},
 		},
 	}, nil

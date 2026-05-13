@@ -6,16 +6,19 @@ import (
 	"github.com/go-playground/validator/v10"
 )
 
+// Status string literals used across multiple validators.
+const statusPending = "PENDING"
+
 // Order status constants matching domain.OrderStatus
 var validOrderStatuses = map[string]bool{
-	"PENDING":    true,
-	"CONFIRMED":  true,
-	"PROCESSING": true,
-	"SHIPPED":    true,
-	"DELIVERED":  true,
-	"CANCELED":   true,
-	"RETURNED":   true,
-	"REFUNDED":   true,
+	statusPending: true,
+	"CONFIRMED":   true,
+	"PROCESSING":  true,
+	"SHIPPED":     true,
+	"DELIVERED":   true,
+	"CANCELED":    true,
+	"RETURNED":    true,
+	"REFUNDED":    true,
 }
 
 // validateOrderStatus validates that the field contains a valid order status.
@@ -38,9 +41,9 @@ func validateUserRole(fl validator.FieldLevel) bool {
 
 // User status constants matching domain.UserStatus
 var validUserStatuses = map[string]bool{
-	"ACTIVE":   true,
-	"INACTIVE": true,
-	"PENDING":  true,
+	"ACTIVE":      true,
+	"INACTIVE":    true,
+	statusPending: true,
 }
 
 // validateUserStatus validates that the field contains a valid user status.
@@ -95,11 +98,11 @@ func validateEntityType(fl validator.FieldLevel) bool {
 
 // Payment status constants
 var validPaymentStatuses = map[string]bool{
-	"PENDING":  true,
-	"PAID":     true,
-	"FAILED":   true,
-	"REFUNDED": true,
-	"CANCELED": true,
+	statusPending: true,
+	"PAID":        true,
+	"FAILED":      true,
+	"REFUNDED":    true,
+	"CANCELED":    true,
 }
 
 // ValidatePaymentStatus validates payment status.

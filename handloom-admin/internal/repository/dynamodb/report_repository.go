@@ -58,7 +58,7 @@ func (r *ReportRepository) GetByID(ctx context.Context, id string) (*domain.Repo
 		TableName: aws.String(r.client.analyticsTable),
 		Key: map[string]types.AttributeValue{
 			"PK": &types.AttributeValueMemberS{Value: "REPORT#" + id},
-			"SK": &types.AttributeValueMemberS{Value: "METADATA"},
+			"SK": &types.AttributeValueMemberS{Value: skMetadata},
 		},
 	})
 	if err != nil {
@@ -108,7 +108,7 @@ func (r *ReportRepository) Delete(ctx context.Context, id string) error {
 		TableName: aws.String(r.client.analyticsTable),
 		Key: map[string]types.AttributeValue{
 			"PK": &types.AttributeValueMemberS{Value: "REPORT#" + id},
-			"SK": &types.AttributeValueMemberS{Value: "METADATA"},
+			"SK": &types.AttributeValueMemberS{Value: skMetadata},
 		},
 		ConditionExpression: aws.String("attribute_exists(PK)"),
 	})

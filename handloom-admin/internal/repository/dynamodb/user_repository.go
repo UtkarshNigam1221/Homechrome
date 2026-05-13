@@ -80,7 +80,7 @@ func (r *UserRepository) GetByID(ctx context.Context, id string) (*domain.User, 
 		TableName: aws.String(r.client.coreTable),
 		Key: map[string]types.AttributeValue{
 			"PK": &types.AttributeValueMemberS{Value: "USER#" + id},
-			"SK": &types.AttributeValueMemberS{Value: "METADATA"},
+			"SK": &types.AttributeValueMemberS{Value: skMetadata},
 		},
 	})
 	if err != nil {
@@ -106,8 +106,8 @@ func (r *UserRepository) GetByEmail(ctx context.Context, email string) (*domain.
 		IndexName:              aws.String("GSI1"),
 		KeyConditionExpression: aws.String("GSI1PK = :pk AND GSI1SK = :sk"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":pk": &types.AttributeValueMemberS{Value: "USER_EMAIL"},
-			":sk": &types.AttributeValueMemberS{Value: email},
+			exprPK: &types.AttributeValueMemberS{Value: "USER_EMAIL"},
+			exprSK: &types.AttributeValueMemberS{Value: email},
 		},
 		Limit: aws.Int32(1),
 	})
@@ -167,7 +167,7 @@ func (r *UserRepository) Delete(ctx context.Context, id string) error {
 					TableName: aws.String(r.client.coreTable),
 					Key: map[string]types.AttributeValue{
 						"PK": &types.AttributeValueMemberS{Value: "USER#" + id},
-						"SK": &types.AttributeValueMemberS{Value: "METADATA"},
+						"SK": &types.AttributeValueMemberS{Value: skMetadata},
 					},
 				},
 			},
@@ -202,7 +202,7 @@ func (r *UserRepository) List(ctx context.Context, req domain.ListUsersRequest) 
 			IndexName:              aws.String("GSI1"),
 			KeyConditionExpression: aws.String("GSI1PK = :pk"),
 			ExpressionAttributeValues: map[string]types.AttributeValue{
-				":pk": &types.AttributeValueMemberS{Value: "USER_EMAIL"},
+				exprPK: &types.AttributeValueMemberS{Value: "USER_EMAIL"},
 			},
 			ExclusiveStartKey: exclusiveStartKey,
 		})
@@ -260,7 +260,7 @@ func (r *UserRepository) List(ctx context.Context, req domain.ListUsersRequest) 
 			less = strings.ToLower(filtered[i].LastName) < strings.ToLower(filtered[j].LastName)
 		case "role":
 			less = string(filtered[i].Role) < string(filtered[j].Role)
-		case "status":
+		case attrStatus:
 			less = string(filtered[i].Status) < string(filtered[j].Status)
 		default: // created_at
 			less = filtered[i].CreatedAt.Before(filtered[j].CreatedAt)
@@ -288,7 +288,7 @@ func (r *UserRepository) UpdateLastLogin(ctx context.Context, id string) error {
 		TableName: aws.String(r.client.coreTable),
 		Key: map[string]types.AttributeValue{
 			"PK": &types.AttributeValueMemberS{Value: "USER#" + id},
-			"SK": &types.AttributeValueMemberS{Value: "METADATA"},
+			"SK": &types.AttributeValueMemberS{Value: skMetadata},
 		},
 		UpdateExpression: aws.String("SET last_login_at = :t, updated_at = :u"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{

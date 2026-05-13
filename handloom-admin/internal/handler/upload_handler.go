@@ -18,6 +18,13 @@ import (
 	"github.com/handloom/admin/pkg/response"
 )
 
+// maxUploadBytes caps both MaxBytesReader and ParseMultipartForm so they
+// stay in lockstep — drifting these is what trips gosec G120.
+const (
+	maxUploadBytes = 50 << 20 // 50 MB
+	contentTypePNG = "image/png"
+)
+
 // UploadHandler handles file upload requests
 type UploadHandler struct {
 	uploadDir string
@@ -47,10 +54,11 @@ type UploadResponse struct {
 // Upload handles file uploads
 // POST /uploads
 func (h *UploadHandler) Upload(w http.ResponseWriter, r *http.Request) {
-	// Limit request body size to 50MB to prevent memory exhaustion
-	r.Body = http.MaxBytesReader(w, r.Body, 50<<20)
-	// Parse multipart form (max 50MB)
-	if err := r.ParseMultipartForm(50 << 20); err != nil {
+	r.Body = http.MaxBytesReader(w, r.Body, maxUploadBytes)
+	// MaxBytesReader above caps the body so gosec's G120 (unbounded multipart
+	// parse) is not exploitable here.
+	//nolint:gosec // G120: body is already bounded via MaxBytesReader.
+	if err := r.ParseMultipartForm(maxUploadBytes); err != nil {
 		response.Error(w, fmt.Errorf("failed to parse form: %w", err))
 		return
 	}
@@ -159,7 +167,7 @@ func (h *UploadHandler) Routes() chi.Router {
 func (h *UploadHandler) isAllowedContentType(contentType string) bool {
 	allowed := []string{
 		"image/jpeg",
-		"image/png",
+		contentTypePNG,
 		"image/gif",
 		"image/webp",
 		"image/svg+xml",
@@ -176,7 +184,7 @@ func (h *UploadHandler) getExtFromMimeType(mimeType string) string {
 	switch mimeType {
 	case "image/jpeg":
 		return ".jpg"
-	case "image/png":
+	case contentTypePNG:
 		return ".png"
 	case "image/gif":
 		return ".gif"
@@ -225,7 +233,7 @@ func (h *UploadHandler) UploadFromBase64(w http.ResponseWriter, r *http.Request)
 		base64Data = parts[1]
 	} else {
 		base64Data = req.Data
-		mimeType = "image/png" // Default
+		mimeType = contentTypePNG // Default
 	}
 
 	// Validate mime type

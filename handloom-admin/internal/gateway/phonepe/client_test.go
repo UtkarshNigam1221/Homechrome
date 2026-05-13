@@ -101,13 +101,13 @@ func TestClient_CheckPaymentStatus(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 		json.NewEncoder(w).Encode(StatusResponse{
 			OrderID: "OMO123",
-			State:   "COMPLETED",
+			State:   StateCompleted,
 			Amount:  10000,
 			PaymentDetails: []PaymentDetail{
 				{
 					TransactionID: "TXN456",
 					PaymentMode:   "UPI_QR",
-					State:         "COMPLETED",
+					State:         StateCompleted,
 				},
 			},
 		})
@@ -123,7 +123,7 @@ func TestClient_CheckPaymentStatus(t *testing.T) {
 
 	status, err := client.CheckPaymentStatus(context.Background(), "txn_123")
 	require.NoError(t, err)
-	assert.Equal(t, "COMPLETED", status.State)
+	assert.Equal(t, StateCompleted, status.State)
 	assert.Equal(t, "OMO123", status.OrderID)
 	assert.Len(t, status.PaymentDetails, 1)
 	assert.Equal(t, "UPI_QR", status.PaymentDetails[0].PaymentMode)

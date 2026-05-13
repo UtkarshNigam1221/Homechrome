@@ -162,7 +162,7 @@ func (h *ProductHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response.JSON(w, http.StatusOK, map[string]string{"message": "Product deleted successfully"})
+	response.JSON(w, http.StatusOK, map[string]string{response.KeyMessage: "Product deleted successfully"})
 }
 
 // Reorder handles PUT /admin/products/categories/{categoryId}/reorder

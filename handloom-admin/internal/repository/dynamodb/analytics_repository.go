@@ -14,6 +14,9 @@ import (
 	"github.com/handloom/admin/internal/domain"
 )
 
+// pkDashboardCurrent is the PK for the live dashboard counter item.
+const pkDashboardCurrent = "DASHBOARD#CURRENT"
+
 // AnalyticsRepository implements domain.AnalyticsRepository
 type AnalyticsRepository struct {
 	client *Client
@@ -31,8 +34,8 @@ func (r *AnalyticsRepository) GetDashboardStats(ctx context.Context) (*domain.Da
 	result, err := r.client.db.GetItem(ctx, &dynamodb.GetItemInput{
 		TableName: aws.String(r.client.analyticsTable),
 		Key: map[string]types.AttributeValue{
-			"PK": &types.AttributeValueMemberS{Value: "DASHBOARD#CURRENT"},
-			"SK": &types.AttributeValueMemberS{Value: "METADATA"},
+			"PK": &types.AttributeValueMemberS{Value: pkDashboardCurrent},
+			"SK": &types.AttributeValueMemberS{Value: skMetadata},
 		},
 	})
 	if err != nil {
@@ -319,8 +322,8 @@ func (r *AnalyticsRepository) IncrementDashboardCounter(ctx context.Context, fie
 	_, err := r.client.db.UpdateItem(ctx, &dynamodb.UpdateItemInput{
 		TableName: aws.String(r.client.analyticsTable),
 		Key: map[string]types.AttributeValue{
-			"PK": &types.AttributeValueMemberS{Value: "DASHBOARD#CURRENT"},
-			"SK": &types.AttributeValueMemberS{Value: "METADATA"},
+			"PK": &types.AttributeValueMemberS{Value: pkDashboardCurrent},
+			"SK": &types.AttributeValueMemberS{Value: skMetadata},
 		},
 		UpdateExpression: aws.String("ADD #field :val"),
 		ExpressionAttributeNames: map[string]string{
@@ -358,7 +361,7 @@ func (r *AnalyticsRepository) PutDailyStats(ctx context.Context, date string, st
 		return err
 	}
 	item["PK"] = &types.AttributeValueMemberS{Value: "DASHBOARD#STATS#" + date}
-	item["SK"] = &types.AttributeValueMemberS{Value: "METADATA"}
+	item["SK"] = &types.AttributeValueMemberS{Value: skMetadata}
 
 	_, err = r.client.db.PutItem(ctx, &dynamodb.PutItemInput{
 		TableName: aws.String(r.client.analyticsTable),
@@ -373,8 +376,8 @@ func (r *AnalyticsRepository) ResetDashboardCurrent(ctx context.Context) error {
 	_, err := r.client.db.DeleteItem(ctx, &dynamodb.DeleteItemInput{
 		TableName: aws.String(r.client.analyticsTable),
 		Key: map[string]types.AttributeValue{
-			"PK": &types.AttributeValueMemberS{Value: "DASHBOARD#CURRENT"},
-			"SK": &types.AttributeValueMemberS{Value: "METADATA"},
+			"PK": &types.AttributeValueMemberS{Value: pkDashboardCurrent},
+			"SK": &types.AttributeValueMemberS{Value: skMetadata},
 		},
 	})
 	return err
@@ -402,7 +405,7 @@ func (r *AnalyticsRepository) GetDailyAggregates(ctx context.Context, prefix str
 			TableName: aws.String(r.client.analyticsTable),
 			Key: map[string]types.AttributeValue{
 				"PK": &types.AttributeValueMemberS{Value: pk},
-				"SK": &types.AttributeValueMemberS{Value: "METADATA"},
+				"SK": &types.AttributeValueMemberS{Value: skMetadata},
 			},
 		})
 		if err != nil {

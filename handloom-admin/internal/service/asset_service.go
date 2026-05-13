@@ -23,10 +23,12 @@ const (
 	maxDocumentSize = 10 << 20  // 10 MB
 	tmpPrefix       = "tmp/"
 	assetsPrefix    = "assets/"
+
+	contentTypePDF = "application/pdf"
 )
 
 var validDocumentTypes = map[string]bool{
-	"application/pdf":    true,
+	contentTypePDF:       true,
 	"application/msword": true,
 	"application/vnd.openxmlformats-officedocument.wordprocessingml.document": true,
 	"application/vnd.ms-excel": true,

@@ -56,7 +56,7 @@ func (r *PaymentRepository) GetByID(ctx context.Context, id string) (*domain.Pay
 		TableName: aws.String(r.client.ordersTable),
 		Key: map[string]types.AttributeValue{
 			"PK": &types.AttributeValueMemberS{Value: "PAYMENT#" + id},
-			"SK": &types.AttributeValueMemberS{Value: "METADATA"},
+			"SK": &types.AttributeValueMemberS{Value: skMetadata},
 		},
 	})
 	if err != nil {
@@ -82,8 +82,8 @@ func (r *PaymentRepository) GetByOrderID(ctx context.Context, orderID string) (*
 		IndexName:              aws.String("GSI1"),
 		KeyConditionExpression: aws.String("GSI1PK = :pk"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":pk": &types.AttributeValueMemberS{Value: "ORDER#" + orderID},
-			":et": &types.AttributeValueMemberS{Value: "PAYMENT"},
+			exprPK: &types.AttributeValueMemberS{Value: "ORDER#" + orderID},
+			":et":  &types.AttributeValueMemberS{Value: "PAYMENT"},
 		},
 		FilterExpression: aws.String("entity_type = :et"),
 		ScanIndexForward: aws.Bool(false), // newest first
@@ -119,8 +119,8 @@ func (r *PaymentRepository) GetByMerchantTxnID(ctx context.Context, merchantTxnI
 		IndexName:              aws.String("GSI2"),
 		KeyConditionExpression: aws.String("GSI2PK = :pk AND GSI2SK = :sk"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":pk": &types.AttributeValueMemberS{Value: "PAYMENT_TXN"},
-			":sk": &types.AttributeValueMemberS{Value: merchantTxnID},
+			exprPK: &types.AttributeValueMemberS{Value: "PAYMENT_TXN"},
+			exprSK: &types.AttributeValueMemberS{Value: merchantTxnID},
 		},
 		Limit: aws.Int32(1),
 	})
@@ -151,7 +151,7 @@ func (r *PaymentRepository) UpdateStatus(ctx context.Context, id string, status 
 		TableName: aws.String(r.client.ordersTable),
 		Key: map[string]types.AttributeValue{
 			"PK": &types.AttributeValueMemberS{Value: "PAYMENT#" + id},
-			"SK": &types.AttributeValueMemberS{Value: "METADATA"},
+			"SK": &types.AttributeValueMemberS{Value: skMetadata},
 		},
 		UpdateExpression:          aws.String(du.Expression),
 		ExpressionAttributeNames:  du.AttrNames,

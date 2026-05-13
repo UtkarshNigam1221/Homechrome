@@ -67,7 +67,7 @@ func (r *PricingRuleRepository) GetByID(ctx context.Context, id string) (*domain
 		TableName: aws.String(r.client.coreTable),
 		Key: map[string]types.AttributeValue{
 			"PK": &types.AttributeValueMemberS{Value: "PRICING_RULE#" + id},
-			"SK": &types.AttributeValueMemberS{Value: "METADATA"},
+			"SK": &types.AttributeValueMemberS{Value: skMetadata},
 		},
 	})
 	if err != nil {
@@ -131,7 +131,7 @@ func (r *PricingRuleRepository) Delete(ctx context.Context, id string) error {
 		TableName: aws.String(r.client.coreTable),
 		Key: map[string]types.AttributeValue{
 			"PK": &types.AttributeValueMemberS{Value: "PRICING_RULE#" + id},
-			"SK": &types.AttributeValueMemberS{Value: "METADATA"},
+			"SK": &types.AttributeValueMemberS{Value: skMetadata},
 		},
 		ConditionExpression:       expr.Condition(),
 		ExpressionAttributeNames:  expr.Names(),
@@ -157,7 +157,7 @@ func (r *PricingRuleRepository) List(ctx context.Context, req domain.ListPricing
 		IndexName:              aws.String("GSI2"),
 		KeyConditionExpression: aws.String("GSI2PK = :pk"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":pk": &types.AttributeValueMemberS{Value: "PRICING_RULE#ALL"},
+			exprPK: &types.AttributeValueMemberS{Value: "PRICING_RULE#ALL"},
 		},
 		ScanIndexForward: aws.Bool(true),
 	}
@@ -375,7 +375,7 @@ func (r *PriceQuoteRepository) GetByID(ctx context.Context, id string) (*domain.
 		TableName: aws.String(r.client.ordersTable),
 		Key: map[string]types.AttributeValue{
 			"PK": &types.AttributeValueMemberS{Value: "QUOTE#" + id},
-			"SK": &types.AttributeValueMemberS{Value: "METADATA"},
+			"SK": &types.AttributeValueMemberS{Value: skMetadata},
 		},
 	})
 	if err != nil {
@@ -406,7 +406,7 @@ func (r *PriceQuoteRepository) MarkAsUsed(ctx context.Context, id string, orderI
 		TableName: aws.String(r.client.ordersTable),
 		Key: map[string]types.AttributeValue{
 			"PK": &types.AttributeValueMemberS{Value: "QUOTE#" + id},
-			"SK": &types.AttributeValueMemberS{Value: "METADATA"},
+			"SK": &types.AttributeValueMemberS{Value: skMetadata},
 		},
 		UpdateExpression:          expr.Update(),
 		ExpressionAttributeNames:  expr.Names(),

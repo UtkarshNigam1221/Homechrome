@@ -146,8 +146,8 @@ func (s *TokenStore) RevokeAllUserTokens(ctx context.Context, userID string) err
 			TableName:              aws.String(s.client.sessionsTable),
 			KeyConditionExpression: aws.String("PK = :pk AND begins_with(SK, :sk)"),
 			ExpressionAttributeValues: map[string]types.AttributeValue{
-				":pk": &types.AttributeValueMemberS{Value: "USER#" + userID},
-				":sk": &types.AttributeValueMemberS{Value: "REFRESH_TOKEN#"},
+				exprPK: &types.AttributeValueMemberS{Value: "USER#" + userID},
+				exprSK: &types.AttributeValueMemberS{Value: "REFRESH_TOKEN#"},
 			},
 			ProjectionExpression: aws.String("PK, SK"),
 			ExclusiveStartKey:    exclusiveStartKey,
@@ -188,7 +188,7 @@ func (s *TokenStore) StorePasswordResetToken(ctx context.Context, userID string,
 
 	item := PasswordResetToken{
 		PK:         "PASSWORD_RESET#" + tokenHash,
-		SK:         "METADATA",
+		SK:         skMetadata,
 		UserID:     userID,
 		TokenHash:  tokenHash,
 		EntityType: "PASSWORD_RESET_TOKEN",
@@ -220,7 +220,7 @@ func (s *TokenStore) ValidatePasswordResetToken(ctx context.Context, token strin
 		TableName: aws.String(s.client.sessionsTable),
 		Key: map[string]types.AttributeValue{
 			"PK": &types.AttributeValueMemberS{Value: "PASSWORD_RESET#" + tokenHash},
-			"SK": &types.AttributeValueMemberS{Value: "METADATA"},
+			"SK": &types.AttributeValueMemberS{Value: skMetadata},
 		},
 	})
 	if err != nil {
@@ -252,7 +252,7 @@ func (s *TokenStore) RevokePasswordResetToken(ctx context.Context, token string)
 		TableName: aws.String(s.client.sessionsTable),
 		Key: map[string]types.AttributeValue{
 			"PK": &types.AttributeValueMemberS{Value: "PASSWORD_RESET#" + tokenHash},
-			"SK": &types.AttributeValueMemberS{Value: "METADATA"},
+			"SK": &types.AttributeValueMemberS{Value: skMetadata},
 		},
 	})
 	if err != nil {

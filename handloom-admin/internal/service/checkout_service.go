@@ -114,7 +114,7 @@ func (s *CheckoutService) Initiate(ctx context.Context, customerID string, req d
 		if reserveErr != nil {
 			// Rollback: release all previously reserved items
 			s.releaseReservedItems(ctx, reservedItems)
-			slog.ErrorContext(ctx, "Failed to reserve stock", "product_id", item.ProductID, "error", reserveErr)
+			slog.ErrorContext(ctx, "Failed to reserve stock", keyProductID, item.ProductID, "error", reserveErr)
 			return nil, errors.Wrap(reserveErr, fmt.Sprintf("Failed to reserve stock for product %s", item.ProductID))
 		}
 		reservedItems = append(reservedItems, item)
@@ -187,7 +187,7 @@ func (s *CheckoutService) Initiate(ctx context.Context, customerID string, req d
 		TaxAmount:       taxAmount,
 		ShippingAmount:  shippingAmount,
 		TotalAmount:     totalAmount,
-		Currency:        "INR",
+		Currency:        defaultCurrency,
 		Status:          domain.OrderStatusPending,
 		PaymentStatus:   domain.PaymentStatusPending,
 		ShippingAddress: &shippingAddr,
@@ -273,7 +273,7 @@ func (s *CheckoutService) releaseReservedItems(ctx context.Context, items []doma
 	for _, item := range items {
 		_, err := s.inventoryRepo.ReleaseStock(ctx, item.ProductID, item.Quantity, "checkout")
 		if err != nil {
-			slog.ErrorContext(ctx, "Failed to release reserved stock", "product_id", item.ProductID, "error", err)
+			slog.ErrorContext(ctx, "Failed to release reserved stock", keyProductID, item.ProductID, "error", err)
 			// Continue releasing other items even if one fails
 		}
 	}

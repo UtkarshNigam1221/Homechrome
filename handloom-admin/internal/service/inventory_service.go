@@ -55,7 +55,7 @@ func (s *InventoryService) AddStock(ctx context.Context, productID string, req d
 	}
 
 	if pubErr := s.publisher.Publish(ctx, event.New(event.InventoryRestocked, map[string]interface{}{
-		"product_id":   productID,
+		keyProductID:   productID,
 		"quantity":     req.Quantity,
 		"new_quantity": txn.NewQty,
 	})); pubErr != nil {
@@ -63,7 +63,7 @@ func (s *InventoryService) AddStock(ctx context.Context, productID string, req d
 	}
 
 	s.invalidateProductCache()
-	slog.InfoContext(ctx, "Added stock", "product_id", productID, "quantity", req.Quantity)
+	slog.InfoContext(ctx, "Added stock", keyProductID, productID, "quantity", req.Quantity)
 
 	return &domain.InventoryTransactionResult{
 		ProductID:        productID,
@@ -86,21 +86,21 @@ func (s *InventoryService) RemoveStock(ctx context.Context, productID string, re
 	inventory, invErr := s.inventoryRepo.GetByProductID(ctx, productID)
 	if invErr != nil {
 		slog.ErrorContext(ctx, "Failed to fetch inventory for stock event check",
-			"product_id", productID,
+			keyProductID, productID,
 			"error", invErr,
 		)
 	}
 	if inventory != nil {
 		if inventory.AvailableQty <= 0 {
 			if pubErr := s.publisher.Publish(ctx, event.New(event.InventoryOutOfStock, map[string]interface{}{
-				"product_id":    productID,
+				keyProductID:    productID,
 				"available_qty": inventory.AvailableQty,
 			})); pubErr != nil {
 				slog.ErrorContext(ctx, "Failed to publish inventory.out_of_stock event", "error", pubErr)
 			}
 		} else if inventory.AvailableQty <= inventory.LowStockThreshold {
 			if pubErr := s.publisher.Publish(ctx, event.New(event.InventoryLowStock, map[string]interface{}{
-				"product_id":          productID,
+				keyProductID:          productID,
 				"available_qty":       inventory.AvailableQty,
 				"low_stock_threshold": inventory.LowStockThreshold,
 			})); pubErr != nil {
@@ -110,7 +110,7 @@ func (s *InventoryService) RemoveStock(ctx context.Context, productID string, re
 	}
 
 	s.invalidateProductCache()
-	slog.InfoContext(ctx, "Removed stock", "product_id", productID, "quantity", req.Quantity)
+	slog.InfoContext(ctx, "Removed stock", keyProductID, productID, "quantity", req.Quantity)
 
 	return &domain.InventoryTransactionResult{
 		ProductID:        productID,
@@ -130,7 +130,7 @@ func (s *InventoryService) AdjustStock(ctx context.Context, productID string, re
 	}
 
 	s.invalidateProductCache()
-	slog.InfoContext(ctx, "Adjusted stock", "product_id", productID, "previous_qty", txn.PreviousQty, "new_qty", txn.NewQty)
+	slog.InfoContext(ctx, "Adjusted stock", keyProductID, productID, "previous_qty", txn.PreviousQty, "new_qty", txn.NewQty)
 
 	return &domain.InventoryTransactionResult{
 		ProductID:        productID,

@@ -12,6 +12,11 @@ import (
 	"github.com/handloom/admin/pkg/errors"
 )
 
+// Default report display names.
+const (
+	reportNameSales = "Sales Report"
+)
+
 // ReportService implements report generation business logic
 type ReportService struct {
 	reportRepo       domain.ReportRepository
@@ -136,7 +141,7 @@ func (s *ReportService) GetDownloadURL(ctx context.Context, id string) (string, 
 // GenerateSalesReport generates a sales report
 func (s *ReportService) GenerateSalesReport(ctx context.Context, startDate, endDate time.Time, format domain.ReportFormat, createdBy string) (*domain.Report, error) {
 	req := domain.GenerateReportRequest{
-		Name:      "Sales Report",
+		Name:      reportNameSales,
 		Type:      domain.ReportTypeSales,
 		Format:    format,
 		StartDate: &startDate,

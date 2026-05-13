@@ -56,7 +56,7 @@ func (s *AnalyticsService) GetSalesAnalytics(ctx context.Context, req domain.Sal
 
 	// Default period
 	if req.Period == "" {
-		req.Period = "daily"
+		req.Period = analyticsPeriodDaily
 	}
 
 	return s.analyticsRepo.GetSalesAnalytics(ctx, req.Period, req.StartDate, req.EndDate)

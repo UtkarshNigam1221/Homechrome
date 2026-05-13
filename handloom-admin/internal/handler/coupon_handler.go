@@ -156,7 +156,7 @@ func (h *CouponHandler) Apply(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response.JSON(w, http.StatusOK, map[string]string{"status": "applied"})
+	response.JSON(w, http.StatusOK, map[string]string{response.KeyStatus: "applied"})
 }
 
 // GetByCode retrieves a coupon by code

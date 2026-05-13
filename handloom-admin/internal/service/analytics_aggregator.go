@@ -419,7 +419,7 @@ func (a *AnalyticsAggregator) aggregateProducts(ctx context.Context, date string
 	var totalViews, totalATC int
 
 	for _, evt := range events {
-		productID := extractStringProp(evt.Properties, "product_id")
+		productID := extractStringProp(evt.Properties, keyProductID)
 		if productID == "" {
 			continue
 		}

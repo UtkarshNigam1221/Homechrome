@@ -108,7 +108,7 @@ func (h *CategoryHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response.Success(w, map[string]string{"message": "Category deleted successfully"})
+	response.Success(w, map[string]string{response.KeyMessage: "Category deleted successfully"})
 }
 
 // List handles GET /admin/categories
@@ -209,7 +209,7 @@ func (h *CategoryHandler) DeleteAttribute(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	response.Success(w, map[string]string{"message": "Attribute removed successfully"})
+	response.Success(w, map[string]string{response.KeyMessage: "Attribute removed successfully"})
 }
 
 // GetAttributes handles GET /admin/categories/{id}/attributes
