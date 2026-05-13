@@ -105,7 +105,7 @@ export default async function ProductPage({ params }: PageProps) {
     return (
       <div className="mx-auto max-w-7xl px-4 py-16 text-center sm:px-6 lg:px-8">
         <h1 className="text-2xl font-bold text-foreground">Product Not Found</h1>
-        <p className="mt-2 text-muted">The product you are looking for does not exist.</p>
+        <p className="mt-2 text-muted-foreground">The product you are looking for does not exist.</p>
       </div>
     );
   }

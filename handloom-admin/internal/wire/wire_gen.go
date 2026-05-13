@@ -12,101 +12,10 @@ import (
 	"github.com/handloom/admin/internal/handler"
 	"github.com/handloom/admin/internal/handler/store"
 	"github.com/handloom/admin/internal/middleware"
-	"github.com/handloom/admin/internal/repository/dynamodb"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // Injectors from wire.go:
-
-// InitializeApiDeps creates all dependencies for the main API server
-func InitializeApiDeps(ctx context.Context, cfg *config.Config) (*ApiDeps, error) {
-	client, err := ProvideDynamoDBClient(ctx, cfg)
-	if err != nil {
-		return nil, err
-	}
-	userRepository := ProvideUserRepository(client)
-	tokenStore := ProvideTokenStore(client)
-	authService := ProvideAuthService(userRepository, tokenStore, cfg)
-	userService := ProvideUserService(userRepository, tokenStore)
-	service := ProvideValidator()
-	validation := ProvideValidation(service)
-	authHandler := ProvideAuthHandler(authService, userService, validation)
-	userHandler := ProvideUserHandler(userService, validation)
-	pool, err := ProvidePostgresPool(ctx, cfg)
-	if err != nil {
-		return nil, err
-	}
-	cache := ProvideCatalogCache()
-	categoryRepository := ProvideCategoryRepository(pool, cache)
-	productRepository := ProvideProductRepository(pool, cache)
-	s3Client, err := ProvideS3Client(ctx, cfg)
-	if err != nil {
-		return nil, err
-	}
-	assetService := ProvideAssetService(s3Client, cfg)
-	categoryService := ProvideCategoryService(categoryRepository, productRepository, assetService)
-	categoryHandler := ProvideCategoryHandler(categoryService, validation)
-	inventoryRepository := ProvideInventoryRepository(pool)
-	eventPublisher, err := ProvideEventPublisher(ctx, cfg)
-	if err != nil {
-		return nil, err
-	}
-	productService := ProvideProductService(productRepository, categoryRepository, inventoryRepository, assetService, eventPublisher)
-	inventoryService := ProvideInventoryService(inventoryRepository, cache, eventPublisher)
-	productHandler := ProvideProductHandler(productService, inventoryService, validation)
-	inventoryHandler := ProvideInventoryHandler(inventoryService)
-	pricingRuleRepository := ProvidePricingRuleRepository(client)
-	priceQuoteRepository := ProvidePriceQuoteRepository(client)
-	pricingService := ProvidePricingService(pricingRuleRepository, priceQuoteRepository, categoryRepository, productRepository, cfg)
-	pricingHandler := ProvidePricingHandler(pricingService, validation)
-	orderRepository := ProvideOrderRepository(client)
-	customerRepository := ProvideCustomerRepository(client)
-	orderService := ProvideOrderService(orderRepository, customerRepository, productRepository, inventoryRepository, priceQuoteRepository, pricingService)
-	paymentRepository := ProvidePaymentRepository(client)
-	cartRepository := ProvideCartRepository(client)
-	cartService := ProvideCartService(cartRepository, productRepository, inventoryRepository)
-	gateway := ProvidePhonePeGateway(cfg)
-	paymentService := ProvidePaymentService(paymentRepository, orderRepository, inventoryRepository, cartService, gateway, eventPublisher)
-	orderHandler := ProvideOrderHandler(orderService, paymentService, validation)
-	customerService := ProvideCustomerService(customerRepository, orderRepository)
-	customerHandler := ProvideCustomerHandler(customerService, validation)
-	auditRepository := ProvideAuditRepository(client)
-	auditService := ProvideAuditService(auditRepository)
-	auditHandler := ProvideAuditHandler(auditService)
-	notificationRepository := ProvideNotificationRepository(client)
-	notificationService := ProvideNotificationService(notificationRepository, userRepository)
-	notificationHandler := ProvideNotificationHandler(notificationService, validation)
-	couponRepository := ProvideCouponRepository(client)
-	couponService := ProvideCouponService(couponRepository)
-	couponHandler := ProvideCouponHandler(couponService, validation)
-	analyticsRepository := ProvideAnalyticsRepository(client)
-	analyticsService := ProvideAnalyticsService(analyticsRepository, orderRepository, productRepository, inventoryRepository)
-	analyticsHandler := ProvideAnalyticsHandler(analyticsService)
-	assetHandler := ProvideAssetHandler(assetService, validation)
-	reportRepository := ProvideReportRepository(client)
-	reportService := ProvideReportService(reportRepository, orderService, productService, customerService, inventoryService, analyticsService)
-	reportHandler := ProvideReportHandler(reportService, validation)
-	auth := ProvideAuthMiddleware(authService)
-	apiDeps := &ApiDeps{
-		Config:              cfg,
-		DynamoDBClient:      client,
-		AuthHandler:         authHandler,
-		UserHandler:         userHandler,
-		CategoryHandler:     categoryHandler,
-		ProductHandler:      productHandler,
-		InventoryHandler:    inventoryHandler,
-		PricingHandler:      pricingHandler,
-		OrderHandler:        orderHandler,
-		CustomerHandler:     customerHandler,
-		AuditHandler:        auditHandler,
-		NotificationHandler: notificationHandler,
-		CouponHandler:       couponHandler,
-		AnalyticsHandler:    analyticsHandler,
-		AssetHandler:        assetHandler,
-		ReportHandler:       reportHandler,
-		AuthMiddleware:      auth,
-	}
-	return apiDeps, nil
-}
 
 // InitializeAuthDeps creates Auth Lambda dependencies
 func InitializeAuthDeps(ctx context.Context, cfg *config.Config) (*AuthDeps, error) {
@@ -746,8 +655,13 @@ func InitializeStoreEventsDeps(ctx context.Context, cfg *config.Config) (*StoreE
 	return storeEventsDeps, nil
 }
 
-// InitializeApp creates the application with all dependencies (deprecated)
-func InitializeApp(ctx context.Context, cfg *config.Config) (*App, error) {
+// InitializeMonolithDeps wires the full monolith dependency graph.
+// Uses MonolithPublisherSet so events dispatch in-process via LocalPublisher.
+func InitializeMonolithDeps(ctx context.Context, cfg *config.Config) (*MonolithDeps, error) {
+	pool, err := ProvidePostgresPool(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
 	client, err := ProvideDynamoDBClient(ctx, cfg)
 	if err != nil {
 		return nil, err
@@ -755,13 +669,112 @@ func InitializeApp(ctx context.Context, cfg *config.Config) (*App, error) {
 	userRepository := ProvideUserRepository(client)
 	tokenStore := ProvideTokenStore(client)
 	authService := ProvideAuthService(userRepository, tokenStore, cfg)
-	auth := ProvideAuthMiddleware(authService)
-	app := &App{
-		Config:         cfg,
-		DynamoDBClient: client,
-		AuthMiddleware: auth,
+	userService := ProvideUserService(userRepository, tokenStore)
+	service := ProvideValidator()
+	validation := ProvideValidation(service)
+	authHandler := ProvideAuthHandler(authService, userService, validation)
+	userHandler := ProvideUserHandler(userService, validation)
+	cache := ProvideCatalogCache()
+	categoryRepository := ProvideCategoryRepository(pool, cache)
+	productRepository := ProvideProductRepository(pool, cache)
+	s3Client, err := ProvideS3Client(ctx, cfg)
+	if err != nil {
+		return nil, err
 	}
-	return app, nil
+	assetService := ProvideAssetService(s3Client, cfg)
+	categoryService := ProvideCategoryService(categoryRepository, productRepository, assetService)
+	categoryHandler := ProvideCategoryHandler(categoryService, validation)
+	inventoryRepository := ProvideInventoryRepository(pool)
+	notificationHandler := ProvideNotificationEventHandler()
+	reportHandler := ProvideReportEventHandler()
+	eventsRepository := ProvideEventsRepository(client)
+	analyticsRepository := ProvideAnalyticsRepository(client)
+	analyticsAggregator := ProvideAnalyticsAggregator(eventsRepository, analyticsRepository)
+	analyticsHandler := ProvideAnalyticsEventHandler(eventsRepository, analyticsRepository, analyticsAggregator)
+	auditHandler := ProvideAuditEventHandler()
+	eventPublisher := ProvideLocalEventPublisher(notificationHandler, reportHandler, analyticsHandler, auditHandler)
+	productService := ProvideProductService(productRepository, categoryRepository, inventoryRepository, assetService, eventPublisher)
+	inventoryService := ProvideInventoryService(inventoryRepository, cache, eventPublisher)
+	productHandler := ProvideProductHandler(productService, inventoryService, validation)
+	inventoryHandler := ProvideInventoryHandler(inventoryService)
+	pricingRuleRepository := ProvidePricingRuleRepository(client)
+	priceQuoteRepository := ProvidePriceQuoteRepository(client)
+	pricingService := ProvidePricingService(pricingRuleRepository, priceQuoteRepository, categoryRepository, productRepository, cfg)
+	pricingHandler := ProvidePricingHandler(pricingService, validation)
+	orderRepository := ProvideOrderRepository(client)
+	customerRepository := ProvideCustomerRepository(client)
+	orderService := ProvideOrderService(orderRepository, customerRepository, productRepository, inventoryRepository, priceQuoteRepository, pricingService)
+	paymentRepository := ProvidePaymentRepository(client)
+	cartRepository := ProvideCartRepository(client)
+	cartService := ProvideCartService(cartRepository, productRepository, inventoryRepository)
+	gateway := ProvidePhonePeGateway(cfg)
+	paymentService := ProvidePaymentService(paymentRepository, orderRepository, inventoryRepository, cartService, gateway, eventPublisher)
+	orderHandler := ProvideOrderHandler(orderService, paymentService, validation)
+	customerService := ProvideCustomerService(customerRepository, orderRepository)
+	customerHandler := ProvideCustomerHandler(customerService, validation)
+	auditRepository := ProvideAuditRepository(client)
+	auditService := ProvideAuditService(auditRepository)
+	handlerAuditHandler := ProvideAuditHandler(auditService)
+	notificationRepository := ProvideNotificationRepository(client)
+	notificationService := ProvideNotificationService(notificationRepository, userRepository)
+	handlerNotificationHandler := ProvideNotificationHandler(notificationService, validation)
+	couponRepository := ProvideCouponRepository(client)
+	couponService := ProvideCouponService(couponRepository)
+	couponHandler := ProvideCouponHandler(couponService, validation)
+	analyticsService := ProvideAnalyticsService(analyticsRepository, orderRepository, productRepository, inventoryRepository)
+	handlerAnalyticsHandler := ProvideAnalyticsHandler(analyticsService)
+	assetHandler := ProvideAssetHandler(assetService, validation)
+	reportRepository := ProvideReportRepository(client)
+	reportService := ProvideReportService(reportRepository, orderService, productService, customerService, inventoryService, analyticsService)
+	handlerReportHandler := ProvideReportHandler(reportService, validation)
+	otpRepository := ProvideOTPRepository(client)
+	customerTokenStore := ProvideCustomerTokenStore(client)
+	customerAuthService := ProvideCustomerAuthService(otpRepository, customerRepository, customerTokenStore, eventPublisher, cfg)
+	storeAuthHandler := ProvideStoreAuthHandler(customerAuthService, cartService, validation)
+	catalogHandler := ProvideStoreCatalogHandler(productService, categoryService, inventoryService)
+	cartHandler := ProvideStoreCartHandler(cartService, validation)
+	shipmentRepository := ProvideShipmentRepository(client)
+	shippingService := ProvideShippingService(shipmentRepository, orderRepository, cfg)
+	checkoutService := ProvideCheckoutService(cartService, orderRepository, paymentService, shippingService, inventoryRepository, customerRepository, eventPublisher)
+	checkoutHandler := ProvideStoreCheckoutHandler(checkoutService, validation)
+	storeOrderHandler := ProvideStoreOrderHandler(orderService, orderRepository)
+	trackingHandler := ProvideStoreTrackingHandler(orderRepository, shipmentRepository)
+	profileHandler := ProvideStoreProfileHandler(customerRepository, validation)
+	webhookHandler := ProvideStoreWebhookHandler(paymentService, gateway, cfg)
+	eventsHandler := ProvideStoreEventsHandler(eventsRepository, analyticsRepository, validation)
+	auth := ProvideAuthMiddleware(authService)
+	customerAuth := ProvideCustomerAuthMiddleware(customerAuthService)
+	optionalCartAuth := ProvideOptionalCartAuth(customerAuthService)
+	monolithDeps := &MonolithDeps{
+		PostgresPool:           pool,
+		AuthHandler:            authHandler,
+		UserHandler:            userHandler,
+		CategoryHandler:        categoryHandler,
+		ProductHandler:         productHandler,
+		InventoryHandler:       inventoryHandler,
+		PricingHandler:         pricingHandler,
+		OrderHandler:           orderHandler,
+		CustomerHandler:        customerHandler,
+		AuditHandler:           handlerAuditHandler,
+		NotificationHandler:    handlerNotificationHandler,
+		CouponHandler:          couponHandler,
+		AnalyticsHandler:       handlerAnalyticsHandler,
+		AssetHandler:           assetHandler,
+		ReportHandler:          handlerReportHandler,
+		StoreAuthHandler:       storeAuthHandler,
+		StoreCatalogHandler:    catalogHandler,
+		StoreCartHandler:       cartHandler,
+		StoreCheckoutHandler:   checkoutHandler,
+		StoreOrderHandler:      storeOrderHandler,
+		StoreTrackingHandler:   trackingHandler,
+		StoreProfileHandler:    profileHandler,
+		StoreWebhookHandler:    webhookHandler,
+		StoreEventsHandler:     eventsHandler,
+		AuthMiddleware:         auth,
+		CustomerAuthMiddleware: customerAuth,
+		OptionalCartAuth:       optionalCartAuth,
+	}
+	return monolithDeps, nil
 }
 
 // wire.go:
@@ -852,27 +865,6 @@ type AuditDeps struct {
 	AuthMiddleware *middleware.Auth
 }
 
-// ApiDeps holds all dependencies for the main API server
-type ApiDeps struct {
-	Config              *config.Config
-	DynamoDBClient      *dynamodb.Client
-	AuthHandler         *handler.AuthHandler
-	UserHandler         *handler.UserHandler
-	CategoryHandler     *handler.CategoryHandler
-	ProductHandler      *handler.ProductHandler
-	InventoryHandler    *handler.InventoryHandler
-	PricingHandler      *handler.PricingHandler
-	OrderHandler        *handler.OrderHandler
-	CustomerHandler     *handler.CustomerHandler
-	AuditHandler        *handler.AuditHandler
-	NotificationHandler *handler.NotificationHandler
-	CouponHandler       *handler.CouponHandler
-	AnalyticsHandler    *handler.AnalyticsHandler
-	AssetHandler        *handler.AssetHandler
-	ReportHandler       *handler.ReportHandler
-	AuthMiddleware      *middleware.Auth
-}
-
 // StoreAuthDeps holds dependencies for the Store Auth Lambda
 type StoreAuthDeps struct {
 	Config                 *config.Config
@@ -932,9 +924,40 @@ type StoreEventsDeps struct {
 	Handler *store.EventsHandler
 }
 
-// App holds all application dependencies (deprecated, use service-specific deps)
-type App struct {
-	Config         *config.Config
-	DynamoDBClient *dynamodb.Client
-	AuthMiddleware *middleware.Auth
+// MonolithDeps contains every dependency the monolith API server needs.
+type MonolithDeps struct {
+	// PostgresPool retained for graceful shutdown — DynamoDB SDK v2 needs none.
+	PostgresPool *pgxpool.Pool
+
+	// Admin handlers
+	AuthHandler         *handler.AuthHandler
+	UserHandler         *handler.UserHandler
+	CategoryHandler     *handler.CategoryHandler
+	ProductHandler      *handler.ProductHandler
+	InventoryHandler    *handler.InventoryHandler
+	PricingHandler      *handler.PricingHandler
+	OrderHandler        *handler.OrderHandler
+	CustomerHandler     *handler.CustomerHandler
+	AuditHandler        *handler.AuditHandler
+	NotificationHandler *handler.NotificationHandler
+	CouponHandler       *handler.CouponHandler
+	AnalyticsHandler    *handler.AnalyticsHandler
+	AssetHandler        *handler.AssetHandler
+	ReportHandler       *handler.ReportHandler
+
+	// Store handlers
+	StoreAuthHandler     *store.AuthHandler
+	StoreCatalogHandler  *store.CatalogHandler
+	StoreCartHandler     *store.CartHandler
+	StoreCheckoutHandler *store.CheckoutHandler
+	StoreOrderHandler    *store.OrderHandler
+	StoreTrackingHandler *store.TrackingHandler
+	StoreProfileHandler  *store.ProfileHandler
+	StoreWebhookHandler  *store.WebhookHandler
+	StoreEventsHandler   *store.EventsHandler
+
+	// Middleware
+	AuthMiddleware         *middleware.Auth
+	CustomerAuthMiddleware *middleware.CustomerAuth
+	OptionalCartAuth       *middleware.OptionalCartAuth
 }

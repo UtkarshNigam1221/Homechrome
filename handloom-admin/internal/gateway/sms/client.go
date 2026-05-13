@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"net/http"
 	"time"
+
+	"github.com/handloom/admin/internal/domain"
 )
 
 // Client implements the MSG91 SMS gateway
@@ -17,13 +19,17 @@ type Client struct {
 
 // NewClient creates a new MSG91 SMS client
 func NewClient(config Config) *Client {
-	if config.BaseURL == "" {
-		config.BaseURL = "https://control.msg91.com"
-	}
 	return &Client{
 		config:     config,
 		httpClient: &http.Client{Timeout: 10 * time.Second},
 	}
+}
+
+// setJSONHeaders applies the MSG91-standard auth + JSON headers to req.
+func (c *Client) setJSONHeaders(req *http.Request) {
+	req.Header.Set("authkey", c.config.AuthKey)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
 }
 
 // DevClient is a no-op SMS client that logs OTPs to stdout for local development
@@ -44,12 +50,14 @@ func (d *DevClient) SendOTP(_ context.Context, phone, code string) error {
 
 // SendOTP sends an OTP code to the given phone number via MSG91 Flow API
 func (c *Client) SendOTP(ctx context.Context, phone, code string) error {
-	payload := map[string]interface{}{
-		"template_id": c.config.OTPTemplateID,
-		"short_url":   "0",
-		"recipients": []map[string]string{
-			{"mobiles": phone, "otp": code},
-		},
+	payload := otpFlowRequest{
+		TemplateID: c.config.OTPTemplateID,
+		ShortURL:   "0",
+		Recipients: []otpFlowRecipient{{
+			Mobiles: phone,
+			Var1:    code,
+			Var2:    domain.OTPValidityMinutesStr,
+		}},
 	}
 
 	body, err := json.Marshal(payload)
@@ -61,9 +69,7 @@ func (c *Client) SendOTP(ctx context.Context, phone, code string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
-	req.Header.Set("authkey", c.config.AuthKey)
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
+	c.setJSONHeaders(req)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -75,13 +81,13 @@ func (c *Client) SendOTP(ctx context.Context, phone, code string) error {
 		return fmt.Errorf("MSG91 returned status %d", resp.StatusCode)
 	}
 
-	var result map[string]interface{}
+	var result otpFlowResponse
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return nil // Status 200 is good enough
 	}
 
-	if msgType, ok := result["type"].(string); ok && msgType == "error" {
-		return fmt.Errorf("MSG91 error: %v", result["message"])
+	if result.Type == "error" {
+		return fmt.Errorf("MSG91 error: %s", result.Message)
 	}
 
 	return nil

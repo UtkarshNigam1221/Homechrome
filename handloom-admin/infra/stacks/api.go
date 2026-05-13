@@ -102,8 +102,20 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 		commonEnv["COOKIE_DOMAIN"] = jsii.String("." + props.BaseDomain)
 	}
 
-	// Add PhonePe env vars when configured
-	for _, key := range []string{"PHONEPE_CLIENT_ID", "PHONEPE_CLIENT_SECRET", "PHONEPE_CLIENT_VERSION", "PHONEPE_BASE_URL", "PHONEPE_CALLBACK_URL", "PHONEPE_REDIRECT_URL", "PHONEPE_WEBHOOK_USERNAME", "PHONEPE_WEBHOOK_PASSWORD"} {
+	// Propagate gateway credentials from the deploy shell environment.
+	// Empty values fall through to each gateway's DevClient.
+	gatewayEnvKeys := []string{
+		// PhonePe
+		"PHONEPE_CLIENT_ID", "PHONEPE_CLIENT_SECRET", "PHONEPE_CLIENT_VERSION",
+		"PHONEPE_BASE_URL", "PHONEPE_CALLBACK_URL", "PHONEPE_REDIRECT_URL",
+		"PHONEPE_WEBHOOK_USERNAME", "PHONEPE_WEBHOOK_PASSWORD",
+		// MSG91 (SMS / OTP)
+		"MSG91_AUTH_KEY", "MSG91_OTP_TEMPLATE_ID", "MSG91_BASE_URL",
+		// Shiprocket
+		"SHIPROCKET_EMAIL", "SHIPROCKET_PASSWORD", "SHIPROCKET_BASE_URL",
+		"SHIPROCKET_PICKUP_PINCODE",
+	}
+	for _, key := range gatewayEnvKeys {
 		if v := os.Getenv(key); v != "" {
 			commonEnv[key] = jsii.String(v)
 		}
