@@ -53,7 +53,7 @@ func (r *AuditRepository) GetByID(ctx context.Context, id string) (*domain.Audit
 		TableName:              aws.String(r.client.auditTable),
 		KeyConditionExpression: aws.String("PK = :pk"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":pk": &types.AttributeValueMemberS{Value: "AUDIT#" + id},
+			exprPK: &types.AttributeValueMemberS{Value: "AUDIT#" + id},
 		},
 		Limit: aws.Int32(1),
 	})
@@ -103,7 +103,7 @@ func (r *AuditRepository) List(ctx context.Context, req domain.ListAuditLogsRequ
 			TableName:              aws.String(r.client.auditTable),
 			KeyConditionExpression: aws.String("PK = :pk"),
 			ExpressionAttributeValues: map[string]types.AttributeValue{
-				":pk": &types.AttributeValueMemberS{Value: "AUDIT#" + dateStr},
+				exprPK: &types.AttributeValueMemberS{Value: "AUDIT#" + dateStr},
 			},
 			ScanIndexForward: aws.Bool(false),
 		}
@@ -166,7 +166,7 @@ func (r *AuditRepository) GetByEntity(ctx context.Context, entityType string, en
 		IndexName:              aws.String("GSI1"),
 		KeyConditionExpression: aws.String("GSI1PK = :pk"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":pk": &types.AttributeValueMemberS{Value: entityType + "#" + entityID},
+			exprPK: &types.AttributeValueMemberS{Value: entityType + "#" + entityID},
 		},
 		ScanIndexForward: aws.Bool(false),
 	})
@@ -195,7 +195,7 @@ func (r *AuditRepository) GetByUser(ctx context.Context, userID string, paginati
 		IndexName:              aws.String("GSI2"),
 		KeyConditionExpression: aws.String("GSI2PK = :pk"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":pk": &types.AttributeValueMemberS{Value: "USER#" + userID},
+			exprPK: &types.AttributeValueMemberS{Value: "USER#" + userID},
 		},
 		ScanIndexForward: aws.Bool(false),
 	})

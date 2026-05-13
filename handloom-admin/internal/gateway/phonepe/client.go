@@ -15,7 +15,11 @@ import (
 	"time"
 )
 
-const contentTypeJSON = "application/json"
+const (
+	contentTypeJSON = "application/json"
+	// StateCompleted is the PhonePe payment-state value indicating success.
+	StateCompleted = "COMPLETED"
+)
 
 // Client implements the PhonePe Standard Checkout v2 gateway
 type Client struct {

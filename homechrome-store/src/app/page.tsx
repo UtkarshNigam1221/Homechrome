@@ -100,7 +100,7 @@ export default async function HomePage() {
               <h3 className="mt-4 text-base font-semibold text-foreground">
                 Handcrafted
               </h3>
-              <p className="mt-2 text-sm text-muted">
+              <p className="mt-2 text-sm text-muted-foreground">
                 Each piece is handwoven by skilled weavers preserving
                 centuries-old techniques.
               </p>
@@ -125,7 +125,7 @@ export default async function HomePage() {
               <h3 className="mt-4 text-base font-semibold text-foreground">
                 Free Shipping
               </h3>
-              <p className="mt-2 text-sm text-muted">
+              <p className="mt-2 text-sm text-muted-foreground">
                 Free delivery on all orders above Rs. 999 across India.
               </p>
             </div>
@@ -149,7 +149,7 @@ export default async function HomePage() {
               <h3 className="mt-4 text-base font-semibold text-foreground">
                 Quality Assured
               </h3>
-              <p className="mt-2 text-sm text-muted">
+              <p className="mt-2 text-sm text-muted-foreground">
                 Authenticity guaranteed with GI-tagged handloom products.
               </p>
             </div>

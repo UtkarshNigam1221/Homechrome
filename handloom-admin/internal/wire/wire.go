@@ -8,12 +8,12 @@ import (
 	"context"
 
 	"github.com/google/wire"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/handloom/admin/internal/config"
 	"github.com/handloom/admin/internal/handler"
 	"github.com/handloom/admin/internal/handler/store"
 	"github.com/handloom/admin/internal/middleware"
-	"github.com/handloom/admin/internal/repository/dynamodb"
 )
 
 // ============================================================================
@@ -106,44 +106,9 @@ type AuditDeps struct {
 	AuthMiddleware *middleware.Auth
 }
 
-// ApiDeps holds all dependencies for the main API server
-type ApiDeps struct {
-	Config              *config.Config
-	DynamoDBClient      *dynamodb.Client
-	AuthHandler         *handler.AuthHandler
-	UserHandler         *handler.UserHandler
-	CategoryHandler     *handler.CategoryHandler
-	ProductHandler      *handler.ProductHandler
-	InventoryHandler    *handler.InventoryHandler
-	PricingHandler      *handler.PricingHandler
-	OrderHandler        *handler.OrderHandler
-	CustomerHandler     *handler.CustomerHandler
-	AuditHandler        *handler.AuditHandler
-	NotificationHandler *handler.NotificationHandler
-	CouponHandler       *handler.CouponHandler
-	AnalyticsHandler    *handler.AnalyticsHandler
-	AssetHandler        *handler.AssetHandler
-	ReportHandler       *handler.ReportHandler
-	AuthMiddleware      *middleware.Auth
-}
-
 // ============================================================================
 // ADMIN INJECTOR FUNCTIONS
 // ============================================================================
-
-// InitializeApiDeps creates all dependencies for the main API server
-func InitializeApiDeps(ctx context.Context, cfg *config.Config) (*ApiDeps, error) {
-	wire.Build(
-		CoreSet,
-		ProvideS3Client,
-		RepositorySet,
-		ServiceSet,
-		HandlerSet,
-		MiddlewareSet,
-		wire.Struct(new(ApiDeps), "*"),
-	)
-	return nil, nil
-}
 
 // InitializeAuthDeps creates Auth Lambda dependencies
 func InitializeAuthDeps(ctx context.Context, cfg *config.Config) (*AuthDeps, error) {
@@ -647,26 +612,60 @@ func InitializeStoreEventsDeps(ctx context.Context, cfg *config.Config) (*StoreE
 	return nil, nil
 }
 
-// ============================================================================
-// LEGACY APP STRUCT (for backwards compatibility)
-// ============================================================================
+// MonolithDeps contains every dependency the monolith API server needs.
+type MonolithDeps struct {
+	// PostgresPool retained for graceful shutdown — DynamoDB SDK v2 needs none.
+	PostgresPool *pgxpool.Pool
 
-// App holds all application dependencies (deprecated, use service-specific deps)
-type App struct {
-	Config         *config.Config
-	DynamoDBClient *dynamodb.Client
-	AuthMiddleware *middleware.Auth
+	// Admin handlers
+	AuthHandler         *handler.AuthHandler
+	UserHandler         *handler.UserHandler
+	CategoryHandler     *handler.CategoryHandler
+	ProductHandler      *handler.ProductHandler
+	InventoryHandler    *handler.InventoryHandler
+	PricingHandler      *handler.PricingHandler
+	OrderHandler        *handler.OrderHandler
+	CustomerHandler     *handler.CustomerHandler
+	AuditHandler        *handler.AuditHandler
+	NotificationHandler *handler.NotificationHandler
+	CouponHandler       *handler.CouponHandler
+	AnalyticsHandler    *handler.AnalyticsHandler
+	AssetHandler        *handler.AssetHandler
+	ReportHandler       *handler.ReportHandler
+
+	// Store handlers
+	StoreAuthHandler     *store.AuthHandler
+	StoreCatalogHandler  *store.CatalogHandler
+	StoreCartHandler     *store.CartHandler
+	StoreCheckoutHandler *store.CheckoutHandler
+	StoreOrderHandler    *store.OrderHandler
+	StoreTrackingHandler *store.TrackingHandler
+	StoreProfileHandler  *store.ProfileHandler
+	StoreWebhookHandler  *store.WebhookHandler
+	StoreEventsHandler   *store.EventsHandler
+
+	// Middleware
+	AuthMiddleware         *middleware.Auth
+	CustomerAuthMiddleware *middleware.CustomerAuth
+	OptionalCartAuth       *middleware.OptionalCartAuth
 }
 
-// InitializeApp creates the application with all dependencies (deprecated)
-func InitializeApp(ctx context.Context, cfg *config.Config) (*App, error) {
+// InitializeMonolithDeps wires the full monolith dependency graph.
+// Uses MonolithPublisherSet so events dispatch in-process via LocalPublisher.
+func InitializeMonolithDeps(ctx context.Context, cfg *config.Config) (*MonolithDeps, error) {
 	wire.Build(
 		CoreSet,
-		ProvideUserRepository,
-		ProvideTokenStore,
-		ProvideAuthService,
-		ProvideAuthMiddleware,
-		wire.Struct(new(App), "*"),
+		ProvideS3Client,
+		RepositorySet,
+		StoreRepositorySet,
+		ServiceSet,
+		StoreServiceSet,
+		MonolithPublisherSet,
+		HandlerSet,
+		StoreHandlerSet,
+		MiddlewareSet,
+		StoreMiddlewareSet,
+		wire.Struct(new(MonolithDeps), "*"),
 	)
 	return nil, nil
 }

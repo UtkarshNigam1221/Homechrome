@@ -104,7 +104,7 @@ func TestReportService_Generate(t *testing.T) {
 
 	t.Run("repo error on create", func(t *testing.T) {
 		req := domain.GenerateReportRequest{
-			Name:   "Sales Report",
+			Name:   reportNameSales,
 			Type:   domain.ReportTypeSales,
 			Format: domain.ReportFormatCSV,
 		}
@@ -130,7 +130,7 @@ func TestReportService_GetByID(t *testing.T) {
 	t.Run("successful get", func(t *testing.T) {
 		expected := &domain.Report{
 			ID:     "report_abc123",
-			Name:   "Sales Report",
+			Name:   reportNameSales,
 			Type:   domain.ReportTypeSales,
 			Format: domain.ReportFormatCSV,
 			Status: domain.ReportStatusCompleted,
@@ -173,7 +173,7 @@ func TestReportService_List(t *testing.T) {
 
 		expectedResponse := &domain.ListReportsResponse{
 			Reports: []*domain.Report{
-				{ID: "report_1", Name: "Sales Report", Type: domain.ReportTypeSales},
+				{ID: "report_1", Name: reportNameSales, Type: domain.ReportTypeSales},
 				{ID: "report_2", Name: "Orders Report", Type: domain.ReportTypeOrders},
 			},
 			Pagination: domain.PaginationResponse{
@@ -235,7 +235,7 @@ func TestReportService_Delete(t *testing.T) {
 	t.Run("successful deletion of completed report", func(t *testing.T) {
 		report := &domain.Report{
 			ID:     "report_abc123",
-			Name:   "Sales Report",
+			Name:   reportNameSales,
 			Status: domain.ReportStatusCompleted,
 		}
 
@@ -255,7 +255,7 @@ func TestReportService_Delete(t *testing.T) {
 	t.Run("successful deletion of pending report", func(t *testing.T) {
 		report := &domain.Report{
 			ID:     "report_abc123",
-			Name:   "Sales Report",
+			Name:   reportNameSales,
 			Status: domain.ReportStatusPending,
 		}
 
@@ -275,7 +275,7 @@ func TestReportService_Delete(t *testing.T) {
 	t.Run("blocked - report is processing", func(t *testing.T) {
 		report := &domain.Report{
 			ID:     "report_abc123",
-			Name:   "Sales Report",
+			Name:   reportNameSales,
 			Status: domain.ReportStatusProcessing,
 		}
 
@@ -310,7 +310,7 @@ func TestReportService_GetDownloadURL(t *testing.T) {
 	t.Run("successful download URL", func(t *testing.T) {
 		report := &domain.Report{
 			ID:      "report_abc123",
-			Name:    "Sales Report",
+			Name:    reportNameSales,
 			Status:  domain.ReportStatusCompleted,
 			FileURL: "https://s3.amazonaws.com/handloom-reports/report_abc123.csv",
 		}
@@ -328,7 +328,7 @@ func TestReportService_GetDownloadURL(t *testing.T) {
 	t.Run("report not completed", func(t *testing.T) {
 		report := &domain.Report{
 			ID:     "report_abc123",
-			Name:   "Sales Report",
+			Name:   reportNameSales,
 			Status: domain.ReportStatusPending,
 		}
 
@@ -346,7 +346,7 @@ func TestReportService_GetDownloadURL(t *testing.T) {
 	t.Run("completed but no file URL", func(t *testing.T) {
 		report := &domain.Report{
 			ID:      "report_abc123",
-			Name:    "Sales Report",
+			Name:    reportNameSales,
 			Status:  domain.ReportStatusCompleted,
 			FileURL: "", // Empty
 		}
@@ -388,7 +388,7 @@ func TestReportService_GenerateSalesReport(t *testing.T) {
 		mockReportRepo.EXPECT().
 			Create(ctx, gomock.Any()).
 			DoAndReturn(func(ctx context.Context, report *domain.Report) error {
-				assert.Equal(t, "Sales Report", report.Name)
+				assert.Equal(t, reportNameSales, report.Name)
 				assert.Equal(t, domain.ReportTypeSales, report.Type)
 				assert.Equal(t, domain.ReportFormatCSV, report.Format)
 				assert.Equal(t, domain.ReportStatusPending, report.Status)

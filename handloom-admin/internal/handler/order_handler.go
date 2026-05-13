@@ -136,7 +136,7 @@ func (h *OrderHandler) UpdateStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response.JSON(w, http.StatusOK, map[string]string{"message": "Order status updated successfully"})
+	response.JSON(w, http.StatusOK, map[string]string{response.KeyMessage: "Order status updated successfully"})
 }
 
 // AddNote handles adding a note to an order
@@ -151,7 +151,7 @@ func (h *OrderHandler) AddNote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response.JSON(w, http.StatusOK, map[string]string{"message": "Note added successfully"})
+	response.JSON(w, http.StatusOK, map[string]string{response.KeyMessage: "Note added successfully"})
 }
 
 // UpdateTracking handles updating tracking information
@@ -166,7 +166,7 @@ func (h *OrderHandler) UpdateTracking(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response.JSON(w, http.StatusOK, map[string]string{"message": "Tracking updated successfully"})
+	response.JSON(w, http.StatusOK, map[string]string{response.KeyMessage: "Tracking updated successfully"})
 }
 
 // Cancel handles canceling an order
@@ -181,7 +181,7 @@ func (h *OrderHandler) Cancel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response.JSON(w, http.StatusOK, map[string]string{"message": "Order canceled successfully"})
+	response.JSON(w, http.StatusOK, map[string]string{response.KeyMessage: "Order canceled successfully"})
 }
 
 // Refund handles initiating a refund
@@ -196,5 +196,5 @@ func (h *OrderHandler) Refund(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response.JSON(w, http.StatusOK, map[string]string{"message": "Refund initiated successfully"})
+	response.JSON(w, http.StatusOK, map[string]string{response.KeyMessage: "Refund initiated successfully"})
 }

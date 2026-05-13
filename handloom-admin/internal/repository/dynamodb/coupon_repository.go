@@ -58,7 +58,7 @@ func (r *CouponRepository) GetByID(ctx context.Context, id string) (*domain.Coup
 		TableName: aws.String(r.client.coreTable),
 		Key: map[string]types.AttributeValue{
 			"PK": &types.AttributeValueMemberS{Value: "COUPON#" + id},
-			"SK": &types.AttributeValueMemberS{Value: "METADATA"},
+			"SK": &types.AttributeValueMemberS{Value: skMetadata},
 		},
 	})
 	if err != nil {
@@ -114,7 +114,7 @@ func (r *CouponRepository) Delete(ctx context.Context, id string) error {
 		TableName: aws.String(r.client.coreTable),
 		Key: map[string]types.AttributeValue{
 			"PK": &types.AttributeValueMemberS{Value: "COUPON#" + id},
-			"SK": &types.AttributeValueMemberS{Value: "METADATA"},
+			"SK": &types.AttributeValueMemberS{Value: skMetadata},
 		},
 		ConditionExpression: aws.String("attribute_exists(PK)"),
 	})
@@ -165,8 +165,8 @@ func (r *CouponRepository) GetUserUsageCount(ctx context.Context, couponID, cust
 		KeyConditionExpression: aws.String("PK = :pk AND begins_with(SK, :sk)"),
 		FilterExpression:       aws.String("customer_id = :customerID"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":pk":         &types.AttributeValueMemberS{Value: "COUPON#" + couponID},
-			":sk":         &types.AttributeValueMemberS{Value: "USAGE#"},
+			exprPK:        &types.AttributeValueMemberS{Value: "COUPON#" + couponID},
+			exprSK:        &types.AttributeValueMemberS{Value: "USAGE#"},
 			":customerID": &types.AttributeValueMemberS{Value: customerID},
 		},
 		Select: types.SelectCount,

@@ -117,5 +117,5 @@ func (h *OrderHandler) CancelOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response.Success(w, map[string]string{"message": "Order canceled successfully"})
+	response.Success(w, map[string]string{response.KeyMessage: "Order canceled successfully"})
 }

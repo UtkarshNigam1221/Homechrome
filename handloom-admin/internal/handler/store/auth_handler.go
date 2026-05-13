@@ -69,6 +69,9 @@ func cookieSettings() (secure bool, sameSite http.SameSite, domain string) {
 func (h *AuthHandler) setStoreCookies(w http.ResponseWriter, tokens *domain.TokenPair) {
 	secure, sameSite, domain := cookieSettings()
 
+	// Secure is dynamic by design: false on plain-HTTP local dev, true behind
+	// the custom domain / Lambda URL. HttpOnly + SameSite are always set.
+	//nolint:gosec // G124: Secure flag is environment-conditional, not omitted.
 	http.SetCookie(w, &http.Cookie{
 		Name:     "store_token",
 		Value:    tokens.AccessToken,
@@ -80,6 +83,7 @@ func (h *AuthHandler) setStoreCookies(w http.ResponseWriter, tokens *domain.Toke
 		MaxAge:   int(15 * time.Minute / time.Second),
 	})
 
+	//nolint:gosec // G124: Secure flag is environment-conditional, not omitted.
 	http.SetCookie(w, &http.Cookie{
 		Name:     "store_refresh",
 		Value:    tokens.RefreshToken,
@@ -95,6 +99,7 @@ func (h *AuthHandler) setStoreCookies(w http.ResponseWriter, tokens *domain.Toke
 func (h *AuthHandler) clearStoreCookies(w http.ResponseWriter) {
 	secure, sameSite, domain := cookieSettings()
 
+	//nolint:gosec // G124: Secure flag is environment-conditional, not omitted.
 	http.SetCookie(w, &http.Cookie{
 		Name:     "store_token",
 		Value:    "",
@@ -106,6 +111,7 @@ func (h *AuthHandler) clearStoreCookies(w http.ResponseWriter) {
 		MaxAge:   -1,
 	})
 
+	//nolint:gosec // G124: Secure flag is environment-conditional, not omitted.
 	http.SetCookie(w, &http.Cookie{
 		Name:     "store_refresh",
 		Value:    "",
@@ -129,7 +135,7 @@ func (h *AuthHandler) SendOTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response.JSON(w, http.StatusOK, map[string]string{
-		"message": "OTP sent successfully",
+		response.KeyMessage: "OTP sent successfully",
 	})
 }
 
@@ -155,6 +161,7 @@ func (h *AuthHandler) VerifyOTP(w http.ResponseWriter, r *http.Request) {
 		}
 		// Clear the guest_session cookie regardless of validity
 		secure, sameSite, domain := cookieSettings()
+		//nolint:gosec // G124: Secure flag is environment-conditional, not omitted.
 		http.SetCookie(w, &http.Cookie{
 			Name:     "guest_session",
 			Value:    "",
@@ -194,8 +201,8 @@ func (h *AuthHandler) RefreshToken(w http.ResponseWriter, r *http.Request) {
 	h.setStoreCookies(w, tokens)
 
 	response.JSON(w, http.StatusOK, map[string]interface{}{
-		"customer": customer,
-		"message":  "Token refreshed",
+		"customer":          customer,
+		response.KeyMessage: "Token refreshed",
 	})
 }
 
@@ -225,6 +232,6 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	h.clearStoreCookies(w)
 
 	response.JSON(w, http.StatusOK, map[string]string{
-		"message": "Logged out successfully",
+		response.KeyMessage: "Logged out successfully",
 	})
 }

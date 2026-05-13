@@ -177,7 +177,7 @@ func (s *AuthService) ValidateToken(ctx context.Context, tokenString string) (*d
 	}
 
 	// Extract claims
-	userID, _ := claims["sub"].(string)
+	userID, _ := claims[claimSub].(string)
 	email, _ := claims["email"].(string)
 	roleStr, _ := claims["role"].(string)
 	permissionsInterface, _ := claims["permissions"].([]interface{})
@@ -307,14 +307,14 @@ func (s *AuthService) generateTokenPair(user *domain.User) (*domain.TokenPair, e
 
 	// Access token claims
 	accessClaims := jwt.MapClaims{
-		"sub":         user.ID,
+		claimSub:      user.ID,
 		"email":       user.Email,
 		"role":        user.Role,
 		"permissions": user.Permissions,
-		"iat":         now.Unix(),
-		"exp":         accessExpiry.Unix(),
-		"iss":         s.issuer,
-		"jti":         uuid.New().String(),
+		claimIat:      now.Unix(),
+		claimExp:      accessExpiry.Unix(),
+		claimIss:      s.issuer,
+		claimJti:      uuid.New().String(),
 	}
 
 	accessToken := jwt.NewWithClaims(jwt.SigningMethodHS256, accessClaims)
@@ -325,12 +325,12 @@ func (s *AuthService) generateTokenPair(user *domain.User) (*domain.TokenPair, e
 
 	// Refresh token claims
 	refreshClaims := jwt.MapClaims{
-		"sub":  user.ID,
-		"type": "refresh",
-		"iat":  now.Unix(),
-		"exp":  refreshExpiry.Unix(),
-		"iss":  s.issuer,
-		"jti":  uuid.New().String(),
+		claimSub:  user.ID,
+		claimType: tokenTypeRefresh,
+		claimIat:  now.Unix(),
+		claimExp:  refreshExpiry.Unix(),
+		claimIss:  s.issuer,
+		claimJti:  uuid.New().String(),
 	}
 
 	refreshToken := jwt.NewWithClaims(jwt.SigningMethodHS256, refreshClaims)
@@ -369,12 +369,12 @@ func (s *AuthService) validateRefreshToken(tokenString string) (*domain.TokenCla
 	}
 
 	// Verify it's a refresh token
-	tokenType, _ := claims["type"].(string)
-	if tokenType != "refresh" {
+	tokenType, _ := claims[claimType].(string)
+	if tokenType != tokenTypeRefresh {
 		return nil, errors.New(errors.ErrCodeInvalidToken, "Not a refresh token")
 	}
 
-	userID, _ := claims["sub"].(string)
+	userID, _ := claims[claimSub].(string)
 
 	return &domain.TokenClaims{
 		UserID: userID,

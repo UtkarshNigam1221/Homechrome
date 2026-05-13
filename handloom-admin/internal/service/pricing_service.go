@@ -15,6 +15,12 @@ import (
 	"github.com/handloom/admin/pkg/errors"
 )
 
+// Dimension unit string literals accepted on the pricing input.
+const (
+	dimensionUnitInches = "inches"
+	dimensionUnitInch   = "inch"
+)
+
 // PricingService implements domain.PricingService
 type PricingService struct {
 	pricingRuleRepo  domain.PricingRuleRepository
@@ -319,7 +325,7 @@ func (s *PricingService) CalculatePrice(ctx context.Context, req domain.Calculat
 		FormattedPrice: &domain.FormattedPrice{
 			Subtotal: formatPrice(breakdown.SubtotalPerUnit * int64(breakdown.Quantity)),
 			Total:    formatPrice(breakdown.Total),
-			Currency: "INR",
+			Currency: defaultCurrency,
 		},
 		PricingRuleID:   rule.ID,
 		QuoteID:         quoteID,
@@ -428,7 +434,7 @@ func (s *PricingService) convertArea(area float64, fromUnit string, toUnit domai
 	// First convert to square inches
 	var sqInches float64
 	switch fromUnit {
-	case "inches", "inch":
+	case dimensionUnitInches, dimensionUnitInch:
 		sqInches = area
 	case "cm":
 		sqInches = area / 6.4516 // 1 sq inch = 6.4516 sq cm

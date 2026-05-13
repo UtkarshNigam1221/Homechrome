@@ -120,19 +120,19 @@ func TestAnalyticsService_GetSalesAnalytics(t *testing.T) {
 		endDate := time.Now()
 
 		req := domain.SalesAnalyticsRequest{
-			Period:    "", // empty - should default to "daily"
+			Period:    "", // empty - should default to analyticsPeriodDaily
 			StartDate: startDate,
 			EndDate:   endDate,
 		}
 
 		mockAnalyticsRepo.EXPECT().
-			GetSalesAnalytics(ctx, "daily", startDate, endDate).
-			Return(&domain.SalesAnalytics{Period: "daily"}, nil)
+			GetSalesAnalytics(ctx, analyticsPeriodDaily, startDate, endDate).
+			Return(&domain.SalesAnalytics{Period: analyticsPeriodDaily}, nil)
 
 		result, err := service.GetSalesAnalytics(ctx, req)
 
 		require.NoError(t, err)
-		assert.Equal(t, "daily", result.Period)
+		assert.Equal(t, analyticsPeriodDaily, result.Period)
 	})
 
 	t.Run("end date before start date - end date defaults to now", func(t *testing.T) {
@@ -140,14 +140,14 @@ func TestAnalyticsService_GetSalesAnalytics(t *testing.T) {
 		endDate := time.Now().AddDate(0, -2, 0) // Before start
 
 		req := domain.SalesAnalyticsRequest{
-			Period:    "daily",
+			Period:    analyticsPeriodDaily,
 			StartDate: startDate,
 			EndDate:   endDate, // Invalid
 		}
 
 		mockAnalyticsRepo.EXPECT().
-			GetSalesAnalytics(ctx, "daily", startDate, gomock.Any()).
-			Return(&domain.SalesAnalytics{Period: "daily"}, nil)
+			GetSalesAnalytics(ctx, analyticsPeriodDaily, startDate, gomock.Any()).
+			Return(&domain.SalesAnalytics{Period: analyticsPeriodDaily}, nil)
 
 		result, err := service.GetSalesAnalytics(ctx, req)
 
@@ -157,7 +157,7 @@ func TestAnalyticsService_GetSalesAnalytics(t *testing.T) {
 
 	t.Run("zero start date defaults to last month", func(t *testing.T) {
 		req := domain.SalesAnalyticsRequest{
-			Period:    "daily",
+			Period:    analyticsPeriodDaily,
 			StartDate: time.Time{}, // zero value
 			EndDate:   time.Now(),
 		}
@@ -165,8 +165,8 @@ func TestAnalyticsService_GetSalesAnalytics(t *testing.T) {
 		// EndDate < StartDate (zero) so EndDate gets set to now
 		// Then StartDate zero -> defaults to last month
 		mockAnalyticsRepo.EXPECT().
-			GetSalesAnalytics(ctx, "daily", gomock.Any(), gomock.Any()).
-			Return(&domain.SalesAnalytics{Period: "daily"}, nil)
+			GetSalesAnalytics(ctx, analyticsPeriodDaily, gomock.Any(), gomock.Any()).
+			Return(&domain.SalesAnalytics{Period: analyticsPeriodDaily}, nil)
 
 		result, err := service.GetSalesAnalytics(ctx, req)
 

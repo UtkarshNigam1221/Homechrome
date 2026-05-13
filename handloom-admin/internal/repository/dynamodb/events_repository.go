@@ -62,7 +62,7 @@ func (r *EventsRepository) BatchWriteEvents(ctx context.Context, events []domain
 			"device_type": &types.AttributeValueMemberS{Value: evt.DeviceType},
 			"page_path":   &types.AttributeValueMemberS{Value: evt.PagePath},
 			"properties":  &types.AttributeValueMemberS{Value: string(propsJSON)},
-			"ttl":         &types.AttributeValueMemberN{Value: fmt.Sprintf("%d", ttl)},
+			attrTTL:       &types.AttributeValueMemberN{Value: fmt.Sprintf("%d", ttl)},
 		}
 
 		requests = append(requests, types.WriteRequest{
@@ -124,7 +124,7 @@ func (r *EventsRepository) QueryByDate(ctx context.Context, date string) ([]doma
 			TableName:              aws.String(r.client.eventsTable),
 			KeyConditionExpression: aws.String("PK = :pk"),
 			ExpressionAttributeValues: map[string]types.AttributeValue{
-				":pk": &types.AttributeValueMemberS{Value: "EVENT#" + date},
+				exprPK: &types.AttributeValueMemberS{Value: "EVENT#" + date},
 			},
 			ExclusiveStartKey: lastKey,
 		}

@@ -170,7 +170,7 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
           </h1>
 
           {product.sku && (
-            <p className="mt-1 text-sm text-muted">SKU: {product.sku}</p>
+            <p className="mt-1 text-sm text-muted-foreground">SKU: {product.sku}</p>
           )}
 
           {/* Price */}
@@ -180,7 +180,7 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
             </span>
             {hasDiscount && (
               <>
-                <span className="text-lg text-muted line-through">
+                <span className="text-lg text-muted-foreground line-through">
                   {formatPrice(product.mrp)}
                 </span>
                 <span className="rounded-md bg-red-100 px-2 py-0.5 text-sm font-semibold text-red-600">
@@ -211,7 +211,9 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
               <h2 className="text-sm font-semibold uppercase tracking-wider text-foreground">
                 Description
               </h2>
-              <p className="mt-2 leading-relaxed text-muted">{product.description}</p>
+              <p className="mt-2 whitespace-pre-line leading-relaxed text-muted-foreground">
+                {product.description}
+              </p>
             </div>
           )}
 
@@ -227,7 +229,7 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
                     <dt className="w-32 flex-shrink-0 font-medium capitalize text-foreground">
                       {key.replace(/_/g, ' ')}
                     </dt>
-                    <dd className="text-muted">{value}</dd>
+                    <dd className="text-muted-foreground">{value}</dd>
                   </div>
                 ))}
               </dl>

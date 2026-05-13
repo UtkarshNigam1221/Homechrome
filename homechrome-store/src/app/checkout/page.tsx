@@ -427,7 +427,7 @@ export default function CheckoutPage() {
                     Delivering to: {selectedAddress.first_name}{' '}
                     {selectedAddress.last_name}
                   </p>
-                  <p className="text-muted">
+                  <p className="text-muted-foreground">
                     {selectedAddress.address_line1}, {selectedAddress.city},{' '}
                     {selectedAddress.state} - {selectedAddress.postal_code}
                   </p>
@@ -542,7 +542,7 @@ export default function CheckoutPage() {
                 <h3 className="text-sm font-semibold text-foreground">Items</h3>
                 {cart.items.map((item) => (
                   <div key={item.product_id} className="flex justify-between text-sm">
-                    <span className="text-muted">
+                    <span className="text-muted-foreground">
                       {item.product_name} x {item.quantity}
                     </span>
                     <span className="text-foreground">

@@ -74,6 +74,7 @@ func (m *OptionalCartAuth) Resolve(next http.Handler) http.Handler {
 		ctx = context.WithValue(ctx, GuestSessionKey, sessionID)
 
 		secure, sameSite, cookieDomain := guestCookieSettings()
+		//nolint:gosec // G124: Secure flag is environment-conditional, not omitted.
 		http.SetCookie(w, &http.Cookie{
 			Name:     guestSessionCookieName,
 			Value:    sessionID,

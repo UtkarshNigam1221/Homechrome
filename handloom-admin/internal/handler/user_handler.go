@@ -135,7 +135,7 @@ func (h *UserHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response.JSON(w, http.StatusOK, map[string]string{"message": "User deleted successfully"})
+	response.JSON(w, http.StatusOK, map[string]string{response.KeyMessage: "User deleted successfully"})
 }
 
 // UpdateStatus handles updating a user's status
@@ -150,5 +150,5 @@ func (h *UserHandler) UpdateStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response.JSON(w, http.StatusOK, map[string]string{"message": "User status updated successfully"})
+	response.JSON(w, http.StatusOK, map[string]string{response.KeyMessage: "User status updated successfully"})
 }

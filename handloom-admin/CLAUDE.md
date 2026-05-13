@@ -72,7 +72,7 @@ domain/ (entities + interfaces) ← handler/ → service/ → repository/dynamod
 - `internal/repository/dynamodb/` — DynamoDB implementations of domain repository interfaces
 - `internal/repository/postgres/` — PostgreSQL implementations for catalog data (categories, products, inventory)
 - `internal/router/` — mounts handlers onto Chi routers; `lambda.go` provides the Lambda adapter
-- `internal/wire/` — Google Wire compile-time DI; one `Initialize*Deps()` per Lambda
+- `internal/wire/` — Google Wire compile-time DI; one `Initialize*Deps()` per Lambda plus `InitializeMonolithDeps()` for the local `cmd/api` server
 - `internal/gateway/` — External service integrations (PhonePe Standard Checkout v2 payments, Shiprocket shipping, MSG91 SMS/OTP). Each gateway uses a DevClient fallback when credentials are not configured (SMS: `MSG91_AUTH_KEY`/`MSG91_OTP_TEMPLATE_ID`, PhonePe: `PHONEPE_CLIENT_ID`/`PHONEPE_CLIENT_SECRET`, Shiprocket: `SHIPROCKET_EMAIL`/`SHIPROCKET_PASSWORD`).
 - `internal/event/` — SNS event publisher + types; `handlers/` subdir for SQS consumer handlers
 - `internal/middleware/` — RequestID, Logger, Recoverer, Auth (admin JWT), CustomerAuth (customer JWT), Validation (generics-based)
@@ -107,7 +107,7 @@ Categories, products, inventory stored in Neon PostgreSQL. Schema files in `migr
 - **Attribute filtering**: Dynamic `EXISTS` subqueries on `product_attribute_values` table (EAV pattern). Hardcoded fields (material, color) also stored as attribute rows for uniform filtering.
 - **Full-text search**: `tsvector` generated column (`search_vector`) on products combining `name` (weight A) and `description` (weight B) with a GIN index. Queries use `websearch_to_tsquery` for relevance-ranked `ts_rank` ordering, with an `ILIKE` fallback for partial/substring matches. Trigram index on `name` kept for the ILIKE path.
 - **Inventory locking**: `SELECT ... FOR UPDATE` within transactions to prevent race conditions on stock changes. Every mutation creates an `inventory_transaction` audit record.
-- **Caching**: In-process TTL cache (`internal/cache/`, go-cache) wraps category (2-5 min) and product (2 min) repos. Invalidated on writes. Product lists are NOT cached.
+- **Caching**: In-process TTL cache (`internal/cache/`, go-cache) wraps category and product repos. All cached entries (category items + lists, product items + attributes + lists) use a 1 hour TTL (`catListTTL`/`catItemTTL`/`prodItemTTL`/`prodAttrTTL`/`prodListTTL`). Invalidated on writes via `DeletePrefix`.
 - **Pagination**: Base64-encoded integer offset cursors. Fetch `LIMIT+1` to detect HasMore.
 - **Batch relation loading**: Product lists batch-load attributes and images via `WHERE product_id = ANY($1)` to avoid N+1 queries.
 
@@ -151,7 +151,7 @@ Mounted at `/api/v1/store/*` in the monolith (`cmd/api/main.go`):
 - `/webhooks/*` — Payment callbacks (signature-verified)
 
 ### Event-Driven Architecture
-- **Three publishers**: `SNSPublisher` (Lambda mode with events enabled, publishes to SNS), `LocalPublisher` (monolith mode, calls handler functions in-process), `NoopPublisher` (Lambda mode with events disabled — logs and discards). Controlled by `EVENT_PUBLISHING_ENABLED` env var.
+- **Three publishers**: `SNSPublisher` (Lambda mode with events enabled, publishes to SNS), `LocalPublisher` (monolith mode, calls handler functions in-process), `NoopPublisher` (Lambda mode with events disabled — logs and discards). Selection is wired at compile time: Lambda injectors include `wire.LambdaPublisherSet` (branches on `EVENT_PUBLISHING_ENABLED`); `InitializeMonolithDeps` includes `wire.MonolithPublisherSet` (always LocalPublisher with the 4 event handlers).
 - **Dev: event stack disabled** — EventStack (SNS + SQS + 4 worker Lambdas + EventBridge rule) is commented out in `infra/cmd/main.go` for cost savings. `nil` is passed to APIStack, which handles it gracefully (no `SNS_TOPIC_ARN`, no `EVENT_PUBLISHING_ENABLED` set). `NoopPublisher` is used when events are disabled. To re-enable: uncomment the EventStack block in `infra/cmd/main.go` and pass `eventStack` to APIStack.
 - **SNS fan-out** (when enabled): Single `handloom-events-{env}` topic → 4 SQS queues with filter policies → 4 worker Lambdas
 - **Workers**: `worker-notification`, `worker-report`, `worker-analytics`, `worker-audit` — entry points at `cmd/lambda/worker-*/main.go`, use `SQSBatchResponse` with `BatchItemFailures` for partial failure reporting
@@ -171,6 +171,8 @@ Mounted at `/api/v1/store/*` in the monolith (`cmd/api/main.go`):
 
 ### Infrastructure (infra/)
 AWS CDK in Go. Four stacks per environment: DatabaseStack, StorageStack, APIStack, EventStack — EventStack is currently disabled in dev (commented out in `infra/cmd/main.go`). All Lambdas use ARM64/128MB(dev)/256MB(prod)/provided.al2023. Lambda count: 22 in dev (12 admin + 9 store + 1 migrator), 26 with event stack (+ 4 workers).
+
+Gateway credentials are propagated from the deploy-time shell environment to every Lambda's `Environment.Variables` via `gatewayEnvKeys` in `infra/stacks/api.go` (PhonePe + MSG91 + Shiprocket keys). Empty values fall through to each gateway's DevClient. `make cdk-deploy-{dev,prod}` sources `.env.{dev,prod}` first; the GitHub workflow injects `MSG91_AUTH_KEY` (secret) + `MSG91_OTP_TEMPLATE_ID` (variable) at the step level.
 
 ### Payment Integration (PhonePe Standard Checkout v2)
 - **Auth**: OAuth token flow — `POST /v1/oauth/token` with `PHONEPE_CLIENT_ID` + `PHONEPE_CLIENT_SECRET` to obtain `O-Bearer` token

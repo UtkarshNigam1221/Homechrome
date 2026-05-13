@@ -15,6 +15,12 @@ import (
 	"github.com/handloom/admin/pkg/errors"
 )
 
+// inventory_transactions.reference_type values.
+const (
+	inventoryRefTypeUser  = "USER"
+	inventoryRefTypeOrder = "ORDER"
+)
+
 // InventoryRepository implements domain.InventoryRepository using PostgreSQL.
 type InventoryRepository struct {
 	pool *pgxpool.Pool
@@ -139,7 +145,7 @@ func (r *InventoryRepository) AddStock(ctx context.Context, productID string, qu
 			PreviousQty:   previousQty,
 			NewQty:        newQty,
 			Reason:        reason,
-			ReferenceType: "USER",
+			ReferenceType: inventoryRefTypeUser,
 			ReferenceID:   "",
 			CreatedAt:     now,
 			CreatedBy:     userID,
@@ -205,7 +211,7 @@ func (r *InventoryRepository) RemoveStock(ctx context.Context, productID string,
 			PreviousQty:   previousQty,
 			NewQty:        newQty,
 			Reason:        reason,
-			ReferenceType: "USER",
+			ReferenceType: inventoryRefTypeUser,
 			ReferenceID:   "",
 			CreatedAt:     now,
 			CreatedBy:     userID,
@@ -269,7 +275,7 @@ func (r *InventoryRepository) ReserveStock(ctx context.Context, productID string
 			PreviousQty:   reservedQty,
 			NewQty:        newReserved,
 			Reason:        fmt.Sprintf("ORDER %s", orderID),
-			ReferenceType: "ORDER",
+			ReferenceType: inventoryRefTypeOrder,
 			ReferenceID:   orderID,
 			CreatedAt:     now,
 		}
@@ -331,7 +337,7 @@ func (r *InventoryRepository) ReleaseStock(ctx context.Context, productID string
 			PreviousQty:   reservedQty,
 			NewQty:        newReserved,
 			Reason:        fmt.Sprintf("ORDER %s", orderID),
-			ReferenceType: "ORDER",
+			ReferenceType: inventoryRefTypeOrder,
 			ReferenceID:   orderID,
 			CreatedAt:     now,
 		}
@@ -395,7 +401,7 @@ func (r *InventoryRepository) AdjustStock(ctx context.Context, productID string,
 			PreviousQty:   currentQty,
 			NewQty:        newQuantity,
 			Reason:        reason,
-			ReferenceType: "USER",
+			ReferenceType: inventoryRefTypeUser,
 			ReferenceID:   "",
 			CreatedAt:     now,
 			CreatedBy:     userID,

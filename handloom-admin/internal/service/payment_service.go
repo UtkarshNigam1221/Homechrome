@@ -234,7 +234,7 @@ func (s *PaymentService) releaseOrderInventory(ctx context.Context, orderID stri
 	}
 	for _, item := range order.Items {
 		if _, err := s.inventoryRepo.ReleaseStock(ctx, item.ProductID, item.Quantity, orderID); err != nil {
-			slog.ErrorContext(ctx, "Failed to release inventory", "product_id", item.ProductID, "order_id", orderID, "error", err)
+			slog.ErrorContext(ctx, "Failed to release inventory", keyProductID, item.ProductID, "order_id", orderID, "error", err)
 		}
 	}
 }

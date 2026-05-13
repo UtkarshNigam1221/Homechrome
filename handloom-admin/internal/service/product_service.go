@@ -90,7 +90,7 @@ func (s *ProductService) Create(ctx context.Context, req domain.CreateProductReq
 		slog.ErrorContext(ctx, "Failed to publish product.created event", "error", pubErr)
 	}
 
-	slog.InfoContext(ctx, "Created product", "product_id", product.ID)
+	slog.InfoContext(ctx, "Created product", keyProductID, product.ID)
 	return product, nil
 }
 
@@ -183,7 +183,7 @@ func (s *ProductService) Update(ctx context.Context, id string, req domain.Updat
 		slog.ErrorContext(ctx, "Failed to publish product.updated event", "error", pubErr)
 	}
 
-	slog.InfoContext(ctx, "Updated product", "product_id", id)
+	slog.InfoContext(ctx, "Updated product", keyProductID, id)
 	return product, nil
 }
 
@@ -205,12 +205,12 @@ func (s *ProductService) Delete(ctx context.Context, id string) error {
 	}
 
 	if pubErr := s.publisher.Publish(ctx, event.New(event.ProductDeleted, map[string]interface{}{
-		"product_id": id,
+		keyProductID: id,
 	})); pubErr != nil {
 		slog.ErrorContext(ctx, "Failed to publish product.deleted event", "error", pubErr)
 	}
 
-	slog.InfoContext(ctx, "Deleted product", "product_id", id)
+	slog.InfoContext(ctx, "Deleted product", keyProductID, id)
 	return nil
 }
 

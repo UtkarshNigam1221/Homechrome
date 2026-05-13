@@ -35,7 +35,7 @@ func (s *CustomerTokenStore) StoreToken(ctx context.Context, customerID, tokenHa
 			"customer_id": &types.AttributeValueMemberS{Value: customerID},
 			"token_hash":  &types.AttributeValueMemberS{Value: tokenHash},
 			"entity_type": &types.AttributeValueMemberS{Value: "CUSTOMER_REFRESH_TOKEN"},
-			"ttl":         &types.AttributeValueMemberN{Value: strconv.FormatInt(ttl, 10)},
+			attrTTL:       &types.AttributeValueMemberN{Value: strconv.FormatInt(ttl, 10)},
 			"created_at":  &types.AttributeValueMemberS{Value: now.Format(time.RFC3339)},
 		},
 	})
@@ -64,7 +64,7 @@ func (s *CustomerTokenStore) ValidateToken(ctx context.Context, customerID, toke
 	}
 
 	// Check TTL
-	if ttlAttr, ok := result.Item["ttl"].(*types.AttributeValueMemberN); ok {
+	if ttlAttr, ok := result.Item[attrTTL].(*types.AttributeValueMemberN); ok {
 		ttl, _ := strconv.ParseInt(ttlAttr.Value, 10, 64)
 		if ttl < time.Now().Unix() {
 			return false, nil
@@ -101,8 +101,8 @@ func (s *CustomerTokenStore) RevokeAllTokens(ctx context.Context, customerID str
 			TableName:              aws.String(s.client.sessionsTable),
 			KeyConditionExpression: aws.String("PK = :pk AND begins_with(SK, :sk)"),
 			ExpressionAttributeValues: map[string]types.AttributeValue{
-				":pk": &types.AttributeValueMemberS{Value: "CUST_TOKEN#" + customerID},
-				":sk": &types.AttributeValueMemberS{Value: "REFRESH_TOKEN#"},
+				exprPK: &types.AttributeValueMemberS{Value: "CUST_TOKEN#" + customerID},
+				exprSK: &types.AttributeValueMemberS{Value: "REFRESH_TOKEN#"},
 			},
 			ProjectionExpression: aws.String("PK, SK"),
 			ExclusiveStartKey:    exclusiveStartKey,

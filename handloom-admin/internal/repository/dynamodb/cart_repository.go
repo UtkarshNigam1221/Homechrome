@@ -33,7 +33,7 @@ func (r *CartRepository) GetCart(ctx context.Context, cartPK string) (*domain.Ca
 		TableName:              aws.String(r.client.ordersTable),
 		KeyConditionExpression: aws.String("PK = :pk"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":pk": &types.AttributeValueMemberS{Value: cartPK},
+			exprPK: &types.AttributeValueMemberS{Value: cartPK},
 		},
 	})
 	if err != nil {
@@ -55,7 +55,7 @@ func (r *CartRepository) GetCart(ctx context.Context, cartPK string) (*domain.Ca
 			continue
 		}
 
-		if sk.Value == "METADATA" {
+		if sk.Value == skMetadata {
 			var cart domain.Cart
 			if err := attributevalue.UnmarshalMap(item, &cart); err != nil {
 				return nil, errors.Internal("Failed to unmarshal cart header")
@@ -74,7 +74,7 @@ func (r *CartRepository) GetCart(ctx context.Context, cartPK string) (*domain.Ca
 	if cartWithItems.Cart == nil {
 		cartWithItems.Cart = &domain.Cart{
 			PK:         cartPK,
-			SK:         "METADATA",
+			SK:         skMetadata,
 			EntityType: "CART",
 			Currency:   "INR",
 			UpdatedAt:  time.Now(),
@@ -114,7 +114,7 @@ func (r *CartRepository) UpdateCartItem(ctx context.Context, cartPK, productID s
 		},
 		UpdateExpression: aws.String("SET quantity = :qty, total_price = :tp, #ttl = :ttl"),
 		ExpressionAttributeNames: map[string]string{
-			"#ttl": "ttl",
+			"#ttl": attrTTL,
 		},
 		ExpressionAttributeValues: map[string]types.AttributeValue{
 			":qty": &types.AttributeValueMemberN{Value: strconv.Itoa(quantity)},
@@ -175,7 +175,7 @@ func (r *CartRepository) ClearCart(ctx context.Context, cartPK string) error {
 		TableName:              aws.String(r.client.ordersTable),
 		KeyConditionExpression: aws.String("PK = :pk"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":pk": &types.AttributeValueMemberS{Value: cartPK},
+			exprPK: &types.AttributeValueMemberS{Value: cartPK},
 		},
 		ProjectionExpression: aws.String("PK, SK"),
 	})

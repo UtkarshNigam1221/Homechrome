@@ -33,7 +33,7 @@ export default function CategoryCard({ category }: CategoryCardProps) {
         <h3 className="text-base font-semibold text-foreground group-hover:text-primary">
           {category.name}
         </h3>
-        <p className="mt-1 text-sm text-muted">
+        <p className="mt-1 text-sm text-muted-foreground">
           {category.product_count} {category.product_count === 1 ? 'product' : 'products'}
         </p>
       </div>

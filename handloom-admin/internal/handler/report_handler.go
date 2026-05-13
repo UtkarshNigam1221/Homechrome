@@ -146,7 +146,7 @@ func (h *ReportHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response.JSON(w, http.StatusOK, map[string]string{
-		"message": "Report deleted successfully",
+		response.KeyMessage: "Report deleted successfully",
 	})
 }
 

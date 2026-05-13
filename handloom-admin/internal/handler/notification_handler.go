@@ -151,7 +151,7 @@ func (h *NotificationHandler) MarkAsRead(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	response.JSON(w, http.StatusOK, map[string]string{"status": "read"})
+	response.JSON(w, http.StatusOK, map[string]string{response.KeyStatus: "read"})
 }
 
 // MarkAllAsRead marks all notifications for the current user as read
@@ -168,5 +168,5 @@ func (h *NotificationHandler) MarkAllAsRead(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	response.JSON(w, http.StatusOK, map[string]string{"status": "all read"})
+	response.JSON(w, http.StatusOK, map[string]string{response.KeyStatus: "all read"})
 }

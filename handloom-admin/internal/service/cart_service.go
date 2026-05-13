@@ -80,7 +80,7 @@ func (s *CartService) AddItem(ctx context.Context, cartOwner string, isGuest boo
 		return nil, err
 	}
 
-	slog.InfoContext(ctx, "Added item to cart", "product_id", req.ProductID, "cart_owner", cartOwner)
+	slog.InfoContext(ctx, "Added item to cart", keyProductID, req.ProductID, "cart_owner", cartOwner)
 
 	return s.recalculateAndGetCart(ctx, pk, cartOwner, isGuest)
 }
@@ -110,7 +110,7 @@ func (s *CartService) UpdateItemQuantity(ctx context.Context, cartOwner string, 
 		return nil, err
 	}
 
-	slog.InfoContext(ctx, "Updated item quantity", "product_id", productID, "quantity", quantity, "cart_owner", cartOwner)
+	slog.InfoContext(ctx, "Updated item quantity", keyProductID, productID, "quantity", quantity, "cart_owner", cartOwner)
 
 	return s.recalculateAndGetCart(ctx, pk, cartOwner, isGuest)
 }
@@ -122,7 +122,7 @@ func (s *CartService) RemoveItem(ctx context.Context, cartOwner string, isGuest 
 		return nil, err
 	}
 
-	slog.InfoContext(ctx, "Removed item from cart", "product_id", productID, "cart_owner", cartOwner)
+	slog.InfoContext(ctx, "Removed item from cart", keyProductID, productID, "cart_owner", cartOwner)
 
 	return s.recalculateAndGetCart(ctx, pk, cartOwner, isGuest)
 }
@@ -156,7 +156,7 @@ func (s *CartService) MergeGuestCart(ctx context.Context, customerID string, ite
 			continue
 		}
 		if _, err := s.AddItem(ctx, customerID, false, req); err != nil {
-			slog.WarnContext(ctx, "Failed to merge item", "product_id", req.ProductID, "error", err)
+			slog.WarnContext(ctx, "Failed to merge item", keyProductID, req.ProductID, "error", err)
 			continue
 		}
 	}
@@ -232,7 +232,7 @@ func (s *CartService) recalculateAndGetCart(ctx context.Context, pk, cartOwner s
 	}
 	header.ItemCount = len(cart.Items)
 	header.Subtotal = subtotal
-	header.Currency = "INR"
+	header.Currency = defaultCurrency
 	header.UpdatedAt = time.Now()
 	header.TTL = cartTTL()
 	header.EntityType = "CART"

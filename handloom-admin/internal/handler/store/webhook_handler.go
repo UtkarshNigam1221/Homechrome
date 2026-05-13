@@ -53,7 +53,7 @@ func (h *WebhookHandler) PhonePeWebhook(w http.ResponseWriter, r *http.Request) 
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		slog.ErrorContext(ctx, "failed to read PhonePe webhook body", "error", err)
-		response.JSON(w, http.StatusOK, map[string]string{"status": "error"})
+		response.JSON(w, http.StatusOK, map[string]string{response.KeyStatus: response.KeyError})
 		return
 	}
 	defer func() { _ = r.Body.Close() }()
@@ -63,7 +63,7 @@ func (h *WebhookHandler) PhonePeWebhook(w http.ResponseWriter, r *http.Request) 
 		authHeader := r.Header.Get("Authorization")
 		if !h.phonePe.VerifyWebhookSignature(h.webhookUsername, h.webhookPassword, authHeader) {
 			slog.ErrorContext(ctx, "Invalid PhonePe webhook signature")
-			response.JSON(w, http.StatusOK, map[string]string{"status": "error"})
+			response.JSON(w, http.StatusOK, map[string]string{response.KeyStatus: response.KeyError})
 			return
 		}
 	} else {
@@ -74,7 +74,7 @@ func (h *WebhookHandler) PhonePeWebhook(w http.ResponseWriter, r *http.Request) 
 	var webhookPayload phonepe.WebhookPayload
 	if err := json.Unmarshal(body, &webhookPayload); err != nil {
 		slog.ErrorContext(ctx, "Failed to parse PhonePe webhook payload", "error", err)
-		response.JSON(w, http.StatusOK, map[string]string{"status": "error"})
+		response.JSON(w, http.StatusOK, map[string]string{response.KeyStatus: response.KeyError})
 		return
 	}
 
@@ -112,11 +112,11 @@ func (h *WebhookHandler) PhonePeWebhook(w http.ResponseWriter, r *http.Request) 
 		slog.WarnContext(ctx, "Unhandled PhonePe webhook event", "event", webhookPayload.Event)
 	}
 
-	response.JSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	response.JSON(w, http.StatusOK, map[string]string{response.KeyStatus: "ok"})
 }
 
 // ShiprocketWebhook is a placeholder for Shiprocket shipping callbacks.
 // It acknowledges receipt and returns 200 OK.
 func (h *WebhookHandler) ShiprocketWebhook(w http.ResponseWriter, r *http.Request) {
-	response.JSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	response.JSON(w, http.StatusOK, map[string]string{response.KeyStatus: "ok"})
 }

@@ -118,7 +118,7 @@ func (h *PricingHandler) DeleteRule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response.Success(w, map[string]string{"message": "Pricing rule deleted successfully"})
+	response.Success(w, map[string]string{response.KeyMessage: "Pricing rule deleted successfully"})
 }
 
 // ListRules handles GET /admin/pricing/rules

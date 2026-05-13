@@ -21,8 +21,17 @@ import (
 const (
 	tokenTypeCustomer        = "customer"
 	tokenTypeCustomerRefresh = "customer_refresh"
+	tokenTypeRefresh         = "refresh"
 	otpMaxAttempts           = 3
 	otpCodeUpperBound        = 1000000
+
+	// JWT standard claim keys (RFC 7519).
+	claimSub  = "sub"
+	claimType = "type"
+	claimIat  = "iat"
+	claimExp  = "exp"
+	claimIss  = "iss"
+	claimJti  = "jti"
 )
 
 // CustomerAuthConfig holds JWT and token configuration for customer auth.
@@ -148,7 +157,7 @@ func (s *CustomerAuthService) RefreshToken(ctx context.Context, refreshToken str
 		return nil, nil, errors.New(errors.ErrCodeInvalidToken, "Invalid refresh token")
 	}
 
-	customerID, _ := claims["sub"].(string)
+	customerID, _ := claims[claimSub].(string)
 
 	oldHash := hashSHA256(refreshToken)
 	valid, err := s.tokenStore.ValidateToken(ctx, customerID, oldHash)
@@ -198,7 +207,7 @@ func (s *CustomerAuthService) ValidateCustomerToken(ctx context.Context, tokenSt
 		return nil, err
 	}
 
-	customerID, _ := claims["sub"].(string)
+	customerID, _ := claims[claimSub].(string)
 	phone, _ := claims["phone"].(string)
 	email, _ := claims["email"].(string)
 
@@ -268,7 +277,7 @@ func (s *CustomerAuthService) parseJWTClaims(tokenString, expectedType string) (
 		return nil, errors.New(errors.ErrCodeInvalidToken, "Invalid token claims")
 	}
 
-	tokenType, _ := claims["type"].(string)
+	tokenType, _ := claims[claimType].(string)
 	if tokenType != expectedType {
 		return nil, errors.New(errors.ErrCodeInvalidToken, "Invalid token type")
 	}
@@ -283,14 +292,14 @@ func (s *CustomerAuthService) generateTokenPair(customer *domain.Customer) (*dom
 	refreshExpiry := now.Add(s.config.RefreshTokenDuration)
 
 	accessClaims := jwt.MapClaims{
-		"sub":   customer.ID,
-		"phone": customer.Phone,
-		"email": customer.Email,
-		"type":  tokenTypeCustomer,
-		"iat":   now.Unix(),
-		"exp":   accessExpiry.Unix(),
-		"iss":   s.config.Issuer,
-		"jti":   uuid.New().String(),
+		claimSub:  customer.ID,
+		"phone":   customer.Phone,
+		"email":   customer.Email,
+		claimType: tokenTypeCustomer,
+		claimIat:  now.Unix(),
+		claimExp:  accessExpiry.Unix(),
+		claimIss:  s.config.Issuer,
+		claimJti:  uuid.New().String(),
 	}
 
 	accessTokenString, err := jwt.NewWithClaims(jwt.SigningMethodHS256, accessClaims).SignedString(s.jwtSecret)
@@ -299,12 +308,12 @@ func (s *CustomerAuthService) generateTokenPair(customer *domain.Customer) (*dom
 	}
 
 	refreshClaims := jwt.MapClaims{
-		"sub":  customer.ID,
-		"type": tokenTypeCustomerRefresh,
-		"iat":  now.Unix(),
-		"exp":  refreshExpiry.Unix(),
-		"iss":  s.config.Issuer,
-		"jti":  uuid.New().String(),
+		claimSub:  customer.ID,
+		claimType: tokenTypeCustomerRefresh,
+		claimIat:  now.Unix(),
+		claimExp:  refreshExpiry.Unix(),
+		claimIss:  s.config.Issuer,
+		claimJti:  uuid.New().String(),
 	}
 
 	refreshTokenString, err := jwt.NewWithClaims(jwt.SigningMethodHS256, refreshClaims).SignedString(s.jwtSecret)

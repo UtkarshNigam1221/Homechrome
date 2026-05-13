@@ -36,7 +36,7 @@ export default function OrderSummary({
                   sizes="64px"
                 />
               ) : (
-                <div className="flex h-full w-full items-center justify-center text-xs text-muted">
+                <div className="flex h-full w-full items-center justify-center text-xs text-muted-foreground">
                   No image
                 </div>
               )}
@@ -46,7 +46,7 @@ export default function OrderSummary({
                 <p className="text-sm font-medium text-foreground line-clamp-2">
                   {item.product_name}
                 </p>
-                <p className="text-xs text-muted">Qty: {item.quantity}</p>
+                <p className="text-xs text-muted-foreground">Qty: {item.quantity}</p>
               </div>
               <p className="text-sm font-medium text-foreground">
                 {formatPrice(item.total_price)}
@@ -58,11 +58,11 @@ export default function OrderSummary({
 
       <div className="space-y-2 border-t border-border pt-4">
         <div className="flex justify-between text-sm">
-          <span className="text-muted">Subtotal</span>
+          <span className="text-muted-foreground">Subtotal</span>
           <span className="text-foreground">{formatPrice(subtotal)}</span>
         </div>
         <div className="flex justify-between text-sm">
-          <span className="text-muted">Shipping</span>
+          <span className="text-muted-foreground">Shipping</span>
           <span className="text-foreground">
             {shippingCourier
               ? shippingCost === 0

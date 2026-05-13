@@ -13,7 +13,7 @@ export default function ProductGrid({ products }: ProductGridProps) {
       <div className="flex flex-col items-center justify-center py-16 text-center">
         <MagnifyingGlassIcon strokeWidth={1} className="h-16 w-16 text-muted/50" />
         <h3 className="mt-4 text-lg font-medium text-foreground">No products found</h3>
-        <p className="mt-2 text-sm text-muted">
+        <p className="mt-2 text-sm text-muted-foreground">
           Try adjusting your filters or browse our categories.
         </p>
       </div>

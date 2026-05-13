@@ -113,7 +113,7 @@ func (h *CustomerHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response.JSON(w, http.StatusOK, map[string]string{
-		"message": "Customer deleted successfully",
+		response.KeyMessage: "Customer deleted successfully",
 	})
 }
 

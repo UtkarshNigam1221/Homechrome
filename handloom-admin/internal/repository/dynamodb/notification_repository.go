@@ -57,7 +57,7 @@ func (r *NotificationRepository) GetByID(ctx context.Context, id string) (*domai
 		TableName: aws.String(r.client.notificationsTable),
 		Key: map[string]types.AttributeValue{
 			"PK": &types.AttributeValueMemberS{Value: "NOTIFICATION#" + id},
-			"SK": &types.AttributeValueMemberS{Value: "METADATA"},
+			"SK": &types.AttributeValueMemberS{Value: skMetadata},
 		},
 	})
 	if err != nil {

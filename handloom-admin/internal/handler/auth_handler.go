@@ -55,6 +55,7 @@ func (h *AuthHandler) Routes(authenticate func(http.Handler) http.Handler) chi.R
 func (h *AuthHandler) setAuthCookies(w http.ResponseWriter, tokens *domain.TokenPair) {
 	secure, sameSite, domain := cookieSettings()
 
+	//nolint:gosec // G124: Secure flag is environment-conditional, not omitted.
 	http.SetCookie(w, &http.Cookie{
 		Name:     "access_token",
 		Value:    tokens.AccessToken,
@@ -66,6 +67,7 @@ func (h *AuthHandler) setAuthCookies(w http.ResponseWriter, tokens *domain.Token
 		MaxAge:   int(15 * time.Minute / time.Second),
 	})
 
+	//nolint:gosec // G124: Secure flag is environment-conditional, not omitted.
 	http.SetCookie(w, &http.Cookie{
 		Name:     "refresh_token",
 		Value:    tokens.RefreshToken,
@@ -81,6 +83,7 @@ func (h *AuthHandler) setAuthCookies(w http.ResponseWriter, tokens *domain.Token
 func (h *AuthHandler) clearAuthCookies(w http.ResponseWriter) {
 	secure, sameSite, domain := cookieSettings()
 
+	//nolint:gosec // G124: Secure flag is environment-conditional, not omitted.
 	http.SetCookie(w, &http.Cookie{
 		Name:     "access_token",
 		Value:    "",
@@ -92,6 +95,7 @@ func (h *AuthHandler) clearAuthCookies(w http.ResponseWriter) {
 		MaxAge:   -1,
 	})
 
+	//nolint:gosec // G124: Secure flag is environment-conditional, not omitted.
 	http.SetCookie(w, &http.Cookie{
 		Name:     "refresh_token",
 		Value:    "",
@@ -156,7 +160,7 @@ func (h *AuthHandler) RefreshToken(w http.ResponseWriter, r *http.Request) {
 
 	h.setAuthCookies(w, tokens)
 
-	response.JSON(w, http.StatusOK, map[string]string{"message": "Token refreshed"})
+	response.JSON(w, http.StatusOK, map[string]string{response.KeyMessage: "Token refreshed"})
 }
 
 // Logout handles user logout
@@ -176,7 +180,7 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 
 	h.clearAuthCookies(w)
 
-	response.JSON(w, http.StatusOK, map[string]string{"message": "Logged out successfully"})
+	response.JSON(w, http.StatusOK, map[string]string{response.KeyMessage: "Logged out successfully"})
 }
 
 // GetCurrentUser returns the authenticated user's profile
@@ -215,7 +219,7 @@ func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response.JSON(w, http.StatusOK, map[string]string{"message": "Password changed successfully"})
+	response.JSON(w, http.StatusOK, map[string]string{response.KeyMessage: "Password changed successfully"})
 }
 
 // RequestPasswordReset handles password reset request
@@ -227,7 +231,7 @@ func (h *AuthHandler) RequestPasswordReset(w http.ResponseWriter, r *http.Reques
 	_ = h.authService.RequestPasswordReset(ctx, req.Email)
 
 	response.JSON(w, http.StatusOK, map[string]string{
-		"message": "If the email exists, a password reset link has been sent",
+		response.KeyMessage: "If the email exists, a password reset link has been sent",
 	})
 }
 
@@ -241,5 +245,5 @@ func (h *AuthHandler) ResetPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response.JSON(w, http.StatusOK, map[string]string{"message": "Password reset successfully"})
+	response.JSON(w, http.StatusOK, map[string]string{response.KeyMessage: "Password reset successfully"})
 }

@@ -75,7 +75,9 @@ func TestSMSClient_SendOTP_MSG91Error(t *testing.T) {
 	assert.Contains(t, err.Error(), "Invalid template")
 }
 
-func TestNewClient_DefaultBaseURL(t *testing.T) {
-	client := NewClient(Config{AuthKey: "key", OTPTemplateID: "tmpl"})
-	assert.Equal(t, "https://control.msg91.com", client.config.BaseURL)
+func TestNewClient_PreservesBaseURL(t *testing.T) {
+	// NewClient no longer applies a default; the caller (wire provider /
+	// config.Load) supplies MSG91_BASE_URL.
+	client := NewClient(Config{AuthKey: "key", OTPTemplateID: "tmpl", BaseURL: "https://example.test"})
+	assert.Equal(t, "https://example.test", client.config.BaseURL)
 }

@@ -94,7 +94,7 @@ func TestAssetService_GetUploadURL(t *testing.T) {
 			name: "valid document upload (pdf)",
 			req: domain.UploadAssetRequest{
 				FileName:    "report.pdf",
-				ContentType: "application/pdf",
+				ContentType: contentTypePDF,
 				Size:        5 << 20,
 				Type:        domain.AssetTypeDocument,
 			},
@@ -137,7 +137,7 @@ func TestAssetService_GetUploadURL(t *testing.T) {
 			name: "file too large - document > 10MB",
 			req: domain.UploadAssetRequest{
 				FileName:    "huge.pdf",
-				ContentType: "application/pdf",
+				ContentType: contentTypePDF,
 				Size:        maxDocumentSize + 1,
 				Type:        domain.AssetTypeDocument,
 			},
@@ -420,7 +420,7 @@ func TestHelpers_IsValidContentType(t *testing.T) {
 
 		// IMAGE — invalid
 		{"video/mp4 is not valid IMAGE", "video/mp4", domain.AssetTypeImage, false},
-		{"application/pdf is not valid IMAGE", "application/pdf", domain.AssetTypeImage, false},
+		{"application/pdf is not valid IMAGE", contentTypePDF, domain.AssetTypeImage, false},
 
 		// VIDEO — valid
 		{"video/mp4 is valid VIDEO", "video/mp4", domain.AssetTypeVideo, true},
@@ -428,10 +428,10 @@ func TestHelpers_IsValidContentType(t *testing.T) {
 
 		// VIDEO — invalid
 		{"image/jpeg is not valid VIDEO", "image/jpeg", domain.AssetTypeVideo, false},
-		{"application/pdf is not valid VIDEO", "application/pdf", domain.AssetTypeVideo, false},
+		{"application/pdf is not valid VIDEO", contentTypePDF, domain.AssetTypeVideo, false},
 
 		// DOCUMENT — valid
-		{"application/pdf is valid DOCUMENT", "application/pdf", domain.AssetTypeDocument, true},
+		{"application/pdf is valid DOCUMENT", contentTypePDF, domain.AssetTypeDocument, true},
 		{"application/msword is valid DOCUMENT", "application/msword", domain.AssetTypeDocument, true},
 		{"docx is valid DOCUMENT", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", domain.AssetTypeDocument, true},
 		{"application/vnd.ms-excel is valid DOCUMENT", "application/vnd.ms-excel", domain.AssetTypeDocument, true},

@@ -75,7 +75,7 @@ func (r *OrderRepository) GetByID(ctx context.Context, id string) (*domain.Order
 		TableName: aws.String(r.client.ordersTable),
 		Key: map[string]types.AttributeValue{
 			"PK": &types.AttributeValueMemberS{Value: "ORDER#" + id},
-			"SK": &types.AttributeValueMemberS{Value: "METADATA"},
+			"SK": &types.AttributeValueMemberS{Value: skMetadata},
 		},
 	})
 	if err != nil {
@@ -101,7 +101,7 @@ func (r *OrderRepository) GetByOrderNumber(ctx context.Context, orderNumber stri
 		TableName: aws.String(r.client.ordersTable),
 		Key: map[string]types.AttributeValue{
 			"PK": &types.AttributeValueMemberS{Value: "ORDER_NUMBER#" + orderNumber},
-			"SK": &types.AttributeValueMemberS{Value: "METADATA"},
+			"SK": &types.AttributeValueMemberS{Value: skMetadata},
 		},
 	})
 	if err != nil {
@@ -151,7 +151,7 @@ func (r *OrderRepository) List(ctx context.Context, req domain.ListOrdersRequest
 		IndexName:              aws.String("GSI2"),
 		KeyConditionExpression: aws.String("GSI2PK = :pk"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":pk": &types.AttributeValueMemberS{Value: "ORDER#ALL"},
+			exprPK: &types.AttributeValueMemberS{Value: "ORDER#ALL"},
 		},
 		ScanIndexForward: aws.Bool(false), // newest first
 	}
@@ -164,7 +164,7 @@ func (r *OrderRepository) List(ctx context.Context, req domain.ListOrdersRequest
 	if req.Status != nil {
 		filters = append(filters, "#status = :status")
 		input.ExpressionAttributeValues[":status"] = &types.AttributeValueMemberS{Value: string(*req.Status)}
-		exprAttrNames["#status"] = "status"
+		exprAttrNames["#status"] = attrStatus
 	}
 
 	if req.PaymentStatus != nil {
@@ -213,7 +213,7 @@ func (r *OrderRepository) GetByCustomer(ctx context.Context, customerID string, 
 		IndexName:              aws.String("GSI1"),
 		KeyConditionExpression: aws.String("GSI1PK = :pk"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":pk": &types.AttributeValueMemberS{Value: "CUSTOMER#" + customerID},
+			exprPK: &types.AttributeValueMemberS{Value: "CUSTOMER#" + customerID},
 		},
 		ScanIndexForward: aws.Bool(false),
 	})
@@ -242,15 +242,15 @@ func (r *OrderRepository) UpdateStatus(ctx context.Context, id string, status do
 		TableName: aws.String(r.client.ordersTable),
 		Key: map[string]types.AttributeValue{
 			"PK": &types.AttributeValueMemberS{Value: "ORDER#" + id},
-			"SK": &types.AttributeValueMemberS{Value: "METADATA"},
+			"SK": &types.AttributeValueMemberS{Value: skMetadata},
 		},
 		UpdateExpression: aws.String("SET #status = :status, updated_at = :now, updated_by = :by"),
 		ExpressionAttributeNames: map[string]string{
-			"#status": "status",
+			"#status": attrStatus,
 		},
 		ExpressionAttributeValues: map[string]types.AttributeValue{
 			":status": &types.AttributeValueMemberS{Value: string(status)},
-			":now":    &types.AttributeValueMemberS{Value: now.Format(time.RFC3339)},
+			exprNow:   &types.AttributeValueMemberS{Value: now.Format(time.RFC3339)},
 			":by":     &types.AttributeValueMemberS{Value: updatedBy},
 		},
 		ConditionExpression: aws.String("attribute_exists(PK)"),
@@ -278,13 +278,13 @@ func (r *OrderRepository) AddNote(ctx context.Context, id string, note domain.Or
 		TableName: aws.String(r.client.ordersTable),
 		Key: map[string]types.AttributeValue{
 			"PK": &types.AttributeValueMemberS{Value: "ORDER#" + id},
-			"SK": &types.AttributeValueMemberS{Value: "METADATA"},
+			"SK": &types.AttributeValueMemberS{Value: skMetadata},
 		},
 		UpdateExpression: aws.String("SET notes = list_append(if_not_exists(notes, :empty), :note), updated_at = :now"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
 			":note":  &types.AttributeValueMemberL{Value: []types.AttributeValue{&types.AttributeValueMemberM{Value: noteAV}}},
 			":empty": &types.AttributeValueMemberL{Value: []types.AttributeValue{}},
-			":now":   &types.AttributeValueMemberS{Value: now.Format(time.RFC3339)},
+			exprNow:  &types.AttributeValueMemberS{Value: now.Format(time.RFC3339)},
 		},
 		ConditionExpression: aws.String("attribute_exists(PK)"),
 	})
@@ -306,13 +306,13 @@ func (r *OrderRepository) UpdateTracking(ctx context.Context, id string, trackin
 		TableName: aws.String(r.client.ordersTable),
 		Key: map[string]types.AttributeValue{
 			"PK": &types.AttributeValueMemberS{Value: "ORDER#" + id},
-			"SK": &types.AttributeValueMemberS{Value: "METADATA"},
+			"SK": &types.AttributeValueMemberS{Value: skMetadata},
 		},
 		UpdateExpression: aws.String("SET tracking_number = :tracking, shipping_carrier = :carrier, updated_at = :now"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
 			":tracking": &types.AttributeValueMemberS{Value: trackingNumber},
 			":carrier":  &types.AttributeValueMemberS{Value: carrier},
-			":now":      &types.AttributeValueMemberS{Value: now.Format(time.RFC3339)},
+			exprNow:     &types.AttributeValueMemberS{Value: now.Format(time.RFC3339)},
 		},
 		ConditionExpression: aws.String("attribute_exists(PK)"),
 	})
@@ -387,7 +387,7 @@ func (r *CustomerRepository) GetByID(ctx context.Context, id string) (*domain.Cu
 		TableName: aws.String(r.client.ordersTable),
 		Key: map[string]types.AttributeValue{
 			"PK": &types.AttributeValueMemberS{Value: "CUSTOMER#" + id},
-			"SK": &types.AttributeValueMemberS{Value: "METADATA"},
+			"SK": &types.AttributeValueMemberS{Value: skMetadata},
 		},
 	})
 	if err != nil {
@@ -413,8 +413,8 @@ func (r *CustomerRepository) GetByEmail(ctx context.Context, email string) (*dom
 		IndexName:              aws.String("GSI1"),
 		KeyConditionExpression: aws.String("GSI1PK = :pk AND GSI1SK = :sk"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":pk": &types.AttributeValueMemberS{Value: "CUSTOMER_EMAIL"},
-			":sk": &types.AttributeValueMemberS{Value: email},
+			exprPK: &types.AttributeValueMemberS{Value: "CUSTOMER_EMAIL"},
+			exprSK: &types.AttributeValueMemberS{Value: email},
 		},
 		Limit: aws.Int32(1),
 	})
@@ -440,7 +440,7 @@ func (r *CustomerRepository) GetByPhone(ctx context.Context, phone string) (*dom
 		TableName: aws.String(r.client.ordersTable),
 		Key: map[string]types.AttributeValue{
 			"PK": &types.AttributeValueMemberS{Value: "CUSTOMER_PHONE#" + phone},
-			"SK": &types.AttributeValueMemberS{Value: "METADATA"},
+			"SK": &types.AttributeValueMemberS{Value: skMetadata},
 		},
 	})
 	if err != nil {
@@ -488,7 +488,7 @@ func (r *CustomerRepository) List(ctx context.Context, req domain.ListCustomersR
 		IndexName:              aws.String("GSI2"),
 		KeyConditionExpression: aws.String("GSI2PK = :pk"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":pk": &types.AttributeValueMemberS{Value: "CUSTOMER#ALL"},
+			exprPK: &types.AttributeValueMemberS{Value: "CUSTOMER#ALL"},
 		},
 		ScanIndexForward: aws.Bool(false),
 	}
@@ -522,7 +522,7 @@ func (r *CustomerRepository) Delete(ctx context.Context, id string) error {
 		TableName: aws.String(r.client.ordersTable),
 		Key: map[string]types.AttributeValue{
 			"PK": &types.AttributeValueMemberS{Value: "CUSTOMER#" + id},
-			"SK": &types.AttributeValueMemberS{Value: "METADATA"},
+			"SK": &types.AttributeValueMemberS{Value: skMetadata},
 		},
 		ConditionExpression: aws.String("attribute_exists(PK)"),
 	})

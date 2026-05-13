@@ -65,7 +65,10 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
   // Fetch full product detail to get attributes (list API may omit them)
   const { data: fullProduct } = useQuery({
     queryKey: ['product-detail', product?.id],
-    queryFn: () => productsApi.get(product!.id),
+    queryFn: () => {
+      if (!product?.id) throw new Error('product id required');
+      return productsApi.get(product.id);
+    },
     enabled: isOpen && !!product?.id,
   });
 

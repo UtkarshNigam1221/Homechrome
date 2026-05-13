@@ -89,8 +89,19 @@ jobs:
         run: make build-lambdas-active
 
       - name: CDK Deploy
+        env:
+          # Gateway credentials propagated to Lambda env via infra/stacks/api.go.
+          # AUTH_KEY = secret (sensitive). TEMPLATE_ID = vars (non-sensitive identifier).
+          MSG91_AUTH_KEY: ${{ secrets.MSG91_AUTH_KEY }}
+          MSG91_OTP_TEMPLATE_ID: ${{ vars.MSG91_OTP_TEMPLATE_ID }}
         run: |
+          # Stash step-env MSG91 values before sourcing .env.deploy, then
+          # restore so step env wins over any blanks in the env file.
+          _msg91_key="$MSG91_AUTH_KEY"
+          _msg91_tid="$MSG91_OTP_TEMPLATE_ID"
           set -a && . ./.env.deploy && set +a
+          export MSG91_AUTH_KEY="$_msg91_key"
+          export MSG91_OTP_TEMPLATE_ID="$_msg91_tid"
           cd infra && cdk deploy --all --require-approval never \
             -c environment=${{ inputs.environment }} \
             -c postgresDsn="${{ secrets.POSTGRES_DSN }}"

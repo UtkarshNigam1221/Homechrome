@@ -12,6 +12,7 @@ import (
 	"github.com/handloom/admin/internal/config"
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/internal/event"
+	eventhandlers "github.com/handloom/admin/internal/event/handlers"
 	"github.com/handloom/admin/internal/gateway/phonepe"
 	"github.com/handloom/admin/internal/gateway/shiprocket"
 	"github.com/handloom/admin/internal/gateway/sms"
@@ -44,9 +45,10 @@ func ProvidePostgresPool(ctx context.Context, cfg *config.Config) (*pgxpool.Pool
 	return postgres.NewPool(ctx, &cfg.Postgres)
 }
 
-// ProvideCatalogCache creates an in-process cache for catalog data
+// ProvideCatalogCache creates an in-process cache for catalog data.
+// TTL matches the documented 2-5 min freshness window for catalog data.
 func ProvideCatalogCache() *cache.Cache {
-	return cache.New(1*time.Hour, 2*time.Hour)
+	return cache.New(5*time.Minute, 10*time.Minute)
 }
 
 // CoreSet contains core providers used by all services
@@ -306,9 +308,9 @@ func ProvideAuditService(
 	return service.NewAuditService(auditRepo)
 }
 
-// ProvideEventPublisher creates an EventPublisher based on config.
-// Returns SNSPublisher when events are enabled (Lambda mode), NoopPublisher otherwise.
-// Monolith mode uses LocalPublisher wired manually in cmd/api/main.go.
+// ProvideEventPublisher creates an EventPublisher for Lambda mode.
+// Returns SNSPublisher when events are enabled, NoopPublisher otherwise.
+// Monolith mode uses ProvideLocalEventPublisher instead.
 func ProvideEventPublisher(ctx context.Context, cfg *config.Config) (event.EventPublisher, error) {
 	if cfg.Event.Enabled {
 		return event.NewSNSPublisher(ctx, cfg.Event.SNSTopicARN, cfg.AWS.Region, cfg.AWS.Endpoint)
@@ -316,7 +318,13 @@ func ProvideEventPublisher(ctx context.Context, cfg *config.Config) (event.Event
 	return event.NewNoopPublisher(), nil
 }
 
-// ServiceSet contains all service providers
+// LambdaPublisherSet provides the Lambda-mode event publisher (SNS or Noop).
+var LambdaPublisherSet = wire.NewSet(
+	ProvideEventPublisher,
+)
+
+// ServiceSet contains all service providers (publisher excluded — choose
+// LambdaPublisherSet or MonolithPublisherSet per injector).
 var ServiceSet = wire.NewSet(
 	ProvideAuthService,
 	ProvideUserService,
@@ -332,7 +340,6 @@ var ServiceSet = wire.NewSet(
 	ProvideAssetService,
 	ProvideReportService,
 	ProvideAuditService,
-	ProvideEventPublisher,
 	ProvideCartService,
 	ProvidePhonePeGateway,
 	ProvidePaymentService,
@@ -728,3 +735,82 @@ func ProvideOptionalCartAuth(
 ) *middleware.OptionalCartAuth {
 	return middleware.NewOptionalCartAuth(customerAuthService)
 }
+
+// Store-only providers that fill gaps in the admin RepositorySet/ServiceSet/
+// HandlerSet/MiddlewareSet so the monolith can wire admin + store in one graph.
+
+var StoreRepositorySet = wire.NewSet(
+	ProvideShipmentRepository,
+	ProvideOTPRepository,
+	ProvideCustomerTokenStore,
+)
+
+var StoreServiceSet = wire.NewSet(
+	ProvideCustomerAuthService,
+	ProvideShippingService,
+	ProvideCheckoutService,
+)
+
+var StoreHandlerSet = wire.NewSet(
+	ProvideStoreAuthHandler,
+	ProvideStoreCatalogHandler,
+	ProvideStoreCartHandler,
+	ProvideStoreCheckoutHandler,
+	ProvideStoreOrderHandler,
+	ProvideStoreTrackingHandler,
+	ProvideStoreProfileHandler,
+	ProvideStoreWebhookHandler,
+	ProvideStoreEventsHandler,
+)
+
+var StoreMiddlewareSet = wire.NewSet(
+	ProvideCustomerAuthMiddleware,
+	ProvideOptionalCartAuth,
+)
+
+func ProvideNotificationEventHandler() *eventhandlers.NotificationHandler {
+	return eventhandlers.NewNotificationHandler()
+}
+
+func ProvideReportEventHandler() *eventhandlers.ReportHandler {
+	return eventhandlers.NewReportHandler()
+}
+
+func ProvideAuditEventHandler() *eventhandlers.AuditHandler {
+	return eventhandlers.NewAuditHandler()
+}
+
+func ProvideAnalyticsAggregator(
+	eventsRepo domain.EventsRepository,
+	analyticsRepo domain.AnalyticsRepository,
+) *service.AnalyticsAggregator {
+	return service.NewAnalyticsAggregator(eventsRepo, analyticsRepo)
+}
+
+func ProvideAnalyticsEventHandler(
+	eventsRepo domain.EventsRepository,
+	analyticsRepo domain.AnalyticsRepository,
+	aggregator *service.AnalyticsAggregator,
+) *eventhandlers.AnalyticsHandler {
+	return eventhandlers.NewAnalyticsHandler(eventsRepo, analyticsRepo, aggregator)
+}
+
+// ProvideLocalEventPublisher dispatches events in-process (monolith dev mode).
+// Lambda mode uses ProvideEventPublisher instead.
+func ProvideLocalEventPublisher(
+	notif *eventhandlers.NotificationHandler,
+	report *eventhandlers.ReportHandler,
+	analytics *eventhandlers.AnalyticsHandler,
+	audit *eventhandlers.AuditHandler,
+) event.EventPublisher {
+	return event.NewLocalPublisher(notif, report, analytics, audit)
+}
+
+var MonolithPublisherSet = wire.NewSet(
+	ProvideNotificationEventHandler,
+	ProvideReportEventHandler,
+	ProvideAuditEventHandler,
+	ProvideAnalyticsAggregator,
+	ProvideAnalyticsEventHandler,
+	ProvideLocalEventPublisher,
+)
