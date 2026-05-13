@@ -15,10 +15,15 @@ import { SearchInput } from '@/components/ui/search-input';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useAuthStore } from '@/stores/auth';
 import { useCartStore } from '@/stores/cart';
+import { Category } from '@/types';
 
 const MobileNav = dynamic(() => import('./MobileNav'), { ssr: false });
 
-export default function Header() {
+interface HeaderProps {
+  categories: Category[];
+}
+
+export default function Header({ categories }: HeaderProps) {
   const router = useRouter();
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const customer = useAuthStore((s) => s.customer);
@@ -156,6 +161,7 @@ export default function Header() {
       <MobileNav
         isOpen={mobileMenuOpen}
         onClose={() => setMobileMenuOpen(false)}
+        categories={categories}
       />
     </>
   );

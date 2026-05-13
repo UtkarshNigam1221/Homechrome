@@ -2,7 +2,6 @@
 
 import Image from 'next/image';
 import Link from 'next/link';
-import { useQuery } from '@tanstack/react-query';
 
 import logo28 from '@/assets/logo-28.png';
 
@@ -15,28 +14,19 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet';
-import api from '@/lib/api';
-import { ROUTES } from '@/lib/routes';
 import { useAuthStore } from '@/stores/auth';
 import { Category } from '@/types';
 
 interface MobileNavProps {
   isOpen: boolean;
   onClose: () => void;
+  categories: Category[];
 }
 
-export default function MobileNav({ isOpen, onClose }: MobileNavProps) {
+export default function MobileNav({ isOpen, onClose, categories }: MobileNavProps) {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const customer = useAuthStore((s) => s.customer);
   const logout = useAuthStore((s) => s.logout);
-
-  const { data: categories = [] } = useQuery<Category[]>({
-    queryKey: ['categories'],
-    queryFn: async () => {
-      const { data } = await api.get<Category[]>(ROUTES.CATALOG.CATEGORIES);
-      return data;
-    },
-  });
 
   return (
     <Sheet

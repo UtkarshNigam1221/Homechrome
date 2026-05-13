@@ -211,8 +211,8 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 		Description: jsii.String("Handloom Admin API - CORS via Lambda"),
 		DeployOptions: &awsapigateway.StageOptions{
 			StageName:            jsii.String(props.Environment),
-			ThrottlingRateLimit:  jsii.Number(50),                      // Lower throttle for cost control
-			ThrottlingBurstLimit: jsii.Number(100),                     // Lower burst for cost control
+			ThrottlingRateLimit:  jsii.Number(500),                     // Accommodates SSR fan-out from storefront Server Lambda
+			ThrottlingBurstLimit: jsii.Number(1000),                    // Burst headroom for parallel SSR fetches
 			LoggingLevel:         awsapigateway.MethodLoggingLevel_OFF, // Disable logging (CloudWatchRole is false)
 			MetricsEnabled:       jsii.Bool(false),                     // Disable detailed metrics to save costs
 			TracingEnabled:       jsii.Bool(false),                     // Disable X-Ray tracing (not free)
