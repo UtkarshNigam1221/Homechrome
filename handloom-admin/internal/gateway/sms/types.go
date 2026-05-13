@@ -15,8 +15,8 @@ type SMSGateway interface {
 // otpFlowRequest is the MSG91 Flow API request body for OTP send.
 // Maps to POST /api/v5/flow/.
 type otpFlowRequest struct {
-	TemplateID string            `json:"template_id"`
-	ShortURL   string            `json:"short_url"`
+	TemplateID string             `json:"template_id"`
+	ShortURL   string             `json:"short_url"`
 	Recipients []otpFlowRecipient `json:"recipients"`
 }
 
