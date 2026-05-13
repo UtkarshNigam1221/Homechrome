@@ -32,7 +32,9 @@ const getProduct = cache(async function getProduct(slug: string): Promise<Produc
 
 export async function generateStaticParams() {
   try {
-    const res = await fetch(`${API_BASE}${ROUTES.CATALOG.PRODUCTS}`);
+    const res = await fetch(`${API_BASE}${ROUTES.CATALOG.PRODUCTS}`, {
+      next: { revalidate: 3600 },
+    });
     if (!res.ok) return [];
     const json = await res.json();
     return (json.data || []).map((p: Product) => ({ slug: p.slug }));

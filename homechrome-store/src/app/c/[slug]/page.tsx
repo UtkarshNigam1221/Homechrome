@@ -42,7 +42,9 @@ const getCategoryProducts = cache(async function getCategoryProducts(categoryId:
 
 export async function generateStaticParams() {
   try {
-    const res = await fetch(`${API_BASE}${ROUTES.CATALOG.CATEGORIES}`);
+    const res = await fetch(`${API_BASE}${ROUTES.CATALOG.CATEGORIES}`, {
+      next: { revalidate: 3600 },
+    });
     if (!res.ok) return [];
     const json = await res.json();
     return (json.data || []).map((c: Category) => ({ slug: c.slug }));
