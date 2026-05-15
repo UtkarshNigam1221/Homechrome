@@ -2,12 +2,14 @@
 package handler
 
 import (
+	"encoding/json"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/internal/middleware"
+	"github.com/handloom/admin/pkg/errors"
 	"github.com/handloom/admin/pkg/response"
 )
 
@@ -15,14 +17,21 @@ import (
 type OrderHandler struct {
 	orderService   domain.OrderService
 	paymentService domain.PaymentService
+	returnService  domain.ReturnService
 	validation     *middleware.Validation
 }
 
 // NewOrderHandler creates a new OrderHandler
-func NewOrderHandler(orderService domain.OrderService, paymentService domain.PaymentService, validation *middleware.Validation) *OrderHandler {
+func NewOrderHandler(
+	orderService domain.OrderService,
+	paymentService domain.PaymentService,
+	returnService domain.ReturnService,
+	validation *middleware.Validation,
+) *OrderHandler {
 	return &OrderHandler{
 		orderService:   orderService,
 		paymentService: paymentService,
+		returnService:  returnService,
 		validation:     validation,
 	}
 }
@@ -41,6 +50,19 @@ func (h *OrderHandler) Routes() chi.Router {
 	r.With(middleware.ValidateJSONTyped[CancelOrderRequest](h.validation)).Post("/{id}/cancel", h.Cancel)
 	r.With(middleware.ValidateJSONTyped[RefundOrderRequest](h.validation)).Post("/{id}/refund", h.Refund)
 
+	// Return endpoints scoped to an order
+	r.Post("/{id}/returns", h.createReturn)
+	r.Get("/{id}/returns", h.listOrderReturns)
+
+	return r
+}
+
+// ReturnRoutes returns admin routes for managing existing returns. Mounted
+// separately because the path is /returns/{id}/... not /orders/{id}/...
+func (h *OrderHandler) ReturnRoutes() chi.Router {
+	r := chi.NewRouter()
+	r.Patch("/{id}/cancel", h.cancelReturn)
+	r.Post("/{id}/refund", h.processRefund)
 	return r
 }
 
@@ -197,4 +219,69 @@ func (h *OrderHandler) Refund(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response.JSON(w, http.StatusOK, map[string]string{response.KeyMessage: "Refund initiated successfully"})
+}
+
+// createReturn creates an admin-initiated customer return for the order.
+func (h *OrderHandler) createReturn(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	orderID := chi.URLParam(r, "id")
+	var body struct {
+		Items  []domain.ReturnItem `json:"items"`
+		Reason string              `json:"reason"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		response.Error(w, errors.BadRequest("Invalid JSON"))
+		return
+	}
+	adminID := getUserIDFromContext(ctx)
+	rr, err := h.returnService.Create(ctx, orderID, domain.CreateReturnRequest{
+		Items:  body.Items,
+		Reason: body.Reason,
+	}, adminID)
+	if err != nil {
+		response.Error(w, err)
+		return
+	}
+	response.Success(w, rr)
+}
+
+// listOrderReturns lists returns associated with an order.
+// TODO(phase-3): wire to ReturnRepository.ListByOrder when exposed via a service method.
+func (h *OrderHandler) listOrderReturns(w http.ResponseWriter, _ *http.Request) {
+	response.Error(w, errors.NotImplemented("Return listing wired in Phase 3"))
+}
+
+// cancelReturn cancels an in-flight return request.
+func (h *OrderHandler) cancelReturn(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	id := chi.URLParam(r, "id")
+	adminID := getUserIDFromContext(ctx)
+	if err := h.returnService.Cancel(ctx, id, adminID); err != nil {
+		response.Error(w, err)
+		return
+	}
+	response.Success(w, map[string]any{"status": "cancelled"})
+}
+
+// processRefund finalizes a refund for a completed return.
+func (h *OrderHandler) processRefund(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	id := chi.URLParam(r, "id")
+	var body struct {
+		AmountPaise int64 `json:"amount_paise"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		response.Error(w, errors.BadRequest("Invalid JSON"))
+		return
+	}
+	if body.AmountPaise <= 0 {
+		response.Error(w, errors.BadRequest("Refund amount must be positive"))
+		return
+	}
+	adminID := getUserIDFromContext(ctx)
+	if err := h.returnService.ProcessRefund(ctx, id, body.AmountPaise, adminID); err != nil {
+		response.Error(w, err)
+		return
+	}
+	response.Success(w, map[string]any{"status": "refunded"})
 }

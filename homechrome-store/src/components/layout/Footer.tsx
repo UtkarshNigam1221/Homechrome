@@ -72,6 +72,14 @@ export default function Footer() {
                   My Account
                 </Link>
               </li>
+              <li>
+                <Link
+                  href="/return-policy"
+                  className="text-sm text-muted-foreground transition-colors hover:text-primary"
+                >
+                  Return Policy
+                </Link>
+              </li>
             </ul>
           </div>
         </div>

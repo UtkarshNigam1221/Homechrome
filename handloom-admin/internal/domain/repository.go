@@ -276,3 +276,33 @@ type EventsRepository interface {
 	// QueryByDate retrieves all events for a given date (YYYY-MM-DD)
 	QueryByDate(ctx context.Context, date string) ([]StoreEvent, error)
 }
+
+// ShippingRateRepository persists rate matrix rows.
+type ShippingRateRepository interface {
+	Get(ctx context.Context, zone string, weightSlabGrams int) (*ShippingRate, error)
+	Upsert(ctx context.Context, rate *ShippingRate) error
+	BatchUpsert(ctx context.Context, rates []*ShippingRate) error
+	ListAll(ctx context.Context) ([]*ShippingRate, error)
+}
+
+// PincodeRepository caches pincode → zone lookups.
+type PincodeRepository interface {
+	Get(ctx context.Context, pincode string) (*PincodeZone, error)
+	Upsert(ctx context.Context, pz *PincodeZone) error
+}
+
+// CODRemittanceRepository persists daily COD payouts and reconciliation status.
+type CODRemittanceRepository interface {
+	Get(ctx context.Context, remittanceRef string) (*CODRemittance, error)
+	Upsert(ctx context.Context, r *CODRemittance) error
+	ListByStatus(ctx context.Context, status CODRemittanceStatus, limit int) ([]*CODRemittance, error)
+}
+
+// ReturnRepository persists customer return requests, colocated with orders.
+type ReturnRepository interface {
+	Create(ctx context.Context, rr *ReturnRequest) error
+	GetByID(ctx context.Context, orderID, returnID string) (*ReturnRequest, error)
+	UpdateStatus(ctx context.Context, orderID, returnID string, status ReturnStatus, updates map[string]interface{}) error
+	ListByOrder(ctx context.Context, orderID string) ([]*ReturnRequest, error)
+	ListByStatus(ctx context.Context, status ReturnStatus, limit int, cursor string) ([]*ReturnRequest, string, error)
+}

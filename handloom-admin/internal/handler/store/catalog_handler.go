@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -18,11 +19,17 @@ import (
 	"github.com/handloom/admin/pkg/response"
 )
 
+// validIndianPincode matches a 6-digit Indian pincode (first digit 1-9).
+// TODO: add rate limiting on the check-pincode endpoint so the carrier API
+// cannot be exhausted by enumeration; needs middleware wiring.
+var validIndianPincode = regexp.MustCompile(`^[1-9][0-9]{5}$`)
+
 // CatalogHandler handles public storefront catalog requests.
 type CatalogHandler struct {
 	productService   domain.ProductService
 	categoryService  domain.CategoryService
 	inventoryService domain.InventoryService
+	shippingService  domain.ShippingService
 }
 
 // NewCatalogHandler creates a new CatalogHandler.
@@ -30,11 +37,13 @@ func NewCatalogHandler(
 	ps domain.ProductService,
 	cs domain.CategoryService,
 	is domain.InventoryService,
+	ss domain.ShippingService,
 ) *CatalogHandler {
 	return &CatalogHandler{
 		productService:   ps,
 		categoryService:  cs,
 		inventoryService: is,
+		shippingService:  ss,
 	}
 }
 
@@ -49,8 +58,26 @@ func (h *CatalogHandler) Routes() chi.Router {
 	r.Get("/products/{idOrSlug}", h.GetProduct)
 	r.Get("/products/filter-options/{categoryId}", h.GetFilterOptions)
 	r.Get("/products/{id}/availability", h.CheckAvailability)
+	r.Get("/check-pincode/{pin}", h.checkPincode)
 
 	return r
+}
+
+// checkPincode handles GET /store/catalog/check-pincode/{pin}. It returns
+// whether the supplied 6-digit Indian pincode is serviceable for the default
+// parcel weight.
+func (h *CatalogHandler) checkPincode(w http.ResponseWriter, r *http.Request) {
+	pin := chi.URLParam(r, "pin")
+	if !validIndianPincode.MatchString(pin) {
+		response.Error(w, errors.BadRequest("Invalid pincode"))
+		return
+	}
+	res, err := h.shippingService.CheckServiceability(r.Context(), pin, 500)
+	if err != nil {
+		response.Error(w, err)
+		return
+	}
+	response.Success(w, res)
 }
 
 // Package-level active status pointers used by every handler to restrict

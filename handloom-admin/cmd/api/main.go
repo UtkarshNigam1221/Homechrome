@@ -163,6 +163,8 @@ func createRouter(d *wire.MonolithDeps) *chi.Mux {
 			r.Mount("/analytics", analyticsRoutes(d.AnalyticsHandler))
 			r.Mount("/assets", d.AssetHandler.Routes())
 			r.Mount("/reports", d.ReportHandler.Routes())
+			r.Mount("/shipping", d.ShippingAdminHandler.Routes())
+			r.Mount("/returns", d.OrderHandler.ReturnRoutes())
 		})
 	})
 

@@ -2,6 +2,7 @@ package dynamodb
 
 import (
 	"context"
+	"math"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -78,8 +79,46 @@ func (r *ShipmentRepository) GetByOrderID(ctx context.Context, orderID string) (
 	return &shipment, nil
 }
 
-// UpdateStatus updates the status of a shipment with additional dynamic fields
-func (r *ShipmentRepository) UpdateStatus(ctx context.Context, orderID, shipmentID string, status domain.ShipmentStatus, updates map[string]interface{}) error {
+// GetByAWB looks up a shipment by AWB number via the awb-index GSI.
+func (r *ShipmentRepository) GetByAWB(ctx context.Context, awb string) (*domain.Shipment, error) {
+	out, err := r.client.db.Query(ctx, &dynamodb.QueryInput{
+		TableName:              aws.String(r.client.ordersTable),
+		IndexName:              aws.String("awb-index"),
+		KeyConditionExpression: aws.String("awb_number = :awb"),
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":awb": &types.AttributeValueMemberS{Value: awb},
+		},
+		Limit: aws.Int32(1),
+	})
+	if err != nil {
+		return nil, errors.Wrap(err, "Failed to query shipment by AWB")
+	}
+	if len(out.Items) == 0 {
+		return nil, errors.NotFound("Shipment not found by AWB")
+	}
+	var s domain.Shipment
+	if err := attributevalue.UnmarshalMap(out.Items[0], &s); err != nil {
+		return nil, errors.Wrap(err, "Failed to unmarshal shipment")
+	}
+	return &s, nil
+}
+
+// UpdateStatus updates the status of a shipment with additional dynamic fields.
+// The caller passes the shipment's current priority so that priority_status
+// (the priority-status-index GSI key) can be recomputed and written atomically
+// in a single UpdateItem — avoiding a stale-read race on the GSI partition key.
+func (r *ShipmentRepository) UpdateStatus(
+	ctx context.Context,
+	orderID, shipmentID string,
+	priority domain.ShipmentPriority,
+	status domain.ShipmentStatus,
+	updates map[string]interface{},
+) error {
+	if updates == nil {
+		updates = map[string]interface{}{}
+	}
+	updates["priority_status"] = string(priority) + "#" + string(status)
+
 	du, err := buildDynamicUpdate(string(status), updates)
 	if err != nil {
 		return err
@@ -104,6 +143,38 @@ func (r *ShipmentRepository) UpdateStatus(ctx context.Context, orderID, shipment
 	}
 
 	return nil
+}
+
+// QueryByPriorityStatus queries shipments via the priority-status GSI.
+func (r *ShipmentRepository) QueryByPriorityStatus(ctx context.Context, priority domain.ShipmentPriority, status domain.ShipmentStatus, limit int) ([]*domain.Shipment, error) {
+	if limit < 0 {
+		limit = 0
+	}
+	if limit > math.MaxInt32 {
+		limit = math.MaxInt32
+	}
+	key := string(priority) + "#" + string(status)
+	out, err := r.client.db.Query(ctx, &dynamodb.QueryInput{
+		TableName:              aws.String(r.client.ordersTable),
+		IndexName:              aws.String("priority-status-index"),
+		KeyConditionExpression: aws.String("priority_status = :ps"),
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":ps": &types.AttributeValueMemberS{Value: key},
+		},
+		Limit: aws.Int32(int32(limit)), //nolint:gosec // bounded above
+	})
+	if err != nil {
+		return nil, errors.Wrap(err, "Failed to query shipments by priority/status")
+	}
+	shipments := make([]*domain.Shipment, 0, len(out.Items))
+	for _, item := range out.Items {
+		var s domain.Shipment
+		if err := attributevalue.UnmarshalMap(item, &s); err != nil {
+			continue
+		}
+		shipments = append(shipments, &s)
+	}
+	return shipments, nil
 }
 
 // Ensure interface compliance

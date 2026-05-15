@@ -55,6 +55,9 @@ const (
 	// Inventory errors
 	ErrCodeInsufficientStock ErrorCode = "INSUFFICIENT_STOCK"
 	ErrCodeInventoryNotFound ErrorCode = "INVENTORY_NOT_FOUND"
+
+	// Generic
+	ErrCodeNotImplemented ErrorCode = "NOT_IMPLEMENTED"
 )
 
 // AppError represents an application error
@@ -151,6 +154,11 @@ func Forbidden(message string) *AppError {
 	return New(ErrCodeForbidden, message)
 }
 
+// NotImplemented creates a not implemented error
+func NotImplemented(message string) *AppError {
+	return New(ErrCodeNotImplemented, message)
+}
+
 // Internal creates an internal error wrapping another error or with a message
 func Internal(v interface{}) *AppError {
 	switch e := v.(type) {
@@ -200,6 +208,8 @@ func codeToHTTPStatus(code ErrorCode) int {
 		ErrCodeProductHasOrders, ErrCodeRuleIsDefault, ErrCodeDimensionOutOfRange,
 		ErrCodeMinOrderValue, ErrCodeQuoteExpired, ErrCodeInsufficientStock, ErrCodeHasDependencies:
 		return http.StatusBadRequest
+	case ErrCodeNotImplemented:
+		return http.StatusNotImplemented
 	default:
 		return http.StatusInternalServerError
 	}

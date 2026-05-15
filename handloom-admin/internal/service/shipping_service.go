@@ -1,305 +1,271 @@
+// Package service implements the business logic layer
 package service
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 	"log/slog"
-	"math"
-	"strconv"
+	"net/http"
 	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/handloom/admin/internal/domain"
-	"github.com/handloom/admin/internal/gateway/shiprocket"
+	"github.com/handloom/admin/internal/event"
+	"github.com/handloom/admin/internal/gateway/courier"
 	"github.com/handloom/admin/pkg/errors"
 )
 
-// ShippingService implements domain.ShippingService
+// ShippingService implements domain.ShippingService backed by a courier.Gateway.
 type ShippingService struct {
-	shipmentRepo  domain.ShipmentRepository
-	orderRepo     domain.OrderRepository
-	shiprocket    shiprocket.Gateway
-	pickupPincode string
+	shipmentRepo   domain.ShipmentRepository
+	orderRepo      domain.OrderRepository
+	pincodeRepo    domain.PincodeRepository
+	courier        courier.Gateway
+	publisher      event.EventPublisher
+	returnService  domain.ReturnService
+	pickupLocation string
 }
 
-// NewShippingService creates a new ShippingService
+// NewShippingService creates a new ShippingService.
 func NewShippingService(
 	shipmentRepo domain.ShipmentRepository,
 	orderRepo domain.OrderRepository,
-	shiprocketClient shiprocket.Gateway,
-	pickupPincode string,
+	pincodeRepo domain.PincodeRepository,
+	gw courier.Gateway,
+	publisher event.EventPublisher,
+	returnService domain.ReturnService,
+	pickupLocation string,
 ) *ShippingService {
 	return &ShippingService{
-		shipmentRepo:  shipmentRepo,
-		orderRepo:     orderRepo,
-		shiprocket:    shiprocketClient,
-		pickupPincode: pickupPincode,
+		shipmentRepo:   shipmentRepo,
+		orderRepo:      orderRepo,
+		pincodeRepo:    pincodeRepo,
+		courier:        gw,
+		publisher:      publisher,
+		returnService:  returnService,
+		pickupLocation: pickupLocation,
 	}
 }
 
-// CheckServiceability checks courier availability for a given route
-func (s *ShippingService) CheckServiceability(ctx context.Context, pickupPincode, deliveryPincode string, weightGrams int) (*domain.ServiceabilityResult, error) {
-	// Convert grams to kilograms for Shiprocket API
-	weightKG := float64(weightGrams) / 1000.0
-
-	resp, err := s.shiprocket.CheckServiceability(ctx, pickupPincode, deliveryPincode, weightKG)
-	if err != nil {
-		slog.ErrorContext(ctx, "Failed to check serviceability", "pickup_pincode", pickupPincode, "delivery_pincode", deliveryPincode, "error", err)
-		return nil, errors.Wrap(err, "Failed to check shipping serviceability")
+// CheckServiceability checks delivery serviceability for a pincode, caching
+// results in the pincode repository for 7 days.
+func (s *ShippingService) CheckServiceability(ctx context.Context, pincode string, _ int) (*domain.ServiceabilityResult, error) {
+	pz, err := s.pincodeRepo.Get(ctx, pincode)
+	needFetch := err != nil || pz == nil || time.Since(pz.RefreshedAt) > 7*24*time.Hour
+	if needFetch {
+		info, fetchErr := s.courier.CheckPincode(ctx, pincode)
+		if fetchErr != nil {
+			return nil, errors.Wrap(fetchErr, "Failed to check pincode")
+		}
+		pz = &domain.PincodeZone{
+			Pincode:          info.Pincode,
+			Zone:             info.Zone,
+			City:             info.City,
+			State:            info.State,
+			Serviceable:      info.Serviceable,
+			CODAvailable:     info.CODAvailable,
+			PrepaidAvailable: info.PrepaidAvailable,
+			RefreshedAt:      time.Now().UTC(),
+			TTL:              time.Now().Add(7 * 24 * time.Hour).Unix(),
+		}
+		if upErr := s.pincodeRepo.Upsert(ctx, pz); upErr != nil {
+			slog.WarnContext(ctx, "Failed to cache pincode", "error", upErr)
+		}
 	}
-
-	couriers := resp.Data.AvailableCourierCompanies
-	if len(couriers) == 0 {
-		return &domain.ServiceabilityResult{
-			Serviceable: false,
-			Couriers:    nil,
-		}, nil
-	}
-
-	courierOptions := make([]domain.CourierOption, 0, len(couriers))
-	for _, c := range couriers {
-		courierOptions = append(courierOptions, domain.CourierOption{
-			ID:            c.CourierCompanyID,
-			Name:          c.CourierName,
-			Rate:          int64(math.Round(c.Rate * 100)), // convert rupees to paise
-			EstimatedDays: c.EstimatedDays,
-		})
-	}
-
 	return &domain.ServiceabilityResult{
-		Serviceable: true,
-		Couriers:    courierOptions,
+		Serviceable: pz.Serviceable,
+		Couriers: []domain.CourierOption{{
+			ID:            0,
+			Name:          "Delhivery",
+			Rate:          0,
+			EstimatedDays: 4,
+		}},
 	}, nil
 }
 
-// CreateShipment creates a shipment for an order via Shiprocket
-func (s *ShippingService) CreateShipment(ctx context.Context, order *domain.Order) (*domain.Shipment, error) {
+// isTerminalStatus reports whether a shipment status will not change again.
+func isTerminalStatus(s domain.ShipmentStatus) bool {
+	switch s {
+	case domain.ShipmentStatusDelivered, domain.ShipmentStatusRTO, domain.ShipmentStatusReturned:
+		return true
+	}
+	return false
+}
+
+// CreateShipment creates a forward shipment via the courier gateway and
+// persists the resulting shipment record.
+func (s *ShippingService) CreateShipment(ctx context.Context, order *domain.Order, priority domain.ShipmentPriority) (*domain.Shipment, error) {
 	if order.ShippingAddress == nil {
 		return nil, errors.Validation("Order has no shipping address")
 	}
-
-	// Build Shiprocket order items
-	srItems := make([]shiprocket.OrderItem, 0, len(order.Items))
-	for _, item := range order.Items {
-		srItems = append(srItems, shiprocket.OrderItem{
-			Name:         item.ProductName,
-			SKU:          item.ProductSKU,
-			Units:        item.Quantity,
-			SellingPrice: float64(item.UnitPrice) / 100.0, // paise to rupees
+	items := make([]courier.ShipmentItem, 0, len(order.Items))
+	for _, it := range order.Items {
+		items = append(items, courier.ShipmentItem{
+			Name:      it.ProductName,
+			SKU:       it.ProductSKU,
+			Quantity:  it.Quantity,
+			UnitPaise: it.UnitPrice,
 		})
 	}
-
-	// Determine payment method
-	paymentMethod := "Prepaid"
-	if order.PaymentMethod == "COD" {
-		paymentMethod = "COD"
-	}
-
-	// Calculate total weight in kg (default to 0.5 kg if not available)
-	weightKG := 0.5
-
-	// Build the Shiprocket create order request
 	addr := order.ShippingAddress
-	createReq := &shiprocket.CreateOrderRequest{
-		OrderID:           order.ID,
-		OrderDate:         order.CreatedAt.Format("2006-01-02 15:04"),
-		PickupLocation:    "Primary",
-		BillingCustomer:   addr.FirstName,
-		BillingLastName:   addr.LastName,
-		BillingAddress:    addr.AddressLine1,
-		BillingCity:       addr.City,
-		BillingPincode:    addr.PostalCode,
-		BillingState:      addr.State,
-		BillingCountry:    addr.Country,
-		BillingEmail:      order.CustomerEmail,
-		BillingPhone:      addr.Phone,
-		ShippingIsBilling: true,
-		OrderItems:        srItems,
-		PaymentMethod:     paymentMethod,
-		SubTotal:          float64(order.Subtotal) / 100.0, // paise to rupees
-		Length:            30,
-		Breadth:           25,
-		Height:            5,
-		Weight:            weightKG,
+	mode := courier.PaymentPrepaid
+	codAmt := int64(0)
+	if order.PaymentMethod == "COD" {
+		mode = courier.PaymentCOD
+		codAmt = order.TotalAmount
 	}
-
-	// Create order in Shiprocket
-	createResp, err := s.shiprocket.CreateOrder(ctx, createReq)
+	req := &courier.CreateShipmentRequest{
+		OrderID:        order.ID,
+		PickupLocation: s.pickupLocation,
+		Customer: courier.Address{
+			FirstName:    addr.FirstName,
+			LastName:     addr.LastName,
+			Phone:        addr.Phone,
+			Email:        order.CustomerEmail,
+			AddressLine1: addr.AddressLine1,
+			AddressLine2: addr.AddressLine2,
+			City:         addr.City,
+			State:        addr.State,
+			Pincode:      addr.PostalCode,
+			Country:      addr.Country,
+		},
+		Items:              items,
+		PaymentMode:        mode,
+		CODAmountPaise:     codAmt,
+		WeightGrams:        500,
+		LengthCm:           30,
+		BreadthCm:          25,
+		HeightCm:           5,
+		DeclaredValuePaise: order.Subtotal,
+	}
+	res, err := s.courier.CreateShipment(ctx, req)
 	if err != nil {
-		slog.ErrorContext(ctx, "Failed to create Shiprocket order", "order_id", order.ID, "error", err)
-		return nil, errors.Wrap(err, "Failed to create shipping order")
+		return nil, errors.Wrap(err, "Failed to create shipment")
 	}
-
-	// Assign AWB (use first available courier)
-	awbResp, err := s.shiprocket.AssignAWB(ctx, createResp.ShipmentID, 0)
-	if err != nil {
-		slog.ErrorContext(ctx, "Failed to assign AWB", "shipment_id", createResp.ShipmentID, "error", err)
-		return nil, errors.Wrap(err, "Failed to assign AWB number")
+	label, lerr := s.courier.GenerateLabel(ctx, res.AWB)
+	if lerr != nil {
+		slog.WarnContext(ctx, "Failed to fetch label", "error", lerr)
 	}
-
-	// Generate shipping label
-	labelURL, err := s.shiprocket.GenerateLabel(ctx, createResp.ShipmentID)
-	if err != nil {
-		slog.ErrorContext(ctx, "Failed to generate label", "shipment_id", createResp.ShipmentID, "error", err)
-		return nil, errors.Wrap(err, "Failed to generate shipping label")
-	}
-
-	// Create domain shipment
-	now := time.Now()
-	shipment := &domain.Shipment{
+	now := time.Now().UTC()
+	sh := &domain.Shipment{
 		ID:                 uuid.New().String(),
 		OrderID:            order.ID,
-		Provider:           "shiprocket",
-		ProviderOrderID:    strconv.Itoa(createResp.OrderID),
-		ProviderShipmentID: strconv.Itoa(createResp.ShipmentID),
-		AWBNumber:          awbResp.Response.Data.AWBCode,
-		CourierName:        awbResp.Response.Data.CourierName,
+		Provider:           "delhivery",
+		ProviderShipmentID: res.CarrierShipmentID,
+		AWBNumber:          res.AWB,
+		CourierName:        "Delhivery",
 		Status:             domain.ShipmentStatusCreated,
-		LabelURL:           labelURL,
-		WeightGrams:        int(weightKG * 1000),
+		Priority:           priority,
+		PickupLocation:     s.pickupLocation,
+		LabelURL:           label,
+		WeightGrams:        req.WeightGrams,
+		IsCOD:              mode == courier.PaymentCOD,
+		CODAmountPaise:     codAmt,
 		ShippedAt:          &now,
 	}
-
-	// Save shipment to repository
-	if err := s.shipmentRepo.Create(ctx, shipment); err != nil {
-		slog.ErrorContext(ctx, "Failed to save shipment", "order_id", order.ID, "error", err)
+	if err := s.shipmentRepo.Create(ctx, sh); err != nil {
 		return nil, errors.Wrap(err, "Failed to save shipment")
 	}
-
-	// Update order status to SHIPPED with tracking info
+	_ = s.publisher.Publish(ctx, event.New(event.ShipmentCreated, sh))
 	if err := s.orderRepo.UpdateStatus(ctx, order.ID, domain.OrderStatusShipped, "system"); err != nil {
 		slog.ErrorContext(ctx, "Failed to update order status to SHIPPED", "order_id", order.ID, "error", err)
 	}
-
-	if err := s.orderRepo.UpdateTracking(ctx, order.ID, shipment.AWBNumber, shipment.CourierName); err != nil {
-		slog.ErrorContext(ctx, "Failed to update tracking info", "order_id", order.ID, "error", err)
+	if err := s.orderRepo.UpdateTracking(ctx, order.ID, sh.AWBNumber, sh.CourierName); err != nil {
+		slog.ErrorContext(ctx, "Failed to update tracking", "order_id", order.ID, "error", err)
 	}
-
-	return shipment, nil
+	return sh, nil
 }
 
-// TrackShipment tracks a shipment by order ID
+// TrackShipment returns the latest shipment status for an order, refreshing
+// from the courier gateway when the cached record is stale or non-terminal.
 func (s *ShippingService) TrackShipment(ctx context.Context, orderID string) (*domain.Shipment, error) {
-	shipment, err := s.shipmentRepo.GetByOrderID(ctx, orderID)
+	sh, err := s.shipmentRepo.GetByOrderID(ctx, orderID)
 	if err != nil {
 		return nil, err
 	}
-
-	// If we have an AWB number, fetch live tracking from Shiprocket
-	if shipment.AWBNumber != "" {
-		trackResp, err := s.shiprocket.TrackByAWB(ctx, shipment.AWBNumber)
-		if err != nil {
-			slog.ErrorContext(ctx, "Failed to track AWB", "awb_number", shipment.AWBNumber, "order_id", orderID, "error", err)
-			// Return cached shipment data even if live tracking fails
-			return shipment, nil
-		}
-
-		newStatus := mapShiprocketStatus(trackResp.TrackingData.CurrentStatus)
-		if newStatus != shipment.Status {
-			updates := map[string]interface{}{}
-			if newStatus == domain.ShipmentStatusDelivered {
-				now := time.Now()
-				updates["delivered_at"] = now.Format(time.RFC3339)
-			}
-			if err := s.shipmentRepo.UpdateStatus(ctx, orderID, shipment.ID, newStatus, updates); err != nil {
-				slog.ErrorContext(ctx, "Failed to update shipment status", "order_id", orderID, "error", err)
-			}
-			shipment.Status = newStatus
-
-			// Update corresponding order status if delivered
-			if newStatus == domain.ShipmentStatusDelivered {
-				if err := s.orderRepo.UpdateStatus(ctx, orderID, domain.OrderStatusDelivered, "system"); err != nil {
-					slog.ErrorContext(ctx, "Failed to update order status to DELIVERED", "order_id", orderID, "error", err)
-				}
-			}
-		}
+	if sh.AWBNumber == "" {
+		return sh, nil
 	}
-
-	return shipment, nil
-}
-
-// shiprocketWebhookPayload represents the Shiprocket webhook payload
-type shiprocketWebhookPayload struct {
-	AWB           string `json:"awb"`
-	CurrentStatus string `json:"current_status"`
-	ShipmentID    int    `json:"shipment_id"`
-	OrderID       string `json:"order_id"`
-	ETDL          string `json:"etd"`
-}
-
-// HandleWebhook handles incoming Shiprocket webhook events
-func (s *ShippingService) HandleWebhook(ctx context.Context, payload []byte, token string) error {
-	var webhook shiprocketWebhookPayload
-	if err := json.Unmarshal(payload, &webhook); err != nil {
-		return errors.BadRequest("Invalid webhook payload")
+	if time.Since(sh.UpdatedAt) < 30*time.Minute && isTerminalStatus(sh.Status) {
+		return sh, nil
 	}
-
-	if webhook.OrderID == "" {
-		return errors.BadRequest("Missing order_id in webhook payload")
-	}
-
-	// Retrieve the shipment for this order
-	shipment, err := s.shipmentRepo.GetByOrderID(ctx, webhook.OrderID)
+	info, err := s.courier.TrackByAWB(ctx, sh.AWBNumber)
 	if err != nil {
-		slog.ErrorContext(ctx, "Failed to find shipment for webhook order", "order_id", webhook.OrderID, "error", err)
-		return errors.Wrap(err, fmt.Sprintf("Failed to find shipment for order %s", webhook.OrderID))
+		slog.WarnContext(ctx, "Live track failed; returning cached", "awb", sh.AWBNumber, "error", err)
+		return sh, nil
 	}
+	newStatus := courier.ToShipmentStatus(info.Status)
+	if newStatus != sh.Status {
+		updates := map[string]interface{}{}
+		if newStatus == domain.ShipmentStatusDelivered {
+			updates["delivered_at"] = time.Now().UTC().Format(time.RFC3339)
+		}
+		if upErr := s.shipmentRepo.UpdateStatus(ctx, sh.OrderID, sh.ID, sh.Priority, newStatus, updates); upErr != nil {
+			slog.ErrorContext(ctx, "Failed to update shipment", "error", upErr)
+		}
+		sh.Status = newStatus
+		if newStatus == domain.ShipmentStatusDelivered {
+			if upErr := s.orderRepo.UpdateStatus(ctx, sh.OrderID, domain.OrderStatusDelivered, "system"); upErr != nil {
+				slog.ErrorContext(ctx, "Failed to update order to DELIVERED", "order_id", sh.OrderID, "error", upErr)
+			}
+		}
+	}
+	return sh, nil
+}
 
-	// Map the webhook status to domain status
-	newStatus := mapShiprocketStatus(webhook.CurrentStatus)
-	if newStatus == shipment.Status {
-		// No status change, nothing to do
+// HandleWebhook processes an incoming courier webhook: verifies the signature,
+// parses the event, looks up the shipment by AWB, and updates its status.
+func (s *ShippingService) HandleWebhook(ctx context.Context, body []byte, headers http.Header) error {
+	if err := s.courier.VerifyWebhookSignature(headers, body); err != nil {
+		// VerifyWebhookSignature returns a typed AppError (ErrCodeUnauthorized).
+		// Propagate as-is so the handler responds with HTTP 401 instead of 500.
+		return err
+	}
+	ev, err := s.courier.ParseWebhook(body)
+	if err != nil {
+		return errors.Wrap(err, "Failed to parse webhook")
+	}
+	// Reverse pickups have their own lifecycle (return request → reverse shipment).
+	// Hand them off to ReturnService so the forward shipment lookup below does not
+	// try to map a reverse AWB onto a forward shipment.
+	if ev.IsReverse && s.returnService != nil {
+		return s.returnService.HandleReverseWebhook(ctx, ev.AWB, courier.ToReturnStatus(ev.Status))
+	}
+	sh, err := s.shipmentRepo.GetByAWB(ctx, ev.AWB)
+	if err != nil {
+		// Acknowledge unknown AWBs so the courier does not retry indefinitely.
+		slog.WarnContext(ctx, "Webhook for unknown AWB", "awb", ev.AWB, "error", err)
+		return nil //nolint:nilerr // intentional: swallow lookup error to ACK webhook
+	}
+	newStatus := courier.ToShipmentStatus(ev.Status)
+	if newStatus == sh.Status {
 		return nil
 	}
-
+	if ev.Status == courier.EventNDR {
+		_ = s.publisher.Publish(ctx, event.New(event.ShipmentUpdated, map[string]any{
+			"awb":    ev.AWB,
+			"status": "NDR",
+			"reason": ev.NDRReason,
+		}))
+	}
 	updates := map[string]interface{}{}
 	if newStatus == domain.ShipmentStatusDelivered {
-		now := time.Now()
-		updates["delivered_at"] = now.Format(time.RFC3339)
+		updates["delivered_at"] = time.Now().UTC().Format(time.RFC3339)
 	}
-	if webhook.AWB != "" && shipment.AWBNumber == "" {
-		updates["awb_number"] = webhook.AWB
+	if err := s.shipmentRepo.UpdateStatus(ctx, sh.OrderID, sh.ID, sh.Priority, newStatus, updates); err != nil {
+		return errors.Wrap(err, "Failed to update shipment from webhook")
 	}
-
-	// Update shipment status
-	if err := s.shipmentRepo.UpdateStatus(ctx, shipment.OrderID, shipment.ID, newStatus, updates); err != nil {
-		slog.ErrorContext(ctx, "Failed to update shipment status via webhook", "order_id", webhook.OrderID, "error", err)
-		return errors.Wrap(err, "Failed to update shipment status")
-	}
-
-	// Update order status for terminal statuses
 	switch newStatus {
 	case domain.ShipmentStatusDelivered:
-		if err := s.orderRepo.UpdateStatus(ctx, shipment.OrderID, domain.OrderStatusDelivered, "system"); err != nil {
-			slog.ErrorContext(ctx, "Failed to update order to DELIVERED", "order_id", shipment.OrderID, "error", err)
+		if upErr := s.orderRepo.UpdateStatus(ctx, sh.OrderID, domain.OrderStatusDelivered, "system"); upErr != nil {
+			slog.ErrorContext(ctx, "Failed to update order to DELIVERED", "order_id", sh.OrderID, "error", upErr)
 		}
 	case domain.ShipmentStatusRTO:
-		if err := s.orderRepo.UpdateStatus(ctx, shipment.OrderID, domain.OrderStatusReturned, "system"); err != nil {
-			slog.ErrorContext(ctx, "Failed to update order to RETURNED", "order_id", shipment.OrderID, "error", err)
+		if upErr := s.orderRepo.UpdateStatus(ctx, sh.OrderID, domain.OrderStatusReturned, "system"); upErr != nil {
+			slog.ErrorContext(ctx, "Failed to update order to RETURNED", "order_id", sh.OrderID, "error", upErr)
 		}
 	}
-
 	return nil
-}
-
-// mapShiprocketStatus maps Shiprocket status strings to domain ShipmentStatus
-func mapShiprocketStatus(status string) domain.ShipmentStatus {
-	switch status {
-	case "PICKED UP", "Picked Up":
-		return domain.ShipmentStatusPickedUp
-	case "IN TRANSIT", "In Transit":
-		return domain.ShipmentStatusInTransit
-	case "OUT FOR DELIVERY", "Out For Delivery":
-		return domain.ShipmentStatusOutForDelivery
-	case "DELIVERED", "Delivered":
-		return domain.ShipmentStatusDelivered
-	case "RTO", "RTO Initiated", "RTO Delivered":
-		return domain.ShipmentStatusRTO
-	default:
-		return domain.ShipmentStatusCreated
-	}
 }
 
 // Ensure interface compliance

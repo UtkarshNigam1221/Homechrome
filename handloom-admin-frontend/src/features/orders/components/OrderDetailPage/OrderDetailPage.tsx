@@ -8,6 +8,7 @@ import {
   MapPin,
   MessageSquare,
   Package,
+  RotateCcw,
   Truck,
 } from 'lucide-react';
 import { useState } from 'react';
@@ -15,6 +16,8 @@ import toast from 'react-hot-toast';
 import { useNavigate, useParams } from 'react-router-dom';
 
 import { ordersApi } from '@/features/orders/api';
+import { ReturnFormModal } from '@/features/returns';
+import { PriorityBadge, type ShipmentPriority } from '@/features/shipping';
 import { getErrorMessage } from '@/shared/api/client';
 import { Badge, Button, Card, ConfirmModal, Input, Modal, Select } from '@/shared/components/ui';
 import { getStatusBadgeVariant } from '@/shared/utils/badge';
@@ -22,6 +25,7 @@ import { formatCurrency } from '@/shared/utils/currency';
 
 import type { OrderStatus, ProviderPaymentStatus } from '../../types';
 import { ORDER_STATUSES } from '../../types';
+import { PriorityToggle } from '../PriorityToggle';
 import { OrderNotes } from './OrderNotes';
 import { OrderTimeline } from './OrderTimeline';
 
@@ -120,6 +124,20 @@ export function OrderDetailPage() {
     onError: (error) => toast.error(getErrorMessage(error)),
   });
 
+  // Shipment + returns
+  const [priority, setPriority] = useState<ShipmentPriority>(
+    () => order?.shipment?.priority ?? 'NORMAL'
+  );
+  const [showReturnModal, setShowReturnModal] = useState(false);
+  const createShipmentMutation = useMutation({
+    mutationFn: ({ id, p }: { id: string; p: ShipmentPriority }) => ordersApi.createShipment(id, p),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['order', id] });
+      toast.success('Shipment created');
+    },
+    onError: (error) => toast.error(getErrorMessage(error)),
+  });
+
   if (isLoading) {
     return (
       <div className="space-y-6">
@@ -141,6 +159,8 @@ export function OrderDetailPage() {
   }
 
   const canCancel = ['PENDING', 'CONFIRMED'].includes(order.status);
+  const canCreateShipment = ['CONFIRMED', 'PROCESSING'].includes(order.status) && !order.shipment;
+  const canInitiateReturn = order.status === 'DELIVERED';
 
   return (
     <div className="space-y-6">
@@ -205,6 +225,15 @@ export function OrderDetailPage() {
         >
           Add Note
         </Button>
+        {canInitiateReturn && (
+          <Button
+            variant="secondary"
+            leftIcon={<RotateCcw className="w-4 h-4" />}
+            onClick={() => setShowReturnModal(true)}
+          >
+            Initiate Return
+          </Button>
+        )}
         {canCancel && (
           <Button
             variant="danger"
@@ -215,6 +244,115 @@ export function OrderDetailPage() {
           </Button>
         )}
       </div>
+
+      {canCreateShipment && (
+        <Card>
+          <h2 className="text-lg font-semibold mb-3 flex items-center gap-2">
+            <Truck className="w-5 h-5" />
+            Create Shipment
+          </h2>
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+            <div className="flex items-center gap-2 text-sm text-gray-600">
+              Priority:
+              <PriorityToggle
+                value={priority}
+                onChange={setPriority}
+                disabled={createShipmentMutation.isPending}
+              />
+            </div>
+            <Button
+              onClick={() => createShipmentMutation.mutate({ id: order.id, p: priority })}
+              loading={createShipmentMutation.isPending}
+              leftIcon={<Truck className="w-4 h-4" />}
+            >
+              Create shipment
+            </Button>
+            <p className="text-xs text-gray-500">
+              Priority creates an immediate per-order manifest. Normal joins the next 17:00 IST
+              pickup batch.
+            </p>
+          </div>
+        </Card>
+      )}
+
+      {order.shipment && (
+        <Card>
+          <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+            <Truck className="w-5 h-5" />
+            Shipping
+          </h2>
+          <dl className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
+            <div>
+              <dt className="text-gray-500">Courier</dt>
+              <dd className="font-medium">
+                {order.shipment.courier_name || order.shipment.provider}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-gray-500">AWB</dt>
+              <dd className="font-mono">{order.shipment.awb_number || '—'}</dd>
+            </div>
+            <div>
+              <dt className="text-gray-500">Status</dt>
+              <dd>
+                <Badge variant={getStatusBadgeVariant(order.shipment.status)}>
+                  {order.shipment.status}
+                </Badge>
+              </dd>
+            </div>
+            <div>
+              <dt className="text-gray-500">Priority</dt>
+              <dd>
+                <PriorityBadge priority={order.shipment.priority} />
+              </dd>
+            </div>
+            <div>
+              <dt className="text-gray-500">Manifest ID</dt>
+              <dd className="font-mono break-all">{order.shipment.manifest_id || '—'}</dd>
+            </div>
+            <div>
+              <dt className="text-gray-500">Shipping charge</dt>
+              <dd>{formatCurrency(order.shipment.shipping_charge)}</dd>
+            </div>
+            {order.shipment.is_cod && (
+              <>
+                <div>
+                  <dt className="text-gray-500">COD amount</dt>
+                  <dd>{formatCurrency(order.shipment.cod_amount)}</dd>
+                </div>
+                <div>
+                  <dt className="text-gray-500">COD remitted</dt>
+                  <dd>
+                    <Badge variant={order.shipment.cod_remitted ? 'success' : 'warning'}>
+                      {order.shipment.cod_remitted ? 'Yes' : 'Pending'}
+                    </Badge>
+                  </dd>
+                </div>
+              </>
+            )}
+            <div>
+              <dt className="text-gray-500">NDR attempts</dt>
+              <dd>
+                <Badge variant={order.shipment.ndr_count > 0 ? 'warning' : 'gray'}>
+                  {order.shipment.ndr_count}
+                </Badge>
+              </dd>
+            </div>
+            {order.shipment.label_url && (
+              <div className="md:col-span-2 lg:col-span-3">
+                <a
+                  href={order.shipment.label_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-sm text-primary-600 hover:underline"
+                >
+                  Download shipping label
+                </a>
+              </div>
+            )}
+          </dl>
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main Content */}
@@ -539,6 +677,13 @@ export function OrderDetailPage() {
         message={`Are you sure you want to cancel order #${order.order_number || order.id.slice(0, 8)}? This action cannot be undone.`}
         confirmText="Cancel Order"
         loading={cancelMutation.isPending}
+      />
+
+      {/* Return Form Modal */}
+      <ReturnFormModal
+        isOpen={showReturnModal}
+        onClose={() => setShowReturnModal(false)}
+        order={order}
       />
     </div>
   );

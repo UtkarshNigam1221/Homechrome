@@ -1,3 +1,4 @@
+import type { CreateShipmentResponse, ShipmentPriority } from '@/features/shipping';
 import apiClient, { normalizeListResponse } from '@/shared/api/client';
 import { ROUTES } from '@/shared/constants/routes';
 import type { ListResponse, PaginationParams } from '@/shared/types/common';
@@ -54,6 +55,18 @@ export const ordersApi = {
 
   checkPaymentStatus: async (id: string): Promise<ProviderPaymentStatus> => {
     const response = await apiClient.get<ProviderPaymentStatus>(ROUTES.ORDERS.PAYMENT_STATUS(id));
+    return response.data;
+  },
+
+  createShipment: async (
+    id: string,
+    priority: ShipmentPriority = 'NORMAL'
+  ): Promise<CreateShipmentResponse> => {
+    const response = await apiClient.post<CreateShipmentResponse>(
+      ROUTES.ORDERS.SHIPMENTS(id),
+      null,
+      { params: { priority } }
+    );
     return response.data;
   },
 };

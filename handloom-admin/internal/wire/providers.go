@@ -5,6 +5,9 @@ import (
 	"context"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	awslambda "github.com/aws/aws-sdk-go-v2/service/lambda"
 	"github.com/google/wire"
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -13,10 +16,13 @@ import (
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/internal/event"
 	eventhandlers "github.com/handloom/admin/internal/event/handlers"
+	"github.com/handloom/admin/internal/gateway/courier"
+	"github.com/handloom/admin/internal/gateway/delhivery"
+	"github.com/handloom/admin/internal/gateway/lambdainvoker"
 	"github.com/handloom/admin/internal/gateway/phonepe"
-	"github.com/handloom/admin/internal/gateway/shiprocket"
 	"github.com/handloom/admin/internal/gateway/sms"
 	"github.com/handloom/admin/internal/handler"
+	"github.com/handloom/admin/internal/handler/cron"
 	"github.com/handloom/admin/internal/handler/store"
 	"github.com/handloom/admin/internal/middleware"
 	"github.com/handloom/admin/internal/repository/dynamodb"
@@ -141,6 +147,26 @@ func ProvideEventsRepository(client *dynamodb.Client) domain.EventsRepository {
 	return dynamodb.NewEventsRepository(client)
 }
 
+// ProvideShippingRateRepository creates a new ShippingRateRepository
+func ProvideShippingRateRepository(client *dynamodb.Client) domain.ShippingRateRepository {
+	return dynamodb.NewShippingRateRepository(client)
+}
+
+// ProvidePincodeRepository creates a new PincodeRepository
+func ProvidePincodeRepository(client *dynamodb.Client) domain.PincodeRepository {
+	return dynamodb.NewPincodeRepository(client)
+}
+
+// ProvideCODRemittanceRepository creates a new CODRemittanceRepository
+func ProvideCODRemittanceRepository(client *dynamodb.Client) domain.CODRemittanceRepository {
+	return dynamodb.NewCODRemittanceRepository(client)
+}
+
+// ProvideReturnRepository creates a new ReturnRepository
+func ProvideReturnRepository(client *dynamodb.Client) domain.ReturnRepository {
+	return dynamodb.NewReturnRepository(client)
+}
+
 // RepositorySet contains all repository providers
 var RepositorySet = wire.NewSet(
 	ProvideUserRepository,
@@ -160,6 +186,10 @@ var RepositorySet = wire.NewSet(
 	ProvideReportRepository,
 	ProvideAuditRepository,
 	ProvideEventsRepository,
+	ProvideShippingRateRepository,
+	ProvidePincodeRepository,
+	ProvideCODRemittanceRepository,
+	ProvideReturnRepository,
 )
 
 // ============================================================================
@@ -342,7 +372,13 @@ var ServiceSet = wire.NewSet(
 	ProvideAuditService,
 	ProvideCartService,
 	ProvidePhonePeGateway,
+	ProvideDelhiveryGateway,
 	ProvidePaymentService,
+	ProvideManifestService,
+	ProvideNDRService,
+	ProvideCODReconciliationService,
+	ProvideRateTableService,
+	ProvideReturnService,
 )
 
 // ============================================================================
@@ -394,9 +430,10 @@ func ProvideInventoryHandler(
 func ProvideOrderHandler(
 	orderService *service.OrderService,
 	paymentService *service.PaymentService,
+	returnService *service.ReturnService,
 	validation *middleware.Validation,
 ) *handler.OrderHandler {
-	return handler.NewOrderHandler(orderService, paymentService, validation)
+	return handler.NewOrderHandler(orderService, paymentService, returnService, validation)
 }
 
 // ProvideCustomerHandler creates a new CustomerHandler
@@ -461,6 +498,51 @@ func ProvideAuditHandler(
 	return handler.NewAuditHandler(auditService)
 }
 
+// ProvideAWSSDKConfig loads a default AWS SDK config scoped to the
+// configured region. Used by callers (e.g. LambdaInvoker) that need raw
+// SDK clients alongside the existing typed DynamoDB/S3 wrappers.
+func ProvideAWSSDKConfig(ctx context.Context, cfg *config.Config) (aws.Config, error) {
+	opts := []func(*awsconfig.LoadOptions) error{
+		awsconfig.WithRegion(cfg.AWS.Region),
+	}
+	return awsconfig.LoadDefaultConfig(ctx, opts...)
+}
+
+// ProvideRateRefreshInvoker builds a Lambda invoker bound to the
+// cron-rate-refresh function name (from RATE_REFRESH_LAMBDA_NAME).
+func ProvideRateRefreshInvoker(awsCfg aws.Config, cfg *config.Config) *lambdainvoker.LambdaInvoker {
+	client := awslambda.NewFromConfig(awsCfg)
+	return lambdainvoker.NewLambdaInvoker(client, cfg.Delhivery.RateRefreshLambdaName)
+}
+
+// ProvideRateRefreshFn returns nil when no rate-refresh Lambda is
+// configured so the handler falls back to synchronous refresh.
+// Otherwise it returns the invoker's Invoke method.
+func ProvideRateRefreshFn(invoker *lambdainvoker.LambdaInvoker, cfg *config.Config) func(ctx context.Context) error {
+	if cfg.Delhivery.RateRefreshLambdaName == "" {
+		return nil
+	}
+	return invoker.Invoke
+}
+
+// ProvideShippingAdminHandler creates a new ShippingAdminHandler.
+// rateRefreshFn is nil when RATE_REFRESH_LAMBDA_NAME is unset — the handler
+// falls back to running RateTableService.Refresh inline.
+func ProvideShippingAdminHandler(
+	rateRepo domain.ShippingRateRepository,
+	rateTable *service.RateTableService,
+	remRepo domain.CODRemittanceRepository,
+	ndr *service.NDRService,
+	shipmentRepo domain.ShipmentRepository,
+	manifest *service.ManifestService,
+	validation *middleware.Validation,
+	rateRefreshFn func(ctx context.Context) error,
+) *handler.ShippingAdminHandler {
+	return handler.NewShippingAdminHandler(
+		rateRepo, rateTable, remRepo, ndr, shipmentRepo, manifest, validation, rateRefreshFn,
+	)
+}
+
 // HandlerSet contains all handler providers
 var HandlerSet = wire.NewSet(
 	ProvideAuthHandler,
@@ -477,6 +559,7 @@ var HandlerSet = wire.NewSet(
 	ProvideAssetHandler,
 	ProvideReportHandler,
 	ProvideAuditHandler,
+	ProvideShippingAdminHandler,
 )
 
 // ============================================================================
@@ -593,6 +676,20 @@ func ProvidePhonePeGateway(cfg *config.Config) phonepe.Gateway {
 	})
 }
 
+// ProvideDelhiveryGateway returns a courier.Gateway, choosing DevClient when API token is empty.
+func ProvideDelhiveryGateway(cfg *config.Config) courier.Gateway {
+	if cfg.Delhivery.APIToken == "" {
+		return delhivery.NewDevClient()
+	}
+	return delhivery.NewClient(delhivery.Config{
+		APIToken:       cfg.Delhivery.APIToken,
+		BaseURL:        cfg.Delhivery.BaseURL,
+		ClientName:     cfg.Delhivery.ClientName,
+		WebhookToken:   cfg.Delhivery.WebhookToken,
+		PickupLocation: cfg.Delhivery.PickupLocation,
+	})
+}
+
 // ProvidePaymentService creates a new PaymentService
 func ProvidePaymentService(
 	paymentRepo domain.PaymentRepository,
@@ -605,24 +702,81 @@ func ProvidePaymentService(
 	return service.NewPaymentService(paymentRepo, orderRepo, inventoryRepo, cartService, phonePeClient, publisher)
 }
 
-// ProvideShippingService creates a new ShippingService with Shiprocket gateway
+// ProvideShippingService creates a new ShippingService backed by a courier.Gateway.
 func ProvideShippingService(
 	shipmentRepo domain.ShipmentRepository,
 	orderRepo domain.OrderRepository,
+	pincodeRepo domain.PincodeRepository,
+	gw courier.Gateway,
+	pub event.EventPublisher,
+	returnService *service.ReturnService,
 	cfg *config.Config,
 ) *service.ShippingService {
-	var shiprocketClient shiprocket.Gateway
-	if cfg.Store.ShiprocketEmail == "" || cfg.Store.ShiprocketPassword == "" {
-		shiprocketClient = shiprocket.NewDevClient()
-	} else {
-		shiprocketClient = shiprocket.NewClient(shiprocket.Config{
-			Email:         cfg.Store.ShiprocketEmail,
-			Password:      cfg.Store.ShiprocketPassword,
-			BaseURL:       cfg.Store.ShiprocketBaseURL,
-			PickupPincode: cfg.Store.ShiprocketPickupPincode,
-		})
+	return service.NewShippingService(
+		shipmentRepo, orderRepo, pincodeRepo, gw, pub, returnService, cfg.Delhivery.PickupLocation,
+	)
+}
+
+// ProvideManifestService creates a new ManifestService.
+func ProvideManifestService(
+	shipmentRepo domain.ShipmentRepository,
+	gw courier.Gateway,
+	pub event.EventPublisher,
+	cfg *config.Config,
+) *service.ManifestService {
+	return service.NewManifestService(shipmentRepo, gw, pub, cfg.Delhivery.PickupLocation)
+}
+
+// ProvideNDRService creates a new NDRService.
+func ProvideNDRService(
+	shipmentRepo domain.ShipmentRepository,
+	gw courier.Gateway,
+	pub event.EventPublisher,
+	cfg *config.Config,
+) *service.NDRService {
+	maxAttempts := cfg.Delhivery.NDRLimit
+	if maxAttempts <= 0 {
+		maxAttempts = 3
 	}
-	return service.NewShippingService(shipmentRepo, orderRepo, shiprocketClient, cfg.Store.ShiprocketPickupPincode)
+	return service.NewNDRService(shipmentRepo, gw, pub, maxAttempts)
+}
+
+// ProvideCODReconciliationService creates a new CODReconciliationService.
+func ProvideCODReconciliationService(
+	shipmentRepo domain.ShipmentRepository,
+	orderRepo domain.OrderRepository,
+	remRepo domain.CODRemittanceRepository,
+	gw courier.Gateway,
+	pub event.EventPublisher,
+) *service.CODReconciliationService {
+	return service.NewCODReconciliationService(shipmentRepo, orderRepo, remRepo, gw, pub)
+}
+
+// ProvideRateTableService creates a new RateTableService.
+func ProvideRateTableService(
+	rateRepo domain.ShippingRateRepository,
+	pincodeRepo domain.PincodeRepository,
+	gw courier.Gateway,
+) *service.RateTableService {
+	return service.NewRateTableService(rateRepo, pincodeRepo, gw)
+}
+
+// ProvideReturnService creates a new ReturnService.
+func ProvideReturnService(
+	orderRepo domain.OrderRepository,
+	shipmentRepo domain.ShipmentRepository,
+	returnRepo domain.ReturnRepository,
+	gw courier.Gateway,
+	pub event.EventPublisher,
+	cfg *config.Config,
+) *service.ReturnService {
+	window := cfg.Delhivery.ReturnWindowDays
+	if window <= 0 {
+		window = 7
+	}
+	return service.NewReturnService(
+		orderRepo, shipmentRepo, returnRepo, gw, pub, cfg.Delhivery.PickupLocation, window,
+	)
 }
 
 // ProvideCheckoutService creates a new CheckoutService
@@ -631,11 +785,12 @@ func ProvideCheckoutService(
 	orderRepo domain.OrderRepository,
 	paymentService *service.PaymentService,
 	shippingService *service.ShippingService,
+	rateTable *service.RateTableService,
 	inventoryRepo domain.InventoryRepository,
 	customerRepo domain.CustomerRepository,
 	publisher event.EventPublisher,
 ) *service.CheckoutService {
-	return service.NewCheckoutService(cartService, orderRepo, paymentService, shippingService, inventoryRepo, customerRepo, publisher)
+	return service.NewCheckoutService(cartService, orderRepo, paymentService, shippingService, rateTable, inventoryRepo, customerRepo, publisher)
 }
 
 // ============================================================================
@@ -656,8 +811,9 @@ func ProvideStoreCatalogHandler(
 	productService *service.ProductService,
 	categoryService *service.CategoryService,
 	inventoryService *service.InventoryService,
+	shippingService *service.ShippingService,
 ) *store.CatalogHandler {
-	return store.NewCatalogHandler(productService, categoryService, inventoryService)
+	return store.NewCatalogHandler(productService, categoryService, inventoryService, shippingService)
 }
 
 // ProvideStoreCartHandler creates a new store CartHandler
@@ -703,10 +859,11 @@ func ProvideStoreProfileHandler(
 // ProvideStoreWebhookHandler creates a new store WebhookHandler
 func ProvideStoreWebhookHandler(
 	paymentService *service.PaymentService,
+	shippingService *service.ShippingService,
 	phonePe phonepe.Gateway,
 	cfg *config.Config,
 ) *store.WebhookHandler {
-	return store.NewWebhookHandler(paymentService, phonePe, cfg.Store.PhonePeWebhookUsername, cfg.Store.PhonePeWebhookPassword)
+	return store.NewWebhookHandler(paymentService, shippingService, phonePe, cfg.Store.PhonePeWebhookUsername, cfg.Store.PhonePeWebhookPassword)
 }
 
 // ProvideStoreEventsHandler creates a new store EventsHandler
@@ -804,6 +961,25 @@ func ProvideLocalEventPublisher(
 	audit *eventhandlers.AuditHandler,
 ) event.EventPublisher {
 	return event.NewLocalPublisher(notif, report, analytics, audit)
+}
+
+// ============================================================================
+// CRON HANDLER PROVIDERS
+// ============================================================================
+
+// ProvidePickupBatchHandler creates a new cron PickupBatchHandler.
+func ProvidePickupBatchHandler(m *service.ManifestService) *cron.PickupBatchHandler {
+	return cron.NewPickupBatchHandler(m)
+}
+
+// ProvideCODRemittanceHandler creates a new cron CODRemittanceHandler.
+func ProvideCODRemittanceHandler(c *service.CODReconciliationService) *cron.CODRemittanceHandler {
+	return cron.NewCODRemittanceHandler(c)
+}
+
+// ProvideRateRefreshHandler creates a new cron RateRefreshHandler.
+func ProvideRateRefreshHandler(r *service.RateTableService) *cron.RateRefreshHandler {
+	return cron.NewRateRefreshHandler(r)
 }
 
 var MonolithPublisherSet = wire.NewSet(

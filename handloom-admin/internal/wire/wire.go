@@ -12,6 +12,7 @@ import (
 
 	"github.com/handloom/admin/internal/config"
 	"github.com/handloom/admin/internal/handler"
+	"github.com/handloom/admin/internal/handler/cron"
 	"github.com/handloom/admin/internal/handler/store"
 	"github.com/handloom/admin/internal/middleware"
 )
@@ -187,13 +188,17 @@ func InitializeOrderDeps(ctx context.Context, cfg *config.Config) (*OrderDeps, e
 		ProvidePriceQuoteRepository,
 		ProvidePricingRuleRepository,
 		ProvideCategoryRepository,
+		ProvideShipmentRepository,
+		ProvideReturnRepository,
 		ProvideAuthService,
 		ProvidePricingService,
 		ProvideOrderService,
 		ProvideCustomerService,
 		ProvideCartService,
 		ProvidePhonePeGateway,
+		ProvideDelhiveryGateway,
 		ProvidePaymentService,
+		ProvideReturnService,
 		ProvideEventPublisher,
 		ProvideOrderHandler,
 		ProvideCustomerHandler,
@@ -462,12 +467,19 @@ func InitializeStoreCatalogDeps(ctx context.Context, cfg *config.Config) (*Store
 		ProvideCategoryRepository,
 		ProvideProductRepository,
 		ProvideInventoryRepository,
+		ProvideShipmentRepository,
+		ProvideOrderRepository,
+		ProvidePincodeRepository,
+		ProvideReturnRepository,
 		ProvideS3Client,
 		ProvideEventPublisher,
 		ProvideAssetService,
 		ProvideCategoryService,
 		ProvideProductService,
 		ProvideInventoryService,
+		ProvideDelhiveryGateway,
+		ProvideReturnService,
+		ProvideShippingService,
 		ProvideStoreCatalogHandler,
 		wire.Struct(new(StoreCatalogDeps), "*"),
 	)
@@ -509,14 +521,20 @@ func InitializeStoreCheckoutDeps(ctx context.Context, cfg *config.Config) (*Stor
 		ProvideCustomerRepository,
 		ProvidePaymentRepository,
 		ProvideShipmentRepository,
+		ProvidePincodeRepository,
+		ProvideShippingRateRepository,
+		ProvideReturnRepository,
 		ProvideOTPRepository,
 		ProvideCustomerTokenStore,
 		ProvideEventPublisher,
 		ProvideCustomerAuthService,
 		ProvideCartService,
 		ProvidePhonePeGateway,
+		ProvideDelhiveryGateway,
 		ProvidePaymentService,
+		ProvideReturnService,
 		ProvideShippingService,
+		ProvideRateTableService,
 		ProvideCheckoutService,
 		ProvideStoreCheckoutHandler,
 		ProvideCustomerAuthMiddleware,
@@ -588,10 +606,16 @@ func InitializeStoreWebhooksDeps(ctx context.Context, cfg *config.Config) (*Stor
 		ProvideInventoryRepository,
 		ProvideCartRepository,
 		ProvideProductRepository,
+		ProvideShipmentRepository,
+		ProvidePincodeRepository,
+		ProvideReturnRepository,
 		ProvideCartService,
 		ProvideEventPublisher,
 		ProvidePhonePeGateway,
+		ProvideDelhiveryGateway,
 		ProvidePaymentService,
+		ProvideReturnService,
+		ProvideShippingService,
 		ProvideStoreWebhookHandler,
 		wire.Struct(new(StoreWebhooksDeps), "*"),
 	)
@@ -612,26 +636,97 @@ func InitializeStoreEventsDeps(ctx context.Context, cfg *config.Config) (*StoreE
 	return nil, nil
 }
 
+// ============================================================================
+// CRON LAMBDA DEPENDENCY CONTAINERS
+// ============================================================================
+
+// CronPickupBatchDeps holds dependencies for the cron-pickup-batch Lambda.
+type CronPickupBatchDeps struct {
+	Config  *config.Config
+	Handler *cron.PickupBatchHandler
+}
+
+// CronCODRemittanceDeps holds dependencies for the cron-cod-remittance Lambda.
+type CronCODRemittanceDeps struct {
+	Config  *config.Config
+	Handler *cron.CODRemittanceHandler
+}
+
+// CronRateRefreshDeps holds dependencies for the cron-rate-refresh Lambda.
+type CronRateRefreshDeps struct {
+	Config  *config.Config
+	Handler *cron.RateRefreshHandler
+}
+
+// ============================================================================
+// CRON INJECTOR FUNCTIONS
+// ============================================================================
+
+// InitializeCronPickupBatchDeps creates cron-pickup-batch Lambda dependencies.
+func InitializeCronPickupBatchDeps(ctx context.Context, cfg *config.Config) (*CronPickupBatchDeps, error) {
+	wire.Build(
+		CoreSet,
+		ProvideShipmentRepository,
+		ProvideDelhiveryGateway,
+		ProvideEventPublisher,
+		ProvideManifestService,
+		ProvidePickupBatchHandler,
+		wire.Struct(new(CronPickupBatchDeps), "*"),
+	)
+	return nil, nil
+}
+
+// InitializeCronCODRemittanceDeps creates cron-cod-remittance Lambda dependencies.
+func InitializeCronCODRemittanceDeps(ctx context.Context, cfg *config.Config) (*CronCODRemittanceDeps, error) {
+	wire.Build(
+		CoreSet,
+		ProvideShipmentRepository,
+		ProvideOrderRepository,
+		ProvideCODRemittanceRepository,
+		ProvideDelhiveryGateway,
+		ProvideEventPublisher,
+		ProvideCODReconciliationService,
+		ProvideCODRemittanceHandler,
+		wire.Struct(new(CronCODRemittanceDeps), "*"),
+	)
+	return nil, nil
+}
+
+// InitializeCronRateRefreshDeps creates cron-rate-refresh Lambda dependencies.
+func InitializeCronRateRefreshDeps(ctx context.Context, cfg *config.Config) (*CronRateRefreshDeps, error) {
+	wire.Build(
+		CoreSet,
+		ProvideShippingRateRepository,
+		ProvidePincodeRepository,
+		ProvideDelhiveryGateway,
+		ProvideRateTableService,
+		ProvideRateRefreshHandler,
+		wire.Struct(new(CronRateRefreshDeps), "*"),
+	)
+	return nil, nil
+}
+
 // MonolithDeps contains every dependency the monolith API server needs.
 type MonolithDeps struct {
 	// PostgresPool retained for graceful shutdown — DynamoDB SDK v2 needs none.
 	PostgresPool *pgxpool.Pool
 
 	// Admin handlers
-	AuthHandler         *handler.AuthHandler
-	UserHandler         *handler.UserHandler
-	CategoryHandler     *handler.CategoryHandler
-	ProductHandler      *handler.ProductHandler
-	InventoryHandler    *handler.InventoryHandler
-	PricingHandler      *handler.PricingHandler
-	OrderHandler        *handler.OrderHandler
-	CustomerHandler     *handler.CustomerHandler
-	AuditHandler        *handler.AuditHandler
-	NotificationHandler *handler.NotificationHandler
-	CouponHandler       *handler.CouponHandler
-	AnalyticsHandler    *handler.AnalyticsHandler
-	AssetHandler        *handler.AssetHandler
-	ReportHandler       *handler.ReportHandler
+	AuthHandler          *handler.AuthHandler
+	UserHandler          *handler.UserHandler
+	CategoryHandler      *handler.CategoryHandler
+	ProductHandler       *handler.ProductHandler
+	InventoryHandler     *handler.InventoryHandler
+	PricingHandler       *handler.PricingHandler
+	OrderHandler         *handler.OrderHandler
+	CustomerHandler      *handler.CustomerHandler
+	AuditHandler         *handler.AuditHandler
+	NotificationHandler  *handler.NotificationHandler
+	CouponHandler        *handler.CouponHandler
+	AnalyticsHandler     *handler.AnalyticsHandler
+	AssetHandler         *handler.AssetHandler
+	ReportHandler        *handler.ReportHandler
+	ShippingAdminHandler *handler.ShippingAdminHandler
 
 	// Store handlers
 	StoreAuthHandler     *store.AuthHandler
@@ -656,6 +751,9 @@ func InitializeMonolithDeps(ctx context.Context, cfg *config.Config) (*MonolithD
 	wire.Build(
 		CoreSet,
 		ProvideS3Client,
+		ProvideAWSSDKConfig,
+		ProvideRateRefreshInvoker,
+		ProvideRateRefreshFn,
 		RepositorySet,
 		StoreRepositorySet,
 		ServiceSet,

@@ -2,6 +2,7 @@ package domain
 
 import (
 	"context"
+	"time"
 )
 
 //go:generate mockgen -source=order_repository.go -destination=../mocks/order_repository_mock.go -package=mocks
@@ -34,6 +35,9 @@ type OrderRepository interface {
 
 	// UpdateTracking updates tracking information
 	UpdateTracking(ctx context.Context, id string, trackingNumber string, carrier string) error
+
+	// UpdateCODRemittance marks an order as COD-remitted with the carrier UTR
+	UpdateCODRemittance(ctx context.Context, orderID, remittanceRef string, remittedAt time.Time) error
 }
 
 // ListOrdersRequest contains parameters for listing orders

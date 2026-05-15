@@ -87,6 +87,7 @@ export interface Cart {
   customer_id: string;
   item_count: number;
   subtotal: number; // paise
+  shipping_charge?: number; // paise (from backend serviceability quote)
   currency: string;
 }
 
@@ -125,10 +126,27 @@ export interface Order {
   tracking_number?: string;
   tracking_url?: string;
   shipping_carrier?: string;
+  returns?: OrderReturn[];
   created_at: string;
   shipped_at?: string;
   delivered_at?: string;
   cancelled_at?: string;
+}
+
+export type ReturnStatus =
+  | 'REQUESTED'
+  | 'PICKED_UP'
+  | 'IN_TRANSIT'
+  | 'RECEIVED'
+  | 'REFUNDED'
+  | 'CANCELLED';
+
+export interface OrderReturn {
+  id: string;
+  status: ReturnStatus;
+  reason?: string;
+  created_at: string;
+  updated_at?: string;
 }
 
 export type OrderStatus =

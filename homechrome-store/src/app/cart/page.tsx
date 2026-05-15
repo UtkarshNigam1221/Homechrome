@@ -63,6 +63,7 @@ export default function CartPage() {
               subtotal={cart?.cart.subtotal || 0}
               itemCount={cart?.cart.item_count || 0}
               isAuthenticated={isAuthenticated}
+              shippingCharge={cart?.cart.shipping_charge}
             />
           </div>
         </div>

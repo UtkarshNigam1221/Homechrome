@@ -1,7 +1,10 @@
 import { clsx } from 'clsx';
 import {
+  AlertTriangle,
   BarChart3,
   Bell,
+  Calculator,
+  CalendarClock,
   ChevronLeft,
   ChevronRight,
   FileText,
@@ -9,6 +12,7 @@ import {
   LayoutDashboard,
   Package,
   Percent,
+  RotateCcw,
   Settings,
   ShoppingCart,
   Tag,
@@ -33,6 +37,14 @@ const navigation = [
   { name: 'Reports', href: '/reports', icon: FileText },
   { name: 'Notifications', href: '/notifications', icon: Bell },
   { name: 'Settings', href: '/settings', icon: Settings },
+];
+
+const shippingNavigation = [
+  { name: 'Rates', href: '/shipping/rates', icon: Tag },
+  { name: 'Pickups', href: '/shipping/pickups', icon: CalendarClock },
+  { name: 'COD Remittance', href: '/shipping/cod-remittance', icon: Calculator },
+  { name: 'NDR Queue', href: '/shipping/ndr-queue', icon: AlertTriangle },
+  { name: 'Returns', href: '/shipping/returns', icon: RotateCcw },
 ];
 
 const adminNavigation = [{ name: 'Users', href: '/users', icon: Users }];
@@ -73,6 +85,35 @@ function SidebarContent({
             </NavLink>
           );
         })}
+      </div>
+
+      <div className="pt-4 mt-4 border-t border-gray-200">
+        {!collapsed && (
+          <p className="px-3 mb-2 text-xs font-semibold text-gray-400 uppercase tracking-wider">
+            Shipping
+          </p>
+        )}
+        <div className="space-y-1">
+          {shippingNavigation.map((item) => {
+            const isActive = location.pathname.startsWith(item.href);
+            return (
+              <NavLink
+                key={item.name}
+                to={item.href}
+                onClick={onNavClick}
+                className={clsx(
+                  'sidebar-link',
+                  isActive ? 'sidebar-link-active' : 'sidebar-link-inactive',
+                  collapsed && 'justify-center px-2'
+                )}
+                title={collapsed ? item.name : undefined}
+              >
+                <item.icon className="w-5 h-5 flex-shrink-0" />
+                {!collapsed && <span>{item.name}</span>}
+              </NavLink>
+            );
+          })}
+        </div>
       </div>
 
       {isAdmin && (

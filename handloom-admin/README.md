@@ -42,7 +42,7 @@ The application is built as up to **26 AWS Lambda services** (12 admin + 9 B2C s
 | Gateway | Purpose | Config Prefix |
 |---------|---------|---------------|
 | **PhonePe** | Payment processing (Standard Checkout v2) | `PHONEPE_*` |
-| **Shiprocket** | Shipping & delivery tracking | `SHIPROCKET_*` |
+| **Delhivery** | Shipping & delivery tracking | `DELHIVERY_*` |
 | **MSG91** | SMS OTP for customer auth | `MSG91_*` |
 
 ### Event-Driven Architecture
@@ -125,7 +125,7 @@ In the dev environment, only **15 Lambdas** are deployed:
 │   │   └── store/              # B2C store handlers
 │   ├── gateway/                # External service integrations
 │   │   ├── phonepe/            # PhonePe payment gateway
-│   │   ├── shiprocket/         # Shiprocket shipping
+│   │   ├── courier/            # Delhivery shipping (courier.Gateway)
 │   │   └── sms/                # MSG91 SMS/OTP
 │   ├── middleware/             # HTTP middleware (admin + customer auth)
 │   ├── repository/             # Data access layer
@@ -312,7 +312,7 @@ Key environment variables:
 - `CUSTOMER_JWT_SECRET` - Customer JWT signing key (B2C store auth)
 - `PHONEPE_CLIENT_ID` / `PHONEPE_CLIENT_SECRET` / `PHONEPE_CLIENT_VERSION` - PhonePe OAuth credentials (Standard Checkout v2). When CLIENT_ID or CLIENT_SECRET is empty, a DevClient with mock responses is used (based on credential presence, not `APP_ENV`)
 - `PHONEPE_WEBHOOK_USERNAME` / `PHONEPE_WEBHOOK_PASSWORD` - PhonePe webhook verification credentials
-- `SHIPROCKET_*` - Shiprocket shipping config (DevClient used when credentials empty)
+- `DELHIVERY_*` - Delhivery shipping config (DevClient used when credentials empty)
 - `MSG91_*` - MSG91 SMS/OTP config
 - `SNS_TOPIC_ARN` - SNS event topic ARN
 - `EVENT_PUBLISHING_ENABLED` - Enable/disable event publishing

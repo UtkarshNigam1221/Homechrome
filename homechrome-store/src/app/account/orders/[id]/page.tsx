@@ -17,13 +17,14 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
+import ReturnStatusBadge from '@/components/orders/ReturnStatusBadge';
 import Button from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import Skeleton from '@/components/skeleton/Skeleton';
 import api from '@/lib/api';
 import { ROUTES } from '@/lib/routes';
-import { formatDateTime as formatDate, formatPrice, statusColors } from '@/lib/utils';
+import { formatDateTime, formatPrice, statusColors } from '@/lib/utils';
 import { Order, OrderStatus } from '@/types';
 
 const statusTimeline: OrderStatus[] = [
@@ -144,7 +145,7 @@ export default function OrderDetailPage() {
           <h2 className="text-lg font-semibold text-foreground">
             Order #{order.order_number}
           </h2>
-          <p className="text-sm text-muted-foreground">Placed on {formatDate(order.created_at)}</p>
+          <p className="text-sm text-muted-foreground">Placed on {formatDateTime(order.created_at)}</p>
         </div>
         <span
           className={`inline-block self-start rounded-full px-3 py-1 text-sm font-medium ${statusColors[order.status]}`}
@@ -235,12 +236,12 @@ export default function OrderDetailPage() {
             </div>
             {order.shipped_at && (
               <p className="mt-2 text-xs text-muted-foreground">
-                Shipped on {formatDate(order.shipped_at)}
+                Shipped on {formatDateTime(order.shipped_at)}
               </p>
             )}
             {order.delivered_at && (
               <p className="mt-1 text-xs text-muted-foreground">
-                Delivered on {formatDate(order.delivered_at)}
+                Delivered on {formatDateTime(order.delivered_at)}
               </p>
             )}
           </CardContent>
@@ -288,6 +289,40 @@ export default function OrderDetailPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Returns */}
+      {order.returns && order.returns.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm">Returns</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ul className="space-y-3">
+              {order.returns.map((ret) => (
+                <li
+                  key={ret.id}
+                  className="flex items-start justify-between gap-4"
+                >
+                  <div className="text-sm">
+                    <p className="font-medium text-foreground">
+                      Return #{ret.id.slice(0, 8)}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Requested {formatDateTime(ret.created_at)}
+                    </p>
+                    {ret.reason && (
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Reason: {ret.reason}
+                      </p>
+                    )}
+                  </div>
+                  <ReturnStatusBadge status={ret.status} />
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Order Summary + Shipping Address */}
       <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">

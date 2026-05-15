@@ -25,6 +25,7 @@ type Client struct {
 	analyticsTable     string
 	notificationsTable string
 	eventsTable        string
+	shippingTable      string
 }
 
 // NewClient creates a new DynamoDB client
@@ -73,6 +74,7 @@ func NewClient(ctx context.Context, cfg *appconfig.Config) (*Client, error) {
 		analyticsTable:     cfg.DynamoDB.AnalyticsTable,
 		notificationsTable: cfg.DynamoDB.NotificationsTable,
 		eventsTable:        cfg.DynamoDB.EventsTable,
+		shippingTable:      cfg.DynamoDB.ShippingTable,
 	}, nil
 }
 

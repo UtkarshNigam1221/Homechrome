@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Handloom Admin is a Go serverless backend for the Homechrome handloom e-commerce platform. It powers both the admin dashboard and the B2C customer storefront. It runs as 22 Lambda services in dev (12 admin + 9 store + 1 migrator; event stack disabled) or 26 with event stack enabled (+ 4 workers), and a single monolithic server locally (port 8081). Go module: `github.com/handloom/admin`, Go 1.25.
+Handloom Admin is a Go serverless backend for the Homechrome handloom e-commerce platform. It powers both the admin dashboard and the B2C customer storefront. It runs as 25 Lambda services in dev (12 admin + 9 store + 1 migrator + 3 cron; event stack disabled) or 29 with event stack enabled (+ 4 workers), and a single monolithic server locally (port 8081). Go module: `github.com/handloom/admin`, Go 1.25.
 
 ## Common Commands
 
@@ -73,7 +73,7 @@ domain/ (entities + interfaces) ← handler/ → service/ → repository/dynamod
 - `internal/repository/postgres/` — PostgreSQL implementations for catalog data (categories, products, inventory)
 - `internal/router/` — mounts handlers onto Chi routers; `lambda.go` provides the Lambda adapter
 - `internal/wire/` — Google Wire compile-time DI; one `Initialize*Deps()` per Lambda plus `InitializeMonolithDeps()` for the local `cmd/api` server
-- `internal/gateway/` — External service integrations (PhonePe Standard Checkout v2 payments, Shiprocket shipping, MSG91 SMS/OTP). Each gateway uses a DevClient fallback when credentials are not configured (SMS: `MSG91_AUTH_KEY`/`MSG91_OTP_TEMPLATE_ID`, PhonePe: `PHONEPE_CLIENT_ID`/`PHONEPE_CLIENT_SECRET`, Shiprocket: `SHIPROCKET_EMAIL`/`SHIPROCKET_PASSWORD`).
+- `internal/gateway/` — External service integrations (PhonePe Standard Checkout v2 payments, Delhivery shipping via `internal/gateway/courier`, MSG91 SMS/OTP). Each gateway uses a DevClient fallback when credentials are not configured (SMS: `MSG91_AUTH_KEY`/`MSG91_OTP_TEMPLATE_ID`, PhonePe: `PHONEPE_CLIENT_ID`/`PHONEPE_CLIENT_SECRET`, Delhivery: `DELHIVERY_API_TOKEN`/`DELHIVERY_CLIENT_NAME`).
 - `internal/event/` — SNS event publisher + types; `handlers/` subdir for SQS consumer handlers
 - `internal/middleware/` — RequestID, Logger, Recoverer, Auth (admin JWT), CustomerAuth (customer JWT), Validation (generics-based)
 - `pkg/errors/` — typed `AppError` with error codes mapping to HTTP statuses
@@ -161,6 +161,16 @@ Mounted at `/api/v1/store/*` in the monolith (`cmd/api/main.go`):
 - **Fire-and-forget**: Event publishing errors are logged but never propagate to callers
 - Config: `SNS_TOPIC_ARN`, `EVENT_PUBLISHING_ENABLED`
 
+### Scheduled Cron Lambdas
+
+Three EventBridge-driven Lambdas (256MB, ARM64, `provided.al2023`):
+
+- `cron-pickup-batch` — daily 17:00 IST (11:30 UTC). Manifests all `NORMAL` priority shipments in `CREATED` state via `ManifestService.RunDailyBatch`, schedules pickup for next morning.
+- `cron-cod-remittance` — daily 08:00 IST (02:30 UTC). Pulls Delhivery COD remittance payouts from last 24h via `CODReconciliationService.RunDailyPull` and matches to orders by AWB.
+- `cron-rate-refresh` — weekly Sun 03:00 IST (Sat 21:30 UTC) + on-demand admin trigger. Refreshes the rate matrix in `handloom-shipping-{env}` via `RateTableService.Refresh`. Manual overrides preserved.
+
+Each Lambda binary lives at `cmd/lambda/cron-*/main.go`. Handlers under `internal/handler/cron/`. EventBridge schedule rules + CloudWatch error alarms provisioned in `infra/stacks/cron.go`. Admin "Refresh rates" UI action invokes `cron-rate-refresh` asynchronously via `lambdainvoker.LambdaInvoker` (IAM `lambda:InvokeFunction` on the admin order Lambda).
+
 ### Schema Migrations
 - SQL files in `migrations/` are embedded via `go:embed` (`migrations/embed.go`) into the migrator Lambda
 - `cmd/lambda/migrator/main.go` — connects to Neon PostgreSQL, creates `schema_migrations` tracking table, applies unapplied `.sql` files in filename order, each in a transaction
@@ -170,9 +180,9 @@ Mounted at `/api/v1/store/*` in the monolith (`cmd/api/main.go`):
 - To add a migration: create `migrations/NNN_description.sql`, then `make cdk-deploy-dev`
 
 ### Infrastructure (infra/)
-AWS CDK in Go. Four stacks per environment: DatabaseStack, StorageStack, APIStack, EventStack — EventStack is currently disabled in dev (commented out in `infra/cmd/main.go`). All Lambdas use ARM64/128MB(dev)/256MB(prod)/provided.al2023. Lambda count: 22 in dev (12 admin + 9 store + 1 migrator), 26 with event stack (+ 4 workers).
+AWS CDK in Go. Four stacks per environment: DatabaseStack, StorageStack, APIStack, EventStack — EventStack is currently disabled in dev (commented out in `infra/cmd/main.go`). All Lambdas use ARM64/128MB(dev)/256MB(prod)/provided.al2023. Lambda count: 25 in dev (12 admin + 9 store + 1 migrator + 3 cron), 29 with event stack (+ 4 workers).
 
-Gateway credentials are propagated from the deploy-time shell environment to every Lambda's `Environment.Variables` via `gatewayEnvKeys` in `infra/stacks/api.go` (PhonePe + MSG91 + Shiprocket keys). Empty values fall through to each gateway's DevClient. `make cdk-deploy-{dev,prod}` sources `.env.{dev,prod}` first; the GitHub workflow injects `MSG91_AUTH_KEY` (secret) + `MSG91_OTP_TEMPLATE_ID` (variable) at the step level.
+Gateway credentials are propagated from the deploy-time shell environment to every Lambda's `Environment.Variables` via `gatewayEnvKeys` in `infra/stacks/api.go` (PhonePe + MSG91 + Delhivery keys). Empty values fall through to each gateway's DevClient. `make cdk-deploy-{dev,prod}` sources `.env.{dev,prod}` first; the GitHub workflow injects `MSG91_AUTH_KEY` (secret) + `MSG91_OTP_TEMPLATE_ID` (variable) at the step level.
 
 ### Payment Integration (PhonePe Standard Checkout v2)
 - **Auth**: OAuth token flow — `POST /v1/oauth/token` with `PHONEPE_CLIENT_ID` + `PHONEPE_CLIENT_SECRET` to obtain `O-Bearer` token
@@ -187,7 +197,7 @@ Gateway credentials are propagated from the deploy-time shell environment to eve
 External service clients no longer use `IsDevelopment()` to decide dev vs real mode. Each gateway checks if its specific credentials are configured:
 - **SMS (MSG91)**: DevClient when `MSG91_AUTH_KEY` or `MSG91_OTP_TEMPLATE_ID` is empty
 - **PhonePe**: DevClient when `PHONEPE_CLIENT_ID` or `PHONEPE_CLIENT_SECRET` is empty
-- **Shiprocket**: DevClient when `SHIPROCKET_EMAIL` or `SHIPROCKET_PASSWORD` is empty
+- **Delhivery**: DevClient when `DELHIVERY_API_TOKEN` or `DELHIVERY_CLIENT_NAME` is empty
 
 ## Key Conventions
 

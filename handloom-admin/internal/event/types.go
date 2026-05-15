@@ -29,6 +29,25 @@ const (
 	ShipmentCreated   EventType = "shipment.created"
 	ShipmentUpdated   EventType = "shipment.updated"
 	ShipmentDelivered EventType = "shipment.delivered"
+
+	// Shipping events (Delhivery)
+	ShipmentManifested      EventType = "shipment.manifested"
+	ShipmentNDRReattempted  EventType = "shipment.ndr_reattempted"
+	ShipmentNDREscalated    EventType = "shipment.ndr_escalated"
+	ShipmentPickupScheduled EventType = "shipment.pickup_scheduled"
+)
+
+// COD events
+const (
+	CODRemitted  EventType = "cod.remitted"
+	CODUnmatched EventType = "cod.unmatched"
+)
+
+// Return events
+const (
+	ReturnRequested EventType = "return.requested"
+	ReturnReceived  EventType = "return.received"
+	ReturnRefunded  EventType = "return.refunded"
 )
 
 // Product events

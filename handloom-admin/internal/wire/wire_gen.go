@@ -10,6 +10,7 @@ import (
 	"context"
 	"github.com/handloom/admin/internal/config"
 	"github.com/handloom/admin/internal/handler"
+	"github.com/handloom/admin/internal/handler/cron"
 	"github.com/handloom/admin/internal/handler/store"
 	"github.com/handloom/admin/internal/middleware"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -133,9 +134,13 @@ func InitializeOrderDeps(ctx context.Context, cfg *config.Config) (*OrderDeps, e
 		return nil, err
 	}
 	paymentService := ProvidePaymentService(paymentRepository, orderRepository, inventoryRepository, cartService, gateway, eventPublisher)
+	shipmentRepository := ProvideShipmentRepository(client)
+	returnRepository := ProvideReturnRepository(client)
+	courierGateway := ProvideDelhiveryGateway(cfg)
+	returnService := ProvideReturnService(orderRepository, shipmentRepository, returnRepository, courierGateway, eventPublisher, cfg)
 	service := ProvideValidator()
 	validation := ProvideValidation(service)
-	orderHandler := ProvideOrderHandler(orderService, paymentService, validation)
+	orderHandler := ProvideOrderHandler(orderService, paymentService, returnService, validation)
 	customerService := ProvideCustomerService(customerRepository, orderRepository)
 	customerHandler := ProvideCustomerHandler(customerService, validation)
 	userRepository := ProvideUserRepository(client)
@@ -442,7 +447,18 @@ func InitializeStoreCatalogDeps(ctx context.Context, cfg *config.Config) (*Store
 	productService := ProvideProductService(productRepository, categoryRepository, inventoryRepository, assetService, eventPublisher)
 	categoryService := ProvideCategoryService(categoryRepository, productRepository, assetService)
 	inventoryService := ProvideInventoryService(inventoryRepository, cache, eventPublisher)
-	catalogHandler := ProvideStoreCatalogHandler(productService, categoryService, inventoryService)
+	client, err := ProvideDynamoDBClient(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+	shipmentRepository := ProvideShipmentRepository(client)
+	orderRepository := ProvideOrderRepository(client)
+	pincodeRepository := ProvidePincodeRepository(client)
+	gateway := ProvideDelhiveryGateway(cfg)
+	returnRepository := ProvideReturnRepository(client)
+	returnService := ProvideReturnService(orderRepository, shipmentRepository, returnRepository, gateway, eventPublisher, cfg)
+	shippingService := ProvideShippingService(shipmentRepository, orderRepository, pincodeRepository, gateway, eventPublisher, returnService, cfg)
+	catalogHandler := ProvideStoreCatalogHandler(productService, categoryService, inventoryService, shippingService)
 	storeCatalogDeps := &StoreCatalogDeps{
 		Config:  cfg,
 		Handler: catalogHandler,
@@ -509,9 +525,15 @@ func InitializeStoreCheckoutDeps(ctx context.Context, cfg *config.Config) (*Stor
 	}
 	paymentService := ProvidePaymentService(paymentRepository, orderRepository, inventoryRepository, cartService, gateway, eventPublisher)
 	shipmentRepository := ProvideShipmentRepository(client)
-	shippingService := ProvideShippingService(shipmentRepository, orderRepository, cfg)
+	pincodeRepository := ProvidePincodeRepository(client)
+	courierGateway := ProvideDelhiveryGateway(cfg)
+	returnRepository := ProvideReturnRepository(client)
+	returnService := ProvideReturnService(orderRepository, shipmentRepository, returnRepository, courierGateway, eventPublisher, cfg)
+	shippingService := ProvideShippingService(shipmentRepository, orderRepository, pincodeRepository, courierGateway, eventPublisher, returnService, cfg)
+	shippingRateRepository := ProvideShippingRateRepository(client)
+	rateTableService := ProvideRateTableService(shippingRateRepository, pincodeRepository, courierGateway)
 	customerRepository := ProvideCustomerRepository(client)
-	checkoutService := ProvideCheckoutService(cartService, orderRepository, paymentService, shippingService, inventoryRepository, customerRepository, eventPublisher)
+	checkoutService := ProvideCheckoutService(cartService, orderRepository, paymentService, shippingService, rateTableService, inventoryRepository, customerRepository, eventPublisher)
 	service := ProvideValidator()
 	validation := ProvideValidation(service)
 	checkoutHandler := ProvideStoreCheckoutHandler(checkoutService, validation)
@@ -629,7 +651,13 @@ func InitializeStoreWebhooksDeps(ctx context.Context, cfg *config.Config) (*Stor
 		return nil, err
 	}
 	paymentService := ProvidePaymentService(paymentRepository, orderRepository, inventoryRepository, cartService, gateway, eventPublisher)
-	webhookHandler := ProvideStoreWebhookHandler(paymentService, gateway, cfg)
+	shipmentRepository := ProvideShipmentRepository(client)
+	pincodeRepository := ProvidePincodeRepository(client)
+	courierGateway := ProvideDelhiveryGateway(cfg)
+	returnRepository := ProvideReturnRepository(client)
+	returnService := ProvideReturnService(orderRepository, shipmentRepository, returnRepository, courierGateway, eventPublisher, cfg)
+	shippingService := ProvideShippingService(shipmentRepository, orderRepository, pincodeRepository, courierGateway, eventPublisher, returnService, cfg)
+	webhookHandler := ProvideStoreWebhookHandler(paymentService, shippingService, gateway, cfg)
 	storeWebhooksDeps := &StoreWebhooksDeps{
 		Config:  cfg,
 		Handler: webhookHandler,
@@ -653,6 +681,68 @@ func InitializeStoreEventsDeps(ctx context.Context, cfg *config.Config) (*StoreE
 		Handler: eventsHandler,
 	}
 	return storeEventsDeps, nil
+}
+
+// InitializeCronPickupBatchDeps creates cron-pickup-batch Lambda dependencies.
+func InitializeCronPickupBatchDeps(ctx context.Context, cfg *config.Config) (*CronPickupBatchDeps, error) {
+	client, err := ProvideDynamoDBClient(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+	shipmentRepository := ProvideShipmentRepository(client)
+	gateway := ProvideDelhiveryGateway(cfg)
+	eventPublisher, err := ProvideEventPublisher(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+	manifestService := ProvideManifestService(shipmentRepository, gateway, eventPublisher, cfg)
+	pickupBatchHandler := ProvidePickupBatchHandler(manifestService)
+	cronPickupBatchDeps := &CronPickupBatchDeps{
+		Config:  cfg,
+		Handler: pickupBatchHandler,
+	}
+	return cronPickupBatchDeps, nil
+}
+
+// InitializeCronCODRemittanceDeps creates cron-cod-remittance Lambda dependencies.
+func InitializeCronCODRemittanceDeps(ctx context.Context, cfg *config.Config) (*CronCODRemittanceDeps, error) {
+	client, err := ProvideDynamoDBClient(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+	shipmentRepository := ProvideShipmentRepository(client)
+	orderRepository := ProvideOrderRepository(client)
+	codRemittanceRepository := ProvideCODRemittanceRepository(client)
+	gateway := ProvideDelhiveryGateway(cfg)
+	eventPublisher, err := ProvideEventPublisher(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+	codReconciliationService := ProvideCODReconciliationService(shipmentRepository, orderRepository, codRemittanceRepository, gateway, eventPublisher)
+	codRemittanceHandler := ProvideCODRemittanceHandler(codReconciliationService)
+	cronCODRemittanceDeps := &CronCODRemittanceDeps{
+		Config:  cfg,
+		Handler: codRemittanceHandler,
+	}
+	return cronCODRemittanceDeps, nil
+}
+
+// InitializeCronRateRefreshDeps creates cron-rate-refresh Lambda dependencies.
+func InitializeCronRateRefreshDeps(ctx context.Context, cfg *config.Config) (*CronRateRefreshDeps, error) {
+	client, err := ProvideDynamoDBClient(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+	shippingRateRepository := ProvideShippingRateRepository(client)
+	pincodeRepository := ProvidePincodeRepository(client)
+	gateway := ProvideDelhiveryGateway(cfg)
+	rateTableService := ProvideRateTableService(shippingRateRepository, pincodeRepository, gateway)
+	rateRefreshHandler := ProvideRateRefreshHandler(rateTableService)
+	cronRateRefreshDeps := &CronRateRefreshDeps{
+		Config:  cfg,
+		Handler: rateRefreshHandler,
+	}
+	return cronRateRefreshDeps, nil
 }
 
 // InitializeMonolithDeps wires the full monolith dependency graph.
@@ -709,7 +799,11 @@ func InitializeMonolithDeps(ctx context.Context, cfg *config.Config) (*MonolithD
 	cartService := ProvideCartService(cartRepository, productRepository, inventoryRepository)
 	gateway := ProvidePhonePeGateway(cfg)
 	paymentService := ProvidePaymentService(paymentRepository, orderRepository, inventoryRepository, cartService, gateway, eventPublisher)
-	orderHandler := ProvideOrderHandler(orderService, paymentService, validation)
+	shipmentRepository := ProvideShipmentRepository(client)
+	returnRepository := ProvideReturnRepository(client)
+	courierGateway := ProvideDelhiveryGateway(cfg)
+	returnService := ProvideReturnService(orderRepository, shipmentRepository, returnRepository, courierGateway, eventPublisher, cfg)
+	orderHandler := ProvideOrderHandler(orderService, paymentService, returnService, validation)
 	customerService := ProvideCustomerService(customerRepository, orderRepository)
 	customerHandler := ProvideCustomerHandler(customerService, validation)
 	auditRepository := ProvideAuditRepository(client)
@@ -727,20 +821,32 @@ func InitializeMonolithDeps(ctx context.Context, cfg *config.Config) (*MonolithD
 	reportRepository := ProvideReportRepository(client)
 	reportService := ProvideReportService(reportRepository, orderService, productService, customerService, inventoryService, analyticsService)
 	handlerReportHandler := ProvideReportHandler(reportService, validation)
+	shippingRateRepository := ProvideShippingRateRepository(client)
+	pincodeRepository := ProvidePincodeRepository(client)
+	rateTableService := ProvideRateTableService(shippingRateRepository, pincodeRepository, courierGateway)
+	codRemittanceRepository := ProvideCODRemittanceRepository(client)
+	ndrService := ProvideNDRService(shipmentRepository, courierGateway, eventPublisher, cfg)
+	manifestService := ProvideManifestService(shipmentRepository, courierGateway, eventPublisher, cfg)
+	awsConfig, err := ProvideAWSSDKConfig(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+	lambdaInvoker := ProvideRateRefreshInvoker(awsConfig, cfg)
+	v := ProvideRateRefreshFn(lambdaInvoker, cfg)
+	shippingAdminHandler := ProvideShippingAdminHandler(shippingRateRepository, rateTableService, codRemittanceRepository, ndrService, shipmentRepository, manifestService, validation, v)
 	otpRepository := ProvideOTPRepository(client)
 	customerTokenStore := ProvideCustomerTokenStore(client)
 	customerAuthService := ProvideCustomerAuthService(otpRepository, customerRepository, customerTokenStore, eventPublisher, cfg)
 	storeAuthHandler := ProvideStoreAuthHandler(customerAuthService, cartService, validation)
-	catalogHandler := ProvideStoreCatalogHandler(productService, categoryService, inventoryService)
+	shippingService := ProvideShippingService(shipmentRepository, orderRepository, pincodeRepository, courierGateway, eventPublisher, returnService, cfg)
+	catalogHandler := ProvideStoreCatalogHandler(productService, categoryService, inventoryService, shippingService)
 	cartHandler := ProvideStoreCartHandler(cartService, validation)
-	shipmentRepository := ProvideShipmentRepository(client)
-	shippingService := ProvideShippingService(shipmentRepository, orderRepository, cfg)
-	checkoutService := ProvideCheckoutService(cartService, orderRepository, paymentService, shippingService, inventoryRepository, customerRepository, eventPublisher)
+	checkoutService := ProvideCheckoutService(cartService, orderRepository, paymentService, shippingService, rateTableService, inventoryRepository, customerRepository, eventPublisher)
 	checkoutHandler := ProvideStoreCheckoutHandler(checkoutService, validation)
 	storeOrderHandler := ProvideStoreOrderHandler(orderService, orderRepository)
 	trackingHandler := ProvideStoreTrackingHandler(orderRepository, shipmentRepository)
 	profileHandler := ProvideStoreProfileHandler(customerRepository, validation)
-	webhookHandler := ProvideStoreWebhookHandler(paymentService, gateway, cfg)
+	webhookHandler := ProvideStoreWebhookHandler(paymentService, shippingService, gateway, cfg)
 	eventsHandler := ProvideStoreEventsHandler(eventsRepository, analyticsRepository, validation)
 	auth := ProvideAuthMiddleware(authService)
 	customerAuth := ProvideCustomerAuthMiddleware(customerAuthService)
@@ -761,6 +867,7 @@ func InitializeMonolithDeps(ctx context.Context, cfg *config.Config) (*MonolithD
 		AnalyticsHandler:       handlerAnalyticsHandler,
 		AssetHandler:           assetHandler,
 		ReportHandler:          handlerReportHandler,
+		ShippingAdminHandler:   shippingAdminHandler,
 		StoreAuthHandler:       storeAuthHandler,
 		StoreCatalogHandler:    catalogHandler,
 		StoreCartHandler:       cartHandler,
@@ -924,26 +1031,45 @@ type StoreEventsDeps struct {
 	Handler *store.EventsHandler
 }
 
+// CronPickupBatchDeps holds dependencies for the cron-pickup-batch Lambda.
+type CronPickupBatchDeps struct {
+	Config  *config.Config
+	Handler *cron.PickupBatchHandler
+}
+
+// CronCODRemittanceDeps holds dependencies for the cron-cod-remittance Lambda.
+type CronCODRemittanceDeps struct {
+	Config  *config.Config
+	Handler *cron.CODRemittanceHandler
+}
+
+// CronRateRefreshDeps holds dependencies for the cron-rate-refresh Lambda.
+type CronRateRefreshDeps struct {
+	Config  *config.Config
+	Handler *cron.RateRefreshHandler
+}
+
 // MonolithDeps contains every dependency the monolith API server needs.
 type MonolithDeps struct {
 	// PostgresPool retained for graceful shutdown — DynamoDB SDK v2 needs none.
 	PostgresPool *pgxpool.Pool
 
 	// Admin handlers
-	AuthHandler         *handler.AuthHandler
-	UserHandler         *handler.UserHandler
-	CategoryHandler     *handler.CategoryHandler
-	ProductHandler      *handler.ProductHandler
-	InventoryHandler    *handler.InventoryHandler
-	PricingHandler      *handler.PricingHandler
-	OrderHandler        *handler.OrderHandler
-	CustomerHandler     *handler.CustomerHandler
-	AuditHandler        *handler.AuditHandler
-	NotificationHandler *handler.NotificationHandler
-	CouponHandler       *handler.CouponHandler
-	AnalyticsHandler    *handler.AnalyticsHandler
-	AssetHandler        *handler.AssetHandler
-	ReportHandler       *handler.ReportHandler
+	AuthHandler          *handler.AuthHandler
+	UserHandler          *handler.UserHandler
+	CategoryHandler      *handler.CategoryHandler
+	ProductHandler       *handler.ProductHandler
+	InventoryHandler     *handler.InventoryHandler
+	PricingHandler       *handler.PricingHandler
+	OrderHandler         *handler.OrderHandler
+	CustomerHandler      *handler.CustomerHandler
+	AuditHandler         *handler.AuditHandler
+	NotificationHandler  *handler.NotificationHandler
+	CouponHandler        *handler.CouponHandler
+	AnalyticsHandler     *handler.AnalyticsHandler
+	AssetHandler         *handler.AssetHandler
+	ReportHandler        *handler.ReportHandler
+	ShippingAdminHandler *handler.ShippingAdminHandler
 
 	// Store handlers
 	StoreAuthHandler     *store.AuthHandler

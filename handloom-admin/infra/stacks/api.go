@@ -28,6 +28,11 @@ type APIStackProps struct {
 	DomainName     string      // Optional: custom domain for API Gateway (e.g. dev-api.homechrome.in)
 	FrontendOrigin string      // Optional: frontend origin for CORS (e.g. https://dev-admin.homechrome.in)
 	CertArn        string      // Optional: ACM certificate ARN (us-east-1) for custom domain
+	// RateRefreshFn is the cron-rate-refresh Lambda provisioned by CronStack.
+	// APIStack uses it to (a) propagate the function name as the
+	// RATE_REFRESH_LAMBDA_NAME env var, and (b) grant the admin "order"
+	// Lambda permission to invoke it asynchronously.
+	RateRefreshFn awslambda.Function
 }
 
 // ServiceLambda represents a Lambda function for a service
@@ -83,6 +88,7 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 		"DYNAMODB_ANALYTICS_TABLE":     props.DatabaseStack.AnalyticsTable.TableName(),
 		"DYNAMODB_NOTIFICATIONS_TABLE": props.DatabaseStack.NotificationsTable.TableName(),
 		"DYNAMODB_EVENTS_TABLE":        props.DatabaseStack.EventsTable.TableName(),
+		"DYNAMODB_SHIPPING_TABLE":      props.DatabaseStack.ShippingTable.TableName(),
 		"POSTGRES_DSN":                 props.DatabaseStack.PostgresDSN,
 		"S3_ASSETS_BUCKET":             assetsBucket.BucketName(),
 		"CDN_DOMAIN":                   jsii.String(props.StorageStack.CDNDomain),
@@ -92,6 +98,11 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 		"JWT_ACCESS_TOKEN_DURATION":    jsii.String("15m"),
 		"JWT_REFRESH_TOKEN_DURATION":   jsii.String("168h"),
 		"QUOTE_VALIDITY_HRS":           jsii.String("24"),
+		// Async dispatch target for the admin "refresh rates" button. The
+		// function name token is provided by CronStack so CloudFormation
+		// resolves a cross-stack reference instead of relying on a hand-built
+		// string that must stay in sync with CronStack's naming convention.
+		"RATE_REFRESH_LAMBDA_NAME": props.RateRefreshFn.FunctionName(),
 	}
 
 	// Add custom domain env vars when configured
@@ -111,9 +122,14 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 		"PHONEPE_WEBHOOK_USERNAME", "PHONEPE_WEBHOOK_PASSWORD",
 		// MSG91 (SMS / OTP)
 		"MSG91_AUTH_KEY", "MSG91_OTP_TEMPLATE_ID", "MSG91_BASE_URL",
-		// Shiprocket
-		"SHIPROCKET_EMAIL", "SHIPROCKET_PASSWORD", "SHIPROCKET_BASE_URL",
-		"SHIPROCKET_PICKUP_PINCODE",
+		// Delhivery
+		"DELHIVERY_API_TOKEN",
+		"DELHIVERY_BASE_URL",
+		"DELHIVERY_CLIENT_NAME",
+		"DELHIVERY_WEBHOOK_TOKEN",
+		"DELHIVERY_PICKUP_LOCATION",
+		"NDR_REATTEMPT_LIMIT",
+		"RETURN_WINDOW_DAYS",
 	}
 	for _, key := range gatewayEnvKeys {
 		if v := os.Getenv(key); v != "" {
@@ -195,6 +211,7 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 		props.DatabaseStack.AnalyticsTable.GrantReadWriteData(lambdaFn)
 		props.DatabaseStack.NotificationsTable.GrantReadWriteData(lambdaFn)
 		props.DatabaseStack.EventsTable.GrantReadWriteData(lambdaFn)
+		props.DatabaseStack.ShippingTable.GrantReadWriteData(lambdaFn)
 		assetsBucket.GrantReadWrite(lambdaFn, nil)
 		jwtSecret.GrantRead(lambdaFn)
 		customerJwtSecret.GrantRead(lambdaFn)
@@ -202,6 +219,15 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 		if props.EventStack != nil {
 			props.EventStack.Topic.GrantPublish(lambdaFn)
 		}
+	}
+
+	// Allow the admin "order" Lambda (which hosts the shipping admin routes
+	// in the monolith and will host them in Lambda mode once mounted) to
+	// invoke the cron-rate-refresh Lambda asynchronously. GrantInvoke scopes
+	// the policy to the rate-refresh function ARN via a CloudFormation
+	// cross-stack reference.
+	if orderLambda, ok := lambdas["order"]; ok {
+		props.RateRefreshFn.GrantInvoke(orderLambda.Function)
 	}
 
 	// Create API Gateway - optimized for AWS Free Tier

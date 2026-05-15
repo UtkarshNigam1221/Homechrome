@@ -7,6 +7,8 @@ import { useEffect, useState } from 'react';
 import { PhotoIcon } from '@heroicons/react/24/outline';
 import { toast } from 'sonner';
 
+import PincodeChecker from './PincodeChecker';
+
 import Button from '@/components/ui/button';
 import { Container } from '@/components/ui/container';
 import { QuantityStepper } from '@/components/ui/quantity-stepper';
@@ -271,6 +273,11 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
                 </Button>
               </div>
             )}
+          </div>
+
+          {/* Pincode serviceability */}
+          <div className="mt-6">
+            <PincodeChecker />
           </div>
         </div>
       </div>

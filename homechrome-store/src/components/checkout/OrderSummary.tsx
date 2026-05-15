@@ -2,6 +2,7 @@
 
 import Image from 'next/image';
 
+import ShippingLine from '@/components/checkout/ShippingLine';
 import { formatPrice } from '@/lib/utils';
 import { CartItem, CourierOption } from '@/types';
 
@@ -16,8 +17,12 @@ export default function OrderSummary({
   subtotal,
   shippingCourier,
 }: OrderSummaryProps) {
-  const shippingCost = shippingCourier?.rate ?? 0;
-  const total = subtotal + shippingCost;
+  const shippingCharge = shippingCourier ? shippingCourier.rate : undefined;
+  const total = subtotal + (shippingCharge ?? 0);
+  const totalLabel =
+    shippingCharge === undefined
+      ? `${formatPrice(subtotal)} + shipping`
+      : formatPrice(total);
 
   return (
     <div className="rounded-lg border border-border bg-white p-5">
@@ -61,19 +66,10 @@ export default function OrderSummary({
           <span className="text-muted-foreground">Subtotal</span>
           <span className="text-foreground">{formatPrice(subtotal)}</span>
         </div>
-        <div className="flex justify-between text-sm">
-          <span className="text-muted-foreground">Shipping</span>
-          <span className="text-foreground">
-            {shippingCourier
-              ? shippingCost === 0
-                ? 'FREE'
-                : formatPrice(shippingCost)
-              : '--'}
-          </span>
-        </div>
+        <ShippingLine chargePaise={shippingCharge} pendingLabel="Calculated next" />
         <div className="flex justify-between border-t border-border pt-2 text-base font-semibold">
           <span className="text-foreground">Total</span>
-          <span className="text-foreground">{formatPrice(total)}</span>
+          <span className="text-foreground">{totalLabel}</span>
         </div>
       </div>
     </div>

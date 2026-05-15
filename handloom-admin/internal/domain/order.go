@@ -56,6 +56,11 @@ type Order struct {
 	CustomerNote  string      `json:"customer_note,omitempty" dynamodbav:"customer_note,omitempty"`
 	InternalNotes []OrderNote `json:"internal_notes,omitempty" dynamodbav:"internal_notes,omitempty"`
 
+	// COD remittance (settlement of cash-on-delivery payouts from carrier)
+	CODRemitted      bool       `json:"cod_remitted" dynamodbav:"cod_remitted"`
+	CODRemittedAt    *time.Time `json:"cod_remitted_at,omitempty" dynamodbav:"cod_remitted_at,omitempty"`
+	CODRemittanceRef string     `json:"cod_remittance_ref,omitempty" dynamodbav:"cod_remittance_ref,omitempty"`
+
 	// Timestamps
 	ShippedAt   *time.Time `json:"shipped_at,omitempty" dynamodbav:"shipped_at,omitempty"`
 	DeliveredAt *time.Time `json:"delivered_at,omitempty" dynamodbav:"delivered_at,omitempty"`
@@ -151,6 +156,14 @@ func (h *OrderStatusHistory) SetKeys() {
 	h.SK = "STATUS#" + h.CreatedAt.Format("2006-01-02T15:04:05.000Z")
 	h.EntityType = "ORDER_STATUS_HISTORY"
 }
+
+// PaymentMode mirrors courier.PaymentMode at the domain level.
+type PaymentMode string
+
+const (
+	PaymentModePrepaid PaymentMode = "PREPAID"
+	PaymentModeCOD     PaymentMode = "COD"
+)
 
 // CustomerStatus defines the status of a customer
 type CustomerStatus string

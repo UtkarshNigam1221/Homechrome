@@ -1,30 +1,57 @@
 'use client';
 
+import { isAxiosError } from 'axios';
 import { useState } from 'react';
 
+import TrackingTimeline from '@/components/tracking/TrackingTimeline';
 import Button from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Container } from '@/components/ui/container';
+import FormField from '@/components/ui/form-field';
 import { PageHeader } from '@/components/ui/page-header';
-import Input from '@/components/ui/form-field';
 import api from '@/lib/api';
 import { ROUTES } from '@/lib/routes';
-import { formatDateTime as formatDate } from '@/lib/utils';
+import { formatDateTime } from '@/lib/utils';
+import type { TrackingScan } from '@/types/shipping';
 
 interface StatusHistoryEntry {
   status: string;
   timestamp: string;
   description?: string;
+  location?: string;
+  note?: string;
+}
+
+interface ShipmentInfo {
+  awb_number?: string;
+  courier_name?: string;
+  tracking_url?: string;
+  status?: string;
+  estimated_delivery?: string;
 }
 
 interface TrackingResult {
   order_number: string;
   status: string;
   status_history: StatusHistoryEntry[];
+  shipment?: ShipmentInfo;
+  // legacy/top-level fields some responses may use
   shipping_carrier?: string;
   tracking_number?: string;
   tracking_url?: string;
   estimated_delivery?: string;
+}
+
+function toTimelineScans(entries: StatusHistoryEntry[]): TrackingScan[] {
+  // Latest first
+  return [...entries]
+    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+    .map((entry) => ({
+      status: entry.status,
+      timestamp: entry.timestamp,
+      location: entry.location,
+      description: entry.description || entry.note,
+    }));
 }
 
 export default function TrackOrderPage() {
@@ -48,14 +75,23 @@ export default function TrackOrderPage() {
         ROUTES.TRACK(trimmed),
       );
       setTracking(data);
-    } catch {
-      setError(
-        'Order not found. Please check the order number and try again.',
-      );
+    } catch (err) {
+      const status = isAxiosError(err) ? err.response?.status : undefined;
+      if (status === 404) {
+        setError('Order not found. Check the order number and try again.');
+      } else {
+        setError('Could not fetch tracking. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
   };
+
+  const carrier = tracking?.shipment?.courier_name ?? tracking?.shipping_carrier;
+  const awb = tracking?.shipment?.awb_number ?? tracking?.tracking_number;
+  const trackingUrl = tracking?.shipment?.tracking_url ?? tracking?.tracking_url;
+  const eta = tracking?.shipment?.estimated_delivery ?? tracking?.estimated_delivery;
+  const scans = tracking ? toTimelineScans(tracking.status_history || []) : [];
 
   return (
     <Container size="narrow" className="max-w-2xl py-12">
@@ -68,7 +104,7 @@ export default function TrackOrderPage() {
       <form onSubmit={handleSubmit} className="mb-8">
         <div className="flex gap-3">
           <div className="flex-1">
-            <Input
+            <FormField
               value={orderNumber}
               onChange={(e) => setOrderNumber(e.target.value)}
               placeholder="Enter your order number (e.g., HC-20260220-XXXX)"
@@ -95,40 +131,40 @@ export default function TrackOrderPage() {
                 </span>
               </p>
 
-              {(tracking.shipping_carrier || tracking.tracking_number) && (
+              {(carrier || awb) && (
                 <div className="mt-4 rounded-lg bg-background p-4">
                   <h3 className="mb-2 text-sm font-semibold text-foreground">
                     Shipment Details
                   </h3>
                   <div className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-3">
-                    {tracking.shipping_carrier && (
+                    {carrier && (
                       <div>
                         <span className="text-muted-foreground">Courier: </span>
                         <span className="font-medium text-foreground">
-                          {tracking.shipping_carrier}
+                          {carrier}
                         </span>
                       </div>
                     )}
-                    {tracking.tracking_number && (
+                    {awb && (
                       <div>
                         <span className="text-muted-foreground">AWB: </span>
                         <span className="font-medium text-foreground">
-                          {tracking.tracking_number}
+                          {awb}
                         </span>
                       </div>
                     )}
-                    {tracking.estimated_delivery && (
+                    {eta && (
                       <div>
                         <span className="text-muted-foreground">Est. Delivery: </span>
                         <span className="font-medium text-foreground">
-                          {formatDate(tracking.estimated_delivery)}
+                          {formatDateTime(eta)}
                         </span>
                       </div>
                     )}
                   </div>
-                  {tracking.tracking_url && (
+                  {trackingUrl && (
                     <a
-                      href={tracking.tracking_url}
+                      href={trackingUrl}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="mt-2 inline-block text-sm font-medium text-primary hover:text-primary-dark"
@@ -141,49 +177,13 @@ export default function TrackOrderPage() {
             </CardContent>
           </Card>
 
-          {tracking.status_history && tracking.status_history.length > 0 && (
+          {scans.length > 0 && (
             <Card>
               <CardHeader>
-                <CardTitle className="text-sm">Order Timeline</CardTitle>
+                <CardTitle className="text-sm">Tracking Timeline</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="relative">
-                  <div className="absolute left-3 top-2 bottom-2 w-0.5 bg-border" />
-
-                  <div className="space-y-6">
-                    {tracking.status_history.map((entry, idx) => (
-                      <div key={idx} className="relative flex gap-4 pl-10">
-                        <div
-                          className={`absolute left-1 top-1 h-5 w-5 rounded-full border-2 ${
-                            idx === 0
-                              ? 'border-primary bg-primary'
-                              : 'border-border bg-white'
-                          }`}
-                        >
-                          {idx === 0 && (
-                            <div className="flex h-full w-full items-center justify-center">
-                              <div className="h-1.5 w-1.5 rounded-full bg-white" />
-                            </div>
-                          )}
-                        </div>
-
-                        <div>
-                          <p className="font-medium text-foreground">
-                            {entry.status}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {formatDate(entry.timestamp)}
-                          </p>
-                          {entry.description && (
-                            <p className="mt-0.5 text-sm text-muted-foreground">
-                              {entry.description}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
+                <TrackingTimeline scans={scans} currentStatus={tracking.status} />
               </CardContent>
             </Card>
           )}

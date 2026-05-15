@@ -25,7 +25,9 @@ type PaymentRepository interface {
 type ShipmentRepository interface {
 	Create(ctx context.Context, shipment *Shipment) error
 	GetByOrderID(ctx context.Context, orderID string) (*Shipment, error)
-	UpdateStatus(ctx context.Context, orderID, shipmentID string, status ShipmentStatus, updates map[string]interface{}) error
+	GetByAWB(ctx context.Context, awb string) (*Shipment, error)
+	UpdateStatus(ctx context.Context, orderID, shipmentID string, priority ShipmentPriority, status ShipmentStatus, updates map[string]interface{}) error
+	QueryByPriorityStatus(ctx context.Context, priority ShipmentPriority, status ShipmentStatus, limit int) ([]*Shipment, error)
 }
 
 // OTPRepository defines OTP data access operations

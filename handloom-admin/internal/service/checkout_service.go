@@ -13,11 +13,9 @@ import (
 	"github.com/handloom/admin/pkg/errors"
 )
 
-// defaultPickupPincode is the warehouse/pickup location pincode
-const defaultPickupPincode = "560001"
-
-// defaultWeightGrams is the default parcel weight used for serviceability checks
-const defaultWeightGrams = 500
+// defaultItemWeightGrams is the per-item default weight used when the product
+// model does not carry an explicit weight.
+const defaultItemWeightGrams = 500
 
 // CheckoutService implements domain.CheckoutService
 type CheckoutService struct {
@@ -25,10 +23,10 @@ type CheckoutService struct {
 	orderRepo       domain.OrderRepository
 	paymentService  domain.PaymentService
 	shippingService domain.ShippingService
+	rateTable       domain.RateTableService
 	inventoryRepo   domain.InventoryRepository
 	customerRepo    domain.CustomerRepository
 	publisher       event.EventPublisher
-	pickupPincode   string
 }
 
 // NewCheckoutService creates a new CheckoutService
@@ -37,6 +35,7 @@ func NewCheckoutService(
 	orderRepo domain.OrderRepository,
 	paymentService domain.PaymentService,
 	shippingService domain.ShippingService,
+	rateTable domain.RateTableService,
 	inventoryRepo domain.InventoryRepository,
 	customerRepo domain.CustomerRepository,
 	publisher event.EventPublisher,
@@ -46,11 +45,25 @@ func NewCheckoutService(
 		orderRepo:       orderRepo,
 		paymentService:  paymentService,
 		shippingService: shippingService,
+		rateTable:       rateTable,
 		inventoryRepo:   inventoryRepo,
 		customerRepo:    customerRepo,
 		publisher:       publisher,
-		pickupPincode:   defaultPickupPincode,
 	}
+}
+
+// totalWeightGrams sums the cart weight using a per-item default. If the
+// product model later carries a `Weight` attribute, replace the per-item
+// constant with the product's weight.
+func totalWeightGrams(items []domain.CartItem) int {
+	total := 0
+	for _, it := range items {
+		total += it.Quantity * defaultItemWeightGrams
+	}
+	if total == 0 {
+		total = defaultItemWeightGrams
+	}
+	return total
 }
 
 // CheckServiceability checks whether delivery is available for a given pincode
@@ -62,7 +75,7 @@ func (s *CheckoutService) CheckServiceability(ctx context.Context, customerID, p
 		return nil, err
 	}
 
-	result, err := s.shippingService.CheckServiceability(ctx, s.pickupPincode, pincode, defaultWeightGrams)
+	result, err := s.shippingService.CheckServiceability(ctx, pincode, defaultItemWeightGrams)
 	if err != nil {
 		slog.ErrorContext(ctx, "Failed to check serviceability", "error", err)
 		return nil, errors.Wrap(err, "Failed to check serviceability")
@@ -146,25 +159,30 @@ func (s *CheckoutService) Initiate(ctx context.Context, customerID string, req d
 	var taxAmount int64
 	var shippingAmount int64
 
-	// Check serviceability for shipping cost
-	serviceResult, err := s.shippingService.CheckServiceability(ctx, s.pickupPincode, shippingAddr.PostalCode, defaultWeightGrams)
+	// Verify pincode is serviceable and look up the shipping charge.
+	weightGrams := totalWeightGrams(cart.Items)
+	serviceResult, err := s.shippingService.CheckServiceability(ctx, shippingAddr.PostalCode, weightGrams)
 	if err != nil {
+		s.releaseReservedItems(ctx, reservedItems)
 		slog.ErrorContext(ctx, "Failed to check serviceability for shipping cost", "error", err)
-		// Proceed with zero shipping if serviceability check fails
-	} else if serviceResult.Serviceable && len(serviceResult.Couriers) > 0 {
-		// Use selected courier or default to first available
-		if req.CourierID != nil {
-			for _, c := range serviceResult.Couriers {
-				if c.ID == *req.CourierID {
-					shippingAmount = c.Rate
-					break
-				}
-			}
-		}
-		if shippingAmount == 0 {
-			shippingAmount = serviceResult.Couriers[0].Rate
-		}
+		return nil, errors.Wrap(err, "Failed to check serviceability")
 	}
+	if !serviceResult.Serviceable {
+		s.releaseReservedItems(ctx, reservedItems)
+		return nil, errors.Validation("Pincode not serviceable")
+	}
+
+	// CheckoutRequest does not carry a payment mode yet; the storefront uses
+	// PhonePe (prepaid) by default. COD support will route through a future
+	// PaymentMode field on CheckoutRequest.
+	mode := domain.PaymentModePrepaid
+	rate, err := s.rateTable.Lookup(ctx, shippingAddr.PostalCode, weightGrams, mode)
+	if err != nil {
+		s.releaseReservedItems(ctx, reservedItems)
+		slog.ErrorContext(ctx, "Failed to look up shipping rate", "error", err)
+		return nil, errors.Wrap(err, "Failed to calculate shipping rate")
+	}
+	shippingAmount = rate
 
 	totalAmount := subtotal - discountAmount + taxAmount + shippingAmount
 

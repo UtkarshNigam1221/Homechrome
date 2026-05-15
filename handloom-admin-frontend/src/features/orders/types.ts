@@ -1,3 +1,4 @@
+import type { Shipment } from '@/features/shipping';
 import type { Address, Dimensions } from '@/shared/types/common';
 
 export type OrderStatus =
@@ -61,6 +62,7 @@ export interface Order {
   shipping_carrier?: string;
   internal_notes?: OrderNote[];
   coupon_code?: string;
+  shipment?: Shipment;
   created_at: string;
   updated_at: string;
 }

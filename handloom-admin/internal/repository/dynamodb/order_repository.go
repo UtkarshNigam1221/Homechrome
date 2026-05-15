@@ -298,6 +298,32 @@ func (r *OrderRepository) AddNote(ctx context.Context, id string, note domain.Or
 	return nil
 }
 
+// UpdateCODRemittance marks an order as COD-remitted with the carrier UTR / timestamp.
+func (r *OrderRepository) UpdateCODRemittance(ctx context.Context, orderID, remittanceRef string, remittedAt time.Time) error {
+	_, err := r.client.db.UpdateItem(ctx, &dynamodb.UpdateItemInput{
+		TableName: aws.String(r.client.ordersTable),
+		Key: map[string]types.AttributeValue{
+			"PK": &types.AttributeValueMemberS{Value: "ORDER#" + orderID},
+			"SK": &types.AttributeValueMemberS{Value: skMetadata},
+		},
+		UpdateExpression: aws.String("SET cod_remitted = :r, cod_remittance_ref = :ref, cod_remitted_at = :t, updated_at = :ua"),
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":r":   &types.AttributeValueMemberBOOL{Value: true},
+			":ref": &types.AttributeValueMemberS{Value: remittanceRef},
+			":t":   &types.AttributeValueMemberS{Value: remittedAt.Format(time.RFC3339)},
+			":ua":  &types.AttributeValueMemberS{Value: time.Now().UTC().Format(time.RFC3339)},
+		},
+		ConditionExpression: aws.String("attribute_exists(PK)"),
+	})
+	if err != nil {
+		if isConditionalCheckFailed(err) {
+			return errors.NotFound("Order not found")
+		}
+		return errors.Wrap(err, "Failed to update COD remittance")
+	}
+	return nil
+}
+
 // UpdateTracking updates tracking information
 func (r *OrderRepository) UpdateTracking(ctx context.Context, id string, trackingNumber string, carrier string) error {
 	now := time.Now()

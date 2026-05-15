@@ -8,6 +8,7 @@
 	build-lambda-store-profile build-lambda-store-events build-lambda-store-webhooks \
 	build-workers build-lambda-worker-notification build-lambda-worker-report \
 	build-lambda-worker-analytics build-lambda-worker-audit \
+	build-cron build-lambdas-all \
 	create-events \
 	cdk-synth cdk-deploy-dev cdk-deploy-prod cdk-destroy \
 	init-s3 deploy-local redeploy-local teardown-local \
@@ -459,6 +460,20 @@ build-lambda-worker-audit:
 	@mkdir -p $(LAMBDA_OUT_DIR)/worker-audit
 	$(LAMBDA_BUILD_FLAGS) $(GOBUILD) -ldflags="-s -w" -o $(LAMBDA_OUT_DIR)/worker-audit/bootstrap ./cmd/lambda/worker-audit
 
+## Build cron Lambda functions (pickup-batch, cod-remittance, rate-refresh)
+build-cron:
+	@echo "Building cron Lambda functions..."
+	@mkdir -p $(LAMBDA_OUT_DIR)
+	@for service in cron-pickup-batch cron-cod-remittance cron-rate-refresh; do \
+		echo "Building $$service Lambda..."; \
+		$(LAMBDA_BUILD_FLAGS) $(GOBUILD) -ldflags="-s -w" -o $(LAMBDA_OUT_DIR)/$$service/bootstrap ./cmd/lambda/$$service; \
+	done
+	@echo "Cron Lambda functions built successfully!"
+
+## Build every Lambda binary the CDK stacks need (active + cron)
+build-lambdas-all: build-lambdas-active build-cron
+	@echo "All Lambda functions (active + cron) built successfully!"
+
 ## Create SNS topic and SQS queues in LocalStack
 create-events:
 	@echo "Creating SNS topic and SQS queues..."
@@ -477,11 +492,11 @@ cdk-synth-prod:
 	@echo "Synthesizing CDK stacks for prod..."
 	export AWS_REGION=$(AWS_REGION) && cd infra && cdk synth -c environment=prod
 
-cdk-deploy-dev: build-lambdas-active
+cdk-deploy-dev: build-lambdas-all
 	@echo "Deploying to development environment..."
 	set -a && . ./.env.dev && set +a && export AWS_REGION=$(AWS_REGION) && cd infra && cdk deploy --all --require-approval never -c environment=dev
 
-cdk-deploy-prod: build-lambdas-active
+cdk-deploy-prod: build-lambdas-all
 	@echo "Deploying to production environment..."
 	set -a && . ./.env.prod && set +a && export AWS_REGION=$(AWS_REGION) && cd infra && cdk deploy --all --require-approval broadening -c environment=prod
 

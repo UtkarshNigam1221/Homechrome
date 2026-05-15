@@ -84,7 +84,7 @@ Customer-facing storefront APIs consumed by the Next.js frontend. See [store/](.
             ┌─────────────┐ ┌──────────┐ ┌─────────────┐
             │ Admin APIs  │ │ B2C APIs │ │ Webhooks    │
             │ /admin/*    │ │ /store/* │ │ PhonePe     │
-            │ JWT auth    │ │ OTP auth │ │ Shiprocket  │
+            │ JWT auth    │ │ OTP auth │ │ Delhivery   │
             └──────┬──────┘ └────┬─────┘ └──────┬──────┘
                    │             │               │
     ┌──────────────┴─────────────┴───────────────┴──────────────┐
@@ -114,7 +114,7 @@ Customer-facing storefront APIs consumed by the Next.js frontend. See [store/](.
    │    DynamoDB      │  │  PostgreSQL │  │     S3      │  │   External      │
    │  (7 tables)      │  │  (Catalog)  │  │  (Assets)   │  │   Gateways      │
    │  core · orders    │  │ categories  │  │             │  │  PhonePe        │
-   │  sessions · audit │  │ products    │  │             │  │  Shiprocket     │
+   │  sessions · audit │  │ products    │  │             │  │  Delhivery      │
    │  analytics · notif│  │ inventory   │  │             │  │  MSG91 SMS      │
    │  events           │  │             │  │             │  │                 │
    └─────────────────┘  └─────────────┘  └─────────────┘  └─────────────────┘

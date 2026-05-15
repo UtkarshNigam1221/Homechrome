@@ -55,6 +55,21 @@ const Reports = withSuspense(
 const Notifications = withSuspense(
   lazy(() => import('@/features/notifications').then((m) => ({ default: m.NotificationsPage })))
 );
+const ShippingRates = withSuspense(
+  lazy(() => import('@/features/shipping').then((m) => ({ default: m.RatesPage })))
+);
+const PickupBatches = withSuspense(
+  lazy(() => import('@/features/shipping').then((m) => ({ default: m.PickupBatchPage })))
+);
+const CODRemittance = withSuspense(
+  lazy(() => import('@/features/shipping').then((m) => ({ default: m.CODRemittancePage })))
+);
+const NDRQueue = withSuspense(
+  lazy(() => import('@/features/shipping').then((m) => ({ default: m.NDRQueuePage })))
+);
+const ReturnsList = withSuspense(
+  lazy(() => import('@/features/returns').then((m) => ({ default: m.ReturnsListPage })))
+);
 const Users = withSuspense(
   lazy(() => import('@/features/settings').then((m) => ({ default: m.UsersPage })))
 );
@@ -140,6 +155,13 @@ export function AppRoutes() {
 
           {/* Operations */}
           <Route path="/notifications" element={<Notifications />} />
+
+          {/* Shipping */}
+          <Route path="/shipping/rates" element={<ShippingRates />} />
+          <Route path="/shipping/pickups" element={<PickupBatches />} />
+          <Route path="/shipping/cod-remittance" element={<CODRemittance />} />
+          <Route path="/shipping/ndr-queue" element={<NDRQueue />} />
+          <Route path="/shipping/returns" element={<ReturnsList />} />
 
           {/* Admin Only Routes */}
           <Route element={<AdminRoute />}>

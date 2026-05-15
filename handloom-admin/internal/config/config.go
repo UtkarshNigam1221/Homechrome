@@ -16,14 +16,30 @@ const defaultJWTSecret = "your-super-secret-key-change-in-production"
 
 // Config holds all application configuration
 type Config struct {
-	Server   ServerConfig
-	AWS      AWSConfig
-	DynamoDB DynamoDBConfig
-	Postgres PostgresConfig
-	JWT      JWTConfig
-	App      AppConfig
-	Store    StoreConfig
-	Event    EventConfig
+	Server    ServerConfig
+	AWS       AWSConfig
+	DynamoDB  DynamoDBConfig
+	Postgres  PostgresConfig
+	JWT       JWTConfig
+	App       AppConfig
+	Store     StoreConfig
+	Event     EventConfig
+	Delhivery DelhiveryConfig
+}
+
+// DelhiveryConfig holds Delhivery courier credentials and settings.
+type DelhiveryConfig struct {
+	APIToken         string
+	BaseURL          string
+	ClientName       string
+	WebhookToken     string
+	PickupLocation   string
+	NDRLimit         int
+	ReturnWindowDays int
+	// RateRefreshLambdaName is the Lambda function name for the
+	// cron-rate-refresh worker. Empty means the admin handler runs
+	// the refresh synchronously instead of dispatching to Lambda.
+	RateRefreshLambdaName string
 }
 
 // PostgresConfig holds PostgreSQL connection configuration
@@ -42,12 +58,6 @@ type StoreConfig struct {
 	PhonePeRedirectURL     string
 	PhonePeWebhookUsername string
 	PhonePeWebhookPassword string
-
-	// Shiprocket
-	ShiprocketEmail         string
-	ShiprocketPassword      string
-	ShiprocketBaseURL       string
-	ShiprocketPickupPincode string
 
 	// MSG91
 	MSG91AuthKey       string
@@ -93,6 +103,7 @@ type DynamoDBConfig struct {
 	AnalyticsTable     string // + Report
 	NotificationsTable string // Notification
 	EventsTable        string // Raw event store
+	ShippingTable      string // Shipments, NDR, returns
 }
 
 // JWTConfig holds JWT configuration
@@ -135,6 +146,7 @@ func Load() *Config {
 			AnalyticsTable:     getEnv("DYNAMODB_ANALYTICS_TABLE", "handloom-analytics"),
 			NotificationsTable: getEnv("DYNAMODB_NOTIFICATIONS_TABLE", "handloom-notifications"),
 			EventsTable:        getEnv("DYNAMODB_EVENTS_TABLE", "handloom-events"),
+			ShippingTable:      getEnv("DYNAMODB_SHIPPING_TABLE", "handloom-shipping-local"),
 		},
 		JWT: JWTConfig{
 			SecretKey:            getJWTSecret(),
@@ -164,11 +176,6 @@ func Load() *Config {
 			PhonePeWebhookUsername: getEnv("PHONEPE_WEBHOOK_USERNAME", ""),
 			PhonePeWebhookPassword: getEnv("PHONEPE_WEBHOOK_PASSWORD", ""),
 
-			ShiprocketEmail:         getEnv("SHIPROCKET_EMAIL", ""),
-			ShiprocketPassword:      getEnv("SHIPROCKET_PASSWORD", ""),
-			ShiprocketBaseURL:       getEnv("SHIPROCKET_BASE_URL", "https://apiv2.shiprocket.in/v1/external"),
-			ShiprocketPickupPincode: getEnv("SHIPROCKET_PICKUP_PINCODE", "560001"),
-
 			MSG91AuthKey:       getEnv("MSG91_AUTH_KEY", ""),
 			MSG91OTPTemplateID: getEnv("MSG91_OTP_TEMPLATE_ID", ""),
 			MSG91BaseURL:       getEnv("MSG91_BASE_URL", "https://control.msg91.com"),
@@ -176,6 +183,16 @@ func Load() *Config {
 			CustomerJWTSecret:       getEnv("CUSTOMER_JWT_SECRET", "customer-secret-change-in-production"),
 			CustomerAccessTokenTTL:  getDurationEnv("CUSTOMER_ACCESS_TOKEN_TTL", 15*time.Minute),
 			CustomerRefreshTokenTTL: getDurationEnv("CUSTOMER_REFRESH_TOKEN_TTL", 30*24*time.Hour),
+		},
+		Delhivery: DelhiveryConfig{
+			APIToken:              getEnv("DELHIVERY_API_TOKEN", ""),
+			BaseURL:               getEnv("DELHIVERY_BASE_URL", "https://track.delhivery.com"),
+			ClientName:            getEnv("DELHIVERY_CLIENT_NAME", ""),
+			WebhookToken:          getEnv("DELHIVERY_WEBHOOK_TOKEN", ""),
+			PickupLocation:        getEnv("DELHIVERY_PICKUP_LOCATION", "Primary"),
+			NDRLimit:              getIntEnv("NDR_REATTEMPT_LIMIT", 3),
+			ReturnWindowDays:      getIntEnv("RETURN_WINDOW_DAYS", 7),
+			RateRefreshLambdaName: getEnv("RATE_REFRESH_LAMBDA_NAME", ""),
 		},
 	}
 }

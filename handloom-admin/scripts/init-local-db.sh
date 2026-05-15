@@ -91,6 +91,9 @@ aws dynamodb create-table \
         AttributeName=GSI1SK,AttributeType=S \
         AttributeName=GSI2PK,AttributeType=S \
         AttributeName=GSI2SK,AttributeType=S \
+        AttributeName=priority_status,AttributeType=S \
+        AttributeName=created_at,AttributeType=S \
+        AttributeName=awb_number,AttributeType=S \
     --key-schema \
         AttributeName=PK,KeyType=HASH \
         AttributeName=SK,KeyType=RANGE \
@@ -105,6 +108,18 @@ aws dynamodb create-table \
             {
                 \"IndexName\": \"GSI2\",
                 \"KeySchema\": [{\"AttributeName\":\"GSI2PK\",\"KeyType\":\"HASH\"},{\"AttributeName\":\"GSI2SK\",\"KeyType\":\"RANGE\"}],
+                \"Projection\": {\"ProjectionType\":\"ALL\"},
+                \"ProvisionedThroughput\": {\"ReadCapacityUnits\": 5, \"WriteCapacityUnits\": 5}
+            },
+            {
+                \"IndexName\": \"priority-status-index\",
+                \"KeySchema\": [{\"AttributeName\":\"priority_status\",\"KeyType\":\"HASH\"},{\"AttributeName\":\"created_at\",\"KeyType\":\"RANGE\"}],
+                \"Projection\": {\"ProjectionType\":\"ALL\"},
+                \"ProvisionedThroughput\": {\"ReadCapacityUnits\": 5, \"WriteCapacityUnits\": 5}
+            },
+            {
+                \"IndexName\": \"awb-index\",
+                \"KeySchema\": [{\"AttributeName\":\"awb_number\",\"KeyType\":\"HASH\"}],
                 \"Projection\": {\"ProjectionType\":\"ALL\"},
                 \"ProvisionedThroughput\": {\"ReadCapacityUnits\": 5, \"WriteCapacityUnits\": 5}
             }
@@ -208,6 +223,34 @@ aws dynamodb create-table \
     2>/dev/null || echo "Table handloom-events already exists"
 
 echo "Created handloom-events table"
+
+# Shipping Table (Shipping rates, pincode zones, COD remittances, returns)
+echo "Creating handloom-shipping-local table..."
+aws dynamodb create-table \
+    --endpoint-url $ENDPOINT \
+    --region $REGION \
+    --table-name handloom-shipping-local \
+    --attribute-definitions \
+        AttributeName=PK,AttributeType=S \
+        AttributeName=SK,AttributeType=S \
+        AttributeName=entity_type,AttributeType=S \
+        AttributeName=status,AttributeType=S \
+    --key-schema \
+        AttributeName=PK,KeyType=HASH \
+        AttributeName=SK,KeyType=RANGE \
+    --global-secondary-indexes \
+        "[
+            {
+                \"IndexName\": \"entity-status-index\",
+                \"KeySchema\": [{\"AttributeName\":\"entity_type\",\"KeyType\":\"HASH\"},{\"AttributeName\":\"status\",\"KeyType\":\"RANGE\"}],
+                \"Projection\": {\"ProjectionType\":\"ALL\"},
+                \"ProvisionedThroughput\": {\"ReadCapacityUnits\": 5, \"WriteCapacityUnits\": 5}
+            }
+        ]" \
+    --provisioned-throughput ReadCapacityUnits=5,WriteCapacityUnits=5 \
+    2>/dev/null || echo "Table handloom-shipping-local already exists"
+
+echo "Created handloom-shipping-local table"
 
 # Enable TTL on sessions table (for OTP and refresh token expiry)
 aws dynamodb update-time-to-live \

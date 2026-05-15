@@ -59,6 +59,25 @@ export const ROUTES = {
     CANCEL: (id: string) => `/admin/orders/${id}/cancel`,
     REFUND: (id: string) => `/admin/orders/${id}/refund`,
     PAYMENT_STATUS: (id: string) => `/admin/orders/${id}/payment-status`,
+    SHIPMENTS: (id: string) => `/admin/orders/${id}/shipments`,
+    RETURNS: (id: string) => `/admin/orders/${id}/returns`,
+  },
+
+  RETURNS: {
+    CANCEL: (id: string) => `/admin/returns/${id}/cancel`,
+    REFUND: (id: string) => `/admin/returns/${id}/refund`,
+  },
+
+  SHIPPING: {
+    RATES: '/admin/shipping/rates',
+    RATE_DETAIL: (zone: string, slab: number) => `/admin/shipping/rates/${zone}/${slab}`,
+    RATES_REFRESH: '/admin/shipping/rates/refresh',
+    COD_REMITTANCES: '/admin/shipping/cod-remittances',
+    COD_REMITTANCE_DETAIL: (id: string) => `/admin/shipping/cod-remittances/${id}`,
+    NDR_QUEUE: '/admin/shipping/ndr-queue',
+    NDR_ACTION: (id: string) => `/admin/shipping/shipments/${id}/ndr-action`,
+    PICKUP_BATCHES: '/admin/shipping/pickup-batches',
+    PICKUP_BATCH_RUN: '/admin/shipping/pickup-batches/run',
   },
 
   PRICING: {

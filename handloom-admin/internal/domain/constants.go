@@ -3,13 +3,24 @@ package domain
 
 // DynamoDB table names
 const (
-	TableCore   = "handloom-core"
-	TableOrders = "handloom-orders"
+	TableCore     = "handloom-core"
+	TableOrders   = "handloom-orders"
+	TableShipping = "handloom-shipping"
 )
 
 // DynamoDB sort key constants
 const (
 	SKMetadata = "METADATA"
+)
+
+// DynamoDB entity_type constants for the shipping subsystem.
+// These tag rows that share a GSI partition (entity-status-index, etc.)
+// so list-by-status queries can filter to a single logical entity.
+const (
+	EntityTypeShipping      = "SHIPPING_RATE"
+	EntityTypePincodeZone   = "PINCODE_ZONE"
+	EntityTypeCODRemittance = "COD_REMITTANCE"
+	EntityTypeReturnRequest = "RETURN_REQUEST"
 )
 
 // DateLayout is the standard date format used across the application.

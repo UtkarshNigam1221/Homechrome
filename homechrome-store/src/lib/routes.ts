@@ -32,6 +32,9 @@ export const ROUTES = {
     PRODUCT: (slug: string) => `/api/v1/store/catalog/products/${slug}`,
     FILTER_OPTIONS: (categoryId: string) => `/api/v1/store/catalog/products/filter-options/${categoryId}`,
   },
+  SHIPPING: {
+    CHECK_PINCODE: (pin: string) => `/api/v1/store/catalog/check-pincode/${pin}`,
+  },
   TRACK: (trackingNumber: string) => `/api/v1/store/track/${encodeURIComponent(trackingNumber)}`,
   EVENTS: '/api/v1/store/events',
 } as const;

@@ -1,6 +1,10 @@
 package domain
 
-import "context"
+import (
+	"context"
+	"net/http"
+	"time"
+)
 
 // SMSGateway defines the SMS sending interface
 type SMSGateway interface {
@@ -101,8 +105,77 @@ type PaymentResponse struct {
 
 // ShippingService defines shipping operations
 type ShippingService interface {
-	CheckServiceability(ctx context.Context, pickupPincode, deliveryPincode string, weightGrams int) (*ServiceabilityResult, error)
-	CreateShipment(ctx context.Context, order *Order) (*Shipment, error)
+	CheckServiceability(ctx context.Context, pincode string, weightGrams int) (*ServiceabilityResult, error)
+	CreateShipment(ctx context.Context, order *Order, priority ShipmentPriority) (*Shipment, error)
 	TrackShipment(ctx context.Context, orderID string) (*Shipment, error)
-	HandleWebhook(ctx context.Context, payload []byte, token string) error
+	HandleWebhook(ctx context.Context, body []byte, headers http.Header) error
+}
+
+// ManifestService defines manifest + pickup orchestration for shipments.
+type ManifestService interface {
+	CreatePerOrderManifest(ctx context.Context, shipment *Shipment) error
+	RunDailyBatch(ctx context.Context, pickupDate time.Time) (*BatchResult, error)
+}
+
+// BatchResult summarizes a batch manifest run.
+//
+// ShipmentCount is the number of shipments attempted in this batch (i.e. the
+// number of AWBs handed to the carrier's manifest endpoint). ShipmentMarkedIDs
+// lists shipments that were successfully transitioned to MANIFESTED in
+// DynamoDB. FailedShipmentIDs lists shipments whose status update failed after
+// the manifest was already scheduled with the carrier — these need manual
+// reconciliation and must be surfaced to operators.
+type BatchResult struct {
+	ManifestID        string   `json:"manifest_id"`
+	ShipmentCount     int      `json:"shipment_count"`
+	ShipmentMarkedIDs []string `json:"shipment_marked_ids"`
+	FailedShipmentIDs []string `json:"failed_shipment_ids"`
+}
+
+// NDRService handles Non-Delivery Report events: auto re-attempt up to a
+// configured limit, then escalate for manual action / RTO.
+type NDRService interface {
+	HandleNDREvent(ctx context.Context, awb, reason string) error
+}
+
+// CODReconciliationService pulls daily COD remittance rows from the carrier
+// and reconciles them against shipments / orders.
+type CODReconciliationService interface {
+	RunDailyPull(ctx context.Context, from, to time.Time) (*PullResult, error)
+}
+
+// PullResult summarizes a COD reconciliation run.
+type PullResult struct {
+	RemittancesProcessed int
+	EntriesMatched       int
+	EntriesUnmatched     int
+}
+
+// RateTableService refreshes the carrier rate matrix and resolves shipping
+// charges for a given pincode + weight + payment mode.
+type RateTableService interface {
+	Refresh(ctx context.Context) (*RefreshResult, error)
+	Lookup(ctx context.Context, pincode string, weightGrams int, mode PaymentMode) (int64, error)
+}
+
+// RefreshResult summarizes a rate matrix refresh.
+type RefreshResult struct {
+	RowsUpdated int
+	RowsSkipped int
+	Errors      []string
+}
+
+// ReturnService manages admin-initiated customer returns: creates a reverse
+// pickup with the courier, tracks lifecycle status, and orchestrates refunds.
+type ReturnService interface {
+	Create(ctx context.Context, orderID string, req CreateReturnRequest, adminID string) (*ReturnRequest, error)
+	Cancel(ctx context.Context, returnID string, adminID string) error
+	ProcessRefund(ctx context.Context, returnID string, amountPaise int64, adminID string) error
+	HandleReverseWebhook(ctx context.Context, awb string, status ReturnStatus) error
+}
+
+// CreateReturnRequest is the admin-supplied payload for creating a return.
+type CreateReturnRequest struct {
+	Items  []ReturnItem
+	Reason string
 }

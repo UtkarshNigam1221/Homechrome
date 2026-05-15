@@ -1,4 +1,5 @@
-// Helper function to get badge variant from status
+// Helper function to get badge variant from status.
+// Terminal states: CANCELLED = gray (neutral), REFUNDED = success (positive resolution).
 export function getStatusBadgeVariant(
   status: string
 ): 'success' | 'warning' | 'danger' | 'info' | 'gray' {
@@ -10,17 +11,16 @@ export function getStatusBadgeVariant(
     PROCESSING: 'info',
     COMPLETED: 'success',
     FAILED: 'danger',
-    CANCELLED: 'danger',
+    CANCELLED: 'gray',
 
     // Order statuses
     CONFIRMED: 'info',
     SHIPPED: 'info',
     DELIVERED: 'success',
-    RETURNED: 'warning',
 
     // Payment statuses
     PAID: 'success',
-    REFUNDED: 'warning',
+    REFUNDED: 'success',
 
     // Product statuses
     DRAFT: 'gray',
@@ -35,6 +35,21 @@ export function getStatusBadgeVariant(
 
     // Coupon statuses
     EXPIRED: 'danger',
+
+    // Shipping / returns / reconciliation
+    RECEIVED: 'info',
+    RECONCILED: 'success',
+    UNMATCHED: 'danger',
+    NDR: 'warning',
+    NDR_ESCALATED: 'danger',
+    MANIFESTED: 'info',
+    OUT_FOR_DELIVERY: 'info',
+    IN_TRANSIT: 'info',
+    PICKED_UP: 'info',
+    RTO: 'danger',
+    RETURNING: 'warning',
+    RETURNED: 'success',
+    REQUESTED: 'warning',
   };
 
   if (!status) return 'gray';

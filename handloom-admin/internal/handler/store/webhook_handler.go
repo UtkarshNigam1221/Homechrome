@@ -11,21 +11,29 @@ import (
 
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/internal/gateway/phonepe"
+	"github.com/handloom/admin/pkg/errors"
 	"github.com/handloom/admin/pkg/response"
 )
+
+// maxWebhookBodySize caps the bytes read from any incoming webhook request to
+// protect the handler from accidental or malicious oversized payloads. 1 MiB
+// is comfortably above the largest documented PhonePe/Delhivery payloads.
+const maxWebhookBodySize = 1 << 20 // 1 MiB
 
 // WebhookHandler handles incoming webhook callbacks from external providers.
 type WebhookHandler struct {
 	paymentService  domain.PaymentService
+	shippingService domain.ShippingService
 	phonePe         phonepe.Gateway
 	webhookUsername string
 	webhookPassword string
 }
 
 // NewWebhookHandler creates a new WebhookHandler.
-func NewWebhookHandler(paymentService domain.PaymentService, phonePe phonepe.Gateway, webhookUsername, webhookPassword string) *WebhookHandler {
+func NewWebhookHandler(paymentService domain.PaymentService, shippingService domain.ShippingService, phonePe phonepe.Gateway, webhookUsername, webhookPassword string) *WebhookHandler {
 	return &WebhookHandler{
 		paymentService:  paymentService,
+		shippingService: shippingService,
 		phonePe:         phonePe,
 		webhookUsername: webhookUsername,
 		webhookPassword: webhookPassword,
@@ -38,7 +46,11 @@ func (h *WebhookHandler) Routes() chi.Router {
 	r := chi.NewRouter()
 
 	r.Post("/phonepe", h.PhonePeWebhook)
-	r.Post("/shiprocket", h.ShiprocketWebhook)
+	// Forward and reverse Delhivery callbacks share the same handler — the
+	// ShippingService inspects the parsed event and routes reverse pickups to
+	// ReturnService internally.
+	r.Post("/delhivery", h.handleCourierWebhook)
+	r.Post("/delhivery/reverse", h.handleCourierWebhook)
 
 	return r
 }
@@ -50,7 +62,7 @@ func (h *WebhookHandler) Routes() chi.Router {
 func (h *WebhookHandler) PhonePeWebhook(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	body, err := io.ReadAll(r.Body)
+	body, err := io.ReadAll(io.LimitReader(r.Body, maxWebhookBodySize))
 	if err != nil {
 		slog.ErrorContext(ctx, "failed to read PhonePe webhook body", "error", err)
 		response.JSON(w, http.StatusOK, map[string]string{response.KeyStatus: response.KeyError})
@@ -115,8 +127,18 @@ func (h *WebhookHandler) PhonePeWebhook(w http.ResponseWriter, r *http.Request) 
 	response.JSON(w, http.StatusOK, map[string]string{response.KeyStatus: "ok"})
 }
 
-// ShiprocketWebhook is a placeholder for Shiprocket shipping callbacks.
-// It acknowledges receipt and returns 200 OK.
-func (h *WebhookHandler) ShiprocketWebhook(w http.ResponseWriter, r *http.Request) {
-	response.JSON(w, http.StatusOK, map[string]string{response.KeyStatus: "ok"})
+// handleCourierWebhook handles Delhivery shipment status callbacks for both
+// forward and reverse pickups. It reads the raw body and headers, then
+// delegates verification and processing to the shipping service.
+func (h *WebhookHandler) handleCourierWebhook(w http.ResponseWriter, r *http.Request) {
+	body, err := io.ReadAll(io.LimitReader(r.Body, maxWebhookBodySize))
+	if err != nil {
+		response.Error(w, errors.BadRequest("Failed to read body"))
+		return
+	}
+	if err := h.shippingService.HandleWebhook(r.Context(), body, r.Header); err != nil {
+		response.Error(w, err)
+		return
+	}
+	response.Success(w, map[string]any{"status": "ok"})
 }

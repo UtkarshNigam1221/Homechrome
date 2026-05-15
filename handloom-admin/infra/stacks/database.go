@@ -28,6 +28,7 @@ type DatabaseStack struct {
 	AnalyticsTable     awsdynamodb.Table
 	NotificationsTable awsdynamodb.Table
 	EventsTable        awsdynamodb.Table
+	ShippingTable      awsdynamodb.Table
 	// External PostgreSQL (Neon) connection string
 	PostgresDSN *string
 }
@@ -202,6 +203,30 @@ func NewDatabaseStack(scope constructs.Construct, id string, props *DatabaseStac
 		ProjectionType: awsdynamodb.ProjectionType_ALL,
 	})
 
+	// priority-status-index - Query orders by priority bucket, sorted by creation time
+	ordersTable.AddGlobalSecondaryIndex(&awsdynamodb.GlobalSecondaryIndexProps{
+		IndexName: jsii.String("priority-status-index"),
+		PartitionKey: &awsdynamodb.Attribute{
+			Name: jsii.String("priority_status"),
+			Type: awsdynamodb.AttributeType_STRING,
+		},
+		SortKey: &awsdynamodb.Attribute{
+			Name: jsii.String("created_at"),
+			Type: awsdynamodb.AttributeType_STRING,
+		},
+		ProjectionType: awsdynamodb.ProjectionType_ALL,
+	})
+
+	// awb-index - Lookup shipments by AWB number (used by carrier webhook routing)
+	ordersTable.AddGlobalSecondaryIndex(&awsdynamodb.GlobalSecondaryIndexProps{
+		IndexName: jsii.String("awb-index"),
+		PartitionKey: &awsdynamodb.Attribute{
+			Name: jsii.String("awb_number"),
+			Type: awsdynamodb.AttributeType_STRING,
+		},
+		ProjectionType: awsdynamodb.ProjectionType_ALL,
+	})
+
 	// Audit Table - audit logs with 30-day TTL to limit storage
 	auditTable := awsdynamodb.NewTable(stack, jsii.String("AuditTable"), &awsdynamodb.TableProps{
 		TableName:     jsii.String("handloom-audit-" + props.Environment),
@@ -295,6 +320,39 @@ func NewDatabaseStack(scope constructs.Construct, id string, props *DatabaseStac
 		TimeToLiveAttribute: jsii.String("ttl"),
 	})
 
+	// Shipping Table - shipments, returns, pincode coverage, COD remittance
+	// PITR enabled and RETAIN removal policy to safeguard logistics state across environments
+	shippingTable := awsdynamodb.NewTable(stack, jsii.String("ShippingTable"), &awsdynamodb.TableProps{
+		TableName:   jsii.String("handloom-shipping-" + props.Environment),
+		BillingMode: awsdynamodb.BillingMode_PAY_PER_REQUEST,
+		PartitionKey: &awsdynamodb.Attribute{
+			Name: jsii.String("PK"),
+			Type: awsdynamodb.AttributeType_STRING,
+		},
+		SortKey: &awsdynamodb.Attribute{
+			Name: jsii.String("SK"),
+			Type: awsdynamodb.AttributeType_STRING,
+		},
+		TimeToLiveAttribute: jsii.String("ttl"),
+		PointInTimeRecoverySpecification: &awsdynamodb.PointInTimeRecoverySpecification{
+			PointInTimeRecoveryEnabled: jsii.Bool(true),
+		},
+		RemovalPolicy: awscdk.RemovalPolicy_RETAIN,
+	})
+
+	shippingTable.AddGlobalSecondaryIndex(&awsdynamodb.GlobalSecondaryIndexProps{
+		IndexName: jsii.String("entity-status-index"),
+		PartitionKey: &awsdynamodb.Attribute{
+			Name: jsii.String("entity_type"),
+			Type: awsdynamodb.AttributeType_STRING,
+		},
+		SortKey: &awsdynamodb.Attribute{
+			Name: jsii.String("status"),
+			Type: awsdynamodb.AttributeType_STRING,
+		},
+		ProjectionType: awsdynamodb.ProjectionType_ALL,
+	})
+
 	// --- Schema Migrator Lambda ---
 	// Runs embedded SQL migrations against external Postgres (Neon) during CDK deploy.
 	postgresDSN := jsii.String(props.PostgresDSN)
@@ -358,6 +416,7 @@ func NewDatabaseStack(scope constructs.Construct, id string, props *DatabaseStac
 		AnalyticsTable:     analyticsTable,
 		NotificationsTable: notificationsTable,
 		EventsTable:        eventsTable,
+		ShippingTable:      shippingTable,
 		PostgresDSN:        postgresDSN,
 	}
 }
