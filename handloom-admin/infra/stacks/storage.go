@@ -44,7 +44,8 @@ func NewStorageStack(scope constructs.Construct, id string, props *StorageStackP
 		autoDeleteObjects = jsii.Bool(false)
 	}
 
-	// Assets bucket — fully private, accessed only via CloudFront OAC
+	// Assets bucket — fully private, accessed only via CloudFront OAC for GET,
+	// and presigned PUT URLs from the browser for uploads (which need CORS).
 	assetsBucket := awss3.NewBucket(stack, jsii.String("AssetsBucket"), &awss3.BucketProps{
 		BucketName:        jsii.String("handloom-assets-" + props.Environment),
 		RemovalPolicy:     removalPolicy,
@@ -52,6 +53,24 @@ func NewStorageStack(scope constructs.Construct, id string, props *StorageStackP
 		Versioned:         jsii.Bool(false),
 		Encryption:        awss3.BucketEncryption_S3_MANAGED,
 		BlockPublicAccess: awss3.BlockPublicAccess_BLOCK_ALL(),
+		Cors: &[]*awss3.CorsRule{
+			{
+				AllowedMethods: &[]awss3.HttpMethods{
+					awss3.HttpMethods_GET,
+					awss3.HttpMethods_PUT,
+					awss3.HttpMethods_POST,
+					awss3.HttpMethods_HEAD,
+				},
+				AllowedOrigins: jsii.Strings(
+					"https://dev-admin.homechrome.in",
+					"https://admin.homechrome.in",
+					"http://localhost:5173",
+				),
+				AllowedHeaders: jsii.Strings("*"),
+				ExposedHeaders: jsii.Strings("ETag"),
+				MaxAge:         jsii.Number(3600),
+			},
+		},
 		LifecycleRules: &[]*awss3.LifecycleRule{
 			{
 				Id:                                  jsii.String("CleanupIncompleteUploads"),
@@ -97,7 +116,11 @@ func NewStorageStack(scope constructs.Construct, id string, props *StorageStackP
 					awss3.HttpMethods_PUT,
 					awss3.HttpMethods_POST,
 				},
-				AllowedOrigins: jsii.Strings("*"),
+				AllowedOrigins: jsii.Strings(
+					"https://dev-admin.homechrome.in",
+					"https://admin.homechrome.in",
+					"http://localhost:5173",
+				),
 				AllowedHeaders: jsii.Strings("*"),
 				MaxAge:         jsii.Number(3600),
 			},
