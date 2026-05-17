@@ -34,7 +34,11 @@ jobs:
           cache: npm
           cache-dependency-path: homechrome-store/package-lock.json
 
+      # Workaround for npm bug 4828: lockfile generated on macOS does not
+      # always include platform-specific optional deps (Next.js SWC,
+      # lightningcss for Tailwind CSS 4). Reinstall optional deps on Linux.
       - run: npm ci
+      - run: npm install --no-save --include=optional --force
       - run: npm run lint
       - name: Build check
         run: npm run build
@@ -63,7 +67,9 @@ jobs:
       - name: Install CDK
         run: npm install -g aws-cdk
 
+      # Workaround for npm bug 4828: see check job above.
       - run: npm ci
+      - run: npm install --no-save --include=optional --force
 
       - name: Set environment URLs
         id: urls
