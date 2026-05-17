@@ -53,17 +53,21 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 	stack := awscdk.NewStack(scope, &id, &sprops)
 	isProd := props.Environment == "prod"
 
-	// JWT Secret parameter
-	jwtSecret := awsssm.NewStringParameter(stack, jsii.String("JwtSecret"), &awsssm.StringParameterProps{
-		ParameterName: jsii.String(fmt.Sprintf("/handloom/%s/jwt-secret", props.Environment)),
+	// JWT Secret parameter — keep the literal name in a variable so we can pass it to
+	// ValueForStringParameter (which cannot accept an unresolved CDK token like
+	// jwtSecret.ParameterName()).
+	jwtSecretParamName := fmt.Sprintf("/handloom/%s/jwt-secret", props.Environment)
+	awsssm.NewStringParameter(stack, jsii.String("JwtSecret"), &awsssm.StringParameterProps{
+		ParameterName: jsii.String(jwtSecretParamName),
 		StringValue:   jsii.String("CHANGE_ME_IN_PRODUCTION"),
 		Description:   jsii.String("JWT Secret for token signing"),
 		Tier:          awsssm.ParameterTier_STANDARD,
 	})
 
 	// Customer JWT Secret parameter (B2C store token signing)
-	customerJwtSecret := awsssm.NewStringParameter(stack, jsii.String("CustomerJwtSecret"), &awsssm.StringParameterProps{
-		ParameterName: jsii.String(fmt.Sprintf("/handloom/%s/customer-jwt-secret", props.Environment)),
+	customerJwtSecretParamName := fmt.Sprintf("/handloom/%s/customer-jwt-secret", props.Environment)
+	awsssm.NewStringParameter(stack, jsii.String("CustomerJwtSecret"), &awsssm.StringParameterProps{
+		ParameterName: jsii.String(customerJwtSecretParamName),
 		StringValue:   jsii.String("CHANGE_ME_IN_PRODUCTION"),
 		Description:   jsii.String("Customer JWT Secret for B2C store token signing"),
 		Tier:          awsssm.ParameterTier_STANDARD,
@@ -89,8 +93,8 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 		// Resolve SSM values at CloudFormation deploy time, inject as plain env vars.
 		// Eliminates the ~3s SSM GetParameter cold-start latency observed in Lambda init.
 		// Updating the SSM parameter value requires re-deploying the stack to propagate.
-		"JWT_SECRET_KEY":               awsssm.StringParameter_ValueForStringParameter(stack, jwtSecret.ParameterName(), nil),
-		"CUSTOMER_JWT_SECRET":          awsssm.StringParameter_ValueForStringParameter(stack, customerJwtSecret.ParameterName(), nil),
+		"JWT_SECRET_KEY":               awsssm.StringParameter_ValueForStringParameter(stack, jsii.String(jwtSecretParamName), nil),
+		"CUSTOMER_JWT_SECRET":          awsssm.StringParameter_ValueForStringParameter(stack, jsii.String(customerJwtSecretParamName), nil),
 		"JWT_ISSUER":                   jsii.String("handloom-admin"),
 		"JWT_ACCESS_TOKEN_DURATION":    jsii.String("15m"),
 		"JWT_REFRESH_TOKEN_DURATION":   jsii.String("168h"),
