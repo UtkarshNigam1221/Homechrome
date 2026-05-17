@@ -45,6 +45,9 @@ type Payment struct {
 	CompletedAt           *time.Time      `json:"completed_at,omitempty" dynamodbav:"completed_at,omitempty"`
 	RefundAmount          int64           `json:"refund_amount,omitempty" dynamodbav:"refund_amount,omitempty"` // in paise
 	RefundedAt            *time.Time      `json:"refunded_at,omitempty" dynamodbav:"refunded_at,omitempty"`
+	LastMerchantRefundID  string          `json:"last_merchant_refund_id,omitempty" dynamodbav:"last_merchant_refund_id,omitempty"`
+	LastRefundID          string          `json:"last_refund_id,omitempty" dynamodbav:"last_refund_id,omitempty"`
+	LastRefundState       string          `json:"last_refund_state,omitempty" dynamodbav:"last_refund_state,omitempty"`
 	BaseEntity
 }
 

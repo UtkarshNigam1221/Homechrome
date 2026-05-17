@@ -85,5 +85,58 @@ func (n *NDRService) HandleNDREvent(ctx context.Context, awb, reason string) err
 	return nil
 }
 
+// HandleAdminAction dispatches an operator-triggered NDR action against an
+// escalated shipment, identified by AWB. REATTEMPT/RTO call the carrier;
+// MARK_CONTACTED is a DB-only annotation.
+func (n *NDRService) HandleAdminAction(ctx context.Context, awb string, action domain.NDRAdminAction, note, adminID string) error {
+	sh, err := n.shipmentRepo.GetByAWB(ctx, awb)
+	if err != nil {
+		return errors.Wrap(err, "Failed to fetch shipment for NDR action")
+	}
+	if !sh.NDREscalated && sh.Status != domain.ShipmentStatusNDREscalated && sh.Status != domain.ShipmentStatusNDR {
+		return errors.Validation("Shipment is not in an NDR state")
+	}
+	now := time.Now().UTC()
+	updates := map[string]interface{}{
+		"last_ndr_action":    string(action),
+		"last_ndr_action_at": now.Format(time.RFC3339),
+		"last_ndr_action_by": adminID,
+	}
+	if note != "" {
+		updates["last_ndr_action_note"] = note
+	}
+
+	switch action {
+	case domain.NDRAdminActionReattempt:
+		if err := n.courier.ReAttemptDelivery(ctx, awb, courier.NDRActionReAttempt); err != nil {
+			return errors.Wrap(err, "Carrier re-attempt failed")
+		}
+		if err := n.shipmentRepo.UpdateStatus(ctx, sh.OrderID, sh.ID, sh.Priority, domain.ShipmentStatusNDR, updates); err != nil {
+			return errors.Wrap(err, "Failed to update shipment after re-attempt")
+		}
+		_ = n.publisher.Publish(ctx, event.New(event.ShipmentNDRReattempted, map[string]any{
+			"awb": awb, "order_id": sh.OrderID, "admin_id": adminID, "source": "admin",
+		}))
+	case domain.NDRAdminActionRTO:
+		if err := n.courier.ReAttemptDelivery(ctx, awb, courier.NDRActionRTO); err != nil {
+			return errors.Wrap(err, "Carrier RTO failed")
+		}
+		if err := n.shipmentRepo.UpdateStatus(ctx, sh.OrderID, sh.ID, sh.Priority, domain.ShipmentStatusRTO, updates); err != nil {
+			return errors.Wrap(err, "Failed to update shipment after RTO")
+		}
+		_ = n.publisher.Publish(ctx, event.New(event.ShipmentRTO, map[string]any{
+			"awb": awb, "order_id": sh.OrderID, "admin_id": adminID,
+		}))
+	case domain.NDRAdminActionMarkContacted:
+		updates["ndr_customer_contacted"] = true
+		if err := n.shipmentRepo.UpdateStatus(ctx, sh.OrderID, sh.ID, sh.Priority, sh.Status, updates); err != nil {
+			return errors.Wrap(err, "Failed to mark customer contacted")
+		}
+	default:
+		return errors.BadRequest("Unsupported NDR action")
+	}
+	return nil
+}
+
 // Ensure interface compliance.
 var _ domain.NDRService = (*NDRService)(nil)

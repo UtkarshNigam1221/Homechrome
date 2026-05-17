@@ -48,6 +48,32 @@ func (r *ReturnRepository) Create(ctx context.Context, rr *domain.ReturnRequest)
 	return nil
 }
 
+// GetByReturnID retrieves a return request by return ID alone via GSI1.
+// Returns are colocated under ORDER#<orderID>, so callers without the
+// orderID use this GSI lookup (GSI1PK = "RETURN#<id>").
+func (r *ReturnRepository) GetByReturnID(ctx context.Context, returnID string) (*domain.ReturnRequest, error) {
+	out, err := r.client.db.Query(ctx, &awsdynamodb.QueryInput{
+		TableName:              aws.String(r.client.ordersTable),
+		IndexName:              aws.String("GSI1"),
+		KeyConditionExpression: aws.String("GSI1PK = :pk"),
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			exprPK: &types.AttributeValueMemberS{Value: "RETURN#" + returnID},
+		},
+		Limit: aws.Int32(1),
+	})
+	if err != nil {
+		return nil, errors.Wrap(err, "Failed to query return by ID")
+	}
+	if len(out.Items) == 0 {
+		return nil, errors.NotFound("Return request not found")
+	}
+	var rr domain.ReturnRequest
+	if err := attributevalue.UnmarshalMap(out.Items[0], &rr); err != nil {
+		return nil, errors.Wrap(err, "Failed to unmarshal return request")
+	}
+	return &rr, nil
+}
+
 // GetByID retrieves a return request by (order_id, return_id).
 func (r *ReturnRepository) GetByID(ctx context.Context, orderID, returnID string) (*domain.ReturnRequest, error) {
 	out, err := r.client.db.GetItem(ctx, &awsdynamodb.GetItemInput{

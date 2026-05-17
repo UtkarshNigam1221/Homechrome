@@ -77,6 +77,25 @@ type PaymentDetail struct {
 	ErrorCode     string `json:"errorCode,omitempty"`
 }
 
+// --- Refund (Standard Checkout v2) ---
+
+// RefundRequest is the payload for POST /payments/v2/refund.
+type RefundRequest struct {
+	OriginalMerchantOrderID string `json:"originalMerchantOrderId"`
+	MerchantRefundID        string `json:"merchantRefundId"`
+	Amount                  int64  `json:"amount"` // paise
+}
+
+// RefundResponse is returned by both the create-refund and status APIs.
+type RefundResponse struct {
+	RefundID         string `json:"refundId"`
+	MerchantRefundID string `json:"merchantRefundId"`
+	Amount           int64  `json:"amount"`
+	State            string `json:"state"` // PENDING, COMPLETED, FAILED, CONFIRMED
+	ErrorCode        string `json:"errorCode,omitempty"`
+	DetailedErrCode  string `json:"detailedErrorCode,omitempty"`
+}
+
 // --- Webhook ---
 
 // WebhookPayload is the callback payload from PhonePe Standard Checkout

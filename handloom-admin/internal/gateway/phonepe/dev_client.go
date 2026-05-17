@@ -10,6 +10,8 @@ import (
 type Gateway interface {
 	InitiatePayment(ctx context.Context, merchantTxnID, customerID string, amount int64, orderID string) (string, error)
 	CheckPaymentStatus(ctx context.Context, merchantTxnID string) (*StatusResponse, error)
+	InitiateRefund(ctx context.Context, originalMerchantOrderID, merchantRefundID string, amount int64) (*RefundResponse, error)
+	CheckRefundStatus(ctx context.Context, merchantRefundID string) (*RefundResponse, error)
 	VerifyWebhookSignature(username, password, authHeader string) bool
 }
 
@@ -54,6 +56,28 @@ func (d *DevClient) CheckPaymentStatus(_ context.Context, merchantTxnID string) 
 				State:         StateCompleted,
 			},
 		},
+	}, nil
+}
+
+func (d *DevClient) InitiateRefund(_ context.Context, originalMerchantOrderID, merchantRefundID string, amount int64) (*RefundResponse, error) {
+	fmt.Printf("\n╔══════════════════════════════════════════════════╗\n")
+	fmt.Printf("║  DEV PHONEPE: refund %s ║\n", merchantRefundID)
+	fmt.Printf("║  Original: %s                              ║\n", originalMerchantOrderID)
+	fmt.Printf("║  Amount: ₹%.2f                                  ║\n", float64(amount)/100)
+	fmt.Printf("╚══════════════════════════════════════════════════╝\n\n")
+	return &RefundResponse{
+		RefundID:         "DEV-RFND-" + merchantRefundID,
+		MerchantRefundID: merchantRefundID,
+		Amount:           amount,
+		State:            StateCompleted,
+	}, nil
+}
+
+func (d *DevClient) CheckRefundStatus(_ context.Context, merchantRefundID string) (*RefundResponse, error) {
+	return &RefundResponse{
+		RefundID:         "DEV-RFND-" + merchantRefundID,
+		MerchantRefundID: merchantRefundID,
+		State:            StateCompleted,
 	}, nil
 }
 

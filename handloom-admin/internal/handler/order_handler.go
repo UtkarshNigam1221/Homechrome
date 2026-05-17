@@ -246,9 +246,15 @@ func (h *OrderHandler) createReturn(w http.ResponseWriter, r *http.Request) {
 }
 
 // listOrderReturns lists returns associated with an order.
-// TODO(phase-3): wire to ReturnRepository.ListByOrder when exposed via a service method.
-func (h *OrderHandler) listOrderReturns(w http.ResponseWriter, _ *http.Request) {
-	response.Error(w, errors.NotImplemented("Return listing wired in Phase 3"))
+func (h *OrderHandler) listOrderReturns(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	orderID := chi.URLParam(r, "id")
+	returns, err := h.returnService.ListByOrder(ctx, orderID)
+	if err != nil {
+		response.Error(w, err)
+		return
+	}
+	response.Success(w, returns)
 }
 
 // cancelReturn cancels an in-flight return request.

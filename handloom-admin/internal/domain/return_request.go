@@ -26,6 +26,8 @@ type ReturnItem struct {
 type ReturnRequest struct {
 	PK                string       `json:"-" dynamodbav:"PK"`
 	SK                string       `json:"-" dynamodbav:"SK"`
+	GSI1PK            string       `json:"-" dynamodbav:"GSI1PK"`
+	GSI1SK            string       `json:"-" dynamodbav:"GSI1SK"`
 	EntityType        string       `json:"-" dynamodbav:"entity_type"`
 	ID                string       `json:"id" dynamodbav:"id"`
 	OrderID           string       `json:"order_id" dynamodbav:"order_id"`
@@ -37,14 +39,19 @@ type ReturnRequest struct {
 	Status            ReturnStatus `json:"status" dynamodbav:"status"`
 	RefundAmountPaise int64        `json:"refund_amount_paise" dynamodbav:"refund_amount_paise"`
 	RefundedAt        *time.Time   `json:"refunded_at,omitempty" dynamodbav:"refunded_at,omitempty"`
+	CancelledAt       *time.Time   `json:"cancelled_at,omitempty" dynamodbav:"cancelled_at,omitempty"`
 	CreatedBy         string       `json:"created_by" dynamodbav:"created_by"`
 	BaseEntity
 }
 
 // SetKeys assigns PK/SK colocated with the originating order.
+// GSI1 enables direct lookup by return ID without knowing the order:
+// GSI1PK="RETURN#<id>" SK begins with "RETURN" sentinel.
 func (r *ReturnRequest) SetKeys() {
 	r.PK = "ORDER#" + r.OrderID
 	r.SK = "RETURN#" + r.ID
+	r.GSI1PK = "RETURN#" + r.ID
+	r.GSI1SK = "METADATA"
 	r.EntityType = EntityTypeReturnRequest
 }
 

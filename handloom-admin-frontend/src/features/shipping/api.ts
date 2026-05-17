@@ -51,8 +51,11 @@ export const shippingApi = {
     return response.data ?? [];
   },
 
-  ndrAction: async (id: string, action: NDRAction): Promise<void> => {
-    await apiClient.post(ROUTES.SHIPPING.NDR_ACTION(id), { action });
+  ndrAction: async (awb: string, action: NDRAction, note?: string): Promise<void> => {
+    await apiClient.post(ROUTES.SHIPPING.NDR_ACTION(awb), {
+      action: action.toUpperCase(),
+      ...(note ? { note } : {}),
+    });
   },
 
   runPickupBatch: async (): Promise<BatchResult> => {

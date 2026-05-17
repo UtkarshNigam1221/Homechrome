@@ -34,6 +34,7 @@ const (
 	ShipmentManifested      EventType = "shipment.manifested"
 	ShipmentNDRReattempted  EventType = "shipment.ndr_reattempted"
 	ShipmentNDREscalated    EventType = "shipment.ndr_escalated"
+	ShipmentRTO             EventType = "shipment.rto"
 	ShipmentPickupScheduled EventType = "shipment.pickup_scheduled"
 )
 
@@ -48,6 +49,7 @@ const (
 	ReturnRequested EventType = "return.requested"
 	ReturnReceived  EventType = "return.received"
 	ReturnRefunded  EventType = "return.refunded"
+	ReturnCancelled EventType = "return.cancelled"
 )
 
 // Product events

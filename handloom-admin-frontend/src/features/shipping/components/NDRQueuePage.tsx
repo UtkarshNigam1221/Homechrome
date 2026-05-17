@@ -71,7 +71,13 @@ export function NDRQueuePage() {
                     {s.last_ndr_at ? format(new Date(s.last_ndr_at), 'MMM d, h:mm a') : '—'}
                   </TableCell>
                   <TableCell className="text-right">
-                    <NDRActionMenu shipmentId={s.id} />
+                    {s.awb_number ? (
+                      <NDRActionMenu awb={s.awb_number} />
+                    ) : (
+                      <span className="text-xs text-gray-400" title="No AWB; cannot act">
+                        —
+                      </span>
+                    )}
                   </TableCell>
                 </TableRow>
               ))

@@ -5,6 +5,8 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/internal/event"
 	"github.com/handloom/admin/internal/gateway/courier"
@@ -15,6 +17,7 @@ import (
 // shipments via the carrier-agnostic courier.Gateway.
 type ManifestService struct {
 	shipmentRepo   domain.ShipmentRepository
+	manifestRepo   domain.ManifestRepository
 	courier        courier.Gateway
 	publisher      event.EventPublisher
 	pickupLocation string
@@ -23,12 +26,14 @@ type ManifestService struct {
 // NewManifestService creates a ManifestService.
 func NewManifestService(
 	repo domain.ShipmentRepository,
+	mrepo domain.ManifestRepository,
 	gw courier.Gateway,
 	pub event.EventPublisher,
 	pickupLocation string,
 ) *ManifestService {
 	return &ManifestService{
 		shipmentRepo:   repo,
+		manifestRepo:   mrepo,
 		courier:        gw,
 		publisher:      pub,
 		pickupLocation: pickupLocation,
@@ -54,6 +59,18 @@ func (m *ManifestService) CreatePerOrderManifest(ctx context.Context, sh *domain
 		map[string]interface{}{"manifest_id": res.ManifestID}); err != nil {
 		return errors.Wrap(err, "Failed to update shipment status")
 	}
+	if err := m.manifestRepo.Create(ctx, &domain.Manifest{
+		ID:                uuid.New().String(),
+		ManifestID:        res.ManifestID,
+		ShipmentCount:     1,
+		AWBs:              []string{sh.AWBNumber},
+		ShipmentMarkedIDs: []string{sh.ID},
+		PickupDate:        pickupDate,
+		PickupLocation:    m.pickupLocation,
+		Mode:              "PER_ORDER",
+	}); err != nil {
+		slog.ErrorContext(ctx, "Failed to persist manifest record", "manifest_id", res.ManifestID, "error", err)
+	}
 	_ = m.publisher.Publish(ctx, event.New(event.ShipmentManifested, map[string]any{
 		"shipment_id": sh.ID,
 		"order_id":    sh.OrderID,
@@ -61,6 +78,11 @@ func (m *ManifestService) CreatePerOrderManifest(ctx context.Context, sh *domain
 		"manifest_id": res.ManifestID,
 	}))
 	return nil
+}
+
+// ListBatches returns persisted manifests in reverse chronological order.
+func (m *ManifestService) ListBatches(ctx context.Context, limit int) ([]*domain.Manifest, error) {
+	return m.manifestRepo.List(ctx, limit)
 }
 
 // RunDailyBatch manifests every NORMAL-priority shipment in CREATED state in a
@@ -110,6 +132,19 @@ func (m *ManifestService) RunDailyBatch(ctx context.Context, pickupDate time.Tim
 			continue
 		}
 		marked = append(marked, s.ID)
+	}
+	if err := m.manifestRepo.Create(ctx, &domain.Manifest{
+		ID:                uuid.New().String(),
+		ManifestID:        res.ManifestID,
+		ShipmentCount:     len(awbs),
+		AWBs:              awbs,
+		ShipmentMarkedIDs: marked,
+		FailedShipmentIDs: failed,
+		PickupDate:        pickupDate,
+		PickupLocation:    m.pickupLocation,
+		Mode:              "DAILY_BATCH",
+	}); err != nil {
+		slog.ErrorContext(ctx, "Failed to persist batch manifest record", "manifest_id", res.ManifestID, "error", err)
 	}
 	_ = m.publisher.Publish(ctx, event.New(event.ShipmentPickupScheduled, map[string]any{
 		"manifest_id":    res.ManifestID,

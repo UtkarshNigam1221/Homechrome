@@ -167,6 +167,11 @@ func ProvideReturnRepository(client *dynamodb.Client) domain.ReturnRepository {
 	return dynamodb.NewReturnRepository(client)
 }
 
+// ProvideManifestRepository creates a new ManifestRepository
+func ProvideManifestRepository(client *dynamodb.Client) domain.ManifestRepository {
+	return dynamodb.NewManifestRepository(client)
+}
+
 // RepositorySet contains all repository providers
 var RepositorySet = wire.NewSet(
 	ProvideUserRepository,
@@ -190,6 +195,7 @@ var RepositorySet = wire.NewSet(
 	ProvidePincodeRepository,
 	ProvideCODRemittanceRepository,
 	ProvideReturnRepository,
+	ProvideManifestRepository,
 )
 
 // ============================================================================
@@ -720,11 +726,12 @@ func ProvideShippingService(
 // ProvideManifestService creates a new ManifestService.
 func ProvideManifestService(
 	shipmentRepo domain.ShipmentRepository,
+	manifestRepo domain.ManifestRepository,
 	gw courier.Gateway,
 	pub event.EventPublisher,
 	cfg *config.Config,
 ) *service.ManifestService {
-	return service.NewManifestService(shipmentRepo, gw, pub, cfg.Delhivery.PickupLocation)
+	return service.NewManifestService(shipmentRepo, manifestRepo, gw, pub, cfg.Delhivery.PickupLocation)
 }
 
 // ProvideNDRService creates a new NDRService.
@@ -766,6 +773,7 @@ func ProvideReturnService(
 	orderRepo domain.OrderRepository,
 	shipmentRepo domain.ShipmentRepository,
 	returnRepo domain.ReturnRepository,
+	paymentSvc *service.PaymentService,
 	gw courier.Gateway,
 	pub event.EventPublisher,
 	cfg *config.Config,
@@ -775,7 +783,7 @@ func ProvideReturnService(
 		window = 7
 	}
 	return service.NewReturnService(
-		orderRepo, shipmentRepo, returnRepo, gw, pub, cfg.Delhivery.PickupLocation, window,
+		orderRepo, shipmentRepo, returnRepo, paymentSvc, gw, pub, cfg.Delhivery.PickupLocation, window,
 	)
 }
 

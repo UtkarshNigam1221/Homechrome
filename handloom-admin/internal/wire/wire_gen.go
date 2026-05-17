@@ -137,7 +137,7 @@ func InitializeOrderDeps(ctx context.Context, cfg *config.Config) (*OrderDeps, e
 	shipmentRepository := ProvideShipmentRepository(client)
 	returnRepository := ProvideReturnRepository(client)
 	courierGateway := ProvideDelhiveryGateway(cfg)
-	returnService := ProvideReturnService(orderRepository, shipmentRepository, returnRepository, courierGateway, eventPublisher, cfg)
+	returnService := ProvideReturnService(orderRepository, shipmentRepository, returnRepository, paymentService, courierGateway, eventPublisher, cfg)
 	service := ProvideValidator()
 	validation := ProvideValidation(service)
 	orderHandler := ProvideOrderHandler(orderService, paymentService, returnService, validation)
@@ -456,7 +456,12 @@ func InitializeStoreCatalogDeps(ctx context.Context, cfg *config.Config) (*Store
 	pincodeRepository := ProvidePincodeRepository(client)
 	gateway := ProvideDelhiveryGateway(cfg)
 	returnRepository := ProvideReturnRepository(client)
-	returnService := ProvideReturnService(orderRepository, shipmentRepository, returnRepository, gateway, eventPublisher, cfg)
+	paymentRepository := ProvidePaymentRepository(client)
+	cartRepository := ProvideCartRepository(client)
+	cartService := ProvideCartService(cartRepository, productRepository, inventoryRepository)
+	phonepeGateway := ProvidePhonePeGateway(cfg)
+	paymentService := ProvidePaymentService(paymentRepository, orderRepository, inventoryRepository, cartService, phonepeGateway, eventPublisher)
+	returnService := ProvideReturnService(orderRepository, shipmentRepository, returnRepository, paymentService, gateway, eventPublisher, cfg)
 	shippingService := ProvideShippingService(shipmentRepository, orderRepository, pincodeRepository, gateway, eventPublisher, returnService, cfg)
 	catalogHandler := ProvideStoreCatalogHandler(productService, categoryService, inventoryService, shippingService)
 	storeCatalogDeps := &StoreCatalogDeps{
@@ -528,7 +533,7 @@ func InitializeStoreCheckoutDeps(ctx context.Context, cfg *config.Config) (*Stor
 	pincodeRepository := ProvidePincodeRepository(client)
 	courierGateway := ProvideDelhiveryGateway(cfg)
 	returnRepository := ProvideReturnRepository(client)
-	returnService := ProvideReturnService(orderRepository, shipmentRepository, returnRepository, courierGateway, eventPublisher, cfg)
+	returnService := ProvideReturnService(orderRepository, shipmentRepository, returnRepository, paymentService, courierGateway, eventPublisher, cfg)
 	shippingService := ProvideShippingService(shipmentRepository, orderRepository, pincodeRepository, courierGateway, eventPublisher, returnService, cfg)
 	shippingRateRepository := ProvideShippingRateRepository(client)
 	rateTableService := ProvideRateTableService(shippingRateRepository, pincodeRepository, courierGateway)
@@ -655,7 +660,7 @@ func InitializeStoreWebhooksDeps(ctx context.Context, cfg *config.Config) (*Stor
 	pincodeRepository := ProvidePincodeRepository(client)
 	courierGateway := ProvideDelhiveryGateway(cfg)
 	returnRepository := ProvideReturnRepository(client)
-	returnService := ProvideReturnService(orderRepository, shipmentRepository, returnRepository, courierGateway, eventPublisher, cfg)
+	returnService := ProvideReturnService(orderRepository, shipmentRepository, returnRepository, paymentService, courierGateway, eventPublisher, cfg)
 	shippingService := ProvideShippingService(shipmentRepository, orderRepository, pincodeRepository, courierGateway, eventPublisher, returnService, cfg)
 	webhookHandler := ProvideStoreWebhookHandler(paymentService, shippingService, gateway, cfg)
 	storeWebhooksDeps := &StoreWebhooksDeps{
@@ -690,12 +695,13 @@ func InitializeCronPickupBatchDeps(ctx context.Context, cfg *config.Config) (*Cr
 		return nil, err
 	}
 	shipmentRepository := ProvideShipmentRepository(client)
+	manifestRepository := ProvideManifestRepository(client)
 	gateway := ProvideDelhiveryGateway(cfg)
 	eventPublisher, err := ProvideEventPublisher(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}
-	manifestService := ProvideManifestService(shipmentRepository, gateway, eventPublisher, cfg)
+	manifestService := ProvideManifestService(shipmentRepository, manifestRepository, gateway, eventPublisher, cfg)
 	pickupBatchHandler := ProvidePickupBatchHandler(manifestService)
 	cronPickupBatchDeps := &CronPickupBatchDeps{
 		Config:  cfg,
@@ -802,7 +808,7 @@ func InitializeMonolithDeps(ctx context.Context, cfg *config.Config) (*MonolithD
 	shipmentRepository := ProvideShipmentRepository(client)
 	returnRepository := ProvideReturnRepository(client)
 	courierGateway := ProvideDelhiveryGateway(cfg)
-	returnService := ProvideReturnService(orderRepository, shipmentRepository, returnRepository, courierGateway, eventPublisher, cfg)
+	returnService := ProvideReturnService(orderRepository, shipmentRepository, returnRepository, paymentService, courierGateway, eventPublisher, cfg)
 	orderHandler := ProvideOrderHandler(orderService, paymentService, returnService, validation)
 	customerService := ProvideCustomerService(customerRepository, orderRepository)
 	customerHandler := ProvideCustomerHandler(customerService, validation)
@@ -826,7 +832,8 @@ func InitializeMonolithDeps(ctx context.Context, cfg *config.Config) (*MonolithD
 	rateTableService := ProvideRateTableService(shippingRateRepository, pincodeRepository, courierGateway)
 	codRemittanceRepository := ProvideCODRemittanceRepository(client)
 	ndrService := ProvideNDRService(shipmentRepository, courierGateway, eventPublisher, cfg)
-	manifestService := ProvideManifestService(shipmentRepository, courierGateway, eventPublisher, cfg)
+	manifestRepository := ProvideManifestRepository(client)
+	manifestService := ProvideManifestService(shipmentRepository, manifestRepository, courierGateway, eventPublisher, cfg)
 	awsConfig, err := ProvideAWSSDKConfig(ctx, cfg)
 	if err != nil {
 		return nil, err

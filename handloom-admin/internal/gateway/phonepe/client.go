@@ -152,6 +152,8 @@ func (c *Client) InitiatePayment(ctx context.Context, merchantTxnID, _ string, a
 }
 
 // CheckPaymentStatus checks the status of a payment order
+//
+//nolint:dupl // structurally mirrors CheckRefundStatus; deduping would obscure the endpoint contract
 func (c *Client) CheckPaymentStatus(ctx context.Context, merchantTxnID string) (*StatusResponse, error) {
 	token, err := c.getToken(ctx)
 	if err != nil {
@@ -195,4 +197,87 @@ func (c *Client) CheckPaymentStatus(ctx context.Context, merchantTxnID string) (
 func (c *Client) VerifyWebhookSignature(username, password, authHeader string) bool {
 	expected := fmt.Sprintf("%x", sha256.Sum256([]byte(username+":"+password)))
 	return subtle.ConstantTimeCompare([]byte(expected), []byte(authHeader)) == 1
+}
+
+// InitiateRefund posts a refund against the original merchant order ID.
+// Returns the refund record; PhonePe refunds are typically asynchronous and
+// land in COMPLETED state via a webhook or RefundStatus poll.
+func (c *Client) InitiateRefund(ctx context.Context, originalMerchantOrderID, merchantRefundID string, amount int64) (*RefundResponse, error) {
+	token, err := c.getToken(ctx)
+	if err != nil {
+		return nil, err
+	}
+	reqBody, err := json.Marshal(RefundRequest{
+		OriginalMerchantOrderID: originalMerchantOrderID,
+		MerchantRefundID:        merchantRefundID,
+		Amount:                  amount,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal refund request: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.config.BaseURL+"/payments/v2/refund", bytes.NewReader(reqBody))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create refund request: %w", err)
+	}
+	req.Header.Set("Content-Type", contentTypeJSON)
+	req.Header.Set("Authorization", "O-Bearer "+token)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to call PhonePe refund: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read refund response: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		var errResp PayErrorResponse
+		if err := json.Unmarshal(body, &errResp); err == nil && errResp.Code != "" {
+			return nil, fmt.Errorf("PhonePe refund failed: %s - %s", errResp.Code, errResp.Message)
+		}
+		return nil, fmt.Errorf("PhonePe refund failed (status %d): %s", resp.StatusCode, string(body))
+	}
+	var refundResp RefundResponse
+	if err := json.Unmarshal(body, &refundResp); err != nil {
+		return nil, fmt.Errorf("failed to parse refund response: %w", err)
+	}
+	return &refundResp, nil
+}
+
+// CheckRefundStatus polls the current state of a refund by merchant refund ID.
+//
+//nolint:dupl // structurally mirrors CheckPaymentStatus by intent; deduping would obscure the endpoint contract
+func (c *Client) CheckRefundStatus(ctx context.Context, merchantRefundID string) (*RefundResponse, error) {
+	token, err := c.getToken(ctx)
+	if err != nil {
+		return nil, err
+	}
+	endpoint := fmt.Sprintf("/payments/v2/refund/%s/status", merchantRefundID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.config.BaseURL+endpoint, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create refund status request: %w", err)
+	}
+	req.Header.Set("Content-Type", contentTypeJSON)
+	req.Header.Set("Authorization", "O-Bearer "+token)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to call PhonePe refund status: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read refund status response: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("PhonePe refund status failed (status %d): %s", resp.StatusCode, string(body))
+	}
+	var refundResp RefundResponse
+	if err := json.Unmarshal(body, &refundResp); err != nil {
+		return nil, fmt.Errorf("failed to parse refund status response: %w", err)
+	}
+	return &refundResp, nil
 }

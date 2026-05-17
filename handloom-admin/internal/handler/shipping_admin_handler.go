@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -174,22 +175,48 @@ func (h *ShippingAdminHandler) listNDRQueue(w http.ResponseWriter, r *http.Reque
 	response.Success(w, shipments)
 }
 
+// ndrAction dispatches an admin action against an NDR-escalated shipment.
+// The URL {id} is the shipment AWB (the NDR queue exposes AWB per row, and
+// the courier gateway is keyed on AWB). Supported actions:
+//   - REATTEMPT       — request another delivery attempt from the carrier
+//   - RTO             — return-to-origin
+//   - MARK_CONTACTED  — DB-only flag that the customer was reached
 func (h *ShippingAdminHandler) ndrAction(w http.ResponseWriter, r *http.Request) {
-	_ = chi.URLParam(r, "id")
+	awb := chi.URLParam(r, "id")
+	if awb == "" || awb == "undefined" || awb == "null" {
+		response.Error(w, errors.BadRequest("AWB is required"))
+		return
+	}
 	var body struct {
 		Action string `json:"action"`
+		Note   string `json:"note,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		response.Error(w, errors.BadRequest("Invalid JSON"))
 		return
 	}
-	// Real action dispatch (re-attempt, RTO, mark-contacted) lands in Phase 3.
-	// Surface 501 today so callers and dashboards don't treat the no-op as success.
-	response.Error(w, errors.NotImplemented("NDR actions wired in Phase 3"))
+	action := domain.NDRAdminAction(strings.ToUpper(body.Action))
+	switch action {
+	case domain.NDRAdminActionReattempt, domain.NDRAdminActionRTO, domain.NDRAdminActionMarkContacted:
+	default:
+		response.Error(w, errors.BadRequest("Unsupported NDR action"))
+		return
+	}
+	adminID := getUserIDFromContext(r.Context())
+	if err := h.ndr.HandleAdminAction(r.Context(), awb, action, body.Note, adminID); err != nil {
+		response.Error(w, err)
+		return
+	}
+	response.Success(w, map[string]any{"status": "ok", "action": action})
 }
 
-func (h *ShippingAdminHandler) listBatches(w http.ResponseWriter, _ *http.Request) {
-	response.Error(w, errors.NotImplemented("Batch history lands in Phase 3"))
+func (h *ShippingAdminHandler) listBatches(w http.ResponseWriter, r *http.Request) {
+	batches, err := h.manifest.ListBatches(r.Context(), 100)
+	if err != nil {
+		response.Error(w, err)
+		return
+	}
+	response.Success(w, batches)
 }
 
 func (h *ShippingAdminHandler) runBatch(w http.ResponseWriter, r *http.Request) {

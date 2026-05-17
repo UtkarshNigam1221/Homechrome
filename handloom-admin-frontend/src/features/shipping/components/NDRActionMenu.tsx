@@ -21,22 +21,20 @@ const ACTIONS: {
 ];
 
 interface NDRActionMenuProps {
-  shipmentId: string;
+  awb: string;
 }
 
-export function NDRActionMenu({ shipmentId }: NDRActionMenuProps) {
+export function NDRActionMenu({ awb }: NDRActionMenuProps) {
   const queryClient = useQueryClient();
 
   const mutation = useMutation({
-    mutationFn: (action: NDRAction) => shippingApi.ndrAction(shipmentId, action),
+    mutationFn: (action: NDRAction) => shippingApi.ndrAction(awb, action),
     onSuccess: () => {
       toast.success('Action queued');
       queryClient.invalidateQueries({ queryKey: ['shipping', 'ndr-queue'] });
     },
     onError: (error) => {
-      // Backend currently returns 501 for ndrAction (wired in Phase 3+). Surface
-      // that explicitly so dashboards do not treat a no-op as success.
-      toast.error(getErrorMessage(error) || 'NDR action not implemented yet');
+      toast.error(getErrorMessage(error) || 'NDR action failed');
     },
   });
 

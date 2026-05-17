@@ -3,6 +3,8 @@ package service
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"log/slog"
 	"time"
@@ -289,9 +291,109 @@ func (s *PaymentService) GetByMerchantTxnID(ctx context.Context, merchantTxnID s
 	return s.paymentRepo.GetByMerchantTxnID(ctx, merchantTxnID)
 }
 
-// RefundPayment is a placeholder for refund functionality
-func (s *PaymentService) RefundPayment(_ context.Context, _ string, _ int64, _ string) error {
-	return errors.New(errors.ErrCodeInternal, "Refund functionality is not implemented yet")
+// RefundPayment initiates a PhonePe refund for a payment, persists the
+// refund details on the payment record, and publishes a payment.refunded
+// event. Partial refunds are supported via the amount parameter.
+//
+// Idempotency: callers must supply a stable idempotencyKey (e.g. the return
+// request ID). The merchantRefundID handed to PhonePe is derived
+// deterministically from (paymentID, idempotencyKey), so retries collapse to
+// the same PSP refund. The first call validates the refundable balance and
+// increments refund_amount; subsequent calls with the same key short-circuit
+// to a status poll and a local-state re-sync — they do NOT double-increment
+// refund_amount.
+//
+// PSP semantics are async-settle: a successful response means the refund is
+// accepted. Payment status flips to REFUNDED when PhonePe state == COMPLETED
+// or the cumulative refund covers the original amount; otherwise the prior
+// success/paid status is retained with refund_amount tracking the in-flight
+// portion.
+func (s *PaymentService) RefundPayment(ctx context.Context, paymentID string, amount int64, reason, idempotencyKey string) error {
+	if amount <= 0 {
+		return errors.BadRequest("Refund amount must be positive")
+	}
+	if idempotencyKey == "" {
+		return errors.BadRequest("Refund requires an idempotency key")
+	}
+	payment, err := s.paymentRepo.GetByID(ctx, paymentID)
+	if err != nil {
+		return errors.Wrap(err, "Payment not found")
+	}
+	if payment.Status != domain.PaymentStatusSuccess && payment.Status != domain.PaymentStatusPaid && payment.Status != domain.PaymentStatusRefunded {
+		return errors.Validation("Only successful payments can be refunded")
+	}
+
+	merchantRefundID := deriveMerchantRefundID(payment.ID, idempotencyKey)
+	alreadyApplied := payment.LastMerchantRefundID == merchantRefundID
+
+	if !alreadyApplied && amount > payment.Amount-payment.RefundAmount {
+		return errors.Validation("Refund amount exceeds remaining refundable balance")
+	}
+
+	var refundResp *phonepe.RefundResponse
+	if alreadyApplied {
+		// Prior attempt reached PSP; re-sync state without double-counting.
+		refundResp, err = s.phonePe.CheckRefundStatus(ctx, merchantRefundID)
+		if err != nil {
+			return errors.Wrap(err, "Failed to re-sync refund status with provider")
+		}
+	} else {
+		refundResp, err = s.phonePe.InitiateRefund(ctx, payment.MerchantTransactionID, merchantRefundID, amount)
+		if err != nil {
+			return errors.Wrap(err, "Failed to initiate refund with provider")
+		}
+	}
+
+	now := time.Now().UTC()
+	updates := map[string]interface{}{
+		"refunded_at":             now.Format(time.RFC3339),
+		"last_refund_id":          refundResp.RefundID,
+		"last_merchant_refund_id": merchantRefundID,
+		"last_refund_state":       refundResp.State,
+		"last_refund_reason":      reason,
+		metaProviderResponse:      fmt.Sprintf("refund:%s state:%s", refundResp.RefundID, refundResp.State),
+	}
+	totalRefunded := payment.RefundAmount
+	if !alreadyApplied {
+		totalRefunded += amount
+		updates["refund_amount"] = totalRefunded
+	}
+
+	newStatus := payment.Status
+	if refundResp.State == phonepe.StateCompleted || totalRefunded >= payment.Amount {
+		newStatus = domain.PaymentStatusRefunded
+	}
+	if err := s.paymentRepo.UpdateStatus(ctx, payment.ID, newStatus, updates); err != nil {
+		slog.ErrorContext(ctx, "Refund accepted by PSP but local update failed — retry will re-sync",
+			"payment_id", payment.ID, "refund_id", refundResp.RefundID, "merchant_refund_id", merchantRefundID, "error", err)
+		return errors.Wrap(err, "Refund processed but local update failed")
+	}
+
+	if !alreadyApplied {
+		if err := s.publisher.Publish(ctx, event.New(event.PaymentRefunded, map[string]any{
+			"payment_id":         payment.ID,
+			"order_id":           payment.OrderID,
+			"refund_id":          refundResp.RefundID,
+			"merchant_refund_id": merchantRefundID,
+			"amount":             amount,
+			"state":              refundResp.State,
+			"reason":             reason,
+		})); err != nil {
+			slog.WarnContext(ctx, "Failed to publish refund event", "payment_id", payment.ID, "error", err)
+		}
+	}
+	slog.InfoContext(ctx, "Refund processed",
+		"payment_id", payment.ID, "amount", amount, "state", refundResp.State, "refund_id", refundResp.RefundID, "replayed", alreadyApplied)
+	return nil
+}
+
+// deriveMerchantRefundID returns a stable PhonePe merchantRefundId for a
+// (paymentID, idempotencyKey) pair. PhonePe treats this value as its
+// idempotency key, so repeated calls with the same key are deduplicated by
+// the PSP regardless of any retry on our side.
+func deriveMerchantRefundID(paymentID, idempotencyKey string) string {
+	sum := sha256.Sum256([]byte(paymentID + "|" + idempotencyKey))
+	return merchantTxnPrefix + "R-" + hex.EncodeToString(sum[:8])
 }
 
 // mapPaymentMode maps provider payment mode strings to domain PaymentMethod

@@ -81,7 +81,7 @@ type PaymentService interface {
 	GetByOrderID(ctx context.Context, orderID string) (*Payment, error)
 	GetByMerchantTxnID(ctx context.Context, merchantTxnID string) (*Payment, error)
 	CheckProviderStatus(ctx context.Context, orderID string) (*ProviderPaymentStatus, error)
-	RefundPayment(ctx context.Context, paymentID string, amount int64, reason string) error
+	RefundPayment(ctx context.Context, paymentID string, amount int64, reason, idempotencyKey string) error
 }
 
 // ProviderPaymentStatus contains payment status from the payment provider
@@ -115,6 +115,7 @@ type ShippingService interface {
 type ManifestService interface {
 	CreatePerOrderManifest(ctx context.Context, shipment *Shipment) error
 	RunDailyBatch(ctx context.Context, pickupDate time.Time) (*BatchResult, error)
+	ListBatches(ctx context.Context, limit int) ([]*Manifest, error)
 }
 
 // BatchResult summarizes a batch manifest run.
@@ -136,7 +137,17 @@ type BatchResult struct {
 // configured limit, then escalate for manual action / RTO.
 type NDRService interface {
 	HandleNDREvent(ctx context.Context, awb, reason string) error
+	HandleAdminAction(ctx context.Context, awb string, action NDRAdminAction, note, adminID string) error
 }
+
+// NDRAdminAction is an operator-triggered action on an NDR-escalated shipment.
+type NDRAdminAction string
+
+const (
+	NDRAdminActionReattempt     NDRAdminAction = "REATTEMPT"
+	NDRAdminActionRTO           NDRAdminAction = "RTO"
+	NDRAdminActionMarkContacted NDRAdminAction = "MARK_CONTACTED"
+)
 
 // CODReconciliationService pulls daily COD remittance rows from the carrier
 // and reconciles them against shipments / orders.
@@ -169,6 +180,7 @@ type RefreshResult struct {
 // pickup with the courier, tracks lifecycle status, and orchestrates refunds.
 type ReturnService interface {
 	Create(ctx context.Context, orderID string, req CreateReturnRequest, adminID string) (*ReturnRequest, error)
+	ListByOrder(ctx context.Context, orderID string) ([]*ReturnRequest, error)
 	Cancel(ctx context.Context, returnID string, adminID string) error
 	ProcessRefund(ctx context.Context, returnID string, amountPaise int64, adminID string) error
 	HandleReverseWebhook(ctx context.Context, awb string, status ReturnStatus) error

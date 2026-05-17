@@ -298,10 +298,17 @@ type CODRemittanceRepository interface {
 	ListByStatus(ctx context.Context, status CODRemittanceStatus, limit int) ([]*CODRemittance, error)
 }
 
+// ManifestRepository persists pickup manifests (one row per carrier batch).
+type ManifestRepository interface {
+	Create(ctx context.Context, m *Manifest) error
+	List(ctx context.Context, limit int) ([]*Manifest, error)
+}
+
 // ReturnRepository persists customer return requests, colocated with orders.
 type ReturnRepository interface {
 	Create(ctx context.Context, rr *ReturnRequest) error
 	GetByID(ctx context.Context, orderID, returnID string) (*ReturnRequest, error)
+	GetByReturnID(ctx context.Context, returnID string) (*ReturnRequest, error)
 	UpdateStatus(ctx context.Context, orderID, returnID string, status ReturnStatus, updates map[string]interface{}) error
 	ListByOrder(ctx context.Context, orderID string) ([]*ReturnRequest, error)
 	ListByStatus(ctx context.Context, status ReturnStatus, limit int, cursor string) ([]*ReturnRequest, string, error)
