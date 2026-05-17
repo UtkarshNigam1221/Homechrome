@@ -31,25 +31,21 @@ export default defineConfig(({ mode }) => {
       // Code splitting configuration
       rollupOptions: {
         output: {
-          // Manual chunk splitting for better caching
-          manualChunks: {
-            // React core - rarely changes
-            'vendor-react': ['react', 'react-dom', 'react-router-dom'],
-
-            // State management and data fetching
-            'vendor-state': ['zustand', '@tanstack/react-query'],
-
-            // UI libraries
-            'vendor-ui': ['@headlessui/react', 'lucide-react', 'clsx'],
-
-            // Charts - large bundle, only needed on dashboard/analytics
-            'vendor-charts': ['recharts'],
-
-            // Form handling
-            'vendor-forms': ['react-hook-form', '@hookform/resolvers', 'zod'],
-
-            // Utilities
-            'vendor-utils': ['axios', 'date-fns'],
+          // Manual chunk splitting for better caching.
+          // Function form required since Rollup v4 (object form removed from TS types).
+          manualChunks(id) {
+            if (!id.includes('node_modules')) return undefined;
+            if (/[\\/]node_modules[\\/](react|react-dom|react-router|react-router-dom)[\\/]/.test(id))
+              return 'vendor-react';
+            if (id.includes('zustand') || id.includes('@tanstack/react-query'))
+              return 'vendor-state';
+            if (id.includes('@headlessui/react') || id.includes('lucide-react') || id.includes('clsx'))
+              return 'vendor-ui';
+            if (id.includes('recharts')) return 'vendor-charts';
+            if (id.includes('react-hook-form') || id.includes('@hookform/resolvers') || id.includes('zod'))
+              return 'vendor-forms';
+            if (id.includes('axios') || id.includes('date-fns')) return 'vendor-utils';
+            return undefined;
           },
 
           // Optimize asset file names for caching
