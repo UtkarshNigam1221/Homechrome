@@ -86,8 +86,11 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 		"POSTGRES_DSN":                 props.DatabaseStack.PostgresDSN,
 		"S3_ASSETS_BUCKET":             assetsBucket.BucketName(),
 		"CDN_DOMAIN":                   jsii.String(props.StorageStack.CDNDomain),
-		"JWT_SECRET_PARAM":             jwtSecret.ParameterName(),
-		"CUSTOMER_JWT_SECRET_PARAM":    jsii.String(fmt.Sprintf("/handloom/%s/customer-jwt-secret", props.Environment)),
+		// Resolve SSM values at CloudFormation deploy time, inject as plain env vars.
+		// Eliminates the ~3s SSM GetParameter cold-start latency observed in Lambda init.
+		// Updating the SSM parameter value requires re-deploying the stack to propagate.
+		"JWT_SECRET_KEY":               awsssm.StringParameter_ValueForStringParameter(stack, jwtSecret.ParameterName(), nil),
+		"CUSTOMER_JWT_SECRET":          awsssm.StringParameter_ValueForStringParameter(stack, customerJwtSecret.ParameterName(), nil),
 		"JWT_ISSUER":                   jsii.String("handloom-admin"),
 		"JWT_ACCESS_TOKEN_DURATION":    jsii.String("15m"),
 		"JWT_REFRESH_TOKEN_DURATION":   jsii.String("168h"),
@@ -196,8 +199,7 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 		props.DatabaseStack.NotificationsTable.GrantReadWriteData(lambdaFn)
 		props.DatabaseStack.EventsTable.GrantReadWriteData(lambdaFn)
 		assetsBucket.GrantReadWrite(lambdaFn, nil)
-		jwtSecret.GrantRead(lambdaFn)
-		customerJwtSecret.GrantRead(lambdaFn)
+		// SSM JWT secrets resolved at deploy time via env vars above — no runtime read needed.
 		// Grant SNS publish permission when EventStack is available
 		if props.EventStack != nil {
 			props.EventStack.Topic.GrantPublish(lambdaFn)
