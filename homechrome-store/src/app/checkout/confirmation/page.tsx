@@ -6,6 +6,7 @@ import {
   ExclamationTriangleIcon,
   XCircleIcon,
 } from '@heroicons/react/24/outline';
+import { useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
@@ -49,6 +50,7 @@ function SecondaryLink({ href, children }: { href: string; children: React.React
 function ConfirmationContent() {
   const searchParams = useSearchParams();
   const orderId = searchParams.get('order_id');
+  const queryClient = useQueryClient();
 
   const [status, setStatus] = useState<PaymentStatus>('PENDING');
   const [orderNumber, setOrderNumber] = useState<string>('');
@@ -81,6 +83,9 @@ function ConfirmationContent() {
 
         if (['PAID', 'SUCCESS', 'FAILED', 'REFUNDED'].includes(data.payment_status)) {
           stopPolling();
+          // Order state just changed — drop the cached orders list so a navigation
+          // to /account/orders refetches and shows this order immediately.
+          queryClient.invalidateQueries({ queryKey: ['orders'] });
         }
 
         pollCountRef.current += 1;
@@ -95,7 +100,7 @@ function ConfirmationContent() {
         stopPolling();
       }
     };
-  }, [orderId, stopPolling]);
+  }, [orderId, stopPolling, queryClient]);
 
   useEffect(() => {
     if (!orderId) return;

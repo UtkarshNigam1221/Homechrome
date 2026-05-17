@@ -1,10 +1,11 @@
 'use client';
 
 import { CheckIcon } from '@heroicons/react/24/outline';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import {
   AlertDialog,
@@ -43,27 +44,30 @@ export default function OrderDetailPage() {
   const params = useParams();
   const router = useRouter();
   const orderId = params.id as string;
+  const queryClient = useQueryClient();
 
-  const [order, setOrder] = useState<Order | null>(null);
-  const [loading, setLoading] = useState(true);
   const [cancelling, setCancelling] = useState(false);
   const [cancelError, setCancelError] = useState<string | null>(null);
 
-  const fetchOrder = useCallback(async () => {
-    try {
-      setLoading(true);
+  const {
+    data: order,
+    isLoading: loading,
+    isError,
+  } = useQuery({
+    queryKey: ['orders', orderId],
+    queryFn: async () => {
       const { data } = await api.get<Order>(ROUTES.ORDERS.DETAIL(orderId));
-      setOrder(data);
-    } catch {
-      router.replace('/account/orders');
-    } finally {
-      setLoading(false);
-    }
-  }, [orderId, router]);
+      return data;
+    },
+    enabled: !!orderId,
+    // Refetch on every mount so a returning user sees the latest order status
+    // (shipped / delivered / cancelled by support) without a manual reload.
+    refetchOnMount: 'always',
+  });
 
   useEffect(() => {
-    fetchOrder();
-  }, [fetchOrder]);
+    if (isError) router.replace('/account/orders');
+  }, [isError, router]);
 
   const handleCancel = async () => {
     if (!order) return;
@@ -73,7 +77,7 @@ export default function OrderDetailPage() {
 
     try {
       await api.post(ROUTES.ORDERS.CANCEL(orderId));
-      await fetchOrder();
+      await queryClient.invalidateQueries({ queryKey: ['orders', orderId] });
     } catch {
       setCancelError('Failed to cancel order. Please try again or contact support.');
     } finally {

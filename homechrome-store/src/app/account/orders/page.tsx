@@ -1,8 +1,8 @@
 'use client';
 
 import { ShoppingBagIcon } from '@heroicons/react/24/outline';
+import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
-import { useCallback, useEffect, useState } from 'react';
 
 import { Card, CardContent } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -18,33 +18,22 @@ import { Order } from '@/types';
 type OrdersResponse = Order[];
 
 export default function OrdersPage() {
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const fetchOrders = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-
-    try {
-      const params: Record<string, unknown> = { limit: 10 };
-
-      const { data } = await api.get<OrdersResponse>(ROUTES.ORDERS.LIST, params);
-
-      const ordersList = Array.isArray(data) ? data : [];
-      setOrders(ordersList);
-
-      // TODO: wire up cursor pagination when backend returns meta
-    } catch {
-      setError('Failed to load orders. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchOrders();
-  }, [fetchOrders]);
+  const {
+    data: orders = [],
+    isLoading: loading,
+    isError,
+  } = useQuery({
+    queryKey: ['orders', 'list', { limit: 10 }],
+    queryFn: async () => {
+      const { data } = await api.get<OrdersResponse>(ROUTES.ORDERS.LIST, { limit: 10 });
+      return Array.isArray(data) ? data : [];
+    },
+    // Background refetch on every mount so server-driven changes (status updates,
+    // new orders placed in another tab) surface without a manual reload.
+    refetchOnMount: 'always',
+    // TODO: wire up cursor pagination when backend returns meta
+  });
+  const error = isError ? 'Failed to load orders. Please try again.' : null;
 
   if (loading) {
     return <OrderCardSkeleton count={3} />;

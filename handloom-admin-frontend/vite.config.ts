@@ -35,14 +35,24 @@ export default defineConfig(({ mode }) => {
           // Function form required since Rollup v4 (object form removed from TS types).
           manualChunks(id) {
             if (!id.includes('node_modules')) return undefined;
-            if (/[\\/]node_modules[\\/](react|react-dom|react-router|react-router-dom)[\\/]/.test(id))
+            if (
+              /[\\/]node_modules[\\/](react|react-dom|react-router|react-router-dom)[\\/]/.test(id)
+            )
               return 'vendor-react';
             if (id.includes('zustand') || id.includes('@tanstack/react-query'))
               return 'vendor-state';
-            if (id.includes('@headlessui/react') || id.includes('lucide-react') || id.includes('clsx'))
+            if (
+              id.includes('@headlessui/react') ||
+              id.includes('lucide-react') ||
+              id.includes('clsx')
+            )
               return 'vendor-ui';
             if (id.includes('recharts')) return 'vendor-charts';
-            if (id.includes('react-hook-form') || id.includes('@hookform/resolvers') || id.includes('zod'))
+            if (
+              id.includes('react-hook-form') ||
+              id.includes('@hookform/resolvers') ||
+              id.includes('zod')
+            )
               return 'vendor-forms';
             if (id.includes('axios') || id.includes('date-fns')) return 'vendor-utils';
             return undefined;
