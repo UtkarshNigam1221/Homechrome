@@ -55,7 +55,7 @@
     "date-fns": "^4.1.0",
     "lucide-react": "^0.563.0",
     "postcss": "^8.5.12",
-    "react": "^19.2.0",
+    "react": "^19.2.6",
     "react-dom": "^19.2.0",
     "react-hook-form": "^7.71.2",
     "react-hot-toast": "^2.6.0",
