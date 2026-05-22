@@ -67,9 +67,8 @@ func InitializeCatalogDeps(ctx context.Context, cfg *config.Config) (*CatalogDep
 	if err != nil {
 		return nil, err
 	}
-	cache := ProvideCatalogCache()
-	categoryRepository := ProvideCategoryRepository(pool, cache)
-	productRepository := ProvideProductRepository(pool, cache)
+	categoryRepository := ProvideCategoryRepository(pool)
+	productRepository := ProvideProductRepository(pool)
 	s3Client, err := ProvideS3Client(ctx, cfg)
 	if err != nil {
 		return nil, err
@@ -85,7 +84,7 @@ func InitializeCatalogDeps(ctx context.Context, cfg *config.Config) (*CatalogDep
 		return nil, err
 	}
 	productService := ProvideProductService(productRepository, categoryRepository, inventoryRepository, assetService, eventPublisher)
-	inventoryService := ProvideInventoryService(inventoryRepository, cache, eventPublisher)
+	inventoryService := ProvideInventoryService(inventoryRepository, eventPublisher)
 	productHandler := ProvideProductHandler(productService, inventoryService, validation)
 	client, err := ProvideDynamoDBClient(ctx, cfg)
 	if err != nil {
@@ -116,12 +115,11 @@ func InitializeOrderDeps(ctx context.Context, cfg *config.Config) (*OrderDeps, e
 	if err != nil {
 		return nil, err
 	}
-	cache := ProvideCatalogCache()
-	productRepository := ProvideProductRepository(pool, cache)
+	productRepository := ProvideProductRepository(pool)
 	inventoryRepository := ProvideInventoryRepository(pool)
 	priceQuoteRepository := ProvidePriceQuoteRepository(client)
 	pricingRuleRepository := ProvidePricingRuleRepository(client)
-	categoryRepository := ProvideCategoryRepository(pool, cache)
+	categoryRepository := ProvideCategoryRepository(pool)
 	pricingService := ProvidePricingService(pricingRuleRepository, priceQuoteRepository, categoryRepository, productRepository, cfg)
 	orderService := ProvideOrderService(orderRepository, customerRepository, productRepository, inventoryRepository, priceQuoteRepository, pricingService)
 	paymentRepository := ProvidePaymentRepository(client)
@@ -163,9 +161,8 @@ func InitializePricingDeps(ctx context.Context, cfg *config.Config) (*PricingDep
 	if err != nil {
 		return nil, err
 	}
-	cache := ProvideCatalogCache()
-	categoryRepository := ProvideCategoryRepository(pool, cache)
-	productRepository := ProvideProductRepository(pool, cache)
+	categoryRepository := ProvideCategoryRepository(pool)
+	productRepository := ProvideProductRepository(pool)
 	pricingService := ProvidePricingService(pricingRuleRepository, priceQuoteRepository, categoryRepository, productRepository, cfg)
 	service := ProvideValidator()
 	validation := ProvideValidation(service)
@@ -189,12 +186,11 @@ func InitializeInventoryDeps(ctx context.Context, cfg *config.Config) (*Inventor
 		return nil, err
 	}
 	inventoryRepository := ProvideInventoryRepository(pool)
-	cache := ProvideCatalogCache()
 	eventPublisher, err := ProvideEventPublisher(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}
-	inventoryService := ProvideInventoryService(inventoryRepository, cache, eventPublisher)
+	inventoryService := ProvideInventoryService(inventoryRepository, eventPublisher)
 	inventoryHandler := ProvideInventoryHandler(inventoryService)
 	client, err := ProvideDynamoDBClient(ctx, cfg)
 	if err != nil {
@@ -224,8 +220,7 @@ func InitializeAnalyticsDeps(ctx context.Context, cfg *config.Config) (*Analytic
 	if err != nil {
 		return nil, err
 	}
-	cache := ProvideCatalogCache()
-	productRepository := ProvideProductRepository(pool, cache)
+	productRepository := ProvideProductRepository(pool)
 	inventoryRepository := ProvideInventoryRepository(pool)
 	analyticsService := ProvideAnalyticsService(analyticsRepository, orderRepository, productRepository, inventoryRepository)
 	analyticsHandler := ProvideAnalyticsHandler(analyticsService)
@@ -326,12 +321,11 @@ func InitializeReportDeps(ctx context.Context, cfg *config.Config) (*ReportDeps,
 	if err != nil {
 		return nil, err
 	}
-	cache := ProvideCatalogCache()
-	productRepository := ProvideProductRepository(pool, cache)
+	productRepository := ProvideProductRepository(pool)
 	inventoryRepository := ProvideInventoryRepository(pool)
 	priceQuoteRepository := ProvidePriceQuoteRepository(client)
 	pricingRuleRepository := ProvidePricingRuleRepository(client)
-	categoryRepository := ProvideCategoryRepository(pool, cache)
+	categoryRepository := ProvideCategoryRepository(pool)
 	pricingService := ProvidePricingService(pricingRuleRepository, priceQuoteRepository, categoryRepository, productRepository, cfg)
 	orderService := ProvideOrderService(orderRepository, customerRepository, productRepository, inventoryRepository, priceQuoteRepository, pricingService)
 	s3Client, err := ProvideS3Client(ctx, cfg)
@@ -345,7 +339,7 @@ func InitializeReportDeps(ctx context.Context, cfg *config.Config) (*ReportDeps,
 	}
 	productService := ProvideProductService(productRepository, categoryRepository, inventoryRepository, assetService, eventPublisher)
 	customerService := ProvideCustomerService(customerRepository, orderRepository)
-	inventoryService := ProvideInventoryService(inventoryRepository, cache, eventPublisher)
+	inventoryService := ProvideInventoryService(inventoryRepository, eventPublisher)
 	analyticsRepository := ProvideAnalyticsRepository(client)
 	analyticsService := ProvideAnalyticsService(analyticsRepository, orderRepository, productRepository, inventoryRepository)
 	reportService := ProvideReportService(reportRepository, orderService, productService, customerService, inventoryService, analyticsService)
@@ -404,8 +398,7 @@ func InitializeStoreAuthDeps(ctx context.Context, cfg *config.Config) (*StoreAut
 	if err != nil {
 		return nil, err
 	}
-	cache := ProvideCatalogCache()
-	productRepository := ProvideProductRepository(pool, cache)
+	productRepository := ProvideProductRepository(pool)
 	inventoryRepository := ProvideInventoryRepository(pool)
 	cartService := ProvideCartService(cartRepository, productRepository, inventoryRepository)
 	service := ProvideValidator()
@@ -426,9 +419,8 @@ func InitializeStoreCatalogDeps(ctx context.Context, cfg *config.Config) (*Store
 	if err != nil {
 		return nil, err
 	}
-	cache := ProvideCatalogCache()
-	productRepository := ProvideProductRepository(pool, cache)
-	categoryRepository := ProvideCategoryRepository(pool, cache)
+	productRepository := ProvideProductRepository(pool)
+	categoryRepository := ProvideCategoryRepository(pool)
 	inventoryRepository := ProvideInventoryRepository(pool)
 	s3Client, err := ProvideS3Client(ctx, cfg)
 	if err != nil {
@@ -441,7 +433,7 @@ func InitializeStoreCatalogDeps(ctx context.Context, cfg *config.Config) (*Store
 	}
 	productService := ProvideProductService(productRepository, categoryRepository, inventoryRepository, assetService, eventPublisher)
 	categoryService := ProvideCategoryService(categoryRepository, productRepository, assetService)
-	inventoryService := ProvideInventoryService(inventoryRepository, cache, eventPublisher)
+	inventoryService := ProvideInventoryService(inventoryRepository, eventPublisher)
 	catalogHandler := ProvideStoreCatalogHandler(productService, categoryService, inventoryService)
 	storeCatalogDeps := &StoreCatalogDeps{
 		Config:  cfg,
@@ -461,8 +453,7 @@ func InitializeStoreCartDeps(ctx context.Context, cfg *config.Config) (*StoreCar
 	if err != nil {
 		return nil, err
 	}
-	cache := ProvideCatalogCache()
-	productRepository := ProvideProductRepository(pool, cache)
+	productRepository := ProvideProductRepository(pool)
 	inventoryRepository := ProvideInventoryRepository(pool)
 	cartService := ProvideCartService(cartRepository, productRepository, inventoryRepository)
 	service := ProvideValidator()
@@ -496,8 +487,7 @@ func InitializeStoreCheckoutDeps(ctx context.Context, cfg *config.Config) (*Stor
 	if err != nil {
 		return nil, err
 	}
-	cache := ProvideCatalogCache()
-	productRepository := ProvideProductRepository(pool, cache)
+	productRepository := ProvideProductRepository(pool)
 	inventoryRepository := ProvideInventoryRepository(pool)
 	cartService := ProvideCartService(cartRepository, productRepository, inventoryRepository)
 	orderRepository := ProvideOrderRepository(client)
@@ -539,12 +529,11 @@ func InitializeStoreOrdersDeps(ctx context.Context, cfg *config.Config) (*StoreO
 	if err != nil {
 		return nil, err
 	}
-	cache := ProvideCatalogCache()
-	productRepository := ProvideProductRepository(pool, cache)
+	productRepository := ProvideProductRepository(pool)
 	inventoryRepository := ProvideInventoryRepository(pool)
 	priceQuoteRepository := ProvidePriceQuoteRepository(client)
 	pricingRuleRepository := ProvidePricingRuleRepository(client)
-	categoryRepository := ProvideCategoryRepository(pool, cache)
+	categoryRepository := ProvideCategoryRepository(pool)
 	pricingService := ProvidePricingService(pricingRuleRepository, priceQuoteRepository, categoryRepository, productRepository, cfg)
 	orderService := ProvideOrderService(orderRepository, customerRepository, productRepository, inventoryRepository, priceQuoteRepository, pricingService)
 	orderHandler := ProvideStoreOrderHandler(orderService, orderRepository)
@@ -620,8 +609,7 @@ func InitializeStoreWebhooksDeps(ctx context.Context, cfg *config.Config) (*Stor
 	}
 	inventoryRepository := ProvideInventoryRepository(pool)
 	cartRepository := ProvideCartRepository(client)
-	cache := ProvideCatalogCache()
-	productRepository := ProvideProductRepository(pool, cache)
+	productRepository := ProvideProductRepository(pool)
 	cartService := ProvideCartService(cartRepository, productRepository, inventoryRepository)
 	gateway := ProvidePhonePeGateway(cfg)
 	eventPublisher, err := ProvideEventPublisher(ctx, cfg)
@@ -674,9 +662,8 @@ func InitializeMonolithDeps(ctx context.Context, cfg *config.Config) (*MonolithD
 	validation := ProvideValidation(service)
 	authHandler := ProvideAuthHandler(authService, userService, validation)
 	userHandler := ProvideUserHandler(userService, validation)
-	cache := ProvideCatalogCache()
-	categoryRepository := ProvideCategoryRepository(pool, cache)
-	productRepository := ProvideProductRepository(pool, cache)
+	categoryRepository := ProvideCategoryRepository(pool)
+	productRepository := ProvideProductRepository(pool)
 	s3Client, err := ProvideS3Client(ctx, cfg)
 	if err != nil {
 		return nil, err
@@ -694,7 +681,7 @@ func InitializeMonolithDeps(ctx context.Context, cfg *config.Config) (*MonolithD
 	auditHandler := ProvideAuditEventHandler()
 	eventPublisher := ProvideLocalEventPublisher(notificationHandler, reportHandler, analyticsHandler, auditHandler)
 	productService := ProvideProductService(productRepository, categoryRepository, inventoryRepository, assetService, eventPublisher)
-	inventoryService := ProvideInventoryService(inventoryRepository, cache, eventPublisher)
+	inventoryService := ProvideInventoryService(inventoryRepository, eventPublisher)
 	productHandler := ProvideProductHandler(productService, inventoryService, validation)
 	inventoryHandler := ProvideInventoryHandler(inventoryService)
 	pricingRuleRepository := ProvidePricingRuleRepository(client)

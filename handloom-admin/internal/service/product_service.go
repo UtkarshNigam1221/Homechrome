@@ -64,6 +64,21 @@ func (s *ProductService) Create(ctx context.Context, req domain.CreateProductReq
 		req.Images[i].URL = finalURL
 	}
 
+	if req.VideoURL != "" {
+		finalURL, err := s.assetFinalizer.FinalizeIfTemp(ctx, req.VideoURL)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to finalize video")
+		}
+		req.VideoURL = finalURL
+	}
+	if req.VideoPosterURL != "" {
+		finalURL, err := s.assetFinalizer.FinalizeIfTemp(ctx, req.VideoPosterURL)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to finalize video poster")
+		}
+		req.VideoPosterURL = finalURL
+	}
+
 	product := domain.NewProduct(req, "prod_"+uuid.New().String(), generateSlug(req.Name), createdBy)
 
 	// Build inventory record to include in the same transaction
@@ -160,6 +175,26 @@ func (s *ProductService) Update(ctx context.Context, id string, req domain.Updat
 		req.Images[i].URL = finalURL
 	}
 
+	// Capture old asset URLs BEFORE applying the update so we can delete them
+	// AFTER the DB write succeeds (avoids orphaned deletes on DB failure).
+	var oldVideoURL, oldPosterURL string
+	if req.VideoURL != nil {
+		oldVideoURL = product.VideoURL
+		newURL, err := s.assetFinalizer.FinalizeIfTemp(ctx, *req.VideoURL)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to finalize video")
+		}
+		*req.VideoURL = newURL
+	}
+	if req.VideoPosterURL != nil {
+		oldPosterURL = product.VideoPosterURL
+		newURL, err := s.assetFinalizer.FinalizeIfTemp(ctx, *req.VideoPosterURL)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to finalize video poster")
+		}
+		*req.VideoPosterURL = newURL
+	}
+
 	// Apply updates
 	product.ApplyUpdate(req)
 	if req.Name != nil {
@@ -177,6 +212,18 @@ func (s *ProductService) Update(ctx context.Context, id string, req domain.Updat
 	// Update product (repository handles attribute value sync)
 	if err := s.productRepo.Update(ctx, product); err != nil {
 		return nil, err
+	}
+
+	// DB write succeeded — now it is safe to delete replaced S3 assets.
+	if oldVideoURL != "" && oldVideoURL != product.VideoURL {
+		if delErr := s.assetFinalizer.DeleteAsset(ctx, oldVideoURL); delErr != nil {
+			slog.WarnContext(ctx, "Failed to delete old product video", "url", oldVideoURL, "error", delErr)
+		}
+	}
+	if oldPosterURL != "" && oldPosterURL != product.VideoPosterURL {
+		if delErr := s.assetFinalizer.DeleteAsset(ctx, oldPosterURL); delErr != nil {
+			slog.WarnContext(ctx, "Failed to delete old product video poster", "url", oldPosterURL, "error", delErr)
+		}
 	}
 
 	if pubErr := s.publisher.Publish(ctx, event.New(event.ProductUpdated, product)); pubErr != nil {
@@ -199,10 +246,14 @@ func (s *ProductService) Delete(ctx context.Context, id string) error {
 		return err
 	}
 
-	// Decrement category count
+	// Decrement category count before revalidation so the storefront sees the
+	// updated count when it next fetches the category.
 	if err := s.categoryRepo.IncrementProductCount(ctx, product.CategoryID, -1); err != nil {
 		return errors.Wrap(err, "failed to decrement category product count")
 	}
+
+	// Best-effort cleanup of S3 assets — never fail the delete on cleanup errors.
+	s.deleteProductAssets(ctx, product)
 
 	if pubErr := s.publisher.Publish(ctx, event.New(event.ProductDeleted, map[string]interface{}{
 		keyProductID: id,
@@ -212,6 +263,24 @@ func (s *ProductService) Delete(ctx context.Context, id string) error {
 
 	slog.InfoContext(ctx, "Deleted product", keyProductID, id)
 	return nil
+}
+
+// deleteProductAssets removes all S3 assets associated with a product.
+// Errors are logged as warnings — they never propagate to the caller.
+func (s *ProductService) deleteProductAssets(ctx context.Context, p *domain.Product) {
+	urls := make([]string, 0, 2+len(p.Images))
+	urls = append(urls, p.VideoURL, p.VideoPosterURL)
+	for _, img := range p.Images {
+		urls = append(urls, img.URL)
+	}
+	for _, url := range urls {
+		if url == "" {
+			continue
+		}
+		if err := s.assetFinalizer.DeleteAsset(ctx, url); err != nil {
+			slog.WarnContext(ctx, "Failed to delete product asset", "url", url, "error", err)
+		}
+	}
 }
 
 // List retrieves products with filters

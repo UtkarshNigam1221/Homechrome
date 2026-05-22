@@ -4,6 +4,7 @@ import { cache, Suspense } from 'react';
 import CategoryProductsView from './CategoryProductsView';
 
 import { API_BASE, SITE_URL } from '@/lib/constants';
+import { safeJsonLd } from '@/lib/jsonld';
 import { ROUTES } from '@/lib/routes';
 import { Category, Product } from '@/types';
 
@@ -101,7 +102,7 @@ function BreadcrumbJsonLd({ category }: { category: Category }) {
   return (
     <script
       type="application/ld+json"
-      dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      dangerouslySetInnerHTML={{ __html: safeJsonLd(jsonLd) }}
     />
   );
 }

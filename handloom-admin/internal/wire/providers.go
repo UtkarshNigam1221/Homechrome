@@ -3,12 +3,10 @@ package wire
 
 import (
 	"context"
-	"time"
 
 	"github.com/google/wire"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/handloom/admin/internal/cache"
 	"github.com/handloom/admin/internal/config"
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/internal/event"
@@ -45,17 +43,10 @@ func ProvidePostgresPool(ctx context.Context, cfg *config.Config) (*pgxpool.Pool
 	return postgres.NewPool(ctx, &cfg.Postgres)
 }
 
-// ProvideCatalogCache creates an in-process cache for catalog data.
-// TTL matches the documented 2-5 min freshness window for catalog data.
-func ProvideCatalogCache() *cache.Cache {
-	return cache.New(5*time.Minute, 10*time.Minute)
-}
-
 // CoreSet contains core providers used by all services
 var CoreSet = wire.NewSet(
 	ProvideDynamoDBClient,
 	ProvidePostgresPool,
-	ProvideCatalogCache,
 )
 
 // ============================================================================
@@ -72,18 +63,14 @@ func ProvideTokenStore(client *dynamodb.Client) domain.TokenStore {
 	return dynamodb.NewTokenStore(client)
 }
 
-// ProvideCategoryRepository creates a new CategoryRepository backed by PostgreSQL with cache
-func ProvideCategoryRepository(pool *pgxpool.Pool, c *cache.Cache) domain.CategoryRepository {
-	return postgres.NewCachedCategoryRepository(
-		postgres.NewCategoryRepository(pool), c,
-	)
+// ProvideCategoryRepository creates a new CategoryRepository backed by PostgreSQL
+func ProvideCategoryRepository(pool *pgxpool.Pool) domain.CategoryRepository {
+	return postgres.NewCategoryRepository(pool)
 }
 
-// ProvideProductRepository creates a new ProductRepository backed by PostgreSQL with cache
-func ProvideProductRepository(pool *pgxpool.Pool, c *cache.Cache) domain.ProductRepository {
-	return postgres.NewCachedProductRepository(
-		postgres.NewProductRepository(pool), c,
-	)
+// ProvideProductRepository creates a new ProductRepository backed by PostgreSQL
+func ProvideProductRepository(pool *pgxpool.Pool) domain.ProductRepository {
+	return postgres.NewProductRepository(pool)
 }
 
 // ProvideInventoryRepository creates a new InventoryRepository backed by PostgreSQL
@@ -213,10 +200,9 @@ func ProvideProductService(
 // ProvideInventoryService creates a new InventoryService
 func ProvideInventoryService(
 	inventoryRepo domain.InventoryRepository,
-	c *cache.Cache,
 	publisher event.EventPublisher,
 ) *service.InventoryService {
-	return service.NewInventoryService(inventoryRepo, c, publisher)
+	return service.NewInventoryService(inventoryRepo, publisher)
 }
 
 // ProvidePricingService creates a new PricingService

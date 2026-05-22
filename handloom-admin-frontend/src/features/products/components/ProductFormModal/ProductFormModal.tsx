@@ -38,6 +38,8 @@ const productSchema = z.object({
   status: z.enum(['ACTIVE', 'INACTIVE', 'DRAFT']),
   tags: z.string().optional(),
   images: z.array(z.string()).optional(),
+  video_url: z.string().optional().or(z.literal('')),
+  video_poster_url: z.string().optional().or(z.literal('')),
 });
 
 type ProductFormData = z.infer<typeof productSchema>;
@@ -107,6 +109,8 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
       status: 'DRAFT',
       tags: '',
       images: [],
+      video_url: '',
+      video_poster_url: '',
     },
   });
 
@@ -174,6 +178,8 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
           status: product.status,
           tags: product.tags?.join(', ') || '',
           images: product.images?.map((img) => img.url) || [],
+          video_url: product.video_url || '',
+          video_poster_url: product.video_poster_url || '',
         });
         // Restore existing attribute values when editing (prefer fullProduct which includes attributes)
         setAttributeValues((fullProduct ?? product).attributes || {});
@@ -202,6 +208,8 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
           status: 'DRAFT',
           tags: '',
           images: [],
+          video_url: '',
+          video_poster_url: '',
         });
         setAttributeValues({});
       }
@@ -332,6 +340,8 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
         is_primary: index === 0,
         sort_order: index,
       })),
+      video_url: data.video_url ?? '',
+      video_poster_url: data.video_poster_url ?? '',
       attributes: Object.keys(cleanAttributes).length > 0 ? cleanAttributes : undefined,
     };
 
@@ -419,6 +429,46 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
                     maxFiles={5}
                     hint="Upload up to 5 product images"
                     error={errors.images?.message}
+                  />
+                )}
+              />
+            </div>
+
+            <div className="md:col-span-2">
+              <Controller
+                name="video_url"
+                control={control}
+                render={({ field }) => (
+                  <ImageUpload
+                    label="Product Video (optional)"
+                    value={field.value || ''}
+                    onChange={(value) =>
+                      field.onChange(Array.isArray(value) ? value[0] || '' : value)
+                    }
+                    accept="video/mp4"
+                    maxSizeMB={50}
+                    hint="MP4 only, up to 50MB. One video per product."
+                    error={errors.video_url?.message}
+                  />
+                )}
+              />
+            </div>
+
+            <div className="md:col-span-2">
+              <Controller
+                name="video_poster_url"
+                control={control}
+                render={({ field }) => (
+                  <ImageUpload
+                    label="Video Poster Image (optional)"
+                    value={field.value || ''}
+                    onChange={(value) =>
+                      field.onChange(Array.isArray(value) ? value[0] || '' : value)
+                    }
+                    accept="image/*"
+                    maxSizeMB={2}
+                    hint="Thumbnail shown before the video plays. Recommended 16:9."
+                    error={errors.video_poster_url?.message}
                   />
                 )}
               />

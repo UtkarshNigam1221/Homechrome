@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 
 import { PhotoIcon } from '@heroicons/react/24/outline';
+import { PlayIcon } from '@heroicons/react/24/solid';
 import { toast } from 'sonner';
 
 import Button from '@/components/ui/button';
@@ -28,9 +29,19 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
     return a.sort_order - b.sort_order;
   });
 
-  const [selectedImage, setSelectedImage] = useState<ProductImage | null>(
-    sortedImages[0] || null,
-  );
+  type GalleryItem =
+    | { kind: 'video'; url: string; poster?: string }
+    | { kind: 'image'; image: ProductImage };
+
+  const galleryItems: GalleryItem[] = [
+    ...(product.video_url
+      ? [{ kind: 'video' as const, url: product.video_url, poster: product.video_poster_url }]
+      : []),
+    ...sortedImages.map((image) => ({ kind: 'image' as const, image })),
+  ];
+
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const selectedItem: GalleryItem | null = galleryItems[selectedIndex] ?? null;
   const [quantity, setQuantity] = useState(1);
   const [loading, setLoading] = useState(false);
   const { addItem, updateQuantity, removeItem } = useCart();
@@ -118,12 +129,22 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
       <div className="grid grid-cols-1 gap-10 lg:grid-cols-2">
         {/* Image Gallery */}
         <div>
-          {/* Main Image */}
+          {/* Main Media */}
           <div className="relative aspect-square overflow-hidden rounded-xl bg-gray-100">
-            {selectedImage ? (
+            {selectedItem?.kind === 'video' ? (
+              <video
+                key={selectedItem.url}
+                src={selectedItem.url}
+                controls
+                playsInline
+                preload="metadata"
+                poster={selectedItem.poster}
+                className="h-full w-full object-contain"
+              />
+            ) : selectedItem?.kind === 'image' ? (
               <Image
-                src={selectedImage.url}
-                alt={selectedImage.alt_text || product.name}
+                src={selectedItem.image.url}
+                alt={selectedItem.image.alt_text || product.name}
                 fill
                 sizes="(max-width: 1024px) 100vw, 50vw"
                 className="object-cover"
@@ -137,28 +158,58 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
           </div>
 
           {/* Thumbnails */}
-          {sortedImages.length > 1 && (
+          {galleryItems.length > 1 && (
             <div className="mt-4 flex gap-3 overflow-x-auto pb-2">
-              {sortedImages.map((img, index) => (
-                <button
-                  key={index}
-                  type="button"
-                  onClick={() => setSelectedImage(img)}
-                  className={`relative h-20 w-20 flex-shrink-0 overflow-hidden rounded-lg border-2 transition-colors ${
-                    selectedImage === img
-                      ? 'border-primary'
-                      : 'border-transparent hover:border-border'
-                  }`}
-                >
-                  <Image
-                    src={img.url}
-                    alt={img.alt_text || `${product.name} ${index + 1}`}
-                    fill
-                    sizes="80px"
-                    className="object-cover"
-                  />
-                </button>
-              ))}
+              {galleryItems.map((item, index) => {
+                const isActive = selectedIndex === index;
+                const baseCls = `relative h-20 w-20 flex-shrink-0 overflow-hidden rounded-lg border-2 transition-colors ${
+                  isActive ? 'border-primary' : 'border-transparent hover:border-border'
+                }`;
+
+                if (item.kind === 'video') {
+                  return (
+                    <button
+                      key="video"
+                      type="button"
+                      onClick={() => setSelectedIndex(index)}
+                      className={baseCls}
+                      aria-label="Play product video"
+                    >
+                      {item.poster ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={item.poster}
+                          alt="Product video thumbnail"
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <div className="h-full w-full bg-gray-200" />
+                      )}
+                      <span className="absolute inset-0 flex items-center justify-center bg-black/30">
+                        <PlayIcon className="h-6 w-6 text-white" />
+                      </span>
+                    </button>
+                  );
+                }
+
+                const img = item.image;
+                return (
+                  <button
+                    key={`img-${index}`}
+                    type="button"
+                    onClick={() => setSelectedIndex(index)}
+                    className={baseCls}
+                  >
+                    <Image
+                      src={img.url}
+                      alt={img.alt_text || `${product.name} ${index + 1}`}
+                      fill
+                      sizes="80px"
+                      className="object-cover"
+                    />
+                  </button>
+                );
+              })}
             </div>
           )}
         </div>

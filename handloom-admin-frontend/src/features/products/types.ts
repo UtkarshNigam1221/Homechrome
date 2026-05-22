@@ -32,6 +32,8 @@ export interface Product {
   origin?: string;
   craft_type?: string;
   images?: ProductImage[];
+  video_url?: string;
+  video_poster_url?: string;
   tags?: string[];
   quantity: number;
   reserved_qty: number;
@@ -64,6 +66,8 @@ export interface CreateProductRequest {
   origin?: string;
   craft_type?: string;
   images?: ProductImage[];
+  video_url?: string;
+  video_poster_url?: string;
   tags?: string[];
   initial_stock?: number;
   low_stock_threshold?: number;

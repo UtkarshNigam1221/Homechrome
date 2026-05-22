@@ -4,6 +4,7 @@ import { cache } from 'react';
 import ProductDetailView from './ProductDetailView';
 
 import { API_BASE, SITE_URL } from '@/lib/constants';
+import { safeJsonLd } from '@/lib/jsonld';
 import { ROUTES } from '@/lib/routes';
 import { Product } from '@/types';
 
@@ -89,12 +90,23 @@ function ProductJsonLd({ product }: { product: Product }) {
         ? 'https://schema.org/InStock'
         : 'https://schema.org/OutOfStock',
     },
+    ...(product.video_url
+      ? {
+          video: {
+            '@type': 'VideoObject',
+            name: product.name,
+            thumbnailUrl: product.video_poster_url ?? product.images?.[0]?.url,
+            contentUrl: product.video_url,
+            ...(product.updated_at ? { uploadDate: product.updated_at } : {}),
+          },
+        }
+      : {}),
   };
 
   return (
     <script
       type="application/ld+json"
-      dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      dangerouslySetInnerHTML={{ __html: safeJsonLd(jsonLd) }}
     />
   );
 }

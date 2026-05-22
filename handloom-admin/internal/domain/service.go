@@ -225,6 +225,8 @@ type CreateProductRequest struct {
 	Origin                string                 `json:"origin,omitempty"`
 	CraftType             string                 `json:"craft_type,omitempty"`
 	Images                []ProductImage         `json:"images,omitempty"`
+	VideoURL              string                 `json:"video_url,omitempty"`
+	VideoPosterURL        string                 `json:"video_poster_url,omitempty"`
 	Tags                  []string               `json:"tags,omitempty"`
 	InitialStock          int                    `json:"initial_stock"`
 	LowStockThreshold     int                    `json:"low_stock_threshold"`
@@ -249,6 +251,8 @@ type UpdateProductRequest struct {
 	Origin                *string                `json:"origin,omitempty"`
 	CraftType             *string                `json:"craft_type,omitempty"`
 	Images                []ProductImage         `json:"images,omitempty"`
+	VideoURL              *string                `json:"video_url,omitempty"`
+	VideoPosterURL        *string                `json:"video_poster_url,omitempty"`
 	Tags                  []string               `json:"tags,omitempty"`
 	LowStockThreshold     *int                   `json:"low_stock_threshold,omitempty"`
 	Status                *ProductStatus         `json:"status,omitempty"`
@@ -451,6 +455,7 @@ type BulkCalculationResult struct {
 // Otherwise, it returns the value as-is (already a permanent URL).
 type AssetFinalizer interface {
 	FinalizeIfTemp(ctx context.Context, value string) (string, error)
+	DeleteAsset(ctx context.Context, assetURL string) error
 }
 
 // ==================== INVENTORY SERVICE ====================

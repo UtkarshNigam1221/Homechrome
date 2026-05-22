@@ -9,36 +9,20 @@ import (
 	"github.com/handloom/admin/internal/event"
 )
 
-// CacheInvalidator allows services to invalidate cached product data after mutations.
-type CacheInvalidator interface {
-	DeletePrefix(prefix string)
-}
-
 // InventoryService implements domain.InventoryService
 type InventoryService struct {
 	inventoryRepo domain.InventoryRepository
-	cache         CacheInvalidator
 	publisher     event.EventPublisher
 }
 
 // NewInventoryService creates a new InventoryService
 func NewInventoryService(
 	inventoryRepo domain.InventoryRepository,
-	cache CacheInvalidator,
 	publisher event.EventPublisher,
 ) *InventoryService {
 	return &InventoryService{
 		inventoryRepo: inventoryRepo,
-		cache:         cache,
 		publisher:     publisher,
-	}
-}
-
-// invalidateProductCache clears cached product lists/items so the next read
-// picks up the latest inventory data from the JOIN.
-func (s *InventoryService) invalidateProductCache() {
-	if s.cache != nil {
-		s.cache.DeletePrefix("prod:")
 	}
 }
 
@@ -62,7 +46,6 @@ func (s *InventoryService) AddStock(ctx context.Context, productID string, req d
 		slog.ErrorContext(ctx, "Failed to publish inventory.restocked event", "error", pubErr)
 	}
 
-	s.invalidateProductCache()
 	slog.InfoContext(ctx, "Added stock", keyProductID, productID, "quantity", req.Quantity)
 
 	return &domain.InventoryTransactionResult{
@@ -109,7 +92,6 @@ func (s *InventoryService) RemoveStock(ctx context.Context, productID string, re
 		}
 	}
 
-	s.invalidateProductCache()
 	slog.InfoContext(ctx, "Removed stock", keyProductID, productID, "quantity", req.Quantity)
 
 	return &domain.InventoryTransactionResult{
@@ -129,7 +111,6 @@ func (s *InventoryService) AdjustStock(ctx context.Context, productID string, re
 		return nil, err
 	}
 
-	s.invalidateProductCache()
 	slog.InfoContext(ctx, "Adjusted stock", keyProductID, productID, "previous_qty", txn.PreviousQty, "new_qty", txn.NewQty)
 
 	return &domain.InventoryTransactionResult{

@@ -1116,3 +1116,164 @@ func TestValidateRequiredAttributes_EdgeCases(t *testing.T) {
 		assert.Equal(t, []string{"a", "b"}, result) // empty strings filtered
 	})
 }
+
+func TestProductService_Create_FinalizesVideoAndPoster(t *testing.T) {
+	svc, mockProdRepo, mockCatRepo, _, mockFinalizer, ctx := setupProductTest(t)
+
+	mockCatRepo.EXPECT().GetByID(ctx, "cat1").
+		Return(&domain.Category{ID: "cat1"}, nil)
+
+	mockFinalizer.EXPECT().FinalizeIfTemp(ctx, "tmp/VIDEO/uuid.mp4").
+		Return("https://cdn.example.com/assets/VIDEO/2026/05/22/uuid.mp4", nil)
+	mockFinalizer.EXPECT().FinalizeIfTemp(ctx, "tmp/IMAGE/poster.jpg").
+		Return("https://cdn.example.com/assets/IMAGE/2026/05/22/poster.jpg", nil)
+
+	mockProdRepo.EXPECT().Create(ctx, gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, p *domain.Product, _ *domain.Inventory) error {
+			require.Equal(t, "https://cdn.example.com/assets/VIDEO/2026/05/22/uuid.mp4", p.VideoURL)
+			require.Equal(t, "https://cdn.example.com/assets/IMAGE/2026/05/22/poster.jpg", p.VideoPosterURL)
+			return nil
+		})
+	mockCatRepo.EXPECT().IncrementProductCount(ctx, "cat1", 1).Return(nil)
+
+	_, err := svc.Create(ctx, domain.CreateProductRequest{
+		Name:           "Test",
+		SKU:            "SKU-1",
+		CategoryID:     "cat1",
+		BasePrice:      100,
+		SellingPrice:   100,
+		VideoURL:       "tmp/VIDEO/uuid.mp4",
+		VideoPosterURL: "tmp/IMAGE/poster.jpg",
+	}, "user-1")
+	require.NoError(t, err)
+}
+
+func TestProductService_Delete_RemovesAssets(t *testing.T) {
+	svc, mockProdRepo, mockCatRepo, _, mockFinalizer, ctx := setupProductTest(t)
+
+	existing := &domain.Product{
+		ID:             "p1",
+		CategoryID:     "cat1",
+		VideoURL:       "https://test-bucket.s3.ap-south-1.amazonaws.com/assets/VIDEO/v.mp4",
+		VideoPosterURL: "https://test-bucket.s3.ap-south-1.amazonaws.com/assets/IMAGE/p.jpg",
+		Images: []domain.ProductImage{
+			{URL: "https://test-bucket.s3.ap-south-1.amazonaws.com/assets/IMAGE/i1.jpg"},
+		},
+	}
+
+	mockProdRepo.EXPECT().GetByID(ctx, "p1").Return(existing, nil)
+	mockProdRepo.EXPECT().Delete(ctx, "p1").Return(nil)
+	mockCatRepo.EXPECT().IncrementProductCount(ctx, "cat1", -1).Return(nil)
+
+	mockFinalizer.EXPECT().
+		DeleteAsset(ctx, "https://test-bucket.s3.ap-south-1.amazonaws.com/assets/VIDEO/v.mp4").
+		Return(nil)
+	mockFinalizer.EXPECT().
+		DeleteAsset(ctx, "https://test-bucket.s3.ap-south-1.amazonaws.com/assets/IMAGE/p.jpg").
+		Return(nil)
+	mockFinalizer.EXPECT().
+		DeleteAsset(ctx, "https://test-bucket.s3.ap-south-1.amazonaws.com/assets/IMAGE/i1.jpg").
+		Return(nil)
+
+	err := svc.Delete(ctx, "p1")
+	require.NoError(t, err)
+}
+
+func TestProductService_Delete_AssetErrorIsNonFatal(t *testing.T) {
+	svc, mockProdRepo, mockCatRepo, _, mockFinalizer, ctx := setupProductTest(t)
+
+	existing := &domain.Product{
+		ID:         "p2",
+		CategoryID: "cat1",
+		VideoURL:   "https://test-bucket.s3.ap-south-1.amazonaws.com/assets/VIDEO/v.mp4",
+	}
+
+	mockProdRepo.EXPECT().GetByID(ctx, "p2").Return(existing, nil)
+	mockProdRepo.EXPECT().Delete(ctx, "p2").Return(nil)
+	mockCatRepo.EXPECT().IncrementProductCount(ctx, "cat1", -1).Return(nil)
+
+	// Asset deletion fails — should log and not propagate the error.
+	mockFinalizer.EXPECT().
+		DeleteAsset(ctx, "https://test-bucket.s3.ap-south-1.amazonaws.com/assets/VIDEO/v.mp4").
+		Return(errors.Internal("S3 error"))
+
+	err := svc.Delete(ctx, "p2")
+	require.NoError(t, err) // delete still succeeds
+}
+
+func TestProductService_Update_ReplacesVideoAndDeletesOld(t *testing.T) {
+	// Verify that DeleteAsset is called AFTER productRepo.Update succeeds
+	// (guards against orphaned S3 deletes when the DB write fails).
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+
+	mockProdRepo := mocks.NewMockProductRepository(ctrl)
+	mockCatRepo := mocks.NewMockCategoryRepository(ctrl)
+	mockInvRepo := mocks.NewMockInventoryRepository(ctrl)
+	mockFinalizer := mocks.NewMockAssetFinalizer(ctrl)
+	publisher := event.NewNoopPublisher()
+	svc := NewProductService(mockProdRepo, mockCatRepo, mockInvRepo, mockFinalizer, publisher)
+	ctx := context.Background()
+
+	existing := &domain.Product{
+		ID:             "p1",
+		CategoryID:     "cat1",
+		VideoURL:       "https://cdn.example.com/assets/VIDEO/old.mp4",
+		VideoPosterURL: "https://cdn.example.com/assets/IMAGE/old.jpg",
+	}
+	mockProdRepo.EXPECT().GetByID(ctx, "p1").Return(existing, nil)
+	mockCatRepo.EXPECT().GetByID(ctx, "cat1").Return(&domain.Category{ID: "cat1"}, nil)
+	mockFinalizer.EXPECT().FinalizeIfTemp(ctx, "tmp/VIDEO/new.mp4").
+		Return("https://cdn.example.com/assets/VIDEO/new.mp4", nil)
+
+	// Use InOrder to assert Update happens before DeleteAsset.
+	gomock.InOrder(
+		mockProdRepo.EXPECT().Update(ctx, gomock.Any()).
+			DoAndReturn(func(_ context.Context, p *domain.Product) error {
+				require.Equal(t, "https://cdn.example.com/assets/VIDEO/new.mp4", p.VideoURL)
+				return nil
+			}),
+		mockFinalizer.EXPECT().DeleteAsset(ctx, "https://cdn.example.com/assets/VIDEO/old.mp4").Return(nil),
+	)
+
+	newVideo := "tmp/VIDEO/new.mp4"
+	_, err := svc.Update(ctx, "p1", domain.UpdateProductRequest{
+		VideoURL: &newVideo,
+	}, "user-1")
+	require.NoError(t, err)
+}
+
+func TestProductService_Update_NoDeleteAssetIfUpdateFails(t *testing.T) {
+	// If productRepo.Update fails, DeleteAsset must NOT be called — the old S3
+	// asset should remain intact since the DB write did not complete.
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+
+	mockProdRepo := mocks.NewMockProductRepository(ctrl)
+	mockCatRepo := mocks.NewMockCategoryRepository(ctrl)
+	mockInvRepo := mocks.NewMockInventoryRepository(ctrl)
+	mockFinalizer := mocks.NewMockAssetFinalizer(ctrl)
+	publisher := event.NewNoopPublisher()
+	svc := NewProductService(mockProdRepo, mockCatRepo, mockInvRepo, mockFinalizer, publisher)
+	ctx := context.Background()
+
+	existing := &domain.Product{
+		ID:         "p1",
+		CategoryID: "cat1",
+		VideoURL:   "https://cdn.example.com/assets/VIDEO/old.mp4",
+	}
+	mockProdRepo.EXPECT().GetByID(ctx, "p1").Return(existing, nil)
+	mockCatRepo.EXPECT().GetByID(ctx, "cat1").Return(&domain.Category{ID: "cat1"}, nil)
+	mockFinalizer.EXPECT().FinalizeIfTemp(ctx, "tmp/VIDEO/new.mp4").
+		Return("https://cdn.example.com/assets/VIDEO/new.mp4", nil)
+
+	// DB write fails — DeleteAsset must NOT be called (Times(0) enforces this).
+	mockProdRepo.EXPECT().Update(ctx, gomock.Any()).Return(errors.Internal("db fail"))
+	mockFinalizer.EXPECT().DeleteAsset(gomock.Any(), gomock.Any()).Times(0)
+
+	newVideo := "tmp/VIDEO/new.mp4"
+	_, err := svc.Update(ctx, "p1", domain.UpdateProductRequest{
+		VideoURL: &newVideo,
+	}, "user-1")
+	require.Error(t, err)
+}
