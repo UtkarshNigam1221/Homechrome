@@ -53,25 +53,13 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 	stack := awscdk.NewStack(scope, &id, &sprops)
 	isProd := props.Environment == "prod"
 
-	// JWT Secret parameter — keep the literal name in a variable so we can pass it to
-	// ValueForStringParameter (which cannot accept an unresolved CDK token like
-	// jwtSecret.ParameterName()).
+	// JWT secret parameter names. These SSM parameters must be created out-of-band
+	// (see scripts/bootstrap-env.sh) before deploying this stack. The stack only
+	// CONSUMES the values via dynamic reference — it does not create them. This is
+	// the standard pattern for secret material: not in the CFN template, not in
+	// git, rotation-safe (rotate via `aws ssm put-parameter` without redeploying CDK).
 	jwtSecretParamName := fmt.Sprintf("/handloom/%s/jwt-secret", props.Environment)
-	awsssm.NewStringParameter(stack, jsii.String("JwtSecret"), &awsssm.StringParameterProps{
-		ParameterName: jsii.String(jwtSecretParamName),
-		StringValue:   jsii.String("CHANGE_ME_IN_PRODUCTION"),
-		Description:   jsii.String("JWT Secret for token signing"),
-		Tier:          awsssm.ParameterTier_STANDARD,
-	})
-
-	// Customer JWT Secret parameter (B2C store token signing)
 	customerJwtSecretParamName := fmt.Sprintf("/handloom/%s/customer-jwt-secret", props.Environment)
-	awsssm.NewStringParameter(stack, jsii.String("CustomerJwtSecret"), &awsssm.StringParameterProps{
-		ParameterName: jsii.String(customerJwtSecretParamName),
-		StringValue:   jsii.String("CHANGE_ME_IN_PRODUCTION"),
-		Description:   jsii.String("Customer JWT Secret for B2C store token signing"),
-		Tier:          awsssm.ParameterTier_STANDARD,
-	})
 
 	// S3 buckets from StorageStack
 	assetsBucket := props.StorageStack.AssetsBucket
