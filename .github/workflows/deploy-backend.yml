@@ -103,5 +103,4 @@ jobs:
           export MSG91_AUTH_KEY="$_msg91_key"
           export MSG91_OTP_TEMPLATE_ID="$_msg91_tid"
           cd infra && cdk deploy --all --require-approval never \
-            -c environment=${{ inputs.environment }} \
-            -c postgresDsn="${{ secrets.POSTGRES_DSN }}"
+            -c environment=${{ inputs.environment }}
