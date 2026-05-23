@@ -41,30 +41,5 @@ func (s *spyPublisher) eventCount() int {
 	return len(s.events)
 }
 
-// spyCache records cache invalidation calls.
-type spyCache struct {
-	prefixes []string
-}
-
-func newSpyCache() *spyCache {
-	return &spyCache{}
-}
-
-func (s *spyCache) DeletePrefix(prefix string) {
-	s.prefixes = append(s.prefixes, prefix)
-}
-
-func (s *spyCache) calledWith(prefix string) bool {
-	for _, p := range s.prefixes {
-		if p == prefix {
-			return true
-		}
-	}
-	return false
-}
-
 // Compile-time check: spyPublisher implements EventPublisher
 var _ event.EventPublisher = (*spyPublisher)(nil)
-
-// Compile-time check: spyCache implements CacheInvalidator
-var _ CacheInvalidator = (*spyCache)(nil)

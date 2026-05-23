@@ -18,13 +18,15 @@ import (
 
 const (
 	presignExpiry   = 15 * time.Minute
-	maxImageSize    = 50 << 20  // 50 MB
-	maxVideoSize    = 100 << 20 // 100 MB
-	maxDocumentSize = 10 << 20  // 10 MB
+	maxImageSize    = 50 << 20 // 50 MB
+	maxVideoSize    = 50 << 20 // 50 MB
+	maxDocumentSize = 10 << 20 // 10 MB
 	tmpPrefix       = "tmp/"
 	assetsPrefix    = "assets/"
 
 	contentTypePDF = "application/pdf"
+
+	videoMP4ContentType = "video/mp4"
 )
 
 var validDocumentTypes = map[string]bool{
@@ -83,9 +85,10 @@ func (s *AssetService) s3URL(key string) string {
 	return fmt.Sprintf("https://%s.s3.%s.amazonaws.com/%s", s.bucket, s.region, key)
 }
 
-// keyFromURL extracts the S3 object key from a public asset URL.
-// Handles CDN URLs, regional S3 URLs, and legacy global S3 URLs.
-func (s *AssetService) keyFromURL(assetURL string) string {
+// trustedURLPrefixes returns the set of URL prefixes that are considered
+// trusted asset origins for this service instance. The list mirrors the
+// prefixes used by s3URL / keyFromURL so both helpers stay in sync.
+func (s *AssetService) trustedURLPrefixes() []string {
 	var prefixes []string
 	if s.cdnHost != "" {
 		prefixes = append(prefixes, fmt.Sprintf("https://%s/", s.cdnHost))
@@ -97,7 +100,13 @@ func (s *AssetService) keyFromURL(assetURL string) string {
 	if s.endpoint != "" {
 		prefixes = append(prefixes, fmt.Sprintf("%s/%s/", toBrowserEndpoint(s.endpoint), s.bucket))
 	}
-	for _, prefix := range prefixes {
+	return prefixes
+}
+
+// keyFromURL extracts the S3 object key from a public asset URL.
+// Handles CDN URLs, regional S3 URLs, and legacy global S3 URLs.
+func (s *AssetService) keyFromURL(assetURL string) string {
+	for _, prefix := range s.trustedURLPrefixes() {
 		if prefix != "/" && strings.HasPrefix(assetURL, prefix) {
 			return strings.TrimPrefix(assetURL, prefix)
 		}
@@ -175,11 +184,27 @@ func (s *AssetService) FinalizeUpload(ctx context.Context, tmpKey string) (strin
 }
 
 // FinalizeIfTemp finalizes a tmp/ key into a permanent assets/ URL.
-// If value starts with "tmp/", calls FinalizeUpload. Otherwise returns as-is.
+// If value starts with "tmp/", calls FinalizeUpload.
+// If value is a trusted asset URL (CDN / S3 / local endpoint), returns as-is.
+// Any other non-empty value is passed through with a warning log — hard-rejecting
+// would break updates of products that still carry legacy CDN URLs from before a
+// CDN_DOMAIN rotation. Handler-level validation is responsible for blocking fresh
+// attacker-injected external URLs at the point of upload.
 func (s *AssetService) FinalizeIfTemp(ctx context.Context, value string) (string, error) {
+	if value == "" {
+		return value, nil
+	}
 	if strings.HasPrefix(value, tmpPrefix) {
 		return s.FinalizeUpload(ctx, value)
 	}
+	for _, prefix := range s.trustedURLPrefixes() {
+		if strings.HasPrefix(value, prefix) {
+			return value, nil
+		}
+	}
+	// Not tmp/ and not in trusted prefix list. Could be a legacy URL from a
+	// previous CDN domain (admin updating an existing product). Log and pass through.
+	slog.WarnContext(ctx, "FinalizeIfTemp: untrusted URL pass-through", "url", value)
 	return value, nil
 }
 
@@ -213,7 +238,7 @@ func isValidContentType(contentType string, assetType domain.AssetType) bool {
 	case domain.AssetTypeImage:
 		return strings.HasPrefix(contentType, "image/")
 	case domain.AssetTypeVideo:
-		return strings.HasPrefix(contentType, "video/")
+		return contentType == videoMP4ContentType
 	case domain.AssetTypeDocument:
 		return validDocumentTypes[contentType]
 	}

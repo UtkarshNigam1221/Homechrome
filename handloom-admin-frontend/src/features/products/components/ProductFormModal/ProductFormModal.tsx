@@ -38,6 +38,8 @@ const productSchema = z.object({
   status: z.enum(['ACTIVE', 'INACTIVE', 'DRAFT']),
   tags: z.string().optional(),
   images: z.array(z.string()).optional(),
+  video_url: z.string().optional().or(z.literal('')),
+  video_poster_url: z.string().optional().or(z.literal('')),
 });
 
 type ProductFormData = z.infer<typeof productSchema>;
@@ -107,6 +109,8 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
       status: 'DRAFT',
       tags: '',
       images: [],
+      video_url: '',
+      video_poster_url: '',
     },
   });
 
@@ -174,9 +178,9 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
           status: product.status,
           tags: product.tags?.join(', ') || '',
           images: product.images?.map((img) => img.url) || [],
+          video_url: product.video_url || '',
+          video_poster_url: product.video_poster_url || '',
         });
-        // Restore existing attribute values when editing (prefer fullProduct which includes attributes)
-        setAttributeValues((fullProduct ?? product).attributes || {});
       } else {
         reset({
           name: '',
@@ -202,11 +206,33 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
           status: 'DRAFT',
           tags: '',
           images: [],
+          video_url: '',
+          video_poster_url: '',
         });
-        setAttributeValues({});
       }
     }
-  }, [isOpen, product, fullProduct, reset]);
+  }, [isOpen, product, reset]);
+
+  // Hydrate dynamic attribute values when editing. Tracks both the list-level
+  // product (immediate) and the full product detail (async, includes attributes
+  // map). Hardcoded fields (material, color, weave_type, origin, craft_type)
+  // are also folded in so category attributes that overlap with those slots
+  // pre-fill from the dedicated product field when the backend strips them
+  // from the attributes map.
+  useEffect(() => {
+    if (!isOpen || !product?.id) {
+      setAttributeValues({});
+      return;
+    }
+    const src = (fullProduct ?? product) as Product;
+    const hardcoded: Record<string, unknown> = {};
+    if (src.material) hardcoded.material = src.material;
+    if (src.color) hardcoded.color = src.color;
+    if (src.weave_type) hardcoded.weave_type = src.weave_type;
+    if (src.origin) hardcoded.origin = src.origin;
+    if (src.craft_type) hardcoded.craft_type = src.craft_type;
+    setAttributeValues({ ...hardcoded, ...(src.attributes || {}) });
+  }, [isOpen, product, fullProduct]);
 
   // Create mutation
   const createMutation = useMutation({
@@ -332,6 +358,8 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
         is_primary: index === 0,
         sort_order: index,
       })),
+      video_url: data.video_url ?? '',
+      video_poster_url: data.video_poster_url ?? '',
       attributes: Object.keys(cleanAttributes).length > 0 ? cleanAttributes : undefined,
     };
 
@@ -419,6 +447,46 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
                     maxFiles={5}
                     hint="Upload up to 5 product images"
                     error={errors.images?.message}
+                  />
+                )}
+              />
+            </div>
+
+            <div className="md:col-span-2">
+              <Controller
+                name="video_url"
+                control={control}
+                render={({ field }) => (
+                  <ImageUpload
+                    label="Product Video (optional)"
+                    value={field.value || ''}
+                    onChange={(value) =>
+                      field.onChange(Array.isArray(value) ? value[0] || '' : value)
+                    }
+                    accept="video/mp4"
+                    maxSizeMB={50}
+                    hint="MP4 only, up to 50MB. One video per product."
+                    error={errors.video_url?.message}
+                  />
+                )}
+              />
+            </div>
+
+            <div className="md:col-span-2">
+              <Controller
+                name="video_poster_url"
+                control={control}
+                render={({ field }) => (
+                  <ImageUpload
+                    label="Video Poster Image (optional)"
+                    value={field.value || ''}
+                    onChange={(value) =>
+                      field.onChange(Array.isArray(value) ? value[0] || '' : value)
+                    }
+                    accept="image/*"
+                    maxSizeMB={2}
+                    hint="Thumbnail shown before the video plays. Recommended 16:9."
+                    error={errors.video_poster_url?.message}
                   />
                 )}
               />

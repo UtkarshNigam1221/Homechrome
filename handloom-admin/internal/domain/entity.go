@@ -326,6 +326,10 @@ type Product struct {
 	// Media (stored in product_images table)
 	Images []ProductImage `json:"images,omitempty"`
 
+	// Video (stored on products row; one optional video per product)
+	VideoURL       string `json:"video_url,omitempty" db:"video_url"`
+	VideoPosterURL string `json:"video_poster_url,omitempty" db:"video_poster_url"`
+
 	// Tags & SEO
 	Tags []string `json:"tags,omitempty" db:"tags"`
 
@@ -365,6 +369,8 @@ func NewProduct(req CreateProductRequest, id, slug, createdBy string) *Product {
 		Origin:                req.Origin,
 		CraftType:             req.CraftType,
 		Images:                req.Images,
+		VideoURL:              req.VideoURL,
+		VideoPosterURL:        req.VideoPosterURL,
 		Tags:                  emptyIfNil(req.Tags),
 		Quantity:              req.InitialStock,
 		AvailableQty:          req.InitialStock,
@@ -449,6 +455,12 @@ func (p *Product) ApplyUpdate(req UpdateProductRequest) {
 	}
 	if req.Status != nil {
 		p.Status = *req.Status
+	}
+	if req.VideoURL != nil {
+		p.VideoURL = *req.VideoURL
+	}
+	if req.VideoPosterURL != nil {
+		p.VideoPosterURL = *req.VideoPosterURL
 	}
 }
 

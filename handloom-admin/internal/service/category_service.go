@@ -115,7 +115,11 @@ func (s *CategoryService) Delete(ctx context.Context, id string) error {
 		return errors.New(errors.ErrCodeCategoryHasProducts, "Cannot delete category with existing products")
 	}
 
-	return s.categoryRepo.Delete(ctx, id)
+	if err := s.categoryRepo.Delete(ctx, id); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // List retrieves categories with filters
@@ -180,7 +184,11 @@ func (s *CategoryService) DeleteAttribute(ctx context.Context, categoryID string
 	category.OwnAttributes = append(category.OwnAttributes[:idx], category.OwnAttributes[idx+1:]...)
 	category.UpdatedBy = updatedBy
 
-	return s.categoryRepo.Update(ctx, category)
+	if err := s.categoryRepo.Update(ctx, category); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // GetAttributes retrieves all attributes for a category

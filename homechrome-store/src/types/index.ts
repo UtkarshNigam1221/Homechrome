@@ -67,12 +67,16 @@ export interface Product {
   selling_price: number; // in paise
   mrp: number;
   images: ProductImage[];
+  video_url?: string;
+  video_poster_url?: string;
   status: 'ACTIVE' | 'DRAFT' | 'ARCHIVED';
   in_stock: boolean;
   color?: string;
   material?: string;
   attributes: Record<string, string>;
   allow_custom_dimensions: boolean;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface ProductImage {

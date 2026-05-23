@@ -123,7 +123,7 @@ func TestAssetService_GetUploadURL(t *testing.T) {
 			errContains: "File size exceeds maximum",
 		},
 		{
-			name: "file too large - video > 100MB",
+			name: "file too large - video > 50MB",
 			req: domain.UploadAssetRequest{
 				FileName:    "huge.mp4",
 				ContentType: "video/mp4",
@@ -327,6 +327,78 @@ func TestAssetService_FinalizeIfTemp(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// TestAssetService_FinalizeIfTemp_URLAllowlist
+// ---------------------------------------------------------------------------
+
+func TestAssetService_FinalizeIfTemp_URLAllowlist(t *testing.T) {
+	t.Run("empty string passes through unchanged", func(t *testing.T) {
+		s3Mock := new(mockS3Client)
+		svc := newTestAssetService(s3Mock)
+
+		result, err := svc.FinalizeIfTemp(context.Background(), "")
+
+		require.NoError(t, err)
+		assert.Equal(t, "", result)
+		s3Mock.AssertNotCalled(t, "CopyObject")
+	})
+
+	t.Run("tmp key delegates to FinalizeUpload", func(t *testing.T) {
+		s3Mock := new(mockS3Client)
+		svc := newTestAssetService(s3Mock)
+		ctx := context.Background()
+
+		tmpKey := "tmp/VIDEO/x.mp4"
+
+		s3Mock.On("CopyObject",
+			mock.Anything, testBucket, tmpKey, mock.AnythingOfType("string"),
+		).Return(nil)
+		s3Mock.On("DeleteObject",
+			mock.Anything, testBucket, tmpKey,
+		).Return(nil)
+
+		result, err := svc.FinalizeIfTemp(ctx, tmpKey)
+
+		require.NoError(t, err)
+		assert.True(t, strings.HasPrefix(result, s3URL("assets/")))
+		s3Mock.AssertExpectations(t)
+	})
+
+	t.Run("trusted CDN URL passes through unchanged", func(t *testing.T) {
+		s3Mock := new(mockS3Client)
+		svc := &AssetService{
+			s3Client: s3Mock,
+			bucket:   testBucket,
+			region:   testRegion,
+			cdnHost:  "cdn.example.com",
+		}
+		ctx := context.Background()
+
+		cdnURL := "https://cdn.example.com/assets/VIDEO/x.mp4"
+		result, err := svc.FinalizeIfTemp(ctx, cdnURL)
+
+		require.NoError(t, err)
+		assert.Equal(t, cdnURL, result)
+		s3Mock.AssertNotCalled(t, "CopyObject")
+	})
+
+	t.Run("untrusted external URL passes through with warning (legacy CDN compat)", func(t *testing.T) {
+		// FinalizeIfTemp no longer hard-rejects non-tmp untrusted URLs.
+		// It logs a warning and returns the URL as-is so that existing products
+		// carrying legacy CDN URLs (e.g. after a CDN_DOMAIN rotation) can still
+		// be updated without errors. Handler-level validation guards fresh uploads.
+		s3Mock := new(mockS3Client)
+		svc := newTestAssetService(s3Mock)
+		ctx := context.Background()
+
+		result, err := svc.FinalizeIfTemp(ctx, "https://evil.com/x.mp4")
+
+		require.NoError(t, err)
+		assert.Equal(t, "https://evil.com/x.mp4", result)
+		s3Mock.AssertNotCalled(t, "CopyObject")
+	})
+}
+
+// ---------------------------------------------------------------------------
 // TestAssetService_DeleteAsset
 // ---------------------------------------------------------------------------
 
@@ -402,6 +474,75 @@ func TestAssetService_DeleteAsset(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// TestAssetService_GetUploadURL_Video
+// ---------------------------------------------------------------------------
+
+func TestAssetService_GetUploadURL_Video(t *testing.T) {
+	tests := []struct {
+		name        string
+		req         domain.UploadAssetRequest
+		expectError bool
+		errContains string
+	}{
+		{
+			name: "mp4 within 50MB succeeds",
+			req: domain.UploadAssetRequest{
+				FileName:    "demo.mp4",
+				ContentType: "video/mp4",
+				Size:        40 << 20, // 40 MB
+				Type:        domain.AssetTypeVideo,
+			},
+			expectError: false,
+		},
+		{
+			name: "mp4 over 50MB rejected",
+			req: domain.UploadAssetRequest{
+				FileName:    "demo.mp4",
+				ContentType: "video/mp4",
+				Size:        60 << 20, // 60 MB
+				Type:        domain.AssetTypeVideo,
+			},
+			expectError: true,
+			errContains: "size exceeds",
+		},
+		{
+			name: "non-mp4 video rejected",
+			req: domain.UploadAssetRequest{
+				FileName:    "demo.webm",
+				ContentType: "video/webm",
+				Size:        10 << 20,
+				Type:        domain.AssetTypeVideo,
+			},
+			expectError: true,
+			errContains: "Invalid content type",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			s3Mock := new(mockS3Client)
+			s := newTestAssetService(s3Mock)
+
+			if !tc.expectError {
+				s3Mock.On("GeneratePresignedPutURL",
+					mock.Anything, testBucket, mock.AnythingOfType("string"),
+					tc.req.ContentType, mock.AnythingOfType("time.Duration"),
+				).Return("https://s3.presigned.url/put", nil)
+			}
+
+			_, err := s.GetUploadURL(context.Background(), tc.req)
+			if tc.expectError {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tc.errContains)
+				return
+			}
+			require.NoError(t, err)
+			s3Mock.AssertExpectations(t)
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
 // TestHelpers_IsValidContentType
 // ---------------------------------------------------------------------------
 
@@ -424,9 +565,9 @@ func TestHelpers_IsValidContentType(t *testing.T) {
 
 		// VIDEO — valid
 		{"video/mp4 is valid VIDEO", "video/mp4", domain.AssetTypeVideo, true},
-		{"video/webm is valid VIDEO", "video/webm", domain.AssetTypeVideo, true},
 
 		// VIDEO — invalid
+		{"video/webm is not valid VIDEO", "video/webm", domain.AssetTypeVideo, false},
 		{"image/jpeg is not valid VIDEO", "image/jpeg", domain.AssetTypeVideo, false},
 		{"application/pdf is not valid VIDEO", contentTypePDF, domain.AssetTypeVideo, false},
 
@@ -465,7 +606,7 @@ func TestHelpers_GetMaxSize(t *testing.T) {
 		want      int64
 	}{
 		{"IMAGE returns 50MB", domain.AssetTypeImage, maxImageSize},
-		{"VIDEO returns 100MB", domain.AssetTypeVideo, maxVideoSize},
+		{"VIDEO returns 50MB", domain.AssetTypeVideo, maxVideoSize},
 		{"DOCUMENT returns 10MB", domain.AssetTypeDocument, maxDocumentSize},
 		{"unknown type defaults to 10MB", domain.AssetType("UNKNOWN"), maxDocumentSize},
 	}

@@ -95,6 +95,20 @@ jobs:
           cd infra && cdk deploy --all --require-approval never \
             -c environment=${{ inputs.environment }}
 
+      - name: Wipe Next.js ISR cache from S3
+        run: |
+          STACK_NAME="HomechromeStoreStack-${{ inputs.environment }}"
+          CACHE_BUCKET=$(aws cloudformation describe-stacks \
+            --stack-name "$STACK_NAME" \
+            --query "Stacks[0].Outputs[?OutputKey=='BucketName'].OutputValue" \
+            --output text)
+          if [ -n "$CACHE_BUCKET" ] && [ "$CACHE_BUCKET" != "None" ]; then
+            aws s3 rm "s3://$CACHE_BUCKET/_cache/" --recursive --only-show-errors
+            echo "Wiped _cache/ from $CACHE_BUCKET"
+          else
+            echo "BucketName output not found on $STACK_NAME — skipping ISR cache wipe"
+          fi
+
       - name: Invalidate CloudFront Cache
         run: |
           STACK_NAME="HomechromeStoreStack-${{ inputs.environment }}"

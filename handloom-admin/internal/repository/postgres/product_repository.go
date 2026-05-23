@@ -41,17 +41,21 @@ func NewProductRepository(pool *pgxpool.Pool) *ProductRepository {
 
 // productRow is an intermediate scan target that handles the flattened
 // dimension columns (dim_length, dim_width, dim_height, dim_unit) which
-// don't map directly to the domain.Product.Dimensions struct.
+// don't map directly to the domain.Product.Dimensions struct, and the
+// nullable video columns which are stored as NULL when empty.
 type productRow struct {
 	domain.Product
-	DimLength *float64 `db:"dim_length"`
-	DimWidth  *float64 `db:"dim_width"`
-	DimHeight *float64 `db:"dim_height"`
-	DimUnit   string   `db:"dim_unit"`
+	DimLength      *float64 `db:"dim_length"`
+	DimWidth       *float64 `db:"dim_width"`
+	DimHeight      *float64 `db:"dim_height"`
+	DimUnit        string   `db:"dim_unit"`
+	VideoURL       *string  `db:"video_url"`
+	VideoPosterURL *string  `db:"video_poster_url"`
 }
 
 // toProduct converts a productRow into a *domain.Product, reconstructing
-// the Dimensions struct from the flat columns.
+// the Dimensions struct from the flat columns and coercing NULL video
+// columns back to empty strings.
 func (r *productRow) toProduct() *domain.Product {
 	p := r.Product
 	if r.DimLength != nil || r.DimWidth != nil || r.DimHeight != nil {
@@ -66,6 +70,12 @@ func (r *productRow) toProduct() *domain.Product {
 			d.Height = *r.DimHeight
 		}
 		p.Dimensions = d
+	}
+	if r.VideoURL != nil {
+		p.VideoURL = *r.VideoURL
+	}
+	if r.VideoPosterURL != nil {
+		p.VideoPosterURL = *r.VideoPosterURL
 	}
 	return &p
 }
@@ -127,6 +137,8 @@ func (r *ProductRepository) Create(ctx context.Context, product *domain.Product,
 		Set(ColTags, product.Tags).
 		Set(ColStatus, string(product.Status)).
 		Set(ColSortOrder, product.SortOrder).
+		Set(ColVideoURL, nullableString(product.VideoURL)).
+		Set(ColVideoPosterURL, nullableString(product.VideoPosterURL)).
 		Set(ColCreatedAt, product.CreatedAt).
 		Set(ColUpdatedAt, product.UpdatedAt).
 		Set(ColCreatedBy, product.CreatedBy).
@@ -297,6 +309,8 @@ func (r *ProductRepository) Update(ctx context.Context, product *domain.Product)
 		Set(ColTags, product.Tags).
 		Set(ColStatus, string(product.Status)).
 		Set(ColSortOrder, product.SortOrder).
+		Set(ColVideoURL, nullableString(product.VideoURL)).
+		Set(ColVideoPosterURL, nullableString(product.VideoPosterURL)).
 		Set(ColUpdatedAt, product.UpdatedAt).
 		Set(ColUpdatedBy, product.UpdatedBy).
 		Where(ColID, product.ID)
@@ -783,6 +797,15 @@ func buildAttributeBatchInsert(productID string, rows []attributeRow) (string, [
 	}
 
 	return qb.Build()
+}
+
+// nullableString returns nil for empty strings so that empty values are written
+// as NULL rather than empty TEXT. Avoids querying `WHERE col = ”` ambiguity.
+func nullableString(s string) interface{} {
+	if s == "" {
+		return nil
+	}
+	return s
 }
 
 // insertImages writes rows into product_images for the product.

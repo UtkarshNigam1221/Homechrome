@@ -99,7 +99,9 @@ type StoreProduct struct {
 	CraftType string `json:"craft_type,omitempty"`
 
 	// Media
-	Images []domain.ProductImage `json:"images,omitempty"`
+	Images         []domain.ProductImage `json:"images,omitempty"`
+	VideoURL       string                `json:"video_url,omitempty"`
+	VideoPosterURL string                `json:"video_poster_url,omitempty"`
 
 	// Tags & SEO
 	Tags []string `json:"tags,omitempty"`
@@ -160,6 +162,8 @@ func toStoreProduct(p *domain.Product) *StoreProduct {
 		Origin:                p.Origin,
 		CraftType:             p.CraftType,
 		Images:                p.Images,
+		VideoURL:              p.VideoURL,
+		VideoPosterURL:        p.VideoPosterURL,
 		Tags:                  p.Tags,
 		InStock:               p.AvailableQty > 0,
 		CreatedAt:             p.CreatedAt,

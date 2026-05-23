@@ -4,6 +4,10 @@ const BATCH_SIZE = 10;
 const FLUSH_INTERVAL_MS = 30_000;
 const API_URL = ROUTES.EVENTS;
 
+// Kill-switch: analytics is opt-in via env var. Default off — set
+// NEXT_PUBLIC_ANALYTICS_ENABLED=true to re-enable.
+const ENABLED = process.env.NEXT_PUBLIC_ANALYTICS_ENABLED === 'false';
+
 interface TrackingEvent {
   event_type: string;
   timestamp: string;
@@ -69,6 +73,7 @@ export function track(
   eventType: string,
   properties: Record<string, unknown> = {},
 ) {
+  if (!ENABLED) return;
   if (typeof window === 'undefined') return;
 
   const event: TrackingEvent = {
@@ -93,6 +98,7 @@ function handleVisibilityChange() {
 }
 
 export function initAnalytics() {
+  if (!ENABLED) return;
   if (typeof window === 'undefined') return;
   if (initialized) return;
   initialized = true;

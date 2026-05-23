@@ -33,6 +33,8 @@ const (
 	ColPricingRuleID         = "pricing_rule_id"
 	ColTags                  = "tags"
 	ColSortOrder             = "sort_order"
+	ColVideoURL              = "video_url"
+	ColVideoPosterURL        = "video_poster_url"
 )
 
 // Category table columns.
@@ -79,13 +81,14 @@ const (
 // Column lists for SELECT queries. Each slice matches the db struct tag order
 // used by pgxscan so that queries and struct scanning stay in sync.
 
-// productColumns lists the 24 columns selected for a product row.
+// productColumns lists the 26 columns selected for a product row.
 var productColumns = []string{
 	ColID, ColName, ColSlug, ColSKU, ColDescription, ColCategoryID,
 	ColBasePrice, ColSellingPrice, ColCostPrice, ColCurrency,
 	ColDimLength, ColDimWidth, ColDimHeight, ColDimUnit,
 	ColWeight, ColAllowCustomDimensions, ColPricingRuleID,
 	ColTags, ColStatus, ColSortOrder,
+	ColVideoURL, ColVideoPosterURL,
 	ColCreatedAt, ColUpdatedAt, ColCreatedBy, ColUpdatedBy,
 }
 
