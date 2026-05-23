@@ -181,8 +181,6 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
           video_url: product.video_url || '',
           video_poster_url: product.video_poster_url || '',
         });
-        // Restore existing attribute values when editing (prefer fullProduct which includes attributes)
-        setAttributeValues((fullProduct ?? product).attributes || {});
       } else {
         reset({
           name: '',
@@ -211,10 +209,30 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
           video_url: '',
           video_poster_url: '',
         });
-        setAttributeValues({});
       }
     }
-  }, [isOpen, product, fullProduct, reset]);
+  }, [isOpen, product, reset]);
+
+  // Hydrate dynamic attribute values when editing. Tracks both the list-level
+  // product (immediate) and the full product detail (async, includes attributes
+  // map). Hardcoded fields (material, color, weave_type, origin, craft_type)
+  // are also folded in so category attributes that overlap with those slots
+  // pre-fill from the dedicated product field when the backend strips them
+  // from the attributes map.
+  useEffect(() => {
+    if (!isOpen || !product?.id) {
+      setAttributeValues({});
+      return;
+    }
+    const src = (fullProduct ?? product) as Product;
+    const hardcoded: Record<string, unknown> = {};
+    if (src.material) hardcoded.material = src.material;
+    if (src.color) hardcoded.color = src.color;
+    if (src.weave_type) hardcoded.weave_type = src.weave_type;
+    if (src.origin) hardcoded.origin = src.origin;
+    if (src.craft_type) hardcoded.craft_type = src.craft_type;
+    setAttributeValues({ ...hardcoded, ...(src.attributes || {}) });
+  }, [isOpen, product, fullProduct]);
 
   // Create mutation
   const createMutation = useMutation({
