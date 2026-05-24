@@ -85,6 +85,7 @@ func main() {
 		DatabaseStack:  databaseStack,
 		StorageStack:   storageStack,
 		EventStack:     nil, // DISABLED: pass eventStack here when re-enabling
+		ImageResizer:   storageStack.ImageResizer,
 		BaseDomain:     cfg.BaseDomain,
 		DomainName:     cfg.DomainName,
 		FrontendOrigin: cfg.FrontendOrigin,

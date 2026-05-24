@@ -15,6 +15,8 @@ import { theme } from './theme';
 import '@mantine/core/styles.css';
 import '@mantine/notifications/styles.css';
 import '@mantine/dates/styles.css';
+import '@mantine/spotlight/styles.css';
+import '@mantine/carousel/styles.css';
 
 function AuthInit() {
   const checkAuth = useAuthStore((s) => s.checkAuth);

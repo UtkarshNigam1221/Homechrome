@@ -13,6 +13,7 @@ interface QuantityStepperProps {
   variant?: 'default' | 'primary';
   size?: 'sm' | 'default' | 'lg';
   className?: string;
+  fullWidth?: boolean;
 }
 
 const sizeConfig = {
@@ -31,6 +32,7 @@ export function QuantityStepper({
   variant = 'default',
   size = 'default',
   className,
+  fullWidth = false,
 }: QuantityStepperProps) {
   const isPrimary = variant === 'primary';
   const s = sizeConfig[size];
@@ -40,9 +42,11 @@ export function QuantityStepper({
     <Group
       gap={0}
       wrap="nowrap"
+      justify={fullWidth ? 'space-between' : undefined}
       className={className}
       style={{
-        display: 'inline-flex',
+        display: fullWidth ? 'flex' : 'inline-flex',
+        width: fullWidth ? '100%' : undefined,
         border: `1px solid var(--mantine-color-${isPrimary ? 'brand-5' : 'default-border'})`,
         borderRadius: 'var(--mantine-radius-md)',
         backgroundColor: isPrimary ? 'var(--mantine-color-brand-0)' : undefined,

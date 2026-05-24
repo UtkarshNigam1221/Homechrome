@@ -10,6 +10,7 @@ import (
 	"github.com/aws/aws-cdk-go/awscdk/v2/awscertificatemanager"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awsiam"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awslambda"
+	"github.com/aws/aws-cdk-go/awscdk/v2/awslambdanodejs"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awslogs"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awss3assets"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awsssm"
@@ -24,10 +25,11 @@ type APIStackProps struct {
 	DatabaseStack  *DatabaseStack
 	StorageStack   *StorageStack
 	EventStack     *EventStack // Optional: event-driven async infrastructure
-	BaseDomain     string      // Base domain (e.g. homechrome.in) — used for cookie domain
-	DomainName     string      // Optional: custom domain for API Gateway (e.g. dev-api.homechrome.in)
-	FrontendOrigin string      // Optional: frontend origin for CORS (e.g. https://dev-admin.homechrome.in)
-	CertArn        string      // Optional: ACM certificate ARN (us-east-1) for custom domain
+	ImageResizer   awslambdanodejs.NodejsFunction
+	BaseDomain     string // Base domain (e.g. homechrome.in) — used for cookie domain
+	DomainName     string // Optional: custom domain for API Gateway (e.g. dev-api.homechrome.in)
+	FrontendOrigin string // Optional: frontend origin for CORS (e.g. https://dev-admin.homechrome.in)
+	CertArn        string // Optional: ACM certificate ARN (us-east-1) for custom domain
 }
 
 // ServiceLambda represents a Lambda function for a service
@@ -176,7 +178,13 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 
 	lambdas := make(map[string]*ServiceLambda)
 	for _, svc := range services {
-		lambdaFn := createServiceLambda(stack, svc, props.Environment, commonEnv, memorySize, sharedLogGroup)
+		// Asset Lambda gets a longer timeout: it synchronously invokes ImageResizer
+		// which can take up to ~30s for multi-variant generation.
+		timeout := float64(15)
+		if svc == "asset" {
+			timeout = 45
+		}
+		lambdaFn := createServiceLambda(stack, svc, props.Environment, commonEnv, memorySize, timeout, sharedLogGroup)
 		lambdas[svc] = &ServiceLambda{
 			Function: lambdaFn,
 			Name:     svc,
@@ -196,6 +204,13 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 		if props.EventStack != nil {
 			props.EventStack.Topic.GrantPublish(lambdaFn)
 		}
+	}
+
+	// Wire ImageResizer access — sync invoke at finalize time
+	if props.ImageResizer != nil {
+		assetFn := lambdas["asset"].Function
+		props.ImageResizer.GrantInvoke(assetFn)
+		assetFn.AddEnvironment(jsii.String("IMAGE_RESIZER_FUNCTION_NAME"), props.ImageResizer.FunctionName(), nil)
 	}
 
 	// Create API Gateway - optimized for AWS Free Tier
@@ -271,6 +286,7 @@ func createServiceLambda(
 	environment string,
 	commonEnv map[string]*string,
 	memorySize float64,
+	timeout float64,
 	logGroup awslogs.LogGroup,
 ) awslambda.Function {
 	// Add service-specific environment variable
@@ -290,7 +306,7 @@ func createServiceLambda(
 		Code:         awslambda.Code_FromAsset(jsii.String(fmt.Sprintf("../bin/lambda/%s", serviceName)), &awss3assets.AssetOptions{}),
 		Architecture: awslambda.Architecture_ARM_64(), // ARM64 is ~20% cheaper than x86
 		MemorySize:   jsii.Number(memorySize),
-		Timeout:      awscdk.Duration_Seconds(jsii.Number(15)), // Reduced timeout for cost efficiency
+		Timeout:      awscdk.Duration_Seconds(jsii.Number(timeout)),
 		Environment:  &env,
 		LogGroup:     logGroup,
 		Tracing:      awslambda.Tracing_DISABLED, // Disable X-Ray tracing (not free)

@@ -63,6 +63,9 @@ export default function MobileNav({ isOpen, onClose, categories }: MobileNavProp
           <NavItem href="/products" onClose={onClose}>
             All Products
           </NavItem>
+          <NavItem href="/cart" onClose={onClose}>
+            My Cart
+          </NavItem>
 
           <Title order={3} size="xs" tt="uppercase" fw={600} c="dimmed" mt="lg" mb="xs" px="xs" style={{ letterSpacing: '0.05em' }}>
             Categories

@@ -2,7 +2,7 @@
 
 import { PhotoIcon } from '@heroicons/react/24/outline';
 import { Box, Button, Card, Center, Group, Stack, Text } from '@mantine/core';
-import Image from 'next/image';
+import { AssetImage } from '@/components/ui/asset-image';
 import { useState } from 'react';
 
 import { QuantityStepper } from '@/components/ui/quantity-stepper';
@@ -68,12 +68,13 @@ export default function CartItem({ item, onUpdateQuantity, onRemove }: CartItemP
           }}
         >
           {item.product_image ? (
-            <Image
+            <AssetImage
               src={item.product_image}
               alt={item.product_name}
-              fill
               sizes="128px"
-              style={{ objectFit: 'cover' }}
+              width={128}
+              height={128}
+              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
             />
           ) : (
             <Center bg="brand.1" h="100%">

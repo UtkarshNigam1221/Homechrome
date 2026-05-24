@@ -2,8 +2,11 @@
 
 import { PhotoIcon } from '@heroicons/react/24/outline';
 import { PlayIcon } from '@heroicons/react/24/solid';
-import { AspectRatio, Box, Center, Group, ScrollArea, UnstyledButton } from '@mantine/core';
-import Image from 'next/image';
+import { AspectRatio, Box, Card, Center, Group, Image as MantineImage, ScrollArea, ThemeIcon, UnstyledButton } from '@mantine/core';
+import { Carousel } from '@mantine/carousel';
+import type { EmblaCarouselType } from 'embla-carousel';
+import { useEffect, useState } from 'react';
+import { AssetImage } from '@/components/ui/asset-image';
 
 import { GalleryItem } from '@/hooks/useProductGallery';
 
@@ -22,38 +25,42 @@ export function ProductGallery({
   selectedItem,
   onSelect,
 }: ProductGalleryProps) {
+  const hasMultiple = items.length > 1;
+  const [embla, setEmbla] = useState<EmblaCarouselType | null>(null);
+
+  useEffect(() => {
+    if (embla && embla.selectedScrollSnap() !== selectedIndex) {
+      embla.scrollTo(selectedIndex);
+    }
+  }, [embla, selectedIndex]);
+
   return (
     <Box>
-      <Box style={{ overflow: 'hidden', borderRadius: 'var(--mantine-radius-lg)' }} bg="gray.1">
-        <AspectRatio ratio={1}>
-          {selectedItem?.kind === 'video' ? (
-            <video
-              key={selectedItem.url}
-              src={selectedItem.url}
-              controls
-              playsInline
-              preload="metadata"
-              poster={selectedItem.poster}
-              style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-            />
-          ) : selectedItem?.kind === 'image' ? (
-            <Image
-              src={selectedItem.image.url}
-              alt={selectedItem.image.alt_text || productName}
-              fill
-              sizes="(max-width: 1024px) 100vw, 50vw"
-              style={{ objectFit: 'cover' }}
-              priority
-            />
-          ) : (
-            <Center bg="brand.1" h="100%">
-              <PhotoIcon width={64} height={64} color="var(--mantine-color-brand-5)" opacity={0.4} />
-            </Center>
-          )}
-        </AspectRatio>
-      </Box>
+      <Card radius="lg" padding={0} bg="gray.1" withBorder={false}>
+        {hasMultiple ? (
+          <Carousel
+            withIndicators
+            withControls
+            slideSize="100%"
+            slideGap={0}
+            initialSlide={selectedIndex}
+            onSlideChange={onSelect}
+            getEmblaApi={setEmbla}
+            emblaOptions={{ loop: true }}
+            controlSize={36}
+          >
+            {items.map((item, index) => (
+              <Carousel.Slide key={item.kind === 'video' ? 'video' : `img-${index}`}>
+                <GalleryMedia item={item} productName={productName} />
+              </Carousel.Slide>
+            ))}
+          </Carousel>
+        ) : (
+          <GalleryMedia item={selectedItem} productName={productName} />
+        )}
+      </Card>
 
-      {items.length > 1 && (
+      {hasMultiple && (
         <ScrollArea scrollbarSize={6} mt="md" type="hover">
           <Group gap="sm" wrap="nowrap" pb="xs">
             {items.map((item, index) => (
@@ -73,6 +80,45 @@ export function ProductGallery({
   );
 }
 
+interface GalleryMediaProps {
+  item: GalleryItem | null;
+  productName: string;
+}
+
+function GalleryMedia({ item, productName }: GalleryMediaProps) {
+  return (
+    <AspectRatio ratio={1}>
+      {item?.kind === 'video' ? (
+        <video
+          key={item.url}
+          src={item.url}
+          poster={item.poster}
+          controls
+          playsInline
+          preload="metadata"
+          style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+        />
+      ) : item?.kind === 'image' ? (
+        <AssetImage
+          src={item.image.url}
+          alt={item.image.alt_text || productName}
+          sizes="(max-width: 1024px) 100vw, 50vw"
+          width={1080}
+          height={1080}
+          loading="eager"
+          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+        />
+      ) : (
+        <Center bg="brand.1">
+          <ThemeIcon size={64} radius="xl" variant="light" color="brand">
+            <PhotoIcon width={36} height={36} />
+          </ThemeIcon>
+        </Center>
+      )}
+    </AspectRatio>
+  );
+}
+
 interface ThumbProps {
   item: GalleryItem;
   index: number;
@@ -86,42 +132,43 @@ function GalleryThumbnail({ item, index, productName, isActive, onSelect }: Thum
     <UnstyledButton
       onClick={() => onSelect(index)}
       aria-label={item.kind === 'video' ? 'Play product video' : `Image ${index + 1}`}
-      style={{
-        position: 'relative',
-        width: 80,
-        height: 80,
-        flexShrink: 0,
-        overflow: 'hidden',
-        borderRadius: 'var(--mantine-radius-md)',
-        border: `2px solid ${isActive ? 'var(--mantine-color-brand-5)' : 'transparent'}`,
-        transition: 'border-color 0.15s',
-      }}
+      data-active={isActive || undefined}
     >
-      {item.kind === 'video' ? (
-        <>
-          {item.poster ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={item.poster}
-              alt="Product video thumbnail"
-              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-            />
-          ) : (
-            <Box w="100%" h="100%" bg="gray.2" />
-          )}
-          <Center pos="absolute" inset={0} bg="rgba(28,41,81,0.3)">
-            <PlayIcon width={24} height={24} color="white" />
-          </Center>
-        </>
-      ) : (
-        <Image
-          src={item.image.url}
-          alt={item.image.alt_text || `${productName} ${index + 1}`}
-          fill
-          sizes="80px"
-          style={{ objectFit: 'cover' }}
-        />
-      )}
+      <Card
+        radius="md"
+        padding={0}
+        withBorder
+        bg="gray.1"
+        style={{
+          width: 80,
+          height: 80,
+          overflow: 'hidden',
+          borderColor: isActive ? 'var(--mantine-color-brand-5)' : 'transparent',
+          borderWidth: 2,
+        }}
+      >
+        {item.kind === 'video' ? (
+          <Box pos="relative" w="100%" h="100%">
+            {item.poster ? (
+              <MantineImage src={item.poster} alt="Product video thumbnail" w="100%" h="100%" fit="cover" />
+            ) : (
+              <Box w="100%" h="100%" bg="gray.2" />
+            )}
+            <Center pos="absolute" inset={0} bg="rgba(28,41,81,0.3)">
+              <PlayIcon width={24} height={24} color="white" />
+            </Center>
+          </Box>
+        ) : (
+          <AssetImage
+            src={item.image.url}
+            alt={item.image.alt_text || `${productName} ${index + 1}`}
+            sizes="80px"
+            width={80}
+            height={80}
+            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+          />
+        )}
+      </Card>
     </UnstyledButton>
   );
 }

@@ -1,8 +1,11 @@
 import { ColorSchemeScript, mantineHtmlProps } from '@mantine/core';
 import type { Metadata } from 'next';
 
+import { MiniCartDrawer } from '@/components/cart/MiniCartDrawer';
+import { FloatingActions } from '@/components/layout/FloatingActions';
 import Footer from '@/components/layout/Footer';
 import Header from '@/components/layout/Header';
+import { SpotlightSearch } from '@/components/search/SpotlightSearch';
 import { API_BASE } from '@/lib/constants';
 import { ROUTES } from '@/lib/routes';
 import { Category } from '@/types';
@@ -44,6 +47,9 @@ export default async function RootLayout({
       <body className={siteFont.className} style={{ minHeight: '100vh' }}>
         <Providers>
           <Header categories={categories} />
+          <SpotlightSearch categories={categories} />
+          <MiniCartDrawer />
+          <FloatingActions />
           <main style={{ minHeight: '100vh' }}>{children}</main>
           <Footer />
         </Providers>

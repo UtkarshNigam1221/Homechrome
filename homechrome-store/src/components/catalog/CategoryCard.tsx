@@ -2,7 +2,7 @@
 
 import { PhotoIcon } from '@heroicons/react/24/outline';
 import { AspectRatio, Card, Center, Stack, Text } from '@mantine/core';
-import Image from 'next/image';
+import { AssetImage } from '@/components/ui/asset-image';
 import Link from 'next/link';
 
 import { Category } from '@/types';
@@ -25,12 +25,13 @@ export default function CategoryCard({ category }: CategoryCardProps) {
       <Card.Section pos="relative">
         <AspectRatio ratio={4 / 3} bg="gray.1">
           {category.image_url ? (
-            <Image
+            <AssetImage
               src={category.image_url}
               alt={category.name}
-              fill
               sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
-              style={{ objectFit: 'cover' }}
+              width={640}
+              height={480}
+              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
             />
           ) : (
             <Center bg="brand.1" h="100%">

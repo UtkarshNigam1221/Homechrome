@@ -1,28 +1,29 @@
 'use client';
 
-import { Bars3Icon, ShoppingBagIcon, UserIcon } from '@heroicons/react/24/outline';
+import { Bars3Icon, MagnifyingGlassIcon, ShoppingBagIcon, UserIcon } from '@heroicons/react/24/outline';
 import {
   ActionIcon,
   Anchor,
   Box,
   Container,
-  Divider,
   Group,
   Indicator,
+  Kbd,
   Text,
   Tooltip,
+  UnstyledButton,
 } from '@mantine/core';
+import { spotlight } from '@mantine/spotlight';
 import dynamic from 'next/dynamic';
 import Image from 'next/image';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { useCallback, useState } from 'react';
+import { useState } from 'react';
 
 import logo80 from '@/assets/logo-80.png';
 
-import { SearchInput } from '@/components/ui/search-input';
 import { useAuthStore } from '@/stores/auth';
 import { useCartStore } from '@/stores/cart';
+import { useUIStore } from '@/stores/uiStore';
 import { Category } from '@/types';
 
 const MobileNav = dynamic(() => import('./MobileNav'), { ssr: false });
@@ -32,23 +33,11 @@ interface HeaderProps {
 }
 
 export default function Header({ categories }: HeaderProps) {
-  const router = useRouter();
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const customer = useAuthStore((s) => s.customer);
   const cartCount = useCartStore((s) => s.itemCount);
-  const [searchQuery, setSearchQuery] = useState('');
+  const openMiniCart = useUIStore((s) => s.openMiniCart);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-
-  const handleSearch = useCallback(
-    (e: React.FormEvent) => {
-      e.preventDefault();
-      if (searchQuery.trim()) {
-        router.push(`/products?search=${encodeURIComponent(searchQuery.trim())}`);
-        setSearchQuery('');
-      }
-    },
-    [searchQuery, router],
-  );
 
   return (
     <>
@@ -64,8 +53,8 @@ export default function Header({ categories }: HeaderProps) {
         }}
       >
         <Container size="xl">
-          <Group justify="space-between" gap="md" py="xs">
-            <Group gap="xs">
+          <Group justify="space-between" gap="sm" py="xs" wrap="nowrap">
+            <Group gap="xs" wrap="nowrap">
               <ActionIcon
                 variant="subtle"
                 color="navy"
@@ -82,28 +71,23 @@ export default function Header({ categories }: HeaderProps) {
                   <Image
                     src={logo80}
                     alt="Homechrome"
-                    height={40}
-                    style={{ height: 40, width: 'auto' }}
+                    height={36}
+                    style={{ height: 36, width: 'auto' }}
                     priority
                     unoptimized
                   />
-                  <Text fw={700} c="navy.7" visibleFrom="sm" style={{ letterSpacing: '-0.01em' }}>
+                  <Text fw={700} c="navy.7" visibleFrom="md" style={{ letterSpacing: '-0.01em' }}>
                     HOME<Text span c="brand">CHROME</Text>
                   </Text>
                 </Group>
               </Anchor>
             </Group>
 
-            <Box flex={1} maw={400} visibleFrom="lg">
-              <SearchInput
-                value={searchQuery}
-                onChange={setSearchQuery}
-                onSubmit={handleSearch}
-                placeholder="Search handloom textiles..."
-              />
+            <Box flex={1} maw={{ base: '100%', lg: 460 }} mx={{ base: 'xs', sm: 'md' }}>
+              <SpotlightTrigger />
             </Box>
 
-            <Group gap="md" align="center">
+            <Group gap="sm" align="center" wrap="nowrap">
               <Group gap="lg" visibleFrom="lg">
                 <Anchor component={Link} href="/products" c="navy.7" fw={500} size="sm" underline="never">
                   Shop
@@ -120,52 +104,69 @@ export default function Header({ categories }: HeaderProps) {
                     href="/account"
                     c="navy.7"
                     underline="never"
-                    visibleFrom="sm"
                     aria-label="My account"
                   >
                     <UserIcon width={22} height={22} />
                   </Anchor>
                 </Tooltip>
               ) : (
-                <Anchor
-                  component={Link}
-                  href="/login"
-                  c="navy.7"
-                  fw={500}
-                  size="sm"
-                  underline="never"
-                  visibleFrom="sm"
-                >
-                  Login
-                </Anchor>
+                <>
+                  <Anchor
+                    component={Link}
+                    href="/login"
+                    c="navy.7"
+                    fw={500}
+                    size="sm"
+                    underline="never"
+                    visibleFrom="sm"
+                  >
+                    Login
+                  </Anchor>
+                  <Tooltip label="Login" withArrow>
+                    <Anchor
+                      component={Link}
+                      href="/login"
+                      c="navy.7"
+                      underline="never"
+                      hiddenFrom="sm"
+                      aria-label="Login"
+                    >
+                      <UserIcon width={22} height={22} />
+                    </Anchor>
+                  </Tooltip>
+                </>
               )}
 
-              <Tooltip label={cartCount > 0 ? `Cart (${cartCount})` : 'Cart'} withArrow>
-                <Indicator
-                  label={cartCount > 0 ? cartCount : undefined}
-                  disabled={cartCount === 0}
-                  size={16}
-                  offset={2}
-                  color="brand"
-                >
-                  <Anchor component={Link} href="/cart" c="navy.7" underline="never" aria-label="Cart">
-                    <ShoppingBagIcon width={22} height={22} />
-                  </Anchor>
-                </Indicator>
-              </Tooltip>
+              <Box visibleFrom="md">
+                <Tooltip label={cartCount > 0 ? `Cart (${cartCount})` : 'Cart'} withArrow>
+                  <Indicator
+                    label={cartCount > 0 ? cartCount : undefined}
+                    disabled={cartCount === 0}
+                    size={16}
+                    offset={2}
+                    color="brand"
+                  >
+                    <ActionIcon
+                      component={Link}
+                      href="/cart"
+                      variant="subtle"
+                      color="navy"
+                      size="lg"
+                      aria-label="Open cart"
+                      onClick={(e) => {
+                        if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return;
+                        e.preventDefault();
+                        openMiniCart();
+                      }}
+                    >
+                      <ShoppingBagIcon width={22} height={22} />
+                    </ActionIcon>
+                  </Indicator>
+                </Tooltip>
+              </Box>
             </Group>
           </Group>
         </Container>
-
-        <Divider hiddenFrom="lg" />
-        <Box hiddenFrom="lg" px="md" pb={6} pt={4}>
-          <SearchInput
-            value={searchQuery}
-            onChange={setSearchQuery}
-            onSubmit={handleSearch}
-            placeholder="Search handloom textiles..."
-          />
-        </Box>
       </Box>
 
       <MobileNav
@@ -174,5 +175,35 @@ export default function Header({ categories }: HeaderProps) {
         categories={categories}
       />
     </>
+  );
+}
+
+function SpotlightTrigger() {
+  return (
+    <UnstyledButton
+      onClick={() => spotlight.open()}
+      aria-label="Search"
+      w="100%"
+      h={42}
+      px="md"
+      bg="gray.0"
+      style={{
+        borderRadius: 'var(--mantine-radius-xl)',
+        border: '1px solid var(--mantine-color-default-border)',
+      }}
+    >
+      <Group gap="sm" wrap="nowrap" align="center" h="100%">
+        <MagnifyingGlassIcon width={18} height={18} color="var(--mantine-color-dimmed)" />
+        <Text size="sm" c="dimmed" visibleFrom="sm" style={{ flex: 1, textAlign: 'left' }}>
+          Search handloom textiles...
+        </Text>
+        <Text size="sm" c="dimmed" hiddenFrom="sm" style={{ flex: 1, textAlign: 'left' }}>
+          Search
+        </Text>
+        <Kbd size="xs" visibleFrom="md">
+          ⌘K
+        </Kbd>
+      </Group>
+    </UnstyledButton>
   );
 }

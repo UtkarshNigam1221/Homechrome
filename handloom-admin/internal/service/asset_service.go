@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/handloom/admin/internal/domain"
+	"github.com/handloom/admin/internal/lambdaclient"
 	"github.com/handloom/admin/internal/s3client"
 	"github.com/handloom/admin/pkg/errors"
 )
@@ -45,31 +46,42 @@ type s3Ops interface {
 	DeleteObject(ctx context.Context, bucket, key string) error
 }
 
+// resizerInvoker abstracts the Lambda call so it can be mocked in tests.
+type resizerInvoker interface {
+	InvokeSync(ctx context.Context, functionName string, payload []byte) ([]byte, error)
+}
+
 // AssetService handles file uploads via S3.
 // Files are uploaded to a tmp/ prefix first, then moved to assets/ on finalize.
 // S3 lifecycle auto-deletes tmp/ objects after 24h — no DB scan needed.
 type AssetService struct {
-	s3Client s3Ops
-	bucket   string
-	region   string
-	cdnHost  string // CloudFront domain (empty → fall back to direct S3 URL)
-	endpoint string // AWS_ENDPOINT for local dev (empty in production)
+	s3Client      s3Ops
+	bucket        string
+	region        string
+	cdnHost       string // CloudFront domain (empty → fall back to direct S3 URL)
+	endpoint      string // AWS_ENDPOINT for local dev (empty in production)
+	resizer       resizerInvoker
+	resizerFnName string // empty disables sync resize (e.g. local dev without LocalStack Lambda)
 }
 
 // NewAssetService creates a new AssetService.
 func NewAssetService(
 	s3Client *s3client.S3Client,
+	resizer *lambdaclient.LambdaClient,
 	bucket string,
 	region string,
 	cdnHost string,
 	endpoint string,
+	resizerFnName string,
 ) *AssetService {
 	return &AssetService{
-		s3Client: s3Client,
-		bucket:   bucket,
-		region:   region,
-		cdnHost:  cdnHost,
-		endpoint: strings.TrimRight(endpoint, "/"),
+		s3Client:      s3Client,
+		resizer:       resizer,
+		bucket:        bucket,
+		region:        region,
+		cdnHost:       cdnHost,
+		endpoint:      strings.TrimRight(endpoint, "/"),
+		resizerFnName: resizerFnName,
 	}
 }
 
@@ -173,6 +185,14 @@ func (s *AssetService) FinalizeUpload(ctx context.Context, tmpKey string) (strin
 		return "", errors.Wrap(err, "Failed to copy asset to final location")
 	}
 
+	// Generate variants synchronously for IMAGE assets. If this fails the
+	// caller treats the upload as not finalized and admin can retry.
+	if assetType == "IMAGE" {
+		if err := s.invokeImageResizer(ctx, finalKey); err != nil {
+			return "", errors.Wrap(err, "Failed to generate image variants")
+		}
+	}
+
 	// Delete tmp object (best-effort; lifecycle will clean up anyway)
 	if err := s.s3Client.DeleteObject(ctx, s.bucket, tmpKey); err != nil {
 		slog.ErrorContext(ctx, "Failed to delete tmp object", "tmp_key", tmpKey, "error", err)
@@ -181,6 +201,28 @@ func (s *AssetService) FinalizeUpload(ctx context.Context, tmpKey string) (strin
 	finalURL := s.s3URL(finalKey)
 	slog.InfoContext(ctx, "Finalized asset", "tmp_key", tmpKey, "final_key", finalKey)
 	return finalURL, nil
+}
+
+// invokeImageResizer calls the ImageResizer Lambda synchronously with a synthetic
+// S3 event payload. Returns an error if the Lambda fails or any variant is missing.
+func (s *AssetService) invokeImageResizer(ctx context.Context, key string) error {
+	if s.resizer == nil || s.resizerFnName == "" {
+		// Resizer disabled (local dev without Lambda runtime). Skip silently.
+		slog.WarnContext(ctx, "ImageResizer not configured, skipping variant generation", "key", key)
+		return nil
+	}
+	payload := fmt.Sprintf(
+		`{"Records":[{"s3":{"bucket":{"name":%q},"object":{"key":%q}}}]}`,
+		s.bucket, key,
+	)
+	start := time.Now()
+	_, err := s.resizer.InvokeSync(ctx, s.resizerFnName, []byte(payload))
+	slog.InfoContext(ctx, "image_resize",
+		"key", key,
+		"duration_ms", time.Since(start).Milliseconds(),
+		"error", err,
+	)
+	return err
 }
 
 // FinalizeIfTemp finalizes a tmp/ key into a permanent assets/ URL.

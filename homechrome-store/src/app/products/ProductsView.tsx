@@ -1,16 +1,13 @@
 'use client';
 
 import { useSearchParams } from 'next/navigation';
-import { useCallback, useEffect, useState } from 'react';
-
-import { Box } from '@mantine/core';
+import { useCallback, useEffect } from 'react';
 
 import FilterSidebar, { FilterValues } from '@/components/catalog/FilterSidebar';
 import { ProductsBrowser } from '@/components/catalog/ProductsBrowser';
 import { Breadcrumb } from '@/components/ui/breadcrumb';
 import { Container } from '@/components/ui/container';
 import { PageHeader } from '@/components/ui/page-header';
-import { SearchInput } from '@/components/ui/search-input';
 import {
   filtersToParams,
   parseFiltersFromParams,
@@ -28,7 +25,7 @@ interface ProductsViewProps {
 
 export default function ProductsView({ products: initialProducts, initialSearch }: ProductsViewProps) {
   const searchParams = useSearchParams();
-  const [searchQuery, setSearchQuery] = useState(initialSearch);
+  const currentSearch = searchParams.get('search') ?? initialSearch;
 
   const { filters, setFilters, products, loading } = useFilteredProducts({
     endpoint: ROUTES.CATALOG.PRODUCTS,
@@ -37,52 +34,30 @@ export default function ProductsView({ products: initialProducts, initialSearch 
     skipInitialFetchWhenNoFilters: false,
     extraParams: () => {
       const p = new URLSearchParams();
-      if (searchQuery.trim()) p.set('search', searchQuery.trim());
+      if (currentSearch.trim()) p.set('search', currentSearch.trim());
       return p;
     },
-    extraDeps: [searchQuery],
+    extraDeps: [currentSearch],
   });
 
   useEffect(() => {
     track('page_view', {
       page_type: 'search',
-      search_query: initialSearch || undefined,
+      search_query: currentSearch || undefined,
     });
-  }, [initialSearch]);
+  }, [currentSearch]);
 
   useScrollDepth('products');
-
-  const handleSearch = useCallback(
-    (e: React.FormEvent) => {
-      e.preventDefault();
-      const q = searchQuery.trim();
-      const params = filtersToParams(filters);
-      if (q) params.set('search', q);
-      const qs = params.toString();
-      window.history.pushState(null, '', `/products${qs ? `?${qs}` : ''}`);
-      setFilters((f) => ({ ...f }));
-    },
-    [searchQuery, filters, setFilters],
-  );
-
-  useEffect(() => {
-    const handlePopState = () => {
-      const params = new URLSearchParams(window.location.search);
-      setSearchQuery(params.get('search') || '');
-    };
-    window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
-  }, []);
 
   const handleFiltersChange = useCallback(
     (newFilters: FilterValues) => {
       setFilters(newFilters);
       const params = filtersToParams(newFilters);
-      if (searchQuery.trim()) params.set('search', searchQuery.trim());
+      if (currentSearch.trim()) params.set('search', currentSearch.trim());
       const qs = params.toString();
       window.history.pushState(null, '', `/products${qs ? `?${qs}` : ''}`);
     },
-    [searchQuery, setFilters],
+    [currentSearch, setFilters],
   );
 
   return (
@@ -90,23 +65,14 @@ export default function ProductsView({ products: initialProducts, initialSearch 
       <Breadcrumb
         items={[
           { label: 'Home', href: '/' },
-          { label: initialSearch ? 'Search Results' : 'All Products' },
+          { label: currentSearch ? 'Search Results' : 'All Products' },
         ]}
       />
 
       <PageHeader
-        title={initialSearch ? `Results for "${initialSearch}"` : 'All Products'}
-        description={`${products.length} ${products.length === 1 ? 'product' : 'products'}${initialSearch ? ' found' : ''}`}
-      >
-        <Box mt="md" maw={512}>
-          <SearchInput
-            value={searchQuery}
-            onChange={setSearchQuery}
-            onSubmit={handleSearch}
-            placeholder="Search products..."
-          />
-        </Box>
-      </PageHeader>
+        title={currentSearch ? `Results for "${currentSearch}"` : 'All Products'}
+        description={`${products.length} ${products.length === 1 ? 'product' : 'products'}${currentSearch ? ' found' : ''}`}
+      />
 
       <ProductsBrowser
         products={products}
