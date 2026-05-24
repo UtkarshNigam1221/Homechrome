@@ -18,6 +18,7 @@ import CategoryCard from '@/components/catalog/CategoryCard';
 import ProductCard from '@/components/catalog/ProductCard';
 import { Category, Product } from '@/types';
 
+import { displayFont } from './fonts';
 import HomePageTracker from './HomePageTracker';
 
 interface HomeViewProps {
@@ -33,7 +34,15 @@ export default function HomeView({ categories, products }: HomeViewProps) {
       <Box component="section" bg="navy.7">
         <Container size="xl" py={{ base: 96, sm: 128 }}>
           <Stack align="center" gap="xl">
-            <Title order={1} ta="center" c="white" size="3rem" fw={700}>
+            <Title
+              order={1}
+              ta="center"
+              c="white"
+              fz={{ base: '2.25rem', sm: '2.75rem', md: '3.25rem' }}
+              fw={700}
+              lh={1.1}
+              style={{ fontFamily: displayFont.style.fontFamily }}
+            >
               Handwoven with <Text span inherit c="brand">tradition</Text>
             </Title>
             <Text size="lg" ta="center" c="white" opacity={0.8} maw={640}>
