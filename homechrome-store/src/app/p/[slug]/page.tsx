@@ -117,9 +117,11 @@ export default async function ProductPage({ params }: PageProps) {
 
   if (!product) {
     return (
-      <div className="mx-auto max-w-7xl px-4 py-16 text-center sm:px-6 lg:px-8">
-        <h1 className="text-2xl font-bold text-foreground">Product Not Found</h1>
-        <p className="mt-2 text-muted-foreground">The product you are looking for does not exist.</p>
+      <div style={{ maxWidth: 1280, margin: '0 auto', padding: '64px 16px', textAlign: 'center' }}>
+        <h1 style={{ fontSize: 24, fontWeight: 700 }}>Product Not Found</h1>
+        <p style={{ marginTop: 8, color: 'var(--mantine-color-dimmed)' }}>
+          The product you are looking for does not exist.
+        </p>
       </div>
     );
   }

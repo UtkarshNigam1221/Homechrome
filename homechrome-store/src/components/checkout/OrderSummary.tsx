@@ -1,5 +1,6 @@
 'use client';
 
+import { Box, Card, Center, Divider, Group, ScrollArea, Stack, Text, Title } from '@mantine/core';
 import Image from 'next/image';
 
 import { formatPrice } from '@/lib/utils';
@@ -20,62 +21,79 @@ export default function OrderSummary({
   const total = subtotal + shippingCost;
 
   return (
-    <div className="rounded-lg border border-border bg-white p-5">
-      <h3 className="mb-4 text-lg font-semibold text-foreground">Order Summary</h3>
+    <Card shadow="sm" radius="lg" padding="md" withBorder>
+      <Stack gap="md">
+        <Title order={3} size="md">Order Summary</Title>
 
-      <div className="mb-4 max-h-64 space-y-3 overflow-y-auto">
-        {items.map((item) => (
-          <div key={item.product_id} className="flex gap-3">
-            <div className="relative h-16 w-16 flex-shrink-0 overflow-hidden rounded-md bg-gray-100">
-              {item.product_image ? (
-                <Image
-                  src={item.product_image}
-                  alt={item.product_name}
-                  fill
-                  className="object-cover"
-                  sizes="64px"
-                />
-              ) : (
-                <div className="flex h-full w-full items-center justify-center text-xs text-muted-foreground">
-                  No image
-                </div>
-              )}
-            </div>
-            <div className="flex flex-1 justify-between">
-              <div>
-                <p className="text-sm font-medium text-foreground line-clamp-2">
-                  {item.product_name}
-                </p>
-                <p className="text-xs text-muted-foreground">Qty: {item.quantity}</p>
-              </div>
-              <p className="text-sm font-medium text-foreground">
-                {formatPrice(item.total_price)}
-              </p>
-            </div>
-          </div>
-        ))}
-      </div>
+        <ScrollArea.Autosize mah={256}>
+          <Stack gap="sm">
+            {items.map((item) => (
+              <Group key={item.product_id} gap="sm" wrap="nowrap">
+                <Box
+                  pos="relative"
+                  w={64}
+                  h={64}
+                  flex="none"
+                  style={{
+                    overflow: 'hidden',
+                    borderRadius: 'var(--mantine-radius-md)',
+                    background: 'var(--mantine-color-gray-1)',
+                  }}
+                >
+                  {item.product_image ? (
+                    <Image
+                      src={item.product_image}
+                      alt={item.product_name}
+                      fill
+                      sizes="64px"
+                      style={{ objectFit: 'cover' }}
+                    />
+                  ) : (
+                    <Center h="100%">
+                      <Text size="xs" c="dimmed">No image</Text>
+                    </Center>
+                  )}
+                </Box>
+                <Group flex={1} justify="space-between" align="start" wrap="nowrap">
+                  <Stack gap={2}>
+                    <Text size="sm" fw={500} c="navy.7" lineClamp={2}>
+                      {item.product_name}
+                    </Text>
+                    <Text size="xs" c="dimmed">Qty: {item.quantity}</Text>
+                  </Stack>
+                  <Text size="sm" fw={500} c="navy.7">
+                    {formatPrice(item.total_price)}
+                  </Text>
+                </Group>
+              </Group>
+            ))}
+          </Stack>
+        </ScrollArea.Autosize>
 
-      <div className="space-y-2 border-t border-border pt-4">
-        <div className="flex justify-between text-sm">
-          <span className="text-muted-foreground">Subtotal</span>
-          <span className="text-foreground">{formatPrice(subtotal)}</span>
-        </div>
-        <div className="flex justify-between text-sm">
-          <span className="text-muted-foreground">Shipping</span>
-          <span className="text-foreground">
-            {shippingCourier
-              ? shippingCost === 0
-                ? 'FREE'
-                : formatPrice(shippingCost)
-              : '--'}
-          </span>
-        </div>
-        <div className="flex justify-between border-t border-border pt-2 text-base font-semibold">
-          <span className="text-foreground">Total</span>
-          <span className="text-foreground">{formatPrice(total)}</span>
-        </div>
-      </div>
-    </div>
+        <Divider />
+
+        <Stack gap="xs">
+          <Group justify="space-between">
+            <Text size="sm" c="dimmed">Subtotal</Text>
+            <Text size="sm" c="navy.7">{formatPrice(subtotal)}</Text>
+          </Group>
+          <Group justify="space-between">
+            <Text size="sm" c="dimmed">Shipping</Text>
+            <Text size="sm" c="navy.7">
+              {shippingCourier
+                ? shippingCost === 0
+                  ? 'FREE'
+                  : formatPrice(shippingCost)
+                : '--'}
+            </Text>
+          </Group>
+          <Divider />
+          <Group justify="space-between">
+            <Text fw={600} c="navy.7">Total</Text>
+            <Text fw={600} c="navy.7">{formatPrice(total)}</Text>
+          </Group>
+        </Stack>
+      </Stack>
+    </Card>
   );
 }

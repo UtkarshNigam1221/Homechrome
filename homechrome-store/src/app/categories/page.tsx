@@ -1,7 +1,7 @@
+import { Center, Container, SimpleGrid, Text } from '@mantine/core';
 import type { Metadata } from 'next';
 
 import CategoryCard from '@/components/catalog/CategoryCard';
-import { Container } from '@/components/ui/container';
 import { PageHeader } from '@/components/ui/page-header';
 import { API_BASE } from '@/lib/constants';
 import { ROUTES } from '@/lib/routes';
@@ -29,22 +29,22 @@ export default async function CategoriesPage() {
   const categories = await getCategories();
 
   return (
-    <Container className="py-10">
+    <Container size="xl" py="xl">
       <PageHeader
         title="All Categories"
         description="Explore our curated collections of handloom textiles."
       />
 
       {categories.length > 0 ? (
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+        <SimpleGrid cols={{ base: 2, sm: 3, lg: 4 }} spacing="md">
           {categories.map((category) => (
             <CategoryCard key={category.id} category={category} />
           ))}
-        </div>
+        </SimpleGrid>
       ) : (
-        <div className="flex flex-col items-center justify-center py-16 text-center">
-          <p className="text-lg text-muted-foreground">No categories available at the moment.</p>
-        </div>
+        <Center py="xl">
+          <Text size="lg" c="dimmed">No categories available at the moment.</Text>
+        </Center>
       )}
     </Container>
   );

@@ -1,12 +1,11 @@
 'use client';
 
+import { Box, Button, Card, Container, Grid, NavLink, Stack, Title } from '@mantine/core';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 
-import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
-import { Container } from '@/components/ui/container';
+import { LoadingBlock } from '@/components/ui/loading-spinner';
 import { useAuthStore } from '@/stores/auth';
 
 const navItems = [
@@ -17,15 +16,13 @@ const navItems = [
 
 export default function AccountLayout({
   children,
-}: {
-  children: React.ReactNode;
-}) {
+}: Readonly<{
+    children: React.ReactNode;
+}>) {
   const pathname = usePathname();
   const router = useRouter();
   const { isAuthenticated, isLoading, logout } = useAuthStore();
 
-  // Middleware handles the primary redirect; this is a client-side fallback
-  // for edge cases (e.g. token expires mid-session).
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
       router.replace('/login?redirect=/account');
@@ -38,25 +35,17 @@ export default function AccountLayout({
   };
 
   if (isLoading || !isAuthenticated) {
-    return (
-      <div className="flex items-center justify-center py-20">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-      </div>
-    );
+    return <LoadingBlock />;
   }
 
   return (
-    <Container size="narrow" className="py-8">
-      <h1 className="mb-6 text-2xl font-bold text-foreground sm:text-3xl">
-        My Account
-      </h1>
+    <Container size="lg" py="lg">
+      <Title order={1} mb="lg" size="h2">My Account</Title>
 
-      <div className="grid grid-cols-1 gap-8 lg:grid-cols-4">
-        {/* Sidebar */}
-        <aside className="lg:col-span-1">
-          <Card>
-            <CardContent>
-            <ul className="space-y-1">
+      <Grid gap="xl">
+        <Grid.Col span={{ base: 12, lg: 3 }}>
+          <Card component="aside" shadow="sm" radius="lg" padding="sm">
+            <Stack gap={4}>
               {navItems.map((item) => {
                 const isActive =
                   item.href === '/account'
@@ -64,37 +53,36 @@ export default function AccountLayout({
                     : pathname.startsWith(item.href);
 
                 return (
-                  <li key={item.href}>
-                    <Link
-                      href={item.href}
-                      className={`block rounded-md px-3 py-2 text-sm font-medium transition-colors ${
-                        isActive
-                          ? 'bg-primary/10 text-primary'
-                          : 'text-foreground hover:bg-background'
-                      }`}
-                    >
-                      {item.label}
-                    </Link>
-                  </li>
+                  <NavLink
+                    key={item.href}
+                    component={Link}
+                    href={item.href}
+                    label={item.label}
+                    active={isActive}
+                    variant="light"
+                    color="brand"
+                  />
                 );
               })}
-              <li>
+              <Box mt="xs">
                 <Button
-                  variant="ghost"
-                  className="w-full justify-start text-red-600 hover:bg-red-50 hover:text-red-700"
+                  variant="light"
+                  color="red"
+                  fullWidth
+                  justify="start"
                   onClick={handleLogout}
                 >
                   Logout
                 </Button>
-              </li>
-            </ul>
-            </CardContent>
+              </Box>
+            </Stack>
           </Card>
-        </aside>
+        </Grid.Col>
 
-        {/* Content */}
-        <main className="lg:col-span-3">{children}</main>
-      </div>
+        <Grid.Col span={{ base: 12, lg: 9 }} component="main">
+          {children}
+        </Grid.Col>
+      </Grid>
     </Container>
   );
 }

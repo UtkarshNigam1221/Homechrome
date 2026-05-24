@@ -1,4 +1,6 @@
-import { cn } from '@/lib/utils';
+'use client';
+
+import { Box, Stack, Text, Title } from '@mantine/core';
 
 interface PageHeaderProps {
   title: string;
@@ -9,10 +11,14 @@ interface PageHeaderProps {
 
 export function PageHeader({ title, description, children, className }: PageHeaderProps) {
   return (
-    <div className={cn('mb-8', className)}>
-      <h1 className="text-2xl font-bold text-foreground sm:text-3xl">{title}</h1>
-      {description && <p className="mt-1 text-sm text-muted-foreground">{description}</p>}
+    <Box mb="xl" className={className}>
+      <Stack gap={4}>
+        <Title order={1} size="h2">{title}</Title>
+        {description && (
+          <Text size="sm" c="dimmed">{description}</Text>
+        )}
+      </Stack>
       {children}
-    </div>
+    </Box>
   );
 }

@@ -1,18 +1,11 @@
-import { cn } from '@/lib/utils';
+'use client';
 
-interface ContainerProps extends React.ComponentProps<'div'> {
+import { Container as MantineContainer, ContainerProps as MantineContainerProps } from '@mantine/core';
+
+interface ContainerProps extends Omit<MantineContainerProps, 'size'> {
   size?: 'default' | 'narrow';
 }
 
-export function Container({ size = 'default', className, ...props }: ContainerProps) {
-  return (
-    <div
-      className={cn(
-        'mx-auto px-4 sm:px-6 lg:px-8',
-        size === 'default' ? 'max-w-7xl' : 'max-w-6xl',
-        className,
-      )}
-      {...props}
-    />
-  );
+export function Container({ size = 'default', ...props }: ContainerProps) {
+  return <MantineContainer size={size === 'default' ? 'xl' : 'lg'} {...props} />;
 }

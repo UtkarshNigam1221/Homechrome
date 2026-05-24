@@ -1,20 +1,17 @@
 'use client';
 
 import { ShoppingBagIcon } from '@heroicons/react/24/outline';
+import { Alert, Badge, Card, Group, Stack, Text, Title } from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 
-import { Card, CardContent } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import OrderCardSkeleton from '@/components/skeleton/OrderCardSkeleton';
 import api from '@/lib/api';
 import { ROUTES } from '@/lib/routes';
-import { formatDate, formatPrice, statusColors } from '@/lib/utils';
+import { formatDate, formatPrice, statusBadgeColor } from '@/lib/utils';
 import { Order } from '@/types';
 
-// The API returns orders as a flat array (unwrapped by axios interceptor).
-// Pagination meta is included at the top level of the API response envelope
-// and extracted separately.
 type OrdersResponse = Order[];
 
 export default function OrdersPage() {
@@ -28,10 +25,7 @@ export default function OrdersPage() {
       const { data } = await api.get<OrdersResponse>(ROUTES.ORDERS.LIST, { limit: 10 });
       return Array.isArray(data) ? data : [];
     },
-    // Background refetch on every mount so server-driven changes (status updates,
-    // new orders placed in another tab) surface without a manual reload.
     refetchOnMount: 'always',
-    // TODO: wire up cursor pagination when backend returns meta
   });
   const error = isError ? 'Failed to load orders. Please try again.' : null;
 
@@ -40,18 +34,14 @@ export default function OrdersPage() {
   }
 
   if (error) {
-    return (
-      <Card className="p-6">
-        <p className="text-center text-sm text-red-500">{error}</p>
-      </Card>
-    );
+    return <Alert color="red" title="Error">{error}</Alert>;
   }
 
   if (orders.length === 0) {
     return (
-      <Card className="p-6">
+      <Card shadow="sm" radius="lg" padding="lg">
         <EmptyState
-          icon={<ShoppingBagIcon strokeWidth={1} className="h-16 w-16 text-muted-foreground" />}
+          icon={<ShoppingBagIcon strokeWidth={1} width={64} height={64} color="var(--mantine-color-dimmed)" />}
           title="No orders yet"
           description="Looks like you have not placed any orders yet."
           actionLabel="Start Shopping"
@@ -62,48 +52,44 @@ export default function OrdersPage() {
   }
 
   return (
-    <div className="space-y-4">
-      <h2 className="text-lg font-semibold text-foreground">Order History</h2>
+    <Stack gap="md">
+      <Title order={2} size="md">Order History</Title>
 
       {orders.map((order) => (
-        <Link
+        <Card
           key={order.id}
+          component={Link}
           href={`/account/orders/${order.id}`}
+          shadow="sm"
+          radius="lg"
+          padding="md"
+          withBorder
+          style={{ textDecoration: 'none', transition: 'border-color 0.15s' }}
         >
-          <Card className="transition-colors hover:border-primary/50">
-            <CardContent>
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <p className="font-semibold text-foreground">
-                      #{order.order_number}
-                    </p>
-                    <span
-                      className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${statusColors[order.status]}`}
-                    >
-                      {order.status}
-                    </span>
-                  </div>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    {formatDate(order.created_at)} &middot; {order.item_count}{' '}
-                    {order.item_count === 1 ? 'item' : 'items'}
-                  </p>
-                </div>
-                <div className="text-right">
-                  <p className="text-lg font-semibold text-foreground">
-                    {formatPrice(order.total_amount)}
-                  </p>
-                  {order.tracking_number && (
-                    <p className="text-xs text-muted-foreground">
-                      Tracking: {order.tracking_number}
-                    </p>
-                  )}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </Link>
+          <Group justify="space-between" align="start" wrap="wrap" gap="md">
+            <Stack gap={4}>
+              <Group gap="xs" align="center">
+                <Text fw={600} c="navy.7">#{order.order_number}</Text>
+                <Badge color={statusBadgeColor[order.status]} variant="light" size="sm">
+                  {order.status}
+                </Badge>
+              </Group>
+              <Text size="sm" c="dimmed">
+                {formatDate(order.created_at)} · {order.item_count}{' '}
+                {order.item_count === 1 ? 'item' : 'items'}
+              </Text>
+            </Stack>
+            <Stack gap={2} align="end">
+              <Text fw={600} size="lg" c="navy.7">
+                {formatPrice(order.total_amount)}
+              </Text>
+              {order.tracking_number && (
+                <Text size="xs" c="dimmed">Tracking: {order.tracking_number}</Text>
+              )}
+            </Stack>
+          </Group>
+        </Card>
       ))}
-    </div>
+    </Stack>
   );
 }

@@ -1,19 +1,21 @@
 'use client';
 
+import {
+  Anchor,
+  Box,
+  Button,
+  Divider,
+  Drawer,
+  Group,
+  ScrollArea,
+  Stack,
+  Text,
+  Title,
+} from '@mantine/core';
 import Image from 'next/image';
 import Link from 'next/link';
 
-import logo28 from '@/assets/logo-28.png';
-
-import { Button } from '@/components/ui/button';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import {
-  Sheet,
-  SheetClose,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-} from '@/components/ui/sheet';
+import logo80 from '@/assets/logo-80.png';
 import { useAuthStore } from '@/stores/auth';
 import { Category } from '@/types';
 
@@ -29,115 +31,117 @@ export default function MobileNav({ isOpen, onClose, categories }: MobileNavProp
   const logout = useAuthStore((s) => s.logout);
 
   return (
-    <Sheet
-      open={isOpen}
-      onOpenChange={(open) => {
-        if (!open) onClose();
+    <Drawer
+      opened={isOpen}
+      onClose={onClose}
+      position="left"
+      size="xs"
+      withCloseButton={false}
+      padding={0}
+      title={
+        <Anchor component={Link} href="/" onClick={onClose} underline="never">
+          <Group gap="xs" align="center">
+            <Image src={logo80} alt="Homechrome" style={{ height: 28, width: 'auto' }} unoptimized />
+            <Text fw={700} size="lg" c="navy.7" style={{ letterSpacing: '-0.01em' }}>
+              HOME<Text span c="brand">CHROME</Text>
+            </Text>
+          </Group>
+        </Anchor>
+      }
+      styles={{
+        header: {
+          borderBottom: '1px solid var(--mantine-color-default-border)',
+          padding: 'var(--mantine-spacing-md)',
+        },
+        title: { flex: 1 },
+        content: { display: 'flex', flexDirection: 'column' },
+        body: { flex: 1, display: 'flex', flexDirection: 'column', padding: 0 },
       }}
     >
-      <SheetContent side="left" className="w-full max-w-xs p-0">
-        <SheetHeader className="border-b border-border px-4 py-4">
-          <SheetTitle>
-            <Link href="/" className="flex items-center gap-2" onClick={onClose}>
-              <Image src={logo28} alt="Homechrome" className="h-7 w-auto" unoptimized />
-              <span className="text-lg font-bold tracking-tight text-foreground">
-                HOME<span className="text-primary">CHROME</span>
-              </span>
-            </Link>
-          </SheetTitle>
-        </SheetHeader>
+      <ScrollArea style={{ flex: 1 }}>
+        <Box p="md">
+          <NavItem href="/products" onClose={onClose}>
+            All Products
+          </NavItem>
 
-        {/* Navigation links */}
-        <ScrollArea className="flex-1">
-        <nav className="px-4 py-4">
-          <div className="space-y-1">
-            <SheetClose
-              render={
-                <Link
-                  href="/products"
-                  className="block rounded-lg px-3 py-2.5 text-base font-medium text-foreground transition-colors hover:bg-background"
-                />
-              }
+          <Title order={3} size="xs" tt="uppercase" fw={600} c="dimmed" mt="lg" mb="xs" px="xs" style={{ letterSpacing: '0.05em' }}>
+            Categories
+          </Title>
+          <Stack gap={4}>
+            {categories.map((category) => (
+              <NavItem key={category.id} href={`/c/${category.slug}`} onClose={onClose}>
+                {category.name}
+              </NavItem>
+            ))}
+          </Stack>
+        </Box>
+      </ScrollArea>
+
+      <Divider />
+
+      <Box p="md">
+        {isAuthenticated ? (
+          <Stack gap="sm">
+            <Text size="sm" c="dimmed">
+              Hello, {customer?.first_name || 'there'}
+            </Text>
+            <NavItem href="/account" onClose={onClose}>
+              My Account
+            </NavItem>
+            <NavItem href="/account/orders" onClose={onClose}>
+              My Orders
+            </NavItem>
+            <Button
+              variant="light"
+              color="red"
+              fullWidth
+              justify="start"
+              onClick={() => {
+                logout();
+                onClose();
+              }}
             >
-              All Products
-            </SheetClose>
-          </div>
+              Sign Out
+            </Button>
+          </Stack>
+        ) : (
+          <Button
+            component={Link}
+            href="/login"
+            onClick={onClose}
+            fullWidth
+            color="brand"
+          >
+            Sign In
+          </Button>
+        )}
+      </Box>
+    </Drawer>
+  );
+}
 
-          <div className="mt-6">
-            <h3 className="px-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Categories
-            </h3>
-            <div className="mt-2 space-y-1">
-              {categories.map((category) => (
-                <SheetClose
-                  key={category.id}
-                  render={
-                    <Link
-                      href={`/c/${category.slug}`}
-                      className="block rounded-lg px-3 py-2.5 text-base text-foreground transition-colors hover:bg-background"
-                    />
-                  }
-                >
-                  {category.name}
-                </SheetClose>
-              ))}
-            </div>
-          </div>
-        </nav>
-        </ScrollArea>
+interface NavItemProps {
+  href: string;
+  onClose: () => void;
+  children: React.ReactNode;
+}
 
-        {/* Account section */}
-        <div className="border-t border-border px-4 py-4">
-          {isAuthenticated ? (
-            <div className="space-y-3">
-              <p className="text-sm text-muted-foreground">
-                Hello, {customer?.first_name || 'there'}
-              </p>
-              <SheetClose
-                render={
-                  <Link
-                    href="/account"
-                    className="block rounded-lg px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-background"
-                  />
-                }
-              >
-                My Account
-              </SheetClose>
-              <SheetClose
-                render={
-                  <Link
-                    href="/account/orders"
-                    className="block rounded-lg px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-background"
-                  />
-                }
-              >
-                My Orders
-              </SheetClose>
-              <Button
-                variant="ghost"
-                className="w-full justify-start text-red-600 hover:bg-red-50 hover:text-red-700"
-                onClick={() => {
-                  logout();
-                  onClose();
-                }}
-              >
-                Sign Out
-              </Button>
-            </div>
-          ) : (
-            <SheetClose
-              render={
-                <Link
-                  href="/login"
-                  className="block rounded-lg bg-primary px-4 py-2.5 text-center text-sm font-medium text-white transition-colors hover:bg-primary-dark"
-                />
-              }
-            >
-              Sign In
-            </SheetClose>
-          )}
-        </div>
-      </SheetContent>
-    </Sheet>
+function NavItem({ href, onClose, children }: NavItemProps) {
+  return (
+    <Anchor
+      component={Link}
+      href={href}
+      onClick={onClose}
+      underline="never"
+      c="navy.7"
+      size="md"
+      fw={500}
+      px="xs"
+      py={10}
+      display="block"
+      style={{ borderRadius: 'var(--mantine-radius-md)' }}
+    >
+      {children}
+    </Anchor>
   );
 }

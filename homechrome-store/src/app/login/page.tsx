@@ -1,12 +1,22 @@
 'use client';
 
+import {
+  Anchor,
+  Box,
+  Button,
+  Card,
+  Center,
+  Group,
+  PinInput,
+  Stack,
+  Text,
+  TextInput,
+} from '@mantine/core';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 
-import Button from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
-import Input from '@/components/ui/form-field';
+import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { useAuthStore } from '@/stores/auth';
 
 const OTP_RESEND_SECONDS = 30;
@@ -106,124 +116,133 @@ function LoginForm() {
   }, [countdown, phone, sendOTP, startCountdown]);
 
   return (
-    <div className="flex min-h-[60vh] items-center justify-center px-4 py-16">
-      <div className="w-full max-w-sm">
-        {/* Logo */}
-        <div className="mb-8 text-center">
-          <Link href="/">
-            <span className="text-2xl font-bold tracking-tight text-foreground">
-              HOME<span className="text-primary">CHROME</span>
-            </span>
-          </Link>
-          <p className="mt-3 text-sm text-muted-foreground">Sign in to your account</p>
-        </div>
+    <Center mih="60vh" px="md" py="xl">
+      <Stack w="100%" maw={360} gap="lg">
+        <Stack gap="xs" align="center">
+          <Anchor component={Link} href="/" underline="never">
+            <Text size="xl" fw={700} c="navy.7">
+              HOME<Text span c="brand">CHROME</Text>
+            </Text>
+          </Anchor>
+          <Text size="sm" c="dimmed">Sign in to your account</Text>
+        </Stack>
 
-        <Card>
-          <CardContent>
-            {step === 'phone' ? (
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  handleSendOTP();
-                }}
-              >
-                <div>
-                  <label
-                    htmlFor="phone"
-                    className="mb-1.5 block text-sm font-medium text-foreground"
+        <Card shadow="sm" radius="lg" padding="lg">
+          {step === 'phone' ? (
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleSendOTP();
+              }}
+            >
+              <Stack gap="md">
+                <Group gap="xs" align="flex-end" wrap="nowrap">
+                  <Box
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      padding: '0 0.75rem',
+                      height: 36,
+                      borderRadius: 'var(--mantine-radius-md)',
+                      border: '1px solid var(--mantine-color-default-border)',
+                      background: 'var(--mantine-color-gray-1)',
+                      color: 'var(--mantine-color-dimmed)',
+                      fontSize: '0.875rem',
+                    }}
                   >
-                    Phone Number
-                  </label>
-                  <div className="flex gap-2">
-                    <div className="flex items-center rounded-lg border border-input bg-gray-50 px-3 text-sm text-muted-foreground">
-                      +91
-                    </div>
-                    <Input
-                      id="phone"
-                      type="tel"
-                      placeholder="10-digit number"
-                      value={phone}
-                      onChange={(e) => {
-                        setPhone(e.target.value.replace(/\D/g, '').slice(0, 10));
-                        setError('');
-                      }}
-                      maxLength={10}
-                      error={error && step === 'phone' ? error : undefined}
-                    />
-                  </div>
-                </div>
+                    +91
+                  </Box>
+                  <TextInput
+                    flex={1}
+                    label="Phone Number"
+                    id="phone"
+                    type="tel"
+                    placeholder="10-digit number"
+                    value={phone}
+                    onChange={(e) => {
+                      setPhone(e.target.value.replace(/\D/g, '').slice(0, 10));
+                      setError('');
+                    }}
+                    maxLength={10}
+                    error={error && step === 'phone' ? error : undefined}
+                  />
+                </Group>
 
                 <Button
                   type="submit"
-                  variant="primary"
-                  size="default"
-                  className="mt-4 w-full"
+                  color="brand"
+                  fullWidth
                   loading={sending}
                   disabled={phone.replace(/\D/g, '').length !== 10}
                 >
                   Send OTP
                 </Button>
-              </form>
-            ) : (
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  handleVerifyOTP();
-                }}
-              >
-                <p className="mb-4 text-sm text-muted-foreground">
+              </Stack>
+            </form>
+          ) : (
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleVerifyOTP();
+              }}
+            >
+              <Stack gap="md">
+                <Text size="sm" c="dimmed">
                   We sent a 6-digit code to{' '}
-                  <span className="font-medium text-foreground">+91 {phone}</span>
-                </p>
+                  <Text span fw={500} c="navy.7">+91 {phone}</Text>
+                </Text>
 
-                <Input
-                  id="otp"
-                  label="Enter OTP"
-                  type="text"
-                  inputMode="numeric"
-                  placeholder="000000"
-                  value={otp}
-                  onChange={(e) => {
-                    setOtp(e.target.value.replace(/\D/g, '').slice(0, 6));
-                    setError('');
-                  }}
-                  maxLength={6}
-                  error={error || undefined}
-                />
+                <Stack gap={4}>
+                  <Text size="sm" fw={500} c="navy.7">Enter OTP</Text>
+                  <PinInput
+                    length={6}
+                    type="number"
+                    value={otp}
+                    onChange={(value) => {
+                      setOtp(value);
+                      setError('');
+                    }}
+                    placeholder="•"
+                    oneTimeCode
+                    error={!!error}
+                  />
+                  {error && <Text size="xs" c="red.7">{error}</Text>}
+                </Stack>
 
                 <Button
                   type="submit"
-                  variant="primary"
-                  size="default"
-                  className="mt-4 w-full"
+                  color="brand"
+                  fullWidth
                   loading={verifying}
                   disabled={otp.length !== 6}
                 >
                   Verify OTP
                 </Button>
 
-                <div className="mt-4 text-center">
+                <Group justify="center">
                   {countdown > 0 ? (
-                    <p className="text-sm text-muted-foreground">
+                    <Text size="sm" c="dimmed">
                       Resend OTP in{' '}
-                      <span className="font-medium text-foreground">{countdown}s</span>
-                    </p>
+                      <Text span fw={500} c="navy.7">{countdown}s</Text>
+                    </Text>
                   ) : (
-                    <Button
-                      variant="link"
+                    <Anchor
+                      component="button"
+                      type="button"
                       size="sm"
                       onClick={handleResendOTP}
                       disabled={sending}
                     >
                       Resend OTP
-                    </Button>
+                    </Anchor>
                   )}
-                </div>
+                </Group>
 
                 <Button
-                  variant="ghost"
+                  variant="subtle"
+                  color="navy"
                   size="sm"
-                  className="mt-3 w-full text-muted-foreground"
+                  fullWidth
                   onClick={() => {
                     setStep('phone');
                     setOtp('');
@@ -232,12 +251,12 @@ function LoginForm() {
                 >
                   Change phone number
                 </Button>
-              </form>
-            )}
-          </CardContent>
+              </Stack>
+            </form>
+          )}
         </Card>
-      </div>
-    </div>
+      </Stack>
+    </Center>
   );
 }
 
@@ -245,9 +264,9 @@ export default function LoginPage() {
   return (
     <Suspense
       fallback={
-        <div className="flex min-h-[60vh] items-center justify-center">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-        </div>
+        <Center mih="60vh">
+          <LoadingSpinner size="lg" />
+        </Center>
       }
     >
       <LoginForm />

@@ -1,13 +1,24 @@
 'use client';
 
 import { PhotoIcon } from '@heroicons/react/24/outline';
+import {
+  AspectRatio,
+  Badge,
+  Box,
+  Button,
+  Card,
+  Center,
+  Group,
+  Stack,
+  Text,
+} from '@mantine/core';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useState } from 'react';
 
-import { toast } from 'sonner';
+import { notifications } from '@mantine/notifications';
 
-import Button from '@/components/ui/button';
+import { DiscountBadge } from '@/components/ui/discount-badge';
 import { QuantityStepper } from '@/components/ui/quantity-stepper';
 import { useCart } from '@/hooks/useCart';
 import { calculateDiscountPercent, formatPrice } from '@/lib/utils';
@@ -34,7 +45,7 @@ export default function ProductCard({ product }: ProductCardProps) {
     try {
       await addItem(product.id, 1);
     } catch {
-      toast.error('Failed to update cart');
+      notifications.show({ message: 'Failed to update cart', color: 'red' });
     } finally {
       setLoading(false);
     }
@@ -45,7 +56,7 @@ export default function ProductCard({ product }: ProductCardProps) {
     try {
       await updateQuantity(product.id, cartQty + 1);
     } catch {
-      toast.error('Failed to update cart');
+      notifications.show({ message: 'Failed to update cart', color: 'red' });
     } finally {
       setLoading(false);
     }
@@ -60,75 +71,79 @@ export default function ProductCard({ product }: ProductCardProps) {
         await updateQuantity(product.id, cartQty - 1);
       }
     } catch {
-      toast.error('Failed to update cart');
+      notifications.show({ message: 'Failed to update cart', color: 'red' });
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <article className="group flex flex-col overflow-hidden rounded-xl bg-card shadow-sm transition-shadow hover:shadow-md">
-      <Link href={`/p/${product.slug}`} className="relative aspect-square overflow-hidden bg-gray-100">
-        {primaryImage ? (
-          <Image
-            src={primaryImage.url}
-            alt={primaryImage.alt_text || product.name}
-            fill
-            sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
-            className="object-cover transition-transform duration-300 group-hover:scale-105"
-          />
-        ) : (
-          <div className="flex h-full items-center justify-center bg-primary-light/30">
-            <PhotoIcon className="h-12 w-12 text-primary/40" />
-          </div>
-        )}
-        {hasDiscount && (
-          <span className="absolute left-2 top-2 rounded-md bg-red-500 px-2 py-0.5 text-xs font-semibold text-white">
-            -{discountPercent}%
-          </span>
-        )}
-        {!product.in_stock && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/40">
-            <span className="rounded-md bg-white px-3 py-1 text-sm font-medium text-foreground">
-              Out of Stock
-            </span>
-          </div>
-        )}
-      </Link>
-
-      <div className="flex flex-1 flex-col p-4">
-        <Link href={`/p/${product.slug}`}>
-          <h3 className="line-clamp-2 text-sm font-medium text-foreground group-hover:text-primary">
-            {product.name}
-          </h3>
-        </Link>
-
-        <div className="mt-2 flex items-baseline gap-2">
-          <span className="text-lg font-bold text-foreground">
-            {formatPrice(product.selling_price)}
-          </span>
-          {hasDiscount && (
-            <span className="text-sm text-muted-foreground line-through">
-              {formatPrice(product.mrp)}
-            </span>
-          )}
-        </div>
-
-        <div className="mt-auto pt-3">
-          {cartQty > 0 ? (
-            <QuantityStepper
-              value={cartQty}
-              onIncrement={handleIncrement}
-              onDecrement={handleDecrement}
-              disabled={loading}
-              variant="primary"
-              className="w-full justify-between"
+    <Card shadow="sm" padding={0} radius="lg" withBorder={false}>
+      <Card.Section component={Link} href={`/p/${product.slug}`} pos="relative">
+        <AspectRatio ratio={1} bg="gray.1">
+          {primaryImage ? (
+            <Image
+              src={primaryImage.url}
+              alt={primaryImage.alt_text || product.name}
+              fill
+              sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
+              style={{ objectFit: 'cover' }}
             />
           ) : (
+            <Center bg="brand.1" h="100%">
+              <PhotoIcon width={48} height={48} color="var(--mantine-color-brand-5)" opacity={0.4} />
+            </Center>
+          )}
+        </AspectRatio>
+        {hasDiscount && (
+          <Box pos="absolute" top={8} left={8}>
+            <DiscountBadge percent={discountPercent} variant="solid" />
+          </Box>
+        )}
+        {!product.in_stock && (
+          <Center pos="absolute" inset={0} bg="rgba(28,41,81,0.4)">
+            <Badge color="white" c="navy.7" radius="sm" size="md">
+              Out of Stock
+            </Badge>
+          </Center>
+        )}
+      </Card.Section>
+
+      <Stack p="md" gap="xs">
+        <Link href={`/p/${product.slug}`} style={{ textDecoration: 'none' }}>
+          <Text size="sm" fw={500} c="navy.7" lineClamp={2}>
+            {product.name}
+          </Text>
+        </Link>
+
+        <Group align="baseline" gap="xs">
+          <Text size="lg" fw={700} c="navy.7">
+            {formatPrice(product.selling_price)}
+          </Text>
+          {hasDiscount && (
+            <Text size="sm" c="dimmed" td="line-through">
+              {formatPrice(product.mrp)}
+            </Text>
+          )}
+        </Group>
+
+        <Box mt="auto" pt="xs">
+          {cartQty > 0 ? (
+            <Box w="100%">
+              <QuantityStepper
+                value={cartQty}
+                onIncrement={handleIncrement}
+                onDecrement={handleDecrement}
+                disabled={loading}
+                variant="primary"
+              />
+            </Box>
+          ) : (
             <Button
-              variant="primary"
+              variant="filled"
+              color="brand"
               size="sm"
-              className="w-full"
+              fullWidth
               onClick={handleAddToCart}
               loading={loading}
               disabled={!product.in_stock}
@@ -136,8 +151,8 @@ export default function ProductCard({ product }: ProductCardProps) {
               {product.in_stock ? 'Add to Cart' : 'Out of Stock'}
             </Button>
           )}
-        </div>
-      </div>
-    </article>
+        </Box>
+      </Stack>
+    </Card>
   );
 }

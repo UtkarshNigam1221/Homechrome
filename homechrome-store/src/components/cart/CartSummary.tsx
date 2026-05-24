@@ -1,10 +1,17 @@
 'use client';
 
+import {
+  Anchor,
+  Button,
+  Card,
+  Divider,
+  Group,
+  Stack,
+  Text,
+  Title,
+} from '@mantine/core';
 import Link from 'next/link';
 
-import Button from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Separator } from '@/components/ui/separator';
 import { formatPrice } from '@/lib/utils';
 
 interface CartSummaryProps {
@@ -13,77 +20,71 @@ interface CartSummaryProps {
   isAuthenticated: boolean;
 }
 
-const FREE_SHIPPING_THRESHOLD = 99900; // 999 INR in paise
+const FREE_SHIPPING_THRESHOLD = 99900;
 
 export default function CartSummary({ subtotal, itemCount, isAuthenticated }: CartSummaryProps) {
-  const shippingEstimate = subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : 7900; // 79 INR flat rate
+  const shippingEstimate = subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : 7900;
   const total = subtotal + shippingEstimate;
   const amountToFreeShipping = FREE_SHIPPING_THRESHOLD - subtotal;
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Order Summary</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <dl className="space-y-3">
-          <div className="flex justify-between text-sm">
-            <dt className="text-muted-foreground">
+    <Card shadow="sm" radius="lg" padding="md">
+      <Stack gap="md">
+        <Title order={2} size="md">Order Summary</Title>
+
+        <Stack gap="xs">
+          <Group justify="space-between">
+            <Text size="sm" c="dimmed">
               Subtotal ({itemCount} {itemCount === 1 ? 'item' : 'items'})
-            </dt>
-            <dd className="font-medium text-foreground">{formatPrice(subtotal)}</dd>
-          </div>
+            </Text>
+            <Text size="sm" fw={500} c="navy.7">{formatPrice(subtotal)}</Text>
+          </Group>
 
-          <div className="flex justify-between text-sm">
-            <dt className="text-muted-foreground">Shipping estimate</dt>
-            <dd className="font-medium text-foreground">
-              {shippingEstimate === 0 ? (
-                <span className="text-green-600">Free</span>
-              ) : (
-                formatPrice(shippingEstimate)
-              )}
-            </dd>
-          </div>
+          <Group justify="space-between">
+            <Text size="sm" c="dimmed">Shipping estimate</Text>
+            {shippingEstimate === 0 ? (
+              <Text size="sm" fw={500} c="teal.7">Free</Text>
+            ) : (
+              <Text size="sm" fw={500} c="navy.7">{formatPrice(shippingEstimate)}</Text>
+            )}
+          </Group>
 
-          <Separator />
+          <Divider />
 
-          <div className="flex justify-between">
-            <dt className="text-base font-semibold text-foreground">Total</dt>
-            <dd className="text-base font-bold text-foreground">{formatPrice(total)}</dd>
-          </div>
-        </dl>
+          <Group justify="space-between">
+            <Text fw={600} c="navy.7">Total</Text>
+            <Text fw={700} c="navy.7">{formatPrice(total)}</Text>
+          </Group>
+        </Stack>
 
         {subtotal > 0 && amountToFreeShipping > 0 && (
-          <p className="mt-4 text-xs text-muted-foreground">
+          <Text size="xs" c="dimmed">
             Add {formatPrice(amountToFreeShipping)} more for free shipping!
-          </p>
+          </Text>
         )}
 
-        <div className="mt-6">
-          {isAuthenticated ? (
-            <Link href="/checkout">
-              <Button variant="primary" size="lg" className="w-full" disabled={itemCount === 0}>
-                Proceed to Checkout
-              </Button>
-            </Link>
-          ) : (
-            <Link href="/login?redirect=/cart">
-              <Button variant="primary" size="lg" className="w-full" disabled={itemCount === 0}>
-                Sign in to Checkout
-              </Button>
-            </Link>
-          )}
-        </div>
+        <Button
+          component={Link}
+          href={isAuthenticated ? '/checkout' : '/login?redirect=/cart'}
+          color="brand"
+          size="lg"
+          fullWidth
+          disabled={itemCount === 0}
+        >
+          {isAuthenticated ? 'Proceed to Checkout' : 'Sign in to Checkout'}
+        </Button>
 
-        <div className="mt-4 text-center">
-          <Link
-            href="/products"
-            className="text-sm text-primary transition-colors hover:text-primary-dark"
-          >
-            Continue Shopping
-          </Link>
-        </div>
-      </CardContent>
+        <Anchor
+          component={Link}
+          href="/products"
+          c="brand"
+          size="sm"
+          underline="never"
+          ta="center"
+        >
+          Continue Shopping
+        </Anchor>
+      </Stack>
     </Card>
   );
 }

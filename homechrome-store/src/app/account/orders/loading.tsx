@@ -1,9 +1,5 @@
-import OrderCardSkeleton from '@/components/skeleton/OrderCardSkeleton';
+import { LoadingBlock } from '@/components/ui/loading-spinner';
 
-export default function OrdersLoading() {
-  return (
-    <div className="space-y-4">
-      <OrderCardSkeleton count={3} />
-    </div>
-  );
+export default function Loading() {
+  return <LoadingBlock />;
 }
