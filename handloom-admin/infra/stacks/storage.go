@@ -6,8 +6,6 @@ import (
 	"github.com/aws/aws-cdk-go/awscdk/v2"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awscloudfront"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awscloudfrontorigins"
-	"github.com/aws/aws-cdk-go/awscdk/v2/awslambda"
-	"github.com/aws/aws-cdk-go/awscdk/v2/awslambdanodejs"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awss3"
 	"github.com/aws/constructs-go/constructs/v10"
 	"github.com/aws/jsii-runtime-go"
@@ -25,7 +23,6 @@ type StorageStack struct {
 	AssetsBucket  awss3.Bucket
 	UploadsBucket awss3.Bucket
 	CDNDomain     string // CloudFront distribution domain name
-	ImageResizer  awslambdanodejs.NodejsFunction
 }
 
 // NewStorageStack creates a new storage stack
@@ -86,33 +83,6 @@ func NewStorageStack(scope constructs.Construct, id string, props *StorageStackP
 			},
 		},
 	})
-
-	// ImageResizer Lambda — generates responsive variants (320/640/1080/1920 × webp/avif/jpg|png).
-	// Invoked synchronously by the asset service after finalize (see Task 6/11 in the image-variants
-	// plan). Sharp has Linux ARM64 native binaries, so ForceDockerBundling is required to produce
-	// the correct binary for Lambda.
-	imageResizer := awslambdanodejs.NewNodejsFunction(stack, jsii.String("ImageResizer"), &awslambdanodejs.NodejsFunctionProps{
-		Entry:            jsii.String("../lambda/image-resizer/index.mjs"),
-		DepsLockFilePath: jsii.String("../lambda/image-resizer/package-lock.json"),
-		Runtime:          awslambda.Runtime_NODEJS_20_X(),
-		Architecture:     awslambda.Architecture_ARM_64(),
-		MemorySize:       jsii.Number(1024),
-		Timeout:          awscdk.Duration_Seconds(jsii.Number(90)),
-		Bundling: &awslambdanodejs.BundlingOptions{
-			// Sharp must NOT be esbuild-bundled — it has native binaries.
-			// ExternalModules skips bundling; NodeModules installs the resolved
-			// native binary via npm inside the Docker container (Linux ARM64).
-			// @aws-sdk/client-s3 is provided by the Node 20 Lambda runtime, so
-			// mark it external too — esbuild otherwise fails to bundle its
-			// transitive @smithy/core + @aws-sdk/core ESM paths.
-			ExternalModules:     jsii.Strings("sharp", "@aws-sdk/client-s3"),
-			NodeModules:         jsii.Strings("sharp"),
-			ForceDockerBundling: jsii.Bool(true),
-		},
-		FunctionName: jsii.String(fmt.Sprintf("homechrome-image-resizer-%s", props.Environment)),
-	})
-
-	assetsBucket.GrantReadWrite(imageResizer, jsii.String("assets/*"))
 
 	// CloudFront distribution for serving assets from S3
 	s3Origin := awscloudfrontorigins.S3BucketOrigin_WithOriginAccessControl(assetsBucket, &awscloudfrontorigins.S3BucketOriginWithOACProps{})
@@ -187,6 +157,5 @@ func NewStorageStack(scope constructs.Construct, id string, props *StorageStackP
 		AssetsBucket:  assetsBucket,
 		UploadsBucket: uploadsBucket,
 		CDNDomain:     cdnDomain,
-		ImageResizer:  imageResizer,
 	}
 }

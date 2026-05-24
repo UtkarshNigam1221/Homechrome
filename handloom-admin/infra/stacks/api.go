@@ -25,11 +25,10 @@ type APIStackProps struct {
 	DatabaseStack  *DatabaseStack
 	StorageStack   *StorageStack
 	EventStack     *EventStack // Optional: event-driven async infrastructure
-	ImageResizer   awslambdanodejs.NodejsFunction
-	BaseDomain     string // Base domain (e.g. homechrome.in) — used for cookie domain
-	DomainName     string // Optional: custom domain for API Gateway (e.g. dev-api.homechrome.in)
-	FrontendOrigin string // Optional: frontend origin for CORS (e.g. https://dev-admin.homechrome.in)
-	CertArn        string // Optional: ACM certificate ARN (us-east-1) for custom domain
+	BaseDomain     string      // Base domain (e.g. homechrome.in) — used for cookie domain
+	DomainName     string      // Optional: custom domain for API Gateway (e.g. dev-api.homechrome.in)
+	FrontendOrigin string      // Optional: frontend origin for CORS (e.g. https://dev-admin.homechrome.in)
+	CertArn        string      // Optional: ACM certificate ARN (us-east-1) for custom domain
 }
 
 // ServiceLambda represents a Lambda function for a service
@@ -66,6 +65,27 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 	// S3 buckets from StorageStack
 	assetsBucket := props.StorageStack.AssetsBucket
 
+	// ImageResizer Lambda — generates responsive variants (320/640/1080/1920 × webp/avif/jpg|png).
+	// Co-located with APIStack (asset Lambda is its only consumer) to avoid fragile cross-stack
+	// exports. Sharp has Linux ARM64 native binaries, so ForceDockerBundling is required.
+	imageResizer := awslambdanodejs.NewNodejsFunction(stack, jsii.String("ImageResizer"), &awslambdanodejs.NodejsFunctionProps{
+		Entry:            jsii.String("../lambda/image-resizer/index.mjs"),
+		DepsLockFilePath: jsii.String("../lambda/image-resizer/package-lock.json"),
+		Runtime:          awslambda.Runtime_NODEJS_20_X(),
+		Architecture:     awslambda.Architecture_ARM_64(),
+		MemorySize:       jsii.Number(1024),
+		Timeout:          awscdk.Duration_Seconds(jsii.Number(90)),
+		Bundling: &awslambdanodejs.BundlingOptions{
+			// Sharp must NOT be esbuild-bundled — it has native binaries.
+			// @aws-sdk/client-s3 is provided by the Node 20 Lambda runtime.
+			ExternalModules:     jsii.Strings("sharp", "@aws-sdk/client-s3"),
+			NodeModules:         jsii.Strings("sharp"),
+			ForceDockerBundling: jsii.Bool(true),
+		},
+		FunctionName: jsii.String(fmt.Sprintf("homechrome-image-resizer-%s", props.Environment)),
+	})
+	assetsBucket.GrantReadWrite(imageResizer, jsii.String("assets/*"))
+
 	// Common environment variables for all Lambdas
 	commonEnv := map[string]*string{
 		"APP_ENV":                      jsii.String(props.Environment),
@@ -83,12 +103,12 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 		// Resolve SSM values at CloudFormation deploy time, inject as plain env vars.
 		// Eliminates the ~3s SSM GetParameter cold-start latency observed in Lambda init.
 		// Updating the SSM parameter value requires re-deploying the stack to propagate.
-		"JWT_SECRET_KEY":               awsssm.StringParameter_ValueForStringParameter(stack, jsii.String(jwtSecretParamName), nil),
-		"CUSTOMER_JWT_SECRET":          awsssm.StringParameter_ValueForStringParameter(stack, jsii.String(customerJwtSecretParamName), nil),
-		"JWT_ISSUER":                   jsii.String("handloom-admin"),
-		"JWT_ACCESS_TOKEN_DURATION":    jsii.String("15m"),
-		"JWT_REFRESH_TOKEN_DURATION":   jsii.String("168h"),
-		"QUOTE_VALIDITY_HRS":           jsii.String("24"),
+		"JWT_SECRET_KEY":             awsssm.StringParameter_ValueForStringParameter(stack, jsii.String(jwtSecretParamName), nil),
+		"CUSTOMER_JWT_SECRET":        awsssm.StringParameter_ValueForStringParameter(stack, jsii.String(customerJwtSecretParamName), nil),
+		"JWT_ISSUER":                 jsii.String("handloom-admin"),
+		"JWT_ACCESS_TOKEN_DURATION":  jsii.String("15m"),
+		"JWT_REFRESH_TOKEN_DURATION": jsii.String("168h"),
+		"QUOTE_VALIDITY_HRS":         jsii.String("24"),
 	}
 
 	// Add custom domain env vars when configured
@@ -207,11 +227,9 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 	}
 
 	// Wire ImageResizer access — sync invoke at finalize time
-	if props.ImageResizer != nil {
-		assetFn := lambdas["asset"].Function
-		props.ImageResizer.GrantInvoke(assetFn)
-		assetFn.AddEnvironment(jsii.String("IMAGE_RESIZER_FUNCTION_NAME"), props.ImageResizer.FunctionName(), nil)
-	}
+	assetFn := lambdas["asset"].Function
+	imageResizer.GrantInvoke(assetFn)
+	assetFn.AddEnvironment(jsii.String("IMAGE_RESIZER_FUNCTION_NAME"), imageResizer.FunctionName(), nil)
 
 	// Create API Gateway - optimized for AWS Free Tier
 	// Free tier: 1M API calls/month for first 12 months
