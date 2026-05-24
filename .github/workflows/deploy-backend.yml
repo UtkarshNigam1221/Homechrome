@@ -74,6 +74,16 @@ jobs:
         with:
           node-version: 22
 
+      # Enable ARM64 emulation so CDK NodejsFunction Docker bundling can build
+      # arm64 Lambda assets (e.g. ImageResizer) on amd64 GitHub runners.
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Install CDK
         run: npm install -g aws-cdk
 
