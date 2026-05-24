@@ -20,7 +20,7 @@ import {
 } from '@mantine/core';
 import { modals } from '@mantine/modals';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import Image from 'next/image';
+import { AssetImage } from '@/components/ui/asset-image';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
@@ -228,12 +228,13 @@ export default function OrderDetailPage() {
                     }}
                   >
                     {item.product_image ? (
-                      <Image
+                      <AssetImage
                         src={item.product_image}
                         alt={item.product_name}
-                        fill
                         sizes="80px"
-                        style={{ objectFit: 'cover' }}
+                        width={80}
+                        height={80}
+                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                       />
                     ) : (
                       <Center h="100%">

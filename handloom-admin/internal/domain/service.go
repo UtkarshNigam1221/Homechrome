@@ -456,6 +456,11 @@ type BulkCalculationResult struct {
 type AssetFinalizer interface {
 	FinalizeIfTemp(ctx context.Context, value string) (string, error)
 	DeleteAsset(ctx context.Context, assetURL string) error
+	// SyncImageVariants diffs old vs new image URL lists. For each added URL it
+	// invokes the ImageResizer to generate responsive variants. For each removed
+	// URL it deletes the original asset plus all known variant keys from S3.
+	// Errors are logged but never fail the call (best-effort).
+	SyncImageVariants(ctx context.Context, oldURLs, newURLs []string)
 }
 
 // ==================== INVENTORY SERVICE ====================

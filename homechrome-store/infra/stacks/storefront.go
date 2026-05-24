@@ -18,7 +18,7 @@ import (
 type StorefrontStackProps struct {
 	awscdk.StackProps
 	Environment   string
-	DomainName    string
+	DomainNames   []string // Primary domain first, then aliases (e.g. ["homechrome.in", "www.homechrome.in"])
 	CertArn       string
 	BackendApiUrl string // e.g. https://dev-api.homechrome.in
 }
@@ -79,31 +79,6 @@ func NewStorefrontStack(scope constructs.Construct, id string, props *Storefront
 		Action:    jsii.String("lambda:InvokeFunction"),
 	})
 
-	// ─── Image Optimization Lambda ───
-	// 256MB is the cost-optimized minimum for Sharp. Increase to 512 if images fail to optimize.
-	imageFn := awslambda.NewFunction(stack, jsii.String("ImageFunction"), &awslambda.FunctionProps{
-		FunctionName: jsii.String(fmt.Sprintf("homechrome-store-image-%s", env)),
-		Runtime:      awslambda.Runtime_NODEJS_22_X(),
-		Handler:      jsii.String("index.handler"),
-		Code:         awslambda.Code_FromAsset(jsii.String("../.open-next/image-optimization-function"), nil),
-		Architecture: awslambda.Architecture_ARM_64(),
-		MemorySize:   jsii.Number(256),
-		Timeout:      awscdk.Duration_Seconds(jsii.Number(15)),
-		Environment: &map[string]*string{
-			"BUCKET_NAME":       bucket.BucketName(),
-			"BUCKET_KEY_PREFIX": jsii.String("_assets"),
-		},
-	})
-	bucket.GrantRead(imageFn, nil)
-
-	imageUrl := imageFn.AddFunctionUrl(&awslambda.FunctionUrlOptions{
-		AuthType: awslambda.FunctionUrlAuthType_NONE,
-	})
-	imageFn.AddPermission(jsii.String("PublicInvoke"), &awslambda.Permission{
-		Principal: awsiam.NewAnyPrincipal(),
-		Action:    jsii.String("lambda:InvokeFunction"),
-	})
-
 	// ─── CloudFront Origins ───
 
 	// S3 origin with OAC (serves _assets/ prefix)
@@ -122,12 +97,6 @@ func NewStorefrontStack(scope constructs.Construct, id string, props *Storefront
 	// Split by "/" → ["https:", "", "xxxxx.lambda-url.region.on.aws"] → select index 2
 	serverDomain := awscdk.Fn_Select(jsii.Number(2), awscdk.Fn_Split(jsii.String("/"), serverUrl.Url(), nil))
 	serverOrigin := awscloudfrontorigins.NewHttpOrigin(serverDomain, &awscloudfrontorigins.HttpOriginProps{
-		ProtocolPolicy: awscloudfront.OriginProtocolPolicy_HTTPS_ONLY,
-	})
-
-	// Image Lambda origin (via Function URL) — same extraction pattern
-	imageDomain := awscdk.Fn_Select(jsii.Number(2), awscdk.Fn_Split(jsii.String("/"), imageUrl.Url(), nil))
-	imageOrigin := awscloudfrontorigins.NewHttpOrigin(imageDomain, &awscloudfrontorigins.HttpOriginProps{
 		ProtocolPolicy: awscloudfront.OriginProtocolPolicy_HTTPS_ONLY,
 	})
 
@@ -219,26 +188,16 @@ func NewStorefrontStack(scope constructs.Construct, id string, props *Storefront
 				CachePolicy:          awscloudfront.CachePolicy_CACHING_OPTIMIZED(),
 				Compress:             jsii.Bool(true),
 			},
-			"_next/image": {
-				Origin:               imageOrigin,
-				ViewerProtocolPolicy: awscloudfront.ViewerProtocolPolicy_REDIRECT_TO_HTTPS,
-				AllowedMethods:       awscloudfront.AllowedMethods_ALLOW_GET_HEAD_OPTIONS(),
-				CachedMethods:        awscloudfront.CachedMethods_CACHE_GET_HEAD_OPTIONS(),
-				CachePolicy:          serverCachePolicy,
-				OriginRequestPolicy:  awscloudfront.OriginRequestPolicy_ALL_VIEWER_EXCEPT_HOST_HEADER(),
-				Compress:             jsii.Bool(true),
-				FunctionAssociations: lambdaFunctionAssociations,
-			},
 		},
 		HttpVersion: awscloudfront.HttpVersion_HTTP2_AND_3,
 		PriceClass:  awscloudfront.PriceClass_PRICE_CLASS_200,
 		Comment:     jsii.String(fmt.Sprintf("Homechrome Store - %s", env)),
 	}
 
-	// Custom domain
-	if props.DomainName != "" && props.CertArn != "" {
+	// Custom domains (primary + aliases)
+	if len(props.DomainNames) > 0 && props.CertArn != "" {
 		cert := awscertificatemanager.Certificate_FromCertificateArn(stack, jsii.String("Certificate"), jsii.String(props.CertArn))
-		distributionProps.DomainNames = jsii.Strings(props.DomainName)
+		distributionProps.DomainNames = jsii.Strings(props.DomainNames...)
 		distributionProps.Certificate = cert
 	}
 
@@ -309,8 +268,8 @@ func NewStorefrontStack(scope constructs.Construct, id string, props *Storefront
 	})
 
 	websiteURL := fmt.Sprintf("https://%s", *distribution.DistributionDomainName())
-	if props.DomainName != "" {
-		websiteURL = fmt.Sprintf("https://%s", props.DomainName)
+	if len(props.DomainNames) > 0 {
+		websiteURL = fmt.Sprintf("https://%s", props.DomainNames[0])
 	}
 	awscdk.NewCfnOutput(stack, jsii.String("WebsiteURL"), &awscdk.CfnOutputProps{
 		Value:       jsii.String(websiteURL),

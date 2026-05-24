@@ -73,7 +73,11 @@ func InitializeCatalogDeps(ctx context.Context, cfg *config.Config) (*CatalogDep
 	if err != nil {
 		return nil, err
 	}
-	assetService := ProvideAssetService(s3Client, cfg)
+	lambdaClient, err := ProvideLambdaClient(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+	assetService := ProvideAssetService(s3Client, lambdaClient, cfg)
 	categoryService := ProvideCategoryService(categoryRepository, productRepository, assetService)
 	service := ProvideValidator()
 	validation := ProvideValidation(service)
@@ -288,7 +292,11 @@ func InitializeAssetDeps(ctx context.Context, cfg *config.Config) (*AssetDeps, e
 	if err != nil {
 		return nil, err
 	}
-	assetService := ProvideAssetService(s3Client, cfg)
+	lambdaClient, err := ProvideLambdaClient(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+	assetService := ProvideAssetService(s3Client, lambdaClient, cfg)
 	service := ProvideValidator()
 	validation := ProvideValidation(service)
 	assetHandler := ProvideAssetHandler(assetService, validation)
@@ -332,7 +340,11 @@ func InitializeReportDeps(ctx context.Context, cfg *config.Config) (*ReportDeps,
 	if err != nil {
 		return nil, err
 	}
-	assetService := ProvideAssetService(s3Client, cfg)
+	lambdaClient, err := ProvideLambdaClient(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+	assetService := ProvideAssetService(s3Client, lambdaClient, cfg)
 	eventPublisher, err := ProvideEventPublisher(ctx, cfg)
 	if err != nil {
 		return nil, err
@@ -426,7 +438,11 @@ func InitializeStoreCatalogDeps(ctx context.Context, cfg *config.Config) (*Store
 	if err != nil {
 		return nil, err
 	}
-	assetService := ProvideAssetService(s3Client, cfg)
+	lambdaClient, err := ProvideLambdaClient(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+	assetService := ProvideAssetService(s3Client, lambdaClient, cfg)
 	eventPublisher, err := ProvideEventPublisher(ctx, cfg)
 	if err != nil {
 		return nil, err
@@ -668,7 +684,11 @@ func InitializeMonolithDeps(ctx context.Context, cfg *config.Config) (*MonolithD
 	if err != nil {
 		return nil, err
 	}
-	assetService := ProvideAssetService(s3Client, cfg)
+	lambdaClient, err := ProvideLambdaClient(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+	assetService := ProvideAssetService(s3Client, lambdaClient, cfg)
 	categoryService := ProvideCategoryService(categoryRepository, productRepository, assetService)
 	categoryHandler := ProvideCategoryHandler(categoryService, validation)
 	inventoryRepository := ProvideInventoryRepository(pool)

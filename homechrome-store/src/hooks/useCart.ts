@@ -72,6 +72,9 @@ export function useCart() {
       updateCache(data);
       notifications.show({ message: 'Added to cart', color: 'teal' });
     },
+    onError: () => {
+      notifications.show({ message: 'Failed to add to cart', color: 'red' });
+    },
   });
 
   const updateQuantityMutation = useMutation({
@@ -89,6 +92,9 @@ export function useCart() {
       return data;
     },
     onSuccess: updateCache,
+    onError: () => {
+      notifications.show({ message: 'Failed to update cart', color: 'red' });
+    },
   });
 
   const removeItemMutation = useMutation({
@@ -102,6 +108,9 @@ export function useCart() {
       updateCache(data);
       notifications.show({ message: 'Item removed from cart' });
     },
+    onError: () => {
+      notifications.show({ message: 'Failed to remove item', color: 'red' });
+    },
   });
 
   const clearCartMutation = useMutation({
@@ -111,6 +120,9 @@ export function useCart() {
     onSuccess: () => {
       updateCache(null);
       notifications.show({ message: 'Cart cleared' });
+    },
+    onError: () => {
+      notifications.show({ message: 'Failed to clear cart', color: 'red' });
     },
   });
 

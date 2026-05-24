@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/handloom/admin/internal/domain"
+	"github.com/handloom/admin/internal/lambdaclient"
 	"github.com/handloom/admin/internal/s3client"
 	"github.com/handloom/admin/pkg/errors"
 )
@@ -45,31 +46,42 @@ type s3Ops interface {
 	DeleteObject(ctx context.Context, bucket, key string) error
 }
 
+// resizerInvoker abstracts the Lambda call so it can be mocked in tests.
+type resizerInvoker interface {
+	InvokeSync(ctx context.Context, functionName string, payload []byte) ([]byte, error)
+}
+
 // AssetService handles file uploads via S3.
 // Files are uploaded to a tmp/ prefix first, then moved to assets/ on finalize.
 // S3 lifecycle auto-deletes tmp/ objects after 24h — no DB scan needed.
 type AssetService struct {
-	s3Client s3Ops
-	bucket   string
-	region   string
-	cdnHost  string // CloudFront domain (empty → fall back to direct S3 URL)
-	endpoint string // AWS_ENDPOINT for local dev (empty in production)
+	s3Client      s3Ops
+	bucket        string
+	region        string
+	cdnHost       string // CloudFront domain (empty → fall back to direct S3 URL)
+	endpoint      string // AWS_ENDPOINT for local dev (empty in production)
+	resizer       resizerInvoker
+	resizerFnName string // empty disables sync resize (e.g. local dev without LocalStack Lambda)
 }
 
 // NewAssetService creates a new AssetService.
 func NewAssetService(
 	s3Client *s3client.S3Client,
+	resizer *lambdaclient.LambdaClient,
 	bucket string,
 	region string,
 	cdnHost string,
 	endpoint string,
+	resizerFnName string,
 ) *AssetService {
 	return &AssetService{
-		s3Client: s3Client,
-		bucket:   bucket,
-		region:   region,
-		cdnHost:  cdnHost,
-		endpoint: strings.TrimRight(endpoint, "/"),
+		s3Client:      s3Client,
+		resizer:       resizer,
+		bucket:        bucket,
+		region:        region,
+		cdnHost:       cdnHost,
+		endpoint:      strings.TrimRight(endpoint, "/"),
+		resizerFnName: resizerFnName,
 	}
 }
 
@@ -173,6 +185,10 @@ func (s *AssetService) FinalizeUpload(ctx context.Context, tmpKey string) (strin
 		return "", errors.Wrap(err, "Failed to copy asset to final location")
 	}
 
+	// Image variants are now generated explicitly by callers via SyncImageVariants
+	// at save time (product/category update), so we know which images are new vs
+	// removed and can skip work on unchanged URLs.
+
 	// Delete tmp object (best-effort; lifecycle will clean up anyway)
 	if err := s.s3Client.DeleteObject(ctx, s.bucket, tmpKey); err != nil {
 		slog.ErrorContext(ctx, "Failed to delete tmp object", "tmp_key", tmpKey, "error", err)
@@ -181,6 +197,28 @@ func (s *AssetService) FinalizeUpload(ctx context.Context, tmpKey string) (strin
 	finalURL := s.s3URL(finalKey)
 	slog.InfoContext(ctx, "Finalized asset", "tmp_key", tmpKey, "final_key", finalKey)
 	return finalURL, nil
+}
+
+// invokeImageResizer calls the ImageResizer Lambda synchronously with a synthetic
+// S3 event payload. Returns an error if the Lambda fails or any variant is missing.
+func (s *AssetService) invokeImageResizer(ctx context.Context, key string) error {
+	if s.resizer == nil || s.resizerFnName == "" {
+		// Resizer disabled (local dev without Lambda runtime). Skip silently.
+		slog.WarnContext(ctx, "ImageResizer not configured, skipping variant generation", "key", key)
+		return nil
+	}
+	payload := fmt.Sprintf(
+		`{"Records":[{"s3":{"bucket":{"name":%q},"object":{"key":%q}}}]}`,
+		s.bucket, key,
+	)
+	start := time.Now()
+	_, err := s.resizer.InvokeSync(ctx, s.resizerFnName, []byte(payload))
+	slog.InfoContext(ctx, "image_resize",
+		"key", key,
+		"duration_ms", time.Since(start).Milliseconds(),
+		"error", err,
+	)
+	return err
 }
 
 // FinalizeIfTemp finalizes a tmp/ key into a permanent assets/ URL.
@@ -208,11 +246,125 @@ func (s *AssetService) FinalizeIfTemp(ctx context.Context, value string) (string
 	return value, nil
 }
 
+// imageVariantWidths and imageVariantFormats must match the ImageResizer Lambda
+// (lambda/image-resizer/index.mjs). When the resizer changes its output keys,
+// update these constants so cleanup stays accurate.
+var imageVariantWidths = []int{320, 640, 1080, 1920}
+
+// variantKeysFor returns every S3 key the resizer produces for the given
+// original key. Used for cleanup when an image is removed from a product/category.
+func variantKeysFor(originalKey string) []string {
+	lastDot := strings.LastIndex(originalKey, ".")
+	if lastDot == -1 {
+		return nil
+	}
+	stem := originalKey[:lastDot]
+	ext := strings.ToLower(originalKey[lastDot+1:])
+	rasterFmt := "jpg"
+	if ext == "png" {
+		rasterFmt = "png"
+	}
+	formats := []string{"webp", "avif", rasterFmt}
+	keys := make([]string, 0, len(imageVariantWidths)*len(formats))
+	for _, w := range imageVariantWidths {
+		for _, f := range formats {
+			keys = append(keys, fmt.Sprintf("%s-%d.%s", stem, w, f))
+		}
+	}
+	return keys
+}
+
+// isImageURL returns true if the URL points to an image asset (jpg/png/webp).
+func isImageURL(assetURL string) bool {
+	lower := strings.ToLower(assetURL)
+	// Strip query string before checking extension.
+	if idx := strings.Index(lower, "?"); idx != -1 {
+		lower = lower[:idx]
+	}
+	return strings.HasSuffix(lower, ".jpg") ||
+		strings.HasSuffix(lower, ".jpeg") ||
+		strings.HasSuffix(lower, ".png") ||
+		strings.HasSuffix(lower, ".webp")
+}
+
+// SyncImageVariants computes the diff between oldURLs and newURLs. For each
+// added image URL it invokes the ImageResizer to (re)generate variants. For
+// each removed URL it deletes the original asset plus all known variants.
+// Best-effort: logs errors and keeps going so partial failures don't strand
+// the caller's transaction (DB write already committed by the time we get here).
+func (s *AssetService) SyncImageVariants(ctx context.Context, oldURLs, newURLs []string) {
+	oldSet := nonEmptyURLSet(oldURLs)
+	newSet := nonEmptyURLSet(newURLs)
+
+	for u := range newSet {
+		if _, kept := oldSet[u]; kept {
+			continue
+		}
+		s.resizeImageURL(ctx, u)
+	}
+
+	for u := range oldSet {
+		if _, kept := newSet[u]; kept {
+			continue
+		}
+		s.deleteImageURLWithVariants(ctx, u)
+	}
+}
+
+// nonEmptyURLSet returns a set of non-empty URLs from the given slice.
+func nonEmptyURLSet(urls []string) map[string]struct{} {
+	set := make(map[string]struct{}, len(urls))
+	for _, u := range urls {
+		if u != "" {
+			set[u] = struct{}{}
+		}
+	}
+	return set
+}
+
+// resizeImageURL invokes the ImageResizer for the given asset URL.
+// No-op for non-image URLs or URLs outside the assets/ prefix.
+func (s *AssetService) resizeImageURL(ctx context.Context, assetURL string) {
+	if !isImageURL(assetURL) {
+		return
+	}
+	key := s.keyFromURL(assetURL)
+	if key == "" || !strings.HasPrefix(key, assetsPrefix) {
+		return
+	}
+	if err := s.invokeImageResizer(ctx, key); err != nil {
+		slog.WarnContext(ctx, "Failed to resize image", "url", assetURL, "error", err)
+	}
+}
+
+// deleteImageURLWithVariants removes the original asset plus all known
+// resizer-generated variants. Missing variants return success silently
+// (S3 DeleteObject is idempotent on non-existent keys).
+func (s *AssetService) deleteImageURLWithVariants(ctx context.Context, assetURL string) {
+	if !isImageURL(assetURL) {
+		return
+	}
+	key := s.keyFromURL(assetURL)
+	if key == "" || !strings.HasPrefix(key, assetsPrefix) {
+		return
+	}
+	if err := s.s3Client.DeleteObject(ctx, s.bucket, key); err != nil {
+		slog.WarnContext(ctx, "Failed to delete original image", "key", key, "error", err)
+	}
+	for _, vk := range variantKeysFor(key) {
+		if err := s.s3Client.DeleteObject(ctx, s.bucket, vk); err != nil {
+			slog.WarnContext(ctx, "Failed to delete variant", "key", vk, "error", err)
+		}
+	}
+}
+
 // Ensure AssetFinalizer interface compliance
 var _ domain.AssetFinalizer = (*AssetService)(nil)
 
 // DeleteAsset deletes a file from the assets/ prefix by its public URL.
 // Handles both CDN URLs and direct S3 URLs (for pre-CDN assets).
+// For image URLs, also deletes every known resizer-generated variant so we
+// never leak orphaned variant objects when callers delete an image directly.
 func (s *AssetService) DeleteAsset(ctx context.Context, assetURL string) error {
 	key := s.keyFromURL(assetURL)
 	if key == "" {
@@ -225,6 +377,15 @@ func (s *AssetService) DeleteAsset(ctx context.Context, assetURL string) error {
 
 	if err := s.s3Client.DeleteObject(ctx, s.bucket, key); err != nil {
 		return errors.Wrap(err, "Failed to delete asset")
+	}
+
+	// Best-effort variant cleanup for image assets.
+	if isImageURL(assetURL) {
+		for _, vk := range variantKeysFor(key) {
+			if err := s.s3Client.DeleteObject(ctx, s.bucket, vk); err != nil {
+				slog.WarnContext(ctx, "Failed to delete image variant", "key", vk, "error", err)
+			}
+		}
 	}
 
 	slog.InfoContext(ctx, "Deleted asset", "key", key)

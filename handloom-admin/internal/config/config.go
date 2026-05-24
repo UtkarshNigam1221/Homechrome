@@ -82,6 +82,7 @@ type AWSConfig struct {
 	Endpoint        string // For local development (empty in production)
 	S3Bucket        string
 	CDNUrl          string
+	ImageResizerFn  string // Lambda function name (e.g. homechrome-image-resizer-dev)
 }
 
 // DynamoDBConfig holds DynamoDB table names
@@ -126,6 +127,7 @@ func Load() *Config {
 			Endpoint:        getEnv("AWS_ENDPOINT", ""), // Empty for production
 			S3Bucket:        getEnvAny([]string{"S3_ASSETS_BUCKET", "AWS_S3_BUCKET"}, "handloom-assets"),
 			CDNUrl:          getEnvAny([]string{"CDN_DOMAIN", "AWS_CDN_URL"}, ""),
+			ImageResizerFn:  getEnvAny([]string{"IMAGE_RESIZER_FUNCTION_NAME"}, ""),
 		},
 		DynamoDB: DynamoDBConfig{
 			CoreTable:          getEnv("DYNAMODB_CORE_TABLE", "handloom-core"),

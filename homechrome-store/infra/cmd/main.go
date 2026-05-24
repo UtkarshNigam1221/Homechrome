@@ -33,7 +33,7 @@ func main() {
 			},
 		},
 		Environment:   environment,
-		DomainName:    cfg.DomainName,
+		DomainNames:   cfg.DomainNames,
 		CertArn:       cfg.CertArn,
 		BackendApiUrl: cfg.BackendApiUrl,
 	})

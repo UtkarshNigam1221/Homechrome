@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"strings"
@@ -39,17 +40,41 @@ func (m *mockS3Client) DeleteObject(ctx context.Context, bucket, key string) err
 }
 
 // ---------------------------------------------------------------------------
+// mockResizer
+// ---------------------------------------------------------------------------
+
+type resizerCall struct {
+	FunctionName string
+	Payload      []byte
+}
+
+type mockResizer struct {
+	invocations []resizerCall
+	returnErr   error
+}
+
+func (m *mockResizer) InvokeSync(_ context.Context, fn string, payload []byte) ([]byte, error) {
+	m.invocations = append(m.invocations, resizerCall{FunctionName: fn, Payload: payload})
+	if m.returnErr != nil {
+		return nil, m.returnErr
+	}
+	return []byte(`{}`), nil
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
 const testBucket = "test-bucket"
 const testRegion = "ap-south-1"
 
-func newTestAssetService(s3 *mockS3Client) *AssetService {
+func newTestAssetService(s3 *mockS3Client, resizer resizerInvoker) *AssetService {
 	return &AssetService{
-		s3Client: s3,
-		bucket:   testBucket,
-		region:   testRegion,
+		s3Client:      s3,
+		resizer:       resizer,
+		bucket:        testBucket,
+		region:        testRegion,
+		resizerFnName: "test-resizer-fn",
 	}
 }
 
@@ -161,7 +186,7 @@ func TestAssetService_GetUploadURL(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			s3Mock := new(mockS3Client)
-			svc := newTestAssetService(s3Mock)
+			svc := newTestAssetService(s3Mock, nil)
 			ctx := context.Background()
 
 			// Only set up presign expectation when we expect the call to reach S3
@@ -240,7 +265,7 @@ func TestAssetService_FinalizeUpload(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			s3Mock := new(mockS3Client)
-			svc := newTestAssetService(s3Mock)
+			svc := newTestAssetService(s3Mock, nil)
 			ctx := context.Background()
 
 			// Only set up S3 expectations for cases that reach S3 calls
@@ -291,7 +316,7 @@ func TestAssetService_FinalizeUpload(t *testing.T) {
 func TestAssetService_FinalizeIfTemp(t *testing.T) {
 	t.Run("tmp/ prefixed key delegates to FinalizeUpload", func(t *testing.T) {
 		s3Mock := new(mockS3Client)
-		svc := newTestAssetService(s3Mock)
+		svc := newTestAssetService(s3Mock, nil)
 		ctx := context.Background()
 
 		tmpKey := "tmp/IMAGE/abc-123.jpg"
@@ -312,7 +337,7 @@ func TestAssetService_FinalizeIfTemp(t *testing.T) {
 
 	t.Run("non-tmp value returned as-is", func(t *testing.T) {
 		s3Mock := new(mockS3Client)
-		svc := newTestAssetService(s3Mock)
+		svc := newTestAssetService(s3Mock, nil)
 		ctx := context.Background()
 
 		value := "https://test-bucket.s3.amazonaws.com/assets/IMAGE/2024/01/01/photo.jpg"
@@ -333,7 +358,7 @@ func TestAssetService_FinalizeIfTemp(t *testing.T) {
 func TestAssetService_FinalizeIfTemp_URLAllowlist(t *testing.T) {
 	t.Run("empty string passes through unchanged", func(t *testing.T) {
 		s3Mock := new(mockS3Client)
-		svc := newTestAssetService(s3Mock)
+		svc := newTestAssetService(s3Mock, nil)
 
 		result, err := svc.FinalizeIfTemp(context.Background(), "")
 
@@ -344,7 +369,7 @@ func TestAssetService_FinalizeIfTemp_URLAllowlist(t *testing.T) {
 
 	t.Run("tmp key delegates to FinalizeUpload", func(t *testing.T) {
 		s3Mock := new(mockS3Client)
-		svc := newTestAssetService(s3Mock)
+		svc := newTestAssetService(s3Mock, nil)
 		ctx := context.Background()
 
 		tmpKey := "tmp/VIDEO/x.mp4"
@@ -387,7 +412,7 @@ func TestAssetService_FinalizeIfTemp_URLAllowlist(t *testing.T) {
 		// carrying legacy CDN URLs (e.g. after a CDN_DOMAIN rotation) can still
 		// be updated without errors. Handler-level validation guards fresh uploads.
 		s3Mock := new(mockS3Client)
-		svc := newTestAssetService(s3Mock)
+		svc := newTestAssetService(s3Mock, nil)
 		ctx := context.Background()
 
 		result, err := svc.FinalizeIfTemp(ctx, "https://evil.com/x.mp4")
@@ -441,7 +466,7 @@ func TestAssetService_DeleteAsset(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			s3Mock := new(mockS3Client)
-			svc := newTestAssetService(s3Mock)
+			svc := newTestAssetService(s3Mock, nil)
 			ctx := context.Background()
 
 			// Only set up delete expectation if the URL passes validation
@@ -451,6 +476,13 @@ func TestAssetService_DeleteAsset(t *testing.T) {
 					s3Mock.On("DeleteObject",
 						mock.Anything, testBucket, key,
 					).Return(tc.deleteErr)
+					// Image URLs also trigger variant cleanup. Accept any extra
+					// DeleteObject call so we don't over-specify in this table test.
+					if isImageURL(tc.assetURL) {
+						s3Mock.On("DeleteObject",
+							mock.Anything, testBucket, mock.AnythingOfType("string"),
+						).Return(nil).Maybe()
+					}
 				}
 			}
 
@@ -521,7 +553,7 @@ func TestAssetService_GetUploadURL_Video(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			s3Mock := new(mockS3Client)
-			s := newTestAssetService(s3Mock)
+			s := newTestAssetService(s3Mock, nil)
 
 			if !tc.expectError {
 				s3Mock.On("GeneratePresignedPutURL",
@@ -617,4 +649,132 @@ func TestHelpers_GetMaxSize(t *testing.T) {
 			assert.Equal(t, tc.want, got)
 		})
 	}
+}
+
+// ---------------------------------------------------------------------------
+// TestFinalizeUpload_DoesNotInvokeResizerForNonImage
+// ---------------------------------------------------------------------------
+
+func TestFinalizeUpload_DoesNotInvokeResizerForNonImage(t *testing.T) {
+	s3Mock := new(mockS3Client)
+	resizer := &mockResizer{}
+	svc := newTestAssetService(s3Mock, resizer)
+
+	tmpKey := "tmp/VIDEO/abc.mp4"
+	parts := strings.SplitN(tmpKey, "/", 3)
+	expectedFinalPrefix := fmt.Sprintf("assets/%s/%s/", parts[1], time.Now().Format("2006/01/02"))
+
+	s3Mock.On("CopyObject",
+		mock.Anything, testBucket, tmpKey,
+		mock.MatchedBy(func(dstKey string) bool {
+			return strings.HasPrefix(dstKey, expectedFinalPrefix)
+		}),
+	).Return(nil)
+	s3Mock.On("DeleteObject",
+		mock.Anything, testBucket, tmpKey,
+	).Return(nil)
+
+	_, err := svc.FinalizeUpload(context.Background(), tmpKey)
+	if err != nil {
+		t.Fatalf("FinalizeUpload returned error: %v", err)
+	}
+	if len(resizer.invocations) != 0 {
+		t.Fatalf("expected 0 resizer invocations, got %d", len(resizer.invocations))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TestFinalizeUpload_DoesNotInvokeResizerForImage verifies that resize is no
+// longer triggered by finalize. Variants are now generated lazily at save time
+// via SyncImageVariants once the caller knows the new image list.
+// ---------------------------------------------------------------------------
+
+func TestFinalizeUpload_DoesNotInvokeResizerForImage(t *testing.T) {
+	s3Mock := new(mockS3Client)
+	resizer := &mockResizer{}
+	svc := newTestAssetService(s3Mock, resizer)
+
+	tmpKey := "tmp/IMAGE/abc-123.jpg"
+	parts := strings.SplitN(tmpKey, "/", 3)
+	expectedFinalPrefix := fmt.Sprintf("assets/%s/%s/", parts[1], time.Now().Format("2006/01/02"))
+
+	s3Mock.On("CopyObject",
+		mock.Anything, testBucket, tmpKey,
+		mock.MatchedBy(func(dstKey string) bool {
+			return strings.HasPrefix(dstKey, expectedFinalPrefix)
+		}),
+	).Return(nil)
+	s3Mock.On("DeleteObject",
+		mock.Anything, testBucket, tmpKey,
+	).Return(nil)
+
+	_, err := svc.FinalizeUpload(context.Background(), tmpKey)
+	if err != nil {
+		t.Fatalf("FinalizeUpload returned error: %v", err)
+	}
+
+	if len(resizer.invocations) != 0 {
+		t.Fatalf("expected 0 resizer invocations from FinalizeUpload, got %d", len(resizer.invocations))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TestSyncImageVariants_*
+// ---------------------------------------------------------------------------
+
+func TestSyncImageVariants_ResizesAdded(t *testing.T) {
+	s3Mock := new(mockS3Client)
+	resizer := &mockResizer{}
+	svc := newTestAssetService(s3Mock, resizer)
+
+	newURL := s3URL("assets/IMAGE/2026/05/25/new-image.jpg")
+	svc.SyncImageVariants(context.Background(), nil, []string{newURL})
+
+	if len(resizer.invocations) != 1 {
+		t.Fatalf("expected 1 resizer invocation for added image, got %d", len(resizer.invocations))
+	}
+	call := resizer.invocations[0]
+	if !bytes.Contains(call.Payload, []byte(`"key":"assets/IMAGE/2026/05/25/new-image.jpg"`)) {
+		t.Errorf("payload missing key: %s", call.Payload)
+	}
+}
+
+func TestSyncImageVariants_DeletesRemovedOriginalAndVariants(t *testing.T) {
+	s3Mock := new(mockS3Client)
+	resizer := &mockResizer{}
+	svc := newTestAssetService(s3Mock, resizer)
+
+	oldKey := "assets/IMAGE/2026/05/25/old-image.jpg"
+	oldURL := s3URL(oldKey)
+
+	// Original deletion
+	s3Mock.On("DeleteObject", mock.Anything, testBucket, oldKey).Return(nil)
+	// 12 variants (4 widths × 3 formats: webp/avif/jpg)
+	for _, w := range []int{320, 640, 1080, 1920} {
+		for _, f := range []string{"webp", "avif", "jpg"} {
+			expectedVariant := fmt.Sprintf("assets/IMAGE/2026/05/25/old-image-%d.%s", w, f)
+			s3Mock.On("DeleteObject", mock.Anything, testBucket, expectedVariant).Return(nil)
+		}
+	}
+
+	svc.SyncImageVariants(context.Background(), []string{oldURL}, nil)
+
+	s3Mock.AssertExpectations(t)
+	if len(resizer.invocations) != 0 {
+		t.Errorf("expected 0 resizer invocations on remove-only diff, got %d", len(resizer.invocations))
+	}
+}
+
+func TestSyncImageVariants_KeptURLIsNoOp(t *testing.T) {
+	s3Mock := new(mockS3Client)
+	resizer := &mockResizer{}
+	svc := newTestAssetService(s3Mock, resizer)
+
+	url := s3URL("assets/IMAGE/2026/05/25/kept.jpg")
+	svc.SyncImageVariants(context.Background(), []string{url}, []string{url})
+
+	if len(resizer.invocations) != 0 {
+		t.Errorf("expected 0 resizer invocations for unchanged URL, got %d", len(resizer.invocations))
+	}
+	s3Mock.AssertNotCalled(t, "DeleteObject", mock.Anything, mock.Anything, mock.Anything)
 }

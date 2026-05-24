@@ -1,8 +1,7 @@
-import { createTheme, MantineColorsTuple } from '@mantine/core';
+import { Button, createTheme, MantineColorsTuple } from '@mantine/core';
 
 import { siteFont } from './fonts';
 
-// Brand gold — matches --primary (#D4A574) and --primary-dark (#B8894E)
 const brand: MantineColorsTuple = [
   '#FBF7F2',
   '#F4E9DC',
@@ -16,7 +15,6 @@ const brand: MantineColorsTuple = [
   '#4B341B',
 ];
 
-// Navy — matches --foreground (#1C2951)
 const navy: MantineColorsTuple = [
   '#EBEDF4',
   '#C6CCDB',
@@ -41,7 +39,26 @@ export const theme = createTheme({
   headings: {
     fontFamily: siteFont.style.fontFamily,
     fontWeight: '600',
+    sizes: {
+      h1: { fontSize: '2.5rem', lineHeight: '1.15', fontWeight: '700' },
+      h2: { fontSize: '2rem', lineHeight: '1.2', fontWeight: '700' },
+      h3: { fontSize: '1.5rem', lineHeight: '1.3', fontWeight: '600' },
+    },
   },
-  defaultRadius: 'md',
+  defaultRadius: 'lg',
   cursorType: 'pointer',
+  shadows: {
+    xs: '0 1px 2px rgba(28,41,81,0.04)',
+    sm: '0 2px 6px rgba(28,41,81,0.06)',
+    md: '0 6px 16px rgba(28,41,81,0.08)',
+    lg: '0 12px 28px rgba(28,41,81,0.10)',
+    xl: '0 20px 48px rgba(28,41,81,0.12)',
+  },
+  components: {
+    Button: Button.extend({
+      defaultProps: {
+        radius: 'xl',
+      },
+    }),
+  },
 });

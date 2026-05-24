@@ -11,15 +11,17 @@ export const metadata: Metadata = {
   description: 'Browse and search our complete collection of handloom textiles.',
 };
 
-// Cache the default product list at the edge for 5 minutes.
-// Filtered/search results are fetched client-side by ProductsView.
 export const revalidate = 300;
 
-async function getProducts(): Promise<Product[]> {
+interface PageProps {
+  searchParams: Promise<{ search?: string | string[] }>;
+}
+
+async function getProducts(search: string): Promise<Product[]> {
   try {
-    const res = await fetch(`${API_BASE}${ROUTES.CATALOG.PRODUCTS}`, {
-      next: { revalidate: 300 },
-    });
+    const url = new URL(`${API_BASE}${ROUTES.CATALOG.PRODUCTS}`);
+    if (search) url.searchParams.set('search', search);
+    const res = await fetch(url.toString(), { next: { revalidate: 300 } });
     if (!res.ok) return [];
     const json = await res.json();
     return json.data || [];
@@ -28,8 +30,10 @@ async function getProducts(): Promise<Product[]> {
   }
 }
 
-export default async function ProductsPage() {
-  const products = await getProducts();
+export default async function ProductsPage({ searchParams }: PageProps) {
+  const sp = await searchParams;
+  const search = typeof sp.search === 'string' ? sp.search : '';
+  const products = await getProducts(search);
 
-  return <ProductsView products={products} initialSearch="" />;
+  return <ProductsView products={products} initialSearch={search} />;
 }

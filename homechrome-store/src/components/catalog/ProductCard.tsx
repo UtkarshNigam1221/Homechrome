@@ -12,11 +12,9 @@ import {
   Stack,
   Text,
 } from '@mantine/core';
-import Image from 'next/image';
+import { AssetImage } from '@/components/ui/asset-image';
 import Link from 'next/link';
 import { useState } from 'react';
-
-import { notifications } from '@mantine/notifications';
 
 import { DiscountBadge } from '@/components/ui/discount-badge';
 import { QuantityStepper } from '@/components/ui/quantity-stepper';
@@ -45,7 +43,7 @@ export default function ProductCard({ product }: ProductCardProps) {
     try {
       await addItem(product.id, 1);
     } catch {
-      notifications.show({ message: 'Failed to update cart', color: 'red' });
+      /* useCart shows error toast */
     } finally {
       setLoading(false);
     }
@@ -56,7 +54,7 @@ export default function ProductCard({ product }: ProductCardProps) {
     try {
       await updateQuantity(product.id, cartQty + 1);
     } catch {
-      notifications.show({ message: 'Failed to update cart', color: 'red' });
+      /* useCart shows error toast */
     } finally {
       setLoading(false);
     }
@@ -71,7 +69,18 @@ export default function ProductCard({ product }: ProductCardProps) {
         await updateQuantity(product.id, cartQty - 1);
       }
     } catch {
-      notifications.show({ message: 'Failed to update cart', color: 'red' });
+      /* useCart shows error toast */
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRemove = async () => {
+    setLoading(true);
+    try {
+      await removeItem(product.id);
+    } catch {
+      /* useCart shows error toast */
     } finally {
       setLoading(false);
     }
@@ -82,12 +91,13 @@ export default function ProductCard({ product }: ProductCardProps) {
       <Card.Section component={Link} href={`/p/${product.slug}`} pos="relative">
         <AspectRatio ratio={1} bg="gray.1">
           {primaryImage ? (
-            <Image
+            <AssetImage
               src={primaryImage.url}
               alt={primaryImage.alt_text || product.name}
-              fill
               sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
-              style={{ objectFit: 'cover' }}
+              width={640}
+              height={640}
+              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
             />
           ) : (
             <Center bg="brand.1" h="100%">
@@ -129,15 +139,27 @@ export default function ProductCard({ product }: ProductCardProps) {
 
         <Box mt="auto" pt="xs">
           {cartQty > 0 ? (
-            <Box w="100%">
+            product.in_stock ? (
               <QuantityStepper
                 value={cartQty}
                 onIncrement={handleIncrement}
                 onDecrement={handleDecrement}
                 disabled={loading}
                 variant="primary"
+                fullWidth
               />
-            </Box>
+            ) : (
+              <Button
+                variant="light"
+                color="red"
+                size="sm"
+                fullWidth
+                onClick={handleRemove}
+                loading={loading}
+              >
+                Remove (Out of Stock)
+              </Button>
+            )
           ) : (
             <Button
               variant="filled"

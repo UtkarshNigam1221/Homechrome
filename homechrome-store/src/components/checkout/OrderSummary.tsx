@@ -1,7 +1,7 @@
 'use client';
 
 import { Box, Card, Center, Divider, Group, ScrollArea, Stack, Text, Title } from '@mantine/core';
-import Image from 'next/image';
+import { AssetImage } from '@/components/ui/asset-image';
 
 import { formatPrice } from '@/lib/utils';
 import { CartItem, CourierOption } from '@/types';
@@ -41,12 +41,13 @@ export default function OrderSummary({
                   }}
                 >
                   {item.product_image ? (
-                    <Image
+                    <AssetImage
                       src={item.product_image}
                       alt={item.product_name}
-                      fill
                       sizes="64px"
-                      style={{ objectFit: 'cover' }}
+                      width={64}
+                      height={64}
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                     />
                   ) : (
                     <Center h="100%">

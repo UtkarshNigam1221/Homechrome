@@ -10,6 +10,7 @@ import (
 	"github.com/aws/aws-cdk-go/awscdk/v2/awscertificatemanager"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awsiam"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awslambda"
+	"github.com/aws/aws-cdk-go/awscdk/v2/awslambdanodejs"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awslogs"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awss3assets"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awsssm"
@@ -64,8 +65,30 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 	// S3 buckets from StorageStack
 	assetsBucket := props.StorageStack.AssetsBucket
 
+	// ImageResizer Lambda — generates responsive variants (320/640/1080/1920 × webp/avif/jpg|png).
+	// Co-located with APIStack (asset Lambda is its only consumer) to avoid fragile cross-stack
+	// exports. Sharp has Linux ARM64 native binaries, so ForceDockerBundling is required.
+	imageResizer := awslambdanodejs.NewNodejsFunction(stack, jsii.String("ImageResizer"), &awslambdanodejs.NodejsFunctionProps{
+		Entry:            jsii.String("../lambda/image-resizer/index.mjs"),
+		DepsLockFilePath: jsii.String("../lambda/image-resizer/package-lock.json"),
+		Runtime:          awslambda.Runtime_NODEJS_20_X(),
+		Architecture:     awslambda.Architecture_ARM_64(),
+		MemorySize:       jsii.Number(1024),
+		Timeout:          awscdk.Duration_Seconds(jsii.Number(90)),
+		Bundling: &awslambdanodejs.BundlingOptions{
+			// Sharp must NOT be esbuild-bundled — it has native binaries.
+			// @aws-sdk/client-s3 is provided by the Node 20 Lambda runtime.
+			ExternalModules:     jsii.Strings("sharp", "@aws-sdk/client-s3"),
+			NodeModules:         jsii.Strings("sharp"),
+			ForceDockerBundling: jsii.Bool(true),
+		},
+		FunctionName: jsii.String(fmt.Sprintf("homechrome-image-resizer-%s", props.Environment)),
+	})
+	assetsBucket.GrantReadWrite(imageResizer, jsii.String("assets/*"))
+
 	// Common environment variables for all Lambdas
 	commonEnv := map[string]*string{
+		"IMAGE_RESIZER_FUNCTION_NAME":  imageResizer.FunctionName(),
 		"APP_ENV":                      jsii.String(props.Environment),
 		"APP_DEBUG":                    jsii.String(fmt.Sprintf("%t", !isProd)),
 		"DYNAMODB_CORE_TABLE":          props.DatabaseStack.CoreTable.TableName(),
@@ -81,12 +104,12 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 		// Resolve SSM values at CloudFormation deploy time, inject as plain env vars.
 		// Eliminates the ~3s SSM GetParameter cold-start latency observed in Lambda init.
 		// Updating the SSM parameter value requires re-deploying the stack to propagate.
-		"JWT_SECRET_KEY":               awsssm.StringParameter_ValueForStringParameter(stack, jsii.String(jwtSecretParamName), nil),
-		"CUSTOMER_JWT_SECRET":          awsssm.StringParameter_ValueForStringParameter(stack, jsii.String(customerJwtSecretParamName), nil),
-		"JWT_ISSUER":                   jsii.String("handloom-admin"),
-		"JWT_ACCESS_TOKEN_DURATION":    jsii.String("15m"),
-		"JWT_REFRESH_TOKEN_DURATION":   jsii.String("168h"),
-		"QUOTE_VALIDITY_HRS":           jsii.String("24"),
+		"JWT_SECRET_KEY":             awsssm.StringParameter_ValueForStringParameter(stack, jsii.String(jwtSecretParamName), nil),
+		"CUSTOMER_JWT_SECRET":        awsssm.StringParameter_ValueForStringParameter(stack, jsii.String(customerJwtSecretParamName), nil),
+		"JWT_ISSUER":                 jsii.String("handloom-admin"),
+		"JWT_ACCESS_TOKEN_DURATION":  jsii.String("15m"),
+		"JWT_REFRESH_TOKEN_DURATION": jsii.String("168h"),
+		"QUOTE_VALIDITY_HRS":         jsii.String("24"),
 	}
 
 	// Add custom domain env vars when configured
@@ -176,7 +199,13 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 
 	lambdas := make(map[string]*ServiceLambda)
 	for _, svc := range services {
-		lambdaFn := createServiceLambda(stack, svc, props.Environment, commonEnv, memorySize, sharedLogGroup)
+		// Asset Lambda gets a longer timeout: it synchronously invokes ImageResizer
+		// which can take up to ~30s for multi-variant generation.
+		timeout := float64(15)
+		if svc == "asset" {
+			timeout = 45
+		}
+		lambdaFn := createServiceLambda(stack, svc, props.Environment, commonEnv, memorySize, timeout, sharedLogGroup)
 		lambdas[svc] = &ServiceLambda{
 			Function: lambdaFn,
 			Name:     svc,
@@ -191,6 +220,10 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 		props.DatabaseStack.NotificationsTable.GrantReadWriteData(lambdaFn)
 		props.DatabaseStack.EventsTable.GrantReadWriteData(lambdaFn)
 		assetsBucket.GrantReadWrite(lambdaFn, nil)
+		// Every service Lambda may end up invoking the ImageResizer because
+		// AssetService is wired into product/category services (catalog Lambda)
+		// as well as the asset Lambda itself. Grant invoke to all.
+		imageResizer.GrantInvoke(lambdaFn)
 		// SSM JWT secrets resolved at deploy time via env vars above — no runtime read needed.
 		// Grant SNS publish permission when EventStack is available
 		if props.EventStack != nil {
@@ -271,6 +304,7 @@ func createServiceLambda(
 	environment string,
 	commonEnv map[string]*string,
 	memorySize float64,
+	timeout float64,
 	logGroup awslogs.LogGroup,
 ) awslambda.Function {
 	// Add service-specific environment variable
@@ -290,7 +324,7 @@ func createServiceLambda(
 		Code:         awslambda.Code_FromAsset(jsii.String(fmt.Sprintf("../bin/lambda/%s", serviceName)), &awss3assets.AssetOptions{}),
 		Architecture: awslambda.Architecture_ARM_64(), // ARM64 is ~20% cheaper than x86
 		MemorySize:   jsii.Number(memorySize),
-		Timeout:      awscdk.Duration_Seconds(jsii.Number(15)), // Reduced timeout for cost efficiency
+		Timeout:      awscdk.Duration_Seconds(jsii.Number(timeout)),
 		Environment:  &env,
 		LogGroup:     logGroup,
 		Tracing:      awslambda.Tracing_DISABLED, // Disable X-Ray tracing (not free)

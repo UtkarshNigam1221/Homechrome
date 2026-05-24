@@ -16,6 +16,7 @@ import (
 	"github.com/handloom/admin/internal/gateway/sms"
 	"github.com/handloom/admin/internal/handler"
 	"github.com/handloom/admin/internal/handler/store"
+	"github.com/handloom/admin/internal/lambdaclient"
 	"github.com/handloom/admin/internal/middleware"
 	"github.com/handloom/admin/internal/repository/dynamodb"
 	"github.com/handloom/admin/internal/repository/postgres"
@@ -36,6 +37,11 @@ func ProvideDynamoDBClient(ctx context.Context, cfg *config.Config) (*dynamodb.C
 // ProvideS3Client creates a new S3 client
 func ProvideS3Client(ctx context.Context, cfg *config.Config) (*s3client.S3Client, error) {
 	return s3client.New(ctx, cfg.AWS.Region, cfg.AWS.Endpoint)
+}
+
+// ProvideLambdaClient creates a new Lambda client used for sync invocations.
+func ProvideLambdaClient(ctx context.Context, cfg *config.Config) (*lambdaclient.LambdaClient, error) {
+	return lambdaclient.New(ctx, cfg.AWS.Region, cfg.AWS.Endpoint)
 }
 
 // ProvidePostgresPool creates a new PostgreSQL connection pool for catalog data
@@ -270,9 +276,18 @@ func ProvideCouponService(
 // ProvideAssetService creates a new AssetService
 func ProvideAssetService(
 	s3Client *s3client.S3Client,
+	lambdaClient *lambdaclient.LambdaClient,
 	cfg *config.Config,
 ) *service.AssetService {
-	return service.NewAssetService(s3Client, cfg.AWS.S3Bucket, cfg.AWS.Region, cfg.AWS.CDNUrl, cfg.AWS.Endpoint)
+	return service.NewAssetService(
+		s3Client,
+		lambdaClient,
+		cfg.AWS.S3Bucket,
+		cfg.AWS.Region,
+		cfg.AWS.CDNUrl,
+		cfg.AWS.Endpoint,
+		cfg.AWS.ImageResizerFn,
+	)
 }
 
 // ProvideReportService creates a new ReportService

@@ -1,7 +1,5 @@
 import { useState } from 'react';
 
-import { notifications } from '@mantine/notifications';
-
 import { useCart } from '@/hooks/useCart';
 import { track } from '@/lib/analytics';
 import { useCartStore } from '@/stores/cart';
@@ -25,7 +23,7 @@ export function useProductCartActions(product: Product) {
         quantity,
       });
     } catch {
-      notifications.show({ message: 'Failed to update cart', color: 'red' });
+      /* useCart shows error toast */
     } finally {
       setLoading(false);
     }
@@ -36,7 +34,7 @@ export function useProductCartActions(product: Product) {
     try {
       await updateQuantity(product.id, cartQty + 1);
     } catch {
-      notifications.show({ message: 'Failed to update cart', color: 'red' });
+      /* useCart shows error toast */
     } finally {
       setLoading(false);
     }
@@ -51,7 +49,7 @@ export function useProductCartActions(product: Product) {
         await updateQuantity(product.id, cartQty - 1);
       }
     } catch {
-      notifications.show({ message: 'Failed to update cart', color: 'red' });
+      /* useCart shows error toast */
     } finally {
       setLoading(false);
     }
