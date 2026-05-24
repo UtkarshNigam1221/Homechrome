@@ -88,6 +88,7 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 
 	// Common environment variables for all Lambdas
 	commonEnv := map[string]*string{
+		"IMAGE_RESIZER_FUNCTION_NAME":  imageResizer.FunctionName(),
 		"APP_ENV":                      jsii.String(props.Environment),
 		"APP_DEBUG":                    jsii.String(fmt.Sprintf("%t", !isProd)),
 		"DYNAMODB_CORE_TABLE":          props.DatabaseStack.CoreTable.TableName(),
@@ -219,17 +220,16 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 		props.DatabaseStack.NotificationsTable.GrantReadWriteData(lambdaFn)
 		props.DatabaseStack.EventsTable.GrantReadWriteData(lambdaFn)
 		assetsBucket.GrantReadWrite(lambdaFn, nil)
+		// Every service Lambda may end up invoking the ImageResizer because
+		// AssetService is wired into product/category services (catalog Lambda)
+		// as well as the asset Lambda itself. Grant invoke to all.
+		imageResizer.GrantInvoke(lambdaFn)
 		// SSM JWT secrets resolved at deploy time via env vars above — no runtime read needed.
 		// Grant SNS publish permission when EventStack is available
 		if props.EventStack != nil {
 			props.EventStack.Topic.GrantPublish(lambdaFn)
 		}
 	}
-
-	// Wire ImageResizer access — sync invoke at finalize time
-	assetFn := lambdas["asset"].Function
-	imageResizer.GrantInvoke(assetFn)
-	assetFn.AddEnvironment(jsii.String("IMAGE_RESIZER_FUNCTION_NAME"), imageResizer.FunctionName(), nil)
 
 	// Create API Gateway - optimized for AWS Free Tier
 	// Free tier: 1M API calls/month for first 12 months
