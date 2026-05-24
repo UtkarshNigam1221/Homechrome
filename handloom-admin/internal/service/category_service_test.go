@@ -26,6 +26,7 @@ func setupCategoryTest(t *testing.T) (
 	mockCatRepo := mocks.NewMockCategoryRepository(ctrl)
 	mockProdRepo := mocks.NewMockProductRepository(ctrl)
 	mockFinalizer := mocks.NewMockAssetFinalizer(ctrl)
+	mockFinalizer.EXPECT().SyncImageVariants(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 
 	svc := NewCategoryService(mockCatRepo, mockProdRepo, mockFinalizer)
 	return svc, mockCatRepo, mockProdRepo, mockFinalizer, context.Background()

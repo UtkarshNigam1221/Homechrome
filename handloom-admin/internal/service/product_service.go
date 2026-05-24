@@ -101,12 +101,26 @@ func (s *ProductService) Create(ctx context.Context, req domain.CreateProductReq
 		return nil, errors.Wrap(err, "failed to increment category product count")
 	}
 
+	// Generate image variants for all new product images (best-effort).
+	s.assetFinalizer.SyncImageVariants(ctx, nil, imageURLs(product.Images))
+
 	if pubErr := s.publisher.Publish(ctx, event.New(event.ProductCreated, product)); pubErr != nil {
 		slog.ErrorContext(ctx, "Failed to publish product.created event", "error", pubErr)
 	}
 
 	slog.InfoContext(ctx, "Created product", keyProductID, product.ID)
 	return product, nil
+}
+
+// imageURLs extracts the URL field from a ProductImage slice.
+func imageURLs(images []domain.ProductImage) []string {
+	urls := make([]string, 0, len(images))
+	for _, img := range images {
+		if img.URL != "" {
+			urls = append(urls, img.URL)
+		}
+	}
+	return urls
 }
 
 // GetByID retrieves a product by ID
@@ -159,6 +173,9 @@ func (s *ProductService) Update(ctx context.Context, id string, req domain.Updat
 	if err != nil {
 		return nil, err
 	}
+
+	// Snapshot existing image URLs before mutation so we can diff after the write.
+	oldImageURLs := imageURLs(product.Images)
 
 	// Get category for attribute validation
 	category, err := s.categoryRepo.GetByID(ctx, product.CategoryID)
@@ -226,6 +243,9 @@ func (s *ProductService) Update(ctx context.Context, id string, req domain.Updat
 		}
 	}
 
+	// Resize newly added product images + clean up variants for removed ones.
+	s.assetFinalizer.SyncImageVariants(ctx, oldImageURLs, imageURLs(product.Images))
+
 	if pubErr := s.publisher.Publish(ctx, event.New(event.ProductUpdated, product)); pubErr != nil {
 		slog.ErrorContext(ctx, "Failed to publish product.updated event", "error", pubErr)
 	}
@@ -266,14 +286,15 @@ func (s *ProductService) Delete(ctx context.Context, id string) error {
 }
 
 // deleteProductAssets removes all S3 assets associated with a product.
+// Images go through SyncImageVariants so resized variants are cleaned up too.
+// Video + poster use DeleteAsset (no variants to worry about).
 // Errors are logged as warnings — they never propagate to the caller.
 func (s *ProductService) deleteProductAssets(ctx context.Context, p *domain.Product) {
-	urls := make([]string, 0, 2+len(p.Images))
-	urls = append(urls, p.VideoURL, p.VideoPosterURL)
-	for _, img := range p.Images {
-		urls = append(urls, img.URL)
-	}
-	for _, url := range urls {
+	// Images + variants
+	s.assetFinalizer.SyncImageVariants(ctx, imageURLs(p.Images), nil)
+
+	// Video + poster
+	for _, url := range []string{p.VideoURL, p.VideoPosterURL} {
 		if url == "" {
 			continue
 		}

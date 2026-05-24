@@ -29,6 +29,8 @@ func setupProductTest(t *testing.T) (
 	mockCatRepo := mocks.NewMockCategoryRepository(ctrl)
 	mockInvRepo := mocks.NewMockInventoryRepository(ctrl)
 	mockFinalizer := mocks.NewMockAssetFinalizer(ctrl)
+	// SyncImageVariants is best-effort side effect, allow any invocation pattern.
+	mockFinalizer.EXPECT().SyncImageVariants(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 
 	publisher := event.NewNoopPublisher()
 	svc := NewProductService(mockProdRepo, mockCatRepo, mockInvRepo, mockFinalizer, publisher)
@@ -51,6 +53,8 @@ func setupProductTestWithSpy(t *testing.T) (
 	mockCatRepo := mocks.NewMockCategoryRepository(ctrl)
 	mockInvRepo := mocks.NewMockInventoryRepository(ctrl)
 	mockFinalizer := mocks.NewMockAssetFinalizer(ctrl)
+	// SyncImageVariants is best-effort side effect, allow any invocation pattern.
+	mockFinalizer.EXPECT().SyncImageVariants(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 
 	spy := newSpyPublisher()
 	svc := NewProductService(mockProdRepo, mockCatRepo, mockInvRepo, mockFinalizer, spy)
@@ -775,6 +779,7 @@ func TestProductService_Create_EventPublishing(t *testing.T) {
 		mockCatRepo := mocks.NewMockCategoryRepository(ctrl)
 		mockInvRepo := mocks.NewMockInventoryRepository(ctrl)
 		mockFinalizer := mocks.NewMockAssetFinalizer(ctrl)
+		mockFinalizer.EXPECT().SyncImageVariants(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 		failPub := newFailingPublisher(errors.Internal("SNS down"))
 		svc := NewProductService(mockProdRepo, mockCatRepo, mockInvRepo, mockFinalizer, failPub)
 		ctx := context.Background()
@@ -1165,15 +1170,15 @@ func TestProductService_Delete_RemovesAssets(t *testing.T) {
 	mockProdRepo.EXPECT().Delete(ctx, "p1").Return(nil)
 	mockCatRepo.EXPECT().IncrementProductCount(ctx, "cat1", -1).Return(nil)
 
+	// Video + poster go through DeleteAsset (no variants).
 	mockFinalizer.EXPECT().
 		DeleteAsset(ctx, "https://test-bucket.s3.ap-south-1.amazonaws.com/assets/VIDEO/v.mp4").
 		Return(nil)
 	mockFinalizer.EXPECT().
 		DeleteAsset(ctx, "https://test-bucket.s3.ap-south-1.amazonaws.com/assets/IMAGE/p.jpg").
 		Return(nil)
-	mockFinalizer.EXPECT().
-		DeleteAsset(ctx, "https://test-bucket.s3.ap-south-1.amazonaws.com/assets/IMAGE/i1.jpg").
-		Return(nil)
+	// Images go through SyncImageVariants(old, nil) so resized variants are
+	// cleaned up alongside the originals.
 
 	err := svc.Delete(ctx, "p1")
 	require.NoError(t, err)
@@ -1211,6 +1216,8 @@ func TestProductService_Update_ReplacesVideoAndDeletesOld(t *testing.T) {
 	mockCatRepo := mocks.NewMockCategoryRepository(ctrl)
 	mockInvRepo := mocks.NewMockInventoryRepository(ctrl)
 	mockFinalizer := mocks.NewMockAssetFinalizer(ctrl)
+	// SyncImageVariants is best-effort side effect, allow any invocation pattern.
+	mockFinalizer.EXPECT().SyncImageVariants(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 	publisher := event.NewNoopPublisher()
 	svc := NewProductService(mockProdRepo, mockCatRepo, mockInvRepo, mockFinalizer, publisher)
 	ctx := context.Background()
@@ -1253,6 +1260,8 @@ func TestProductService_Update_NoDeleteAssetIfUpdateFails(t *testing.T) {
 	mockCatRepo := mocks.NewMockCategoryRepository(ctrl)
 	mockInvRepo := mocks.NewMockInventoryRepository(ctrl)
 	mockFinalizer := mocks.NewMockAssetFinalizer(ctrl)
+	// SyncImageVariants is best-effort side effect, allow any invocation pattern.
+	mockFinalizer.EXPECT().SyncImageVariants(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 	publisher := event.NewNoopPublisher()
 	svc := NewProductService(mockProdRepo, mockCatRepo, mockInvRepo, mockFinalizer, publisher)
 	ctx := context.Background()

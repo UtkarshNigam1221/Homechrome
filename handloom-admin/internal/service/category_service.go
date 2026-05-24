@@ -65,6 +65,11 @@ func (s *CategoryService) Create(ctx context.Context, req domain.CreateCategoryR
 		return nil, err
 	}
 
+	// Resize the newly added category image (if any).
+	if category.ImageURL != "" {
+		s.assetFinalizer.SyncImageVariants(ctx, nil, []string{category.ImageURL})
+	}
+
 	slog.InfoContext(ctx, "Created category", "category_id", category.ID)
 	return category, nil
 }
@@ -80,6 +85,8 @@ func (s *CategoryService) Update(ctx context.Context, id string, req domain.Upda
 	if err != nil {
 		return nil, err
 	}
+
+	oldImageURL := category.ImageURL
 
 	slug := category.Slug
 	if req.Name != nil {
@@ -100,6 +107,18 @@ func (s *CategoryService) Update(ctx context.Context, id string, req domain.Upda
 		return nil, err
 	}
 
+	// Resize new image + cleanup old variants if image changed.
+	if oldImageURL != category.ImageURL {
+		var oldList, newList []string
+		if oldImageURL != "" {
+			oldList = []string{oldImageURL}
+		}
+		if category.ImageURL != "" {
+			newList = []string{category.ImageURL}
+		}
+		s.assetFinalizer.SyncImageVariants(ctx, oldList, newList)
+	}
+
 	return category, nil
 }
 
@@ -117,6 +136,11 @@ func (s *CategoryService) Delete(ctx context.Context, id string) error {
 
 	if err := s.categoryRepo.Delete(ctx, id); err != nil {
 		return err
+	}
+
+	// Cleanup category image + variants (best-effort).
+	if category.ImageURL != "" {
+		s.assetFinalizer.SyncImageVariants(ctx, []string{category.ImageURL}, nil)
 	}
 
 	return nil

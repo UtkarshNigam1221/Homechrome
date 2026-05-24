@@ -476,6 +476,13 @@ func TestAssetService_DeleteAsset(t *testing.T) {
 					s3Mock.On("DeleteObject",
 						mock.Anything, testBucket, key,
 					).Return(tc.deleteErr)
+					// Image URLs also trigger variant cleanup. Accept any extra
+					// DeleteObject call so we don't over-specify in this table test.
+					if isImageURL(tc.assetURL) {
+						s3Mock.On("DeleteObject",
+							mock.Anything, testBucket, mock.AnythingOfType("string"),
+						).Return(nil).Maybe()
+					}
 				}
 			}
 
@@ -677,10 +684,12 @@ func TestFinalizeUpload_DoesNotInvokeResizerForNonImage(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// TestFinalizeUpload_InvokesResizerForImage
+// TestFinalizeUpload_DoesNotInvokeResizerForImage verifies that resize is no
+// longer triggered by finalize. Variants are now generated lazily at save time
+// via SyncImageVariants once the caller knows the new image list.
 // ---------------------------------------------------------------------------
 
-func TestFinalizeUpload_InvokesResizerForImage(t *testing.T) {
+func TestFinalizeUpload_DoesNotInvokeResizerForImage(t *testing.T) {
 	s3Mock := new(mockS3Client)
 	resizer := &mockResizer{}
 	svc := newTestAssetService(s3Mock, resizer)
@@ -704,47 +713,68 @@ func TestFinalizeUpload_InvokesResizerForImage(t *testing.T) {
 		t.Fatalf("FinalizeUpload returned error: %v", err)
 	}
 
-	if len(resizer.invocations) != 1 {
-		t.Fatalf("expected 1 resizer invocation, got %d", len(resizer.invocations))
-	}
-	call := resizer.invocations[0]
-	if call.FunctionName != "test-resizer-fn" {
-		t.Errorf("function name = %q, want %q", call.FunctionName, "test-resizer-fn")
-	}
-	if !bytes.Contains(call.Payload, []byte(`"name":"test-bucket"`)) {
-		t.Errorf("payload missing bucket: %s", call.Payload)
-	}
-	if !bytes.Contains(call.Payload, []byte(`"key":"assets/IMAGE/`)) {
-		t.Errorf("payload missing key: %s", call.Payload)
+	if len(resizer.invocations) != 0 {
+		t.Fatalf("expected 0 resizer invocations from FinalizeUpload, got %d", len(resizer.invocations))
 	}
 }
 
 // ---------------------------------------------------------------------------
-// TestFinalizeUpload_PropagatesResizerError
+// TestSyncImageVariants_*
 // ---------------------------------------------------------------------------
 
-func TestFinalizeUpload_PropagatesResizerError(t *testing.T) {
+func TestSyncImageVariants_ResizesAdded(t *testing.T) {
 	s3Mock := new(mockS3Client)
-	resizer := &mockResizer{returnErr: fmt.Errorf("simulated lambda failure")}
+	resizer := &mockResizer{}
 	svc := newTestAssetService(s3Mock, resizer)
 
-	tmpKey := "tmp/IMAGE/abc-123.jpg"
-	parts := strings.SplitN(tmpKey, "/", 3)
-	expectedFinalPrefix := fmt.Sprintf("assets/%s/%s/", parts[1], time.Now().Format("2006/01/02"))
+	newURL := s3URL("assets/IMAGE/2026/05/25/new-image.jpg")
+	svc.SyncImageVariants(context.Background(), nil, []string{newURL})
 
-	s3Mock.On("CopyObject",
-		mock.Anything, testBucket, tmpKey,
-		mock.MatchedBy(func(dstKey string) bool {
-			return strings.HasPrefix(dstKey, expectedFinalPrefix)
-		}),
-	).Return(nil)
+	if len(resizer.invocations) != 1 {
+		t.Fatalf("expected 1 resizer invocation for added image, got %d", len(resizer.invocations))
+	}
+	call := resizer.invocations[0]
+	if !bytes.Contains(call.Payload, []byte(`"key":"assets/IMAGE/2026/05/25/new-image.jpg"`)) {
+		t.Errorf("payload missing key: %s", call.Payload)
+	}
+}
 
-	_, err := svc.FinalizeUpload(context.Background(), tmpKey)
+func TestSyncImageVariants_DeletesRemovedOriginalAndVariants(t *testing.T) {
+	s3Mock := new(mockS3Client)
+	resizer := &mockResizer{}
+	svc := newTestAssetService(s3Mock, resizer)
+
+	oldKey := "assets/IMAGE/2026/05/25/old-image.jpg"
+	oldURL := s3URL(oldKey)
+
+	// Original deletion
+	s3Mock.On("DeleteObject", mock.Anything, testBucket, oldKey).Return(nil)
+	// 12 variants (4 widths × 3 formats: webp/avif/jpg)
+	for _, w := range []int{320, 640, 1080, 1920} {
+		for _, f := range []string{"webp", "avif", "jpg"} {
+			expectedVariant := fmt.Sprintf("assets/IMAGE/2026/05/25/old-image-%d.%s", w, f)
+			s3Mock.On("DeleteObject", mock.Anything, testBucket, expectedVariant).Return(nil)
+		}
+	}
+
+	svc.SyncImageVariants(context.Background(), []string{oldURL}, nil)
+
 	s3Mock.AssertExpectations(t)
-	if err == nil {
-		t.Fatal("expected error, got nil")
+	if len(resizer.invocations) != 0 {
+		t.Errorf("expected 0 resizer invocations on remove-only diff, got %d", len(resizer.invocations))
 	}
-	if !strings.Contains(err.Error(), "image variants") {
-		t.Errorf("error did not mention image variants: %v", err)
+}
+
+func TestSyncImageVariants_KeptURLIsNoOp(t *testing.T) {
+	s3Mock := new(mockS3Client)
+	resizer := &mockResizer{}
+	svc := newTestAssetService(s3Mock, resizer)
+
+	url := s3URL("assets/IMAGE/2026/05/25/kept.jpg")
+	svc.SyncImageVariants(context.Background(), []string{url}, []string{url})
+
+	if len(resizer.invocations) != 0 {
+		t.Errorf("expected 0 resizer invocations for unchanged URL, got %d", len(resizer.invocations))
 	}
+	s3Mock.AssertNotCalled(t, "DeleteObject", mock.Anything, mock.Anything, mock.Anything)
 }
