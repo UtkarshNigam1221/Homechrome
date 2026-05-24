@@ -293,57 +293,67 @@ func isImageURL(assetURL string) bool {
 // Best-effort: logs errors and keeps going so partial failures don't strand
 // the caller's transaction (DB write already committed by the time we get here).
 func (s *AssetService) SyncImageVariants(ctx context.Context, oldURLs, newURLs []string) {
-	oldSet := make(map[string]struct{}, len(oldURLs))
-	for _, u := range oldURLs {
-		if u != "" {
-			oldSet[u] = struct{}{}
-		}
-	}
-	newSet := make(map[string]struct{}, len(newURLs))
-	for _, u := range newURLs {
-		if u != "" {
-			newSet[u] = struct{}{}
-		}
-	}
+	oldSet := nonEmptyURLSet(oldURLs)
+	newSet := nonEmptyURLSet(newURLs)
 
-	// Resize added images
 	for u := range newSet {
 		if _, kept := oldSet[u]; kept {
 			continue
 		}
-		if !isImageURL(u) {
-			continue
-		}
-		key := s.keyFromURL(u)
-		if key == "" || !strings.HasPrefix(key, assetsPrefix) {
-			continue
-		}
-		if err := s.invokeImageResizer(ctx, key); err != nil {
-			slog.WarnContext(ctx, "Failed to resize image", "url", u, "error", err)
-		}
+		s.resizeImageURL(ctx, u)
 	}
 
-	// Delete removed images + variants
 	for u := range oldSet {
 		if _, kept := newSet[u]; kept {
 			continue
 		}
-		if !isImageURL(u) {
-			continue
+		s.deleteImageURLWithVariants(ctx, u)
+	}
+}
+
+// nonEmptyURLSet returns a set of non-empty URLs from the given slice.
+func nonEmptyURLSet(urls []string) map[string]struct{} {
+	set := make(map[string]struct{}, len(urls))
+	for _, u := range urls {
+		if u != "" {
+			set[u] = struct{}{}
 		}
-		key := s.keyFromURL(u)
-		if key == "" || !strings.HasPrefix(key, assetsPrefix) {
-			continue
-		}
-		// Original
-		if err := s.s3Client.DeleteObject(ctx, s.bucket, key); err != nil {
-			slog.WarnContext(ctx, "Failed to delete original image", "key", key, "error", err)
-		}
-		// Variants (each is best-effort; missing variants return success on DeleteObject)
-		for _, vk := range variantKeysFor(key) {
-			if err := s.s3Client.DeleteObject(ctx, s.bucket, vk); err != nil {
-				slog.WarnContext(ctx, "Failed to delete variant", "key", vk, "error", err)
-			}
+	}
+	return set
+}
+
+// resizeImageURL invokes the ImageResizer for the given asset URL.
+// No-op for non-image URLs or URLs outside the assets/ prefix.
+func (s *AssetService) resizeImageURL(ctx context.Context, assetURL string) {
+	if !isImageURL(assetURL) {
+		return
+	}
+	key := s.keyFromURL(assetURL)
+	if key == "" || !strings.HasPrefix(key, assetsPrefix) {
+		return
+	}
+	if err := s.invokeImageResizer(ctx, key); err != nil {
+		slog.WarnContext(ctx, "Failed to resize image", "url", assetURL, "error", err)
+	}
+}
+
+// deleteImageURLWithVariants removes the original asset plus all known
+// resizer-generated variants. Missing variants return success silently
+// (S3 DeleteObject is idempotent on non-existent keys).
+func (s *AssetService) deleteImageURLWithVariants(ctx context.Context, assetURL string) {
+	if !isImageURL(assetURL) {
+		return
+	}
+	key := s.keyFromURL(assetURL)
+	if key == "" || !strings.HasPrefix(key, assetsPrefix) {
+		return
+	}
+	if err := s.s3Client.DeleteObject(ctx, s.bucket, key); err != nil {
+		slog.WarnContext(ctx, "Failed to delete original image", "key", key, "error", err)
+	}
+	for _, vk := range variantKeysFor(key) {
+		if err := s.s3Client.DeleteObject(ctx, s.bucket, vk); err != nil {
+			slog.WarnContext(ctx, "Failed to delete variant", "key", vk, "error", err)
 		}
 	}
 }
