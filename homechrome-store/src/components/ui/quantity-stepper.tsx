@@ -1,9 +1,7 @@
 'use client';
 
 import { MinusIcon, PlusIcon } from '@heroicons/react/24/outline';
-import { Button as ButtonPrimitive } from '@base-ui/react/button';
-
-import { cn } from '@/lib/utils';
+import { ActionIcon, Group, Text } from '@mantine/core';
 
 interface QuantityStepperProps {
   value: number;
@@ -18,9 +16,9 @@ interface QuantityStepperProps {
 }
 
 const sizeConfig = {
-  sm: { button: 'px-2.5 py-1.5', icon: 'h-3.5 w-3.5', count: 'w-10 text-sm' },
-  default: { button: 'px-3 py-2', icon: 'h-4 w-4', count: 'w-10 text-sm' },
-  lg: { button: 'px-4 py-2.5', icon: 'h-4 w-4', count: 'w-12 text-sm font-bold' },
+  sm: { icon: 'sm' as const, iconSize: 14, count: 36, fontSize: 'sm' as const },
+  default: { icon: 'md' as const, iconSize: 16, count: 40, fontSize: 'sm' as const },
+  lg: { icon: 'lg' as const, iconSize: 18, count: 48, fontSize: 'md' as const },
 };
 
 export function QuantityStepper({
@@ -36,52 +34,49 @@ export function QuantityStepper({
 }: QuantityStepperProps) {
   const isPrimary = variant === 'primary';
   const s = sizeConfig[size];
+  const color = isPrimary ? 'brand' : 'navy';
 
   return (
-    <div
-      className={cn(
-        'inline-flex items-center rounded-lg border',
-        isPrimary ? 'border-primary bg-primary/5' : 'border-border',
-        className,
-      )}
+    <Group
+      gap={0}
+      wrap="nowrap"
+      className={className}
+      style={{
+        display: 'inline-flex',
+        border: `1px solid var(--mantine-color-${isPrimary ? 'brand-5' : 'default-border'})`,
+        borderRadius: 'var(--mantine-radius-md)',
+        backgroundColor: isPrimary ? 'var(--mantine-color-brand-0)' : undefined,
+      }}
     >
-      <ButtonPrimitive
+      <ActionIcon
+        size={s.icon}
+        variant="subtle"
+        color={color}
         onClick={onDecrement}
         disabled={disabled || disableDecrement}
-        className={cn(
-          'cursor-pointer transition-colors disabled:cursor-not-allowed disabled:opacity-40',
-          s.button,
-          isPrimary
-            ? 'text-primary hover:bg-primary/10'
-            : 'text-foreground hover:bg-background',
-        )}
         aria-label="Decrease quantity"
       >
-        <MinusIcon className={s.icon} />
-      </ButtonPrimitive>
-      <span
-        className={cn(
-          'text-center font-medium',
-          s.count,
-          isPrimary ? 'text-primary' : 'text-foreground',
-        )}
+        <MinusIcon width={s.iconSize} height={s.iconSize} />
+      </ActionIcon>
+      <Text
+        ta="center"
+        fw={isPrimary ? 700 : 500}
+        size={s.fontSize}
+        c={isPrimary ? 'brand.5' : 'navy.7'}
+        w={s.count}
       >
         {loading ? '...' : value}
-      </span>
-      <ButtonPrimitive
+      </Text>
+      <ActionIcon
+        size={s.icon}
+        variant="subtle"
+        color={color}
         onClick={onIncrement}
         disabled={disabled}
-        className={cn(
-          'cursor-pointer transition-colors disabled:cursor-not-allowed disabled:opacity-40',
-          s.button,
-          isPrimary
-            ? 'text-primary hover:bg-primary/10'
-            : 'text-foreground hover:bg-background',
-        )}
         aria-label="Increase quantity"
       >
-        <PlusIcon className={s.icon} />
-      </ButtonPrimitive>
-    </div>
+        <PlusIcon width={s.iconSize} height={s.iconSize} />
+      </ActionIcon>
+    </Group>
   );
 }

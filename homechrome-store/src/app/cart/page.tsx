@@ -1,11 +1,11 @@
 'use client';
 
 import { ShoppingBagIcon } from '@heroicons/react/24/outline';
+import { Box, Container, SimpleGrid, Stack } from '@mantine/core';
 
 import CartItemComponent from '@/components/cart/CartItem';
 import CartSummary from '@/components/cart/CartSummary';
 import CartSkeleton from '@/components/skeleton/CartSkeleton';
-import { Container } from '@/components/ui/container';
 import { EmptyState } from '@/components/ui/empty-state';
 import { PageHeader } from '@/components/ui/page-header';
 import { useCart } from '@/hooks/useCart';
@@ -24,10 +24,10 @@ export default function CartPage() {
 
   if (items.length === 0) {
     return (
-      <Container className="py-10">
+      <Container size="xl" py="xl">
         <PageHeader title="Shopping Cart" />
         <EmptyState
-          icon={<ShoppingBagIcon strokeWidth={1} className="h-16 w-16 text-muted-foreground/50" />}
+          icon={<ShoppingBagIcon strokeWidth={1} width={64} height={64} color="var(--mantine-color-dimmed)" />}
           title="Your cart is empty"
           description="Browse our collection and add some beautiful textiles."
           actionLabel="Start Shopping"
@@ -38,11 +38,11 @@ export default function CartPage() {
   }
 
   return (
-    <Container className="py-10">
+    <Container size="xl" py="xl">
       <PageHeader title="Shopping Cart" />
 
-      <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
-        <div className="space-y-4 lg:col-span-2">
+      <SimpleGrid cols={{ base: 1, lg: 3 }} spacing="xl">
+        <Stack gap="md" style={{ gridColumn: 'span 2 / span 2' }}>
           {items.map((item) => (
             <CartItemComponent
               key={item.product_id}
@@ -55,18 +55,18 @@ export default function CartPage() {
               }}
             />
           ))}
-        </div>
+        </Stack>
 
-        <div>
-          <div className="sticky top-32">
+        <Box>
+          <Box pos="sticky" top={128}>
             <CartSummary
               subtotal={cart?.cart.subtotal || 0}
               itemCount={cart?.cart.item_count || 0}
               isAuthenticated={isAuthenticated}
             />
-          </div>
-        </div>
-      </div>
+          </Box>
+        </Box>
+      </SimpleGrid>
     </Container>
   );
 }

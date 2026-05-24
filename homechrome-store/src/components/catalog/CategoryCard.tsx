@@ -1,4 +1,7 @@
+'use client';
+
 import { PhotoIcon } from '@heroicons/react/24/outline';
+import { AspectRatio, Card, Center, Stack, Text } from '@mantine/core';
 import Image from 'next/image';
 import Link from 'next/link';
 
@@ -10,33 +13,41 @@ interface CategoryCardProps {
 
 export default function CategoryCard({ category }: CategoryCardProps) {
   return (
-    <Link
+    <Card
+      component={Link}
       href={`/c/${category.slug}`}
-      className="group block overflow-hidden rounded-xl bg-white shadow-sm transition-shadow hover:shadow-md"
+      shadow="sm"
+      padding={0}
+      radius="lg"
+      withBorder={false}
+      style={{ textDecoration: 'none', overflow: 'hidden' }}
     >
-      <div className="relative aspect-[4/3] overflow-hidden bg-gray-100">
-        {category.image_url ? (
-          <Image
-            src={category.image_url}
-            alt={category.name}
-            fill
-            sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
-            className="object-cover transition-transform duration-300 group-hover:scale-105"
-          />
-        ) : (
-          <div className="flex h-full items-center justify-center bg-primary-light/30">
-            <PhotoIcon className="h-12 w-12 text-primary/40" />
-          </div>
-        )}
-      </div>
-      <div className="p-4">
-        <h3 className="text-base font-semibold text-foreground group-hover:text-primary">
+      <Card.Section pos="relative">
+        <AspectRatio ratio={4 / 3} bg="gray.1">
+          {category.image_url ? (
+            <Image
+              src={category.image_url}
+              alt={category.name}
+              fill
+              sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
+              style={{ objectFit: 'cover' }}
+            />
+          ) : (
+            <Center bg="brand.1" h="100%">
+              <PhotoIcon width={48} height={48} color="var(--mantine-color-brand-5)" opacity={0.4} />
+            </Center>
+          )}
+        </AspectRatio>
+      </Card.Section>
+
+      <Stack p="md" gap={4}>
+        <Text fw={600} c="navy.7">
           {category.name}
-        </h3>
-        <p className="mt-1 text-sm text-muted-foreground">
+        </Text>
+        <Text size="sm" c="dimmed">
           {category.product_count} {category.product_count === 1 ? 'product' : 'products'}
-        </p>
-      </div>
-    </Link>
+        </Text>
+      </Stack>
+    </Card>
   );
 }

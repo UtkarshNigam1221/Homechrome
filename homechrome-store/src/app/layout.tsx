@@ -1,14 +1,13 @@
+import { ColorSchemeScript, mantineHtmlProps } from '@mantine/core';
 import type { Metadata } from 'next';
-import { DM_Sans, Playfair_Display } from 'next/font/google';
 
 import Footer from '@/components/layout/Footer';
 import Header from '@/components/layout/Header';
-import { Toaster } from '@/components/ui/sonner';
-import { TooltipProvider } from '@/components/ui/tooltip';
 import { API_BASE } from '@/lib/constants';
 import { ROUTES } from '@/lib/routes';
 import { Category } from '@/types';
 
+import { siteFont } from './fonts';
 import './globals.css';
 import { Providers } from './providers';
 
@@ -25,20 +24,6 @@ async function getCategories(): Promise<Category[]> {
   }
 }
 
-const dmSans = DM_Sans({
-  variable: '--font-sans',
-  subsets: ['latin'],
-  weight: ['400', '500', '600', '700'],
-  display: 'swap',
-});
-
-const playfair = Playfair_Display({
-  variable: '--font-heading',
-  subsets: ['latin'],
-  weight: ['400', '600', '700'],
-  display: 'swap',
-});
-
 export const metadata: Metadata = {
   title: 'Homechrome | Handloom Textiles',
   description:
@@ -52,16 +37,16 @@ export default async function RootLayout({
 }>) {
   const categories = await getCategories();
   return (
-    <html lang="en">
-      <body className={`${dmSans.variable} ${playfair.variable} font-sans antialiased`}>
-        <TooltipProvider delay={300}>
-          <Providers>
-            <Header categories={categories} />
-            <main className="min-h-screen">{children}</main>
-            <Footer />
-            <Toaster />
-          </Providers>
-        </TooltipProvider>
+    <html lang="en" {...mantineHtmlProps}>
+      <head>
+        <ColorSchemeScript defaultColorScheme="light" />
+      </head>
+      <body className={siteFont.className} style={{ minHeight: '100vh' }}>
+        <Providers>
+          <Header categories={categories} />
+          <main style={{ minHeight: '100vh' }}>{children}</main>
+          <Footer />
+        </Providers>
       </body>
     </html>
   );

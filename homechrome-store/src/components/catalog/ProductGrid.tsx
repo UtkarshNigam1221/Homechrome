@@ -1,4 +1,7 @@
+'use client';
+
 import { MagnifyingGlassIcon } from '@heroicons/react/24/outline';
+import { SimpleGrid, Stack, Text, ThemeIcon, Title } from '@mantine/core';
 
 import ProductCard from '@/components/catalog/ProductCard';
 import { Product } from '@/types';
@@ -10,21 +13,23 @@ interface ProductGridProps {
 export default function ProductGrid({ products }: ProductGridProps) {
   if (products.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-16 text-center">
-        <MagnifyingGlassIcon strokeWidth={1} className="h-16 w-16 text-muted/50" />
-        <h3 className="mt-4 text-lg font-medium text-foreground">No products found</h3>
-        <p className="mt-2 text-sm text-muted-foreground">
+      <Stack align="center" gap="xs" py="xl" ta="center">
+        <ThemeIcon size={64} radius="xl" color="gray" variant="light">
+          <MagnifyingGlassIcon width={32} height={32} strokeWidth={1} />
+        </ThemeIcon>
+        <Title order={3} size="md" mt="xs">No products found</Title>
+        <Text size="sm" c="dimmed">
           Try adjusting your filters or browse our categories.
-        </p>
-      </div>
+        </Text>
+      </Stack>
     );
   }
 
   return (
-    <div className="grid grid-cols-2 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+    <SimpleGrid cols={{ base: 2, sm: 2, lg: 3 }} spacing="md">
       {products.map((product) => (
         <ProductCard key={product.id} product={product} />
       ))}
-    </div>
+    </SimpleGrid>
   );
 }

@@ -1,9 +1,18 @@
 'use client';
 
 import { MapPinIcon, ShoppingBagIcon, TruckIcon } from '@heroicons/react/24/outline';
+import {
+  Anchor,
+  Card,
+  Group,
+  SimpleGrid,
+  Stack,
+  Text,
+  ThemeIcon,
+  Title,
+} from '@mantine/core';
 import Link from 'next/link';
 
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatPrice } from '@/lib/utils';
 import { useAuthStore } from '@/stores/auth';
 
@@ -36,74 +45,82 @@ export default function AccountPage() {
   const addressCount = customer.addresses?.length ?? 0;
 
   return (
-    <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>Profile Information</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div>
-              <p className="text-sm text-muted-foreground">Name</p>
-              <p className="font-medium text-foreground">
-                {customer.first_name} {customer.last_name}
-              </p>
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Email</p>
-              <p className="font-medium text-foreground">
-                {customer.email || 'Not set'}
-              </p>
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Phone</p>
-              <p className="font-medium text-foreground">{customer.phone}</p>
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Saved Addresses</p>
-              <p className="font-medium text-foreground">
-                {addressCount} {addressCount === 1 ? 'address' : 'addresses'}
-              </p>
-            </div>
-          </div>
-        </CardContent>
+    <Stack gap="lg">
+      <Card shadow="sm" radius="lg" padding="lg">
+        <Stack gap="md">
+          <Title order={2} size="md">Profile Information</Title>
+          <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
+            <ProfileField label="Name" value={`${customer.first_name} ${customer.last_name}`} />
+            <ProfileField label="Email" value={customer.email || 'Not set'} />
+            <ProfileField label="Phone" value={customer.phone} />
+            <ProfileField
+              label="Saved Addresses"
+              value={`${addressCount} ${addressCount === 1 ? 'address' : 'addresses'}`}
+            />
+          </SimpleGrid>
+        </Stack>
       </Card>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="md">
         {navCards.map((card) => (
-          <Link
+          <Anchor
             key={card.href}
+            component={Link}
             href={card.href}
-            className="rounded-xl border border-foreground/10 bg-card p-5 transition-colors hover:border-primary/50"
+            underline="never"
           >
-            <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
-              <card.icon className="h-5 w-5 text-primary" />
-            </div>
-            <h3 className="font-semibold text-foreground">{card.title}</h3>
-            <p className="mt-1 text-sm text-muted-foreground">{card.description}</p>
-          </Link>
+            <Card shadow="sm" radius="lg" padding="lg" withBorder>
+              <Stack gap="xs">
+                <ThemeIcon size={40} radius="md" variant="light" color="brand">
+                  <card.icon width={20} height={20} />
+                </ThemeIcon>
+                <Text fw={600} c="navy.7">{card.title}</Text>
+                <Text size="sm" c="dimmed">{card.description}</Text>
+              </Stack>
+            </Card>
+          </Anchor>
         ))}
-      </div>
+      </SimpleGrid>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Account Summary</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="rounded-lg bg-background p-4 text-center">
-              <p className="text-2xl font-bold text-primary">{customer.total_orders}</p>
-              <p className="text-sm text-muted-foreground">Total Orders</p>
-            </div>
-            <div className="rounded-lg bg-background p-4 text-center">
-              <p className="text-2xl font-bold text-primary">
-                {formatPrice(customer.total_spent)}
-              </p>
-              <p className="text-sm text-muted-foreground">Total Spent</p>
-            </div>
-          </div>
-        </CardContent>
+      <Card shadow="sm" radius="lg" padding="lg">
+        <Stack gap="md">
+          <Title order={2} size="md">Account Summary</Title>
+          <SimpleGrid cols={2} spacing="md">
+            <SummaryStat
+              value={String(customer.total_orders)}
+              label="Total Orders"
+            />
+            <SummaryStat
+              value={formatPrice(customer.total_spent)}
+              label="Total Spent"
+            />
+          </SimpleGrid>
+        </Stack>
       </Card>
-    </div>
+    </Stack>
+  );
+}
+
+function ProfileField({ label, value }: { label: string; value: string }) {
+  return (
+    <Stack gap={2}>
+      <Text size="sm" c="dimmed">{label}</Text>
+      <Text fw={500} c="navy.7">{value}</Text>
+    </Stack>
+  );
+}
+
+function SummaryStat({ value, label }: { value: string; label: string }) {
+  return (
+    <Group
+      bg="gray.0"
+      p="md"
+      justify="center"
+      gap="xs"
+      style={{ borderRadius: 'var(--mantine-radius-md)', flexDirection: 'column' }}
+    >
+      <Text size="xl" fw={700} c="brand.5">{value}</Text>
+      <Text size="sm" c="dimmed">{label}</Text>
+    </Group>
   );
 }

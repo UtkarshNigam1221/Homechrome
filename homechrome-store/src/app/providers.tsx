@@ -1,11 +1,20 @@
 'use client';
 
+import { MantineProvider } from '@mantine/core';
+import { ModalsProvider } from '@mantine/modals';
+import { Notifications } from '@mantine/notifications';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { isAxiosError } from 'axios';
 import { useEffect, useState } from 'react';
 
 import { initAnalytics, stopAnalytics } from '@/lib/analytics';
 import { useAuthStore } from '@/stores/auth';
+
+import { theme } from './theme';
+
+import '@mantine/core/styles.css';
+import '@mantine/notifications/styles.css';
+import '@mantine/dates/styles.css';
 
 function AuthInit() {
   const checkAuth = useAuthStore((s) => s.checkAuth);
@@ -40,9 +49,14 @@ export function Providers({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <AuthInit />
-      <AnalyticsProvider>{children}</AnalyticsProvider>
-    </QueryClientProvider>
+    <MantineProvider theme={theme}>
+      <ModalsProvider>
+        <Notifications position="top-right" />
+        <QueryClientProvider client={queryClient}>
+          <AuthInit />
+          <AnalyticsProvider>{children}</AnalyticsProvider>
+        </QueryClientProvider>
+      </ModalsProvider>
+    </MantineProvider>
   );
 }

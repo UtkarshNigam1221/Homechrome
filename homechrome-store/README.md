@@ -5,7 +5,7 @@ B2C customer-facing storefront for the Homechrome handloom e-commerce platform.
 ## Tech Stack
 
 - Next.js 16 (App Router), React 19, TypeScript
-- Tailwind CSS 4
+- Mantine v9 (UI components, forms, modals, notifications, dates)
 - React Query (server state), Zustand (client state)
 - Axios (API client)
 

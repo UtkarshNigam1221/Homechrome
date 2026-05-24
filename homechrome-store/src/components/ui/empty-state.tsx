@@ -1,8 +1,7 @@
+'use client';
+
+import { Button, Stack, Text, Title } from '@mantine/core';
 import Link from 'next/link';
-
-import { cn } from '@/lib/utils';
-
-import { Button } from './button';
 
 interface EmptyStateProps {
   icon: React.ReactNode;
@@ -22,15 +21,15 @@ export function EmptyState({
   className,
 }: EmptyStateProps) {
   return (
-    <div className={cn('flex flex-col items-center justify-center py-16 text-center', className)}>
+    <Stack align="center" gap="xs" py="xl" ta="center" className={className}>
       {icon}
-      <h2 className="mt-4 text-lg font-medium text-foreground">{title}</h2>
-      <p className="mt-2 text-sm text-muted-foreground">{description}</p>
+      <Title order={2} size="md" mt="xs">{title}</Title>
+      <Text size="sm" c="dimmed">{description}</Text>
       {actionLabel && actionHref && (
-        <Button className="mt-6" render={<Link href={actionHref} />}>
+        <Button component={Link} href={actionHref} mt="md" color="brand">
           {actionLabel}
         </Button>
       )}
-    </div>
+    </Stack>
   );
 }

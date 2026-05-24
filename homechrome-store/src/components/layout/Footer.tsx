@@ -1,86 +1,75 @@
+'use client';
+
+import {
+  Anchor,
+  Box,
+  Container,
+  Divider,
+  SimpleGrid,
+  Stack,
+  Text,
+  Title,
+} from '@mantine/core';
 import Image from 'next/image';
 import Link from 'next/link';
 
-import logo40 from '@/assets/logo-40.png';
-
-import { Container } from '@/components/ui/container';
-import { Separator } from '@/components/ui/separator';
+import logo80 from '@/assets/logo-80.png';
 
 export default function Footer() {
   return (
-    <footer className="border-t border-border bg-white">
-      <Container className="py-12">
-        <div className="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-4">
-          {/* Brand */}
-          <div>
-            <Link href="/" className="inline-flex items-center gap-2.5">
-              <Image src={logo40} alt="Homechrome" className="h-10 w-auto" unoptimized />
-              <span className="text-xl font-bold tracking-tight text-foreground">
-                HOME<span className="text-primary">CHROME</span>
-              </span>
-            </Link>
-            <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-              Premium handloom textiles from across India.
-              Celebrating the art of traditional weaving.
-            </p>
-          </div>
+    <Box component="footer" bg="white" style={{ borderTop: '1px solid var(--mantine-color-default-border)' }}>
+      <Container size="xl" py="xl">
+        <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }} spacing="xl">
+          <Stack gap="sm">
+            <Anchor component={Link} href="/" underline="never" display="inline-flex">
+              <Box style={{ display: 'inline-flex', alignItems: 'center', gap: '0.625rem' }}>
+                <Image src={logo80} alt="Homechrome" style={{ height: 40, width: 'auto' }} unoptimized />
+                <Text fw={700} size="xl" c="navy.7" style={{ letterSpacing: '-0.01em' }}>
+                  HOME<Text span c="brand">CHROME</Text>
+                </Text>
+              </Box>
+            </Anchor>
+            <Text size="sm" c="dimmed">
+              Premium handloom textiles from across India. Celebrating the art of traditional weaving.
+            </Text>
+          </Stack>
 
-          {/* Shop */}
-          <div>
-            <h3 className="text-sm font-semibold uppercase tracking-wider text-foreground">
-              Shop
-            </h3>
-            <ul className="mt-3 space-y-2">
-              <li>
-                <Link
-                  href="/products"
-                  className="text-sm text-muted-foreground transition-colors hover:text-primary"
-                >
-                  All Products
-                </Link>
-              </li>
-              <li>
-                <Link
-                  href="/categories"
-                  className="text-sm text-muted-foreground transition-colors hover:text-primary"
-                >
-                  Categories
-                </Link>
-              </li>
-            </ul>
-          </div>
+          <FooterSection title="Shop">
+            <FooterLink href="/products">All Products</FooterLink>
+            <FooterLink href="/categories">Categories</FooterLink>
+          </FooterSection>
 
-          {/* Customer */}
-          <div>
-            <h3 className="text-sm font-semibold uppercase tracking-wider text-foreground">
-              Customer
-            </h3>
-            <ul className="mt-3 space-y-2">
-              <li>
-                <Link
-                  href="/track"
-                  className="text-sm text-muted-foreground transition-colors hover:text-primary"
-                >
-                  Track Order
-                </Link>
-              </li>
-              <li>
-                <Link
-                  href="/account"
-                  className="text-sm text-muted-foreground transition-colors hover:text-primary"
-                >
-                  My Account
-                </Link>
-              </li>
-            </ul>
-          </div>
-        </div>
+          <FooterSection title="Customer">
+            <FooterLink href="/track">Track Order</FooterLink>
+            <FooterLink href="/account">My Account</FooterLink>
+          </FooterSection>
+        </SimpleGrid>
 
-        <Separator className="mt-10 mb-6" />
-        <p className="text-center text-xs text-muted-foreground">
+        <Divider my="lg" />
+
+        <Text ta="center" size="xs" c="dimmed">
           &copy; {new Date().getFullYear()} Homechrome. All rights reserved.
-        </p>
+        </Text>
       </Container>
-    </footer>
+    </Box>
+  );
+}
+
+function FooterSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <Stack gap="xs">
+      <Title order={3} size="xs" tt="uppercase" fw={600} style={{ letterSpacing: '0.05em' }}>
+        {title}
+      </Title>
+      <Stack gap={4}>{children}</Stack>
+    </Stack>
+  );
+}
+
+function FooterLink({ href, children }: { href: string; children: React.ReactNode }) {
+  return (
+    <Anchor component={Link} href={href} size="sm" c="dimmed" underline="never">
+      {children}
+    </Anchor>
   );
 }

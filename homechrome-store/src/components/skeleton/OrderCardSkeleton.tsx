@@ -1,4 +1,6 @@
-import Skeleton from './Skeleton';
+'use client';
+
+import { Card, Group, Skeleton, Stack } from '@mantine/core';
 
 interface OrderCardSkeletonProps {
   count?: number;
@@ -6,24 +8,24 @@ interface OrderCardSkeletonProps {
 
 export default function OrderCardSkeleton({ count = 3 }: OrderCardSkeletonProps) {
   return (
-    <div role="status" aria-label="Loading orders" className="space-y-4">
+    <Stack gap="md" role="status" aria-label="Loading orders">
       {Array.from({ length: count }).map((_, i) => (
-        <div key={i} className="rounded-lg border border-border bg-white p-4 sm:p-5">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <Skeleton className="h-5 w-32" />
-                <Skeleton variant="rectangular" className="h-5 w-16 rounded-full" />
-              </div>
-              <Skeleton className="h-4 w-48" />
-            </div>
-            <div className="text-right space-y-1">
-              <Skeleton className="h-6 w-24 ml-auto" />
-              <Skeleton className="h-3 w-32 ml-auto" />
-            </div>
-          </div>
-        </div>
+        <Card key={i} shadow="sm" radius="lg" padding="md">
+          <Group justify="space-between" align="start" wrap="wrap" gap="md">
+            <Stack gap="xs">
+              <Group gap="xs">
+                <Skeleton h={20} w={128} />
+                <Skeleton h={20} w={64} radius="xl" />
+              </Group>
+              <Skeleton h={16} w={192} />
+            </Stack>
+            <Stack gap="xs" align="end">
+              <Skeleton h={24} w={96} />
+              <Skeleton h={12} w={128} />
+            </Stack>
+          </Group>
+        </Card>
       ))}
-    </div>
+    </Stack>
   );
 }

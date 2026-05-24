@@ -1,4 +1,6 @@
-import Skeleton from './Skeleton';
+'use client';
+
+import { Card, Group, SimpleGrid, Skeleton, Stack } from '@mantine/core';
 
 interface ProductGridSkeletonProps {
   count?: number;
@@ -6,21 +8,26 @@ interface ProductGridSkeletonProps {
 
 export default function ProductGridSkeleton({ count = 8 }: ProductGridSkeletonProps) {
   return (
-    <div role="status" aria-label="Loading products" className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+    <SimpleGrid
+      role="status"
+      aria-label="Loading products"
+      cols={{ base: 2, sm: 3, lg: 4 }}
+      spacing="md"
+    >
       {Array.from({ length: count }).map((_, i) => (
-        <div key={i} className="overflow-hidden rounded-xl bg-white shadow-sm">
-          <Skeleton variant="rectangular" className="aspect-square w-full rounded-none" />
-          <div className="p-4 space-y-2">
-            <Skeleton className="h-4 w-3/4" />
-            <Skeleton className="h-4 w-1/2" />
-            <div className="flex items-baseline gap-2 pt-1">
-              <Skeleton className="h-5 w-20" />
-              <Skeleton className="h-4 w-14" />
-            </div>
-            <Skeleton variant="rectangular" className="mt-3 h-9 w-full" />
-          </div>
-        </div>
+        <Card key={i} shadow="sm" radius="lg" padding={0}>
+          <Skeleton h={200} radius={0} />
+          <Stack p="md" gap="xs">
+            <Skeleton h={16} w="75%" />
+            <Skeleton h={16} w="50%" />
+            <Group align="baseline" gap="xs">
+              <Skeleton h={20} w={80} />
+              <Skeleton h={16} w={56} />
+            </Group>
+            <Skeleton h={36} mt="xs" />
+          </Stack>
+        </Card>
       ))}
-    </div>
+    </SimpleGrid>
   );
 }

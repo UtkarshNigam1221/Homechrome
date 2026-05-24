@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { toast } from 'sonner';
+import { notifications } from '@mantine/notifications';
 
 import api from '@/lib/api';
 import { ROUTES } from '@/lib/routes';
@@ -70,7 +70,7 @@ export function useCart() {
     },
     onSuccess: (data) => {
       updateCache(data);
-      toast.success('Added to cart');
+      notifications.show({ message: 'Added to cart', color: 'teal' });
     },
   });
 
@@ -100,7 +100,7 @@ export function useCart() {
     },
     onSuccess: (data) => {
       updateCache(data);
-      toast('Item removed from cart');
+      notifications.show({ message: 'Item removed from cart' });
     },
   });
 
@@ -110,7 +110,7 @@ export function useCart() {
     },
     onSuccess: () => {
       updateCache(null);
-      toast('Cart cleared');
+      notifications.show({ message: 'Cart cleared' });
     },
   });
 

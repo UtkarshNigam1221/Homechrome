@@ -6,13 +6,21 @@ import {
   ExclamationTriangleIcon,
   XCircleIcon,
 } from '@heroicons/react/24/outline';
+import {
+  Anchor,
+  Button,
+  Container,
+  Stack,
+  Text,
+  ThemeIcon,
+  Title,
+} from '@mantine/core';
 import { useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 
-import Button from '@/components/ui/button';
-import { Container } from '@/components/ui/container';
+import { LoadingBlock, LoadingSpinner } from '@/components/ui/loading-spinner';
 import api from '@/lib/api';
 import { ROUTES } from '@/lib/routes';
 import { PaymentStatus } from '@/types';
@@ -23,27 +31,31 @@ interface PaymentStatusResponse {
   payment_status: PaymentStatus;
 }
 
-function StatusIcon({ variant, className }: { variant: 'success' | 'error' | 'warning'; className?: string }) {
-  const bg = { success: 'bg-green-100', error: 'bg-red-100', warning: 'bg-amber-100' }[variant];
-  const Icon = { success: CheckCircleIcon, error: XCircleIcon, warning: ExclamationTriangleIcon }[variant];
-  const color = { success: 'text-green-600', error: 'text-red-600', warning: 'text-amber-600' }[variant];
+type IconVariant = 'success' | 'error' | 'warning';
 
+function StatusIcon({ variant }: { variant: IconVariant }) {
+  const config: Record<IconVariant, { color: string; Icon: typeof CheckCircleIcon }> = {
+    success: { color: 'teal', Icon: CheckCircleIcon },
+    error: { color: 'red', Icon: XCircleIcon },
+    warning: { color: 'yellow', Icon: ExclamationTriangleIcon },
+  };
+  const { color, Icon } = config[variant];
   return (
-    <div className={`mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full ${bg} ${className}`}>
-      <Icon className={`h-10 w-10 ${color}`} />
-    </div>
+    <ThemeIcon size={80} radius="xl" color={color} variant="light">
+      <Icon width={40} height={40} />
+    </ThemeIcon>
   );
 }
 
 function StatusActions({ children }: { children: React.ReactNode }) {
-  return <div className="flex flex-col items-center gap-3">{children}</div>;
+  return <Stack align="center" gap="sm">{children}</Stack>;
 }
 
 function SecondaryLink({ href, children }: { href: string; children: React.ReactNode }) {
   return (
-    <Link href={href} className="text-sm font-medium text-primary hover:text-primary-dark">
+    <Anchor component={Link} href={href} size="sm" c="brand">
       {children}
-    </Link>
+    </Anchor>
   );
 }
 
@@ -68,26 +80,19 @@ function ConfirmationContent() {
     }
   }, []);
 
-  // Keep the ref updated with the latest closure — no dependency array issues
   useEffect(() => {
     checkStatusRef.current = async () => {
       if (!orderId) return;
-
       try {
         const { data } = await api.get<PaymentStatusResponse>(
           ROUTES.CHECKOUT.PAYMENT_STATUS(orderId),
         );
-
         setStatus(data.payment_status);
         if (data.order_number) setOrderNumber(data.order_number);
-
         if (['PAID', 'SUCCESS', 'FAILED', 'REFUNDED'].includes(data.payment_status)) {
           stopPolling();
-          // Order state just changed — drop the cached orders list so a navigation
-          // to /account/orders refetches and shows this order immediately.
           queryClient.invalidateQueries({ queryKey: ['orders'] });
         }
-
         pollCountRef.current += 1;
         if (pollCountRef.current >= 60) stopPolling();
       } catch (err: unknown) {
@@ -104,11 +109,8 @@ function ConfirmationContent() {
 
   useEffect(() => {
     if (!orderId) return;
-
-    // Fire immediately, then poll every 3s
     checkStatusRef.current?.();
     intervalRef.current = setInterval(() => checkStatusRef.current?.(), 3000);
-
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
@@ -116,132 +118,114 @@ function ConfirmationContent() {
 
   if (!orderId) {
     return (
-      <Container size="narrow" className="max-w-lg py-20 text-center">
-        <h1 className="mb-4 text-2xl font-bold text-foreground">Invalid Request</h1>
-        <p className="mb-6 text-muted-foreground">No order ID was provided.</p>
-        <Link href="/">
-          <Button>Go to Home</Button>
-        </Link>
+      <Container size="sm" py="xl">
+        <Stack align="center" gap="md">
+          <Title order={1} size="h2">Invalid Request</Title>
+          <Text c="dimmed">No order ID was provided.</Text>
+          <Button component={Link} href="/" color="brand">Go to Home</Button>
+        </Stack>
       </Container>
     );
   }
 
   return (
-    <Container size="narrow" className="max-w-lg py-16 text-center">
-      {/* Pending / Processing */}
-      {polling && (status === 'PENDING' || status === 'INITIATED') && (
-        <>
-          <div className="mx-auto mb-6 h-16 w-16 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-          <h1 className="mb-2 text-2xl font-bold text-foreground">Processing Payment</h1>
-          <p className="mb-2 text-muted-foreground">
-            Please wait while we confirm your payment...
-          </p>
-          <p className="text-sm text-muted-foreground">
-            Do not close this page. This may take a few moments.
-          </p>
-        </>
-      )}
+    <Container size="sm" py="xl">
+      <Stack align="center" gap="md" ta="center">
+        {polling && (status === 'PENDING' || status === 'INITIATED') && (
+          <>
+            <LoadingSpinner size="lg" />
+            <Title order={1} size="h2">Processing Payment</Title>
+            <Text c="dimmed">Please wait while we confirm your payment...</Text>
+            <Text size="sm" c="dimmed">
+              Do not close this page. This may take a few moments.
+            </Text>
+          </>
+        )}
 
-      {/* Success */}
-      {(status === 'PAID' || status === 'SUCCESS') && (
-        <>
-          <StatusIcon variant="success" />
-          <h1 className="mb-2 text-2xl font-bold text-foreground">Payment Successful!</h1>
-          <p className="mb-1 text-muted-foreground">Thank you for your order.</p>
-          {orderNumber && (
-            <p className="mb-6 text-sm text-muted-foreground">
-              Order Number: <span className="font-semibold text-foreground">{orderNumber}</span>
-            </p>
-          )}
-          <StatusActions>
-            <Link href={`/account/orders/${orderId}`}>
-              <Button>View Order Details</Button>
-            </Link>
-            <SecondaryLink href="/">Continue Shopping</SecondaryLink>
-          </StatusActions>
-        </>
-      )}
+        {(status === 'PAID' || status === 'SUCCESS') && (
+          <>
+            <StatusIcon variant="success" />
+            <Title order={1} size="h2">Payment Successful!</Title>
+            <Text c="dimmed">Thank you for your order.</Text>
+            {orderNumber && (
+              <Text size="sm" c="dimmed">
+                Order Number: <Text span fw={600} c="navy.7">{orderNumber}</Text>
+              </Text>
+            )}
+            <StatusActions>
+              <Button component={Link} href={`/account/orders/${orderId}`} color="brand">
+                View Order Details
+              </Button>
+              <SecondaryLink href="/">Continue Shopping</SecondaryLink>
+            </StatusActions>
+          </>
+        )}
 
-      {/* Failed */}
-      {status === 'FAILED' && (
-        <>
-          <StatusIcon variant="error" />
-          <h1 className="mb-2 text-2xl font-bold text-foreground">Payment Failed</h1>
-          <p className="mb-6 text-muted-foreground">
-            Your payment could not be processed. No amount has been charged.
-          </p>
-          <StatusActions>
-            <Link href="/checkout">
-              <Button>Try Again</Button>
-            </Link>
-            <SecondaryLink href="/account/orders">View Orders</SecondaryLink>
-          </StatusActions>
-        </>
-      )}
+        {status === 'FAILED' && (
+          <>
+            <StatusIcon variant="error" />
+            <Title order={1} size="h2">Payment Failed</Title>
+            <Text c="dimmed">
+              Your payment could not be processed. No amount has been charged.
+            </Text>
+            <StatusActions>
+              <Button component={Link} href="/checkout" color="brand">Try Again</Button>
+              <SecondaryLink href="/account/orders">View Orders</SecondaryLink>
+            </StatusActions>
+          </>
+        )}
 
-      {/* Refunded */}
-      {status === 'REFUNDED' && (
-        <>
-          <StatusIcon variant="warning" />
-          <h1 className="mb-2 text-2xl font-bold text-foreground">Payment Refunded</h1>
-          <p className="mb-6 text-muted-foreground">
-            Your payment has been refunded. The amount will be credited back shortly.
-          </p>
-          <Link href="/">
-            <Button>Go to Home</Button>
-          </Link>
-        </>
-      )}
+        {status === 'REFUNDED' && (
+          <>
+            <StatusIcon variant="warning" />
+            <Title order={1} size="h2">Payment Refunded</Title>
+            <Text c="dimmed">
+              Your payment has been refunded. The amount will be credited back shortly.
+            </Text>
+            <Button component={Link} href="/" color="brand">Go to Home</Button>
+          </>
+        )}
 
-      {/* Error */}
-      {error && (
-        <>
-          <StatusIcon variant="warning" />
-          <h1 className="mb-2 text-2xl font-bold text-foreground">Something went wrong</h1>
-          <p className="mb-6 text-muted-foreground">{error}</p>
-          <StatusActions>
-            <Link href="/account/orders">
-              <Button>Check My Orders</Button>
-            </Link>
-            <SecondaryLink href="/">Go to Home</SecondaryLink>
-          </StatusActions>
-        </>
-      )}
+        {error && (
+          <>
+            <StatusIcon variant="warning" />
+            <Title order={1} size="h2">Something went wrong</Title>
+            <Text c="dimmed">{error}</Text>
+            <StatusActions>
+              <Button component={Link} href="/account/orders" color="brand">
+                Check My Orders
+              </Button>
+              <SecondaryLink href="/">Go to Home</SecondaryLink>
+            </StatusActions>
+          </>
+        )}
 
-      {/* Timeout */}
-      {!polling && !error && (status === 'PENDING' || status === 'INITIATED') && (
-        <>
-          <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-amber-100">
-            <ClockIcon className="h-10 w-10 text-amber-600" />
-          </div>
-          <h1 className="mb-2 text-2xl font-bold text-foreground">
-            Payment is still processing
-          </h1>
-          <p className="mb-6 text-muted-foreground">
-            Your payment is taking longer than expected. You will receive an update
-            once it is confirmed.
-          </p>
-          <StatusActions>
-            <Link href="/account/orders">
-              <Button>Check My Orders</Button>
-            </Link>
-            <SecondaryLink href="/">Go to Home</SecondaryLink>
-          </StatusActions>
-        </>
-      )}
+        {!polling && !error && (status === 'PENDING' || status === 'INITIATED') && (
+          <>
+            <ThemeIcon size={80} radius="xl" color="yellow" variant="light">
+              <ClockIcon width={40} height={40} />
+            </ThemeIcon>
+            <Title order={1} size="h2">Payment is still processing</Title>
+            <Text c="dimmed">
+              Your payment is taking longer than expected. You will receive an update
+              once it is confirmed.
+            </Text>
+            <StatusActions>
+              <Button component={Link} href="/account/orders" color="brand">
+                Check My Orders
+              </Button>
+              <SecondaryLink href="/">Go to Home</SecondaryLink>
+            </StatusActions>
+          </>
+        )}
+      </Stack>
     </Container>
   );
 }
 
 export default function ConfirmationPage() {
   return (
-    <Suspense
-      fallback={
-        <div className="flex items-center justify-center py-20">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-        </div>
-      }
-    >
+    <Suspense fallback={<LoadingBlock />}>
       <ConfirmationContent />
     </Suspense>
   );

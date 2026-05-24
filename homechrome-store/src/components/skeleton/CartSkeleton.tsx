@@ -1,38 +1,40 @@
-import Skeleton from './Skeleton';
+'use client';
+
+import { Card, Container, Group, SimpleGrid, Skeleton, Stack } from '@mantine/core';
 
 export default function CartSkeleton() {
   return (
-    <div role="status" aria-label="Loading cart" className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
-      <Skeleton className="h-8 w-48 mb-8" />
-      <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
-        <div className="space-y-4 lg:col-span-2">
+    <Container size="xl" py="xl" role="status" aria-label="Loading cart">
+      <Skeleton h={32} w={192} mb="xl" />
+      <SimpleGrid cols={{ base: 1, lg: 3 }} spacing="xl">
+        <Stack gap="md" style={{ gridColumn: 'span 2 / span 2' }}>
           {[1, 2, 3].map((i) => (
-            <div key={i} className="flex gap-4 rounded-lg border border-border bg-white p-4">
-              <Skeleton variant="rectangular" className="h-24 w-24 flex-shrink-0" />
-              <div className="flex-1 space-y-2">
-                <Skeleton className="h-5 w-3/4" />
-                <Skeleton className="h-4 w-1/3" />
-                <div className="flex items-center justify-between pt-2">
-                  <Skeleton variant="rectangular" className="h-8 w-24" />
-                  <Skeleton className="h-5 w-20" />
-                </div>
-              </div>
-            </div>
+            <Card key={i} shadow="sm" radius="lg" padding="md">
+              <Group gap="md" wrap="nowrap">
+                <Skeleton h={96} w={96} radius="md" />
+                <Stack flex={1} gap="xs">
+                  <Skeleton h={20} w="75%" />
+                  <Skeleton h={16} w="33%" />
+                  <Group justify="space-between" mt="xs">
+                    <Skeleton h={32} w={96} />
+                    <Skeleton h={20} w={80} />
+                  </Group>
+                </Stack>
+              </Group>
+            </Card>
           ))}
-        </div>
-        <div>
-          <div className="rounded-lg border border-border bg-white p-6 space-y-4">
-            <Skeleton className="h-5 w-32" />
-            <Skeleton className="h-4 w-full" />
-            <Skeleton className="h-4 w-full" />
-            <Skeleton className="h-4 w-2/3" />
-            <div className="border-t border-border pt-4">
-              <Skeleton className="h-5 w-full" />
-            </div>
-            <Skeleton variant="rectangular" className="h-10 w-full" />
-          </div>
-        </div>
-      </div>
-    </div>
+        </Stack>
+        <Card shadow="sm" radius="lg" padding="md">
+          <Stack gap="md">
+            <Skeleton h={20} w={128} />
+            <Skeleton h={16} />
+            <Skeleton h={16} />
+            <Skeleton h={16} w="66%" />
+            <Skeleton h={20} mt="sm" />
+            <Skeleton h={40} />
+          </Stack>
+        </Card>
+      </SimpleGrid>
+    </Container>
   );
 }

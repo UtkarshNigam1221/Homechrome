@@ -1,7 +1,8 @@
 'use client';
 
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { cn, formatPrice } from '@/lib/utils';
+import { Group, Radio, Skeleton, Stack, Text } from '@mantine/core';
+
+import { formatPrice } from '@/lib/utils';
 import { CourierOption } from '@/types';
 
 interface ShippingOptionsProps {
@@ -19,59 +20,49 @@ export default function ShippingOptions({
 }: ShippingOptionsProps) {
   if (loading) {
     return (
-      <div className="space-y-3">
+      <Stack gap="sm">
         {[1, 2].map((i) => (
-          <div
-            key={i}
-            className="h-20 animate-pulse rounded-lg border border-border bg-card"
-          />
+          <Skeleton key={i} height={80} radius="md" />
         ))}
-      </div>
+      </Stack>
     );
   }
 
   if (couriers.length === 0) {
     return (
-      <p className="text-sm text-muted-foreground">
+      <Text size="sm" c="dimmed">
         No shipping options available for this address.
-      </p>
+      </Text>
     );
   }
 
   return (
-    <RadioGroup
-      value={selectedId?.toString()}
-      onValueChange={(val) => onSelect(Number(val))}
+    <Radio.Group
+      value={selectedId?.toString() || ''}
+      onChange={(val) => onSelect(Number(val))}
       aria-label="Shipping options"
     >
-      {couriers.map((courier) => {
-        const isSelected = selectedId === courier.id;
-        return (
-          <label
-            key={courier.id}
-            className={cn(
-              'flex cursor-pointer items-center justify-between rounded-lg border p-4 transition-colors',
-              isSelected
-                ? 'border-primary bg-primary/5 ring-1 ring-primary'
-                : 'border-border hover:border-primary/50',
-            )}
-          >
-            <div className="flex items-center gap-3">
-              <RadioGroupItem value={courier.id.toString()} />
-              <div>
-                <p className="font-medium text-foreground">{courier.name}</p>
-                <p className="text-sm text-muted-foreground">
-                  Estimated delivery in {courier.estimated_days}{' '}
-                  {courier.estimated_days === 1 ? 'day' : 'days'}
-                </p>
-              </div>
-            </div>
-            <span className="font-semibold text-foreground">
-              {courier.rate === 0 ? 'FREE' : formatPrice(courier.rate)}
-            </span>
-          </label>
-        );
-      })}
-    </RadioGroup>
+      <Stack gap="sm">
+        {couriers.map((courier) => (
+          <Radio.Card key={courier.id} value={courier.id.toString()} radius="md" p="md">
+            <Group justify="space-between" wrap="nowrap" align="center">
+              <Group align="center" gap="md" wrap="nowrap">
+                <Radio.Indicator color="brand" />
+                <Stack gap={2}>
+                  <Text fw={500} c="navy.7">{courier.name}</Text>
+                  <Text size="sm" c="dimmed">
+                    Estimated delivery in {courier.estimated_days}{' '}
+                    {courier.estimated_days === 1 ? 'day' : 'days'}
+                  </Text>
+                </Stack>
+              </Group>
+              <Text fw={600} c="navy.7">
+                {courier.rate === 0 ? 'FREE' : formatPrice(courier.rate)}
+              </Text>
+            </Group>
+          </Radio.Card>
+        ))}
+      </Stack>
+    </Radio.Group>
   );
 }

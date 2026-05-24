@@ -1,30 +1,33 @@
 'use client';
 
 import { CheckIcon } from '@heroicons/react/24/outline';
+import {
+  Alert,
+  Anchor,
+  Badge,
+  Box,
+  Button,
+  Card,
+  Center,
+  Divider,
+  Group,
+  Skeleton,
+  SimpleGrid,
+  Stack,
+  Text,
+  ThemeIcon,
+  Title,
+} from '@mantine/core';
+import { modals } from '@mantine/modals';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from '@/components/ui/alert-dialog';
-import Button from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Separator } from '@/components/ui/separator';
-import Skeleton from '@/components/skeleton/Skeleton';
 import api from '@/lib/api';
 import { ROUTES } from '@/lib/routes';
-import { formatDateTime as formatDate, formatPrice, statusColors } from '@/lib/utils';
+import { formatDateTime as formatDate, formatPrice, statusBadgeColor } from '@/lib/utils';
 import { Order, OrderStatus } from '@/types';
 
 const statusTimeline: OrderStatus[] = [
@@ -60,8 +63,6 @@ export default function OrderDetailPage() {
       return data;
     },
     enabled: !!orderId,
-    // Refetch on every mount so a returning user sees the latest order status
-    // (shipped / delivered / cancelled by support) without a manual reload.
     refetchOnMount: 'always',
   });
 
@@ -71,10 +72,8 @@ export default function OrderDetailPage() {
 
   const handleCancel = async () => {
     if (!order) return;
-
     setCancelling(true);
     setCancelError(null);
-
     try {
       await api.post(ROUTES.ORDERS.CANCEL(orderId));
       await queryClient.invalidateQueries({ queryKey: ['orders', orderId] });
@@ -85,46 +84,34 @@ export default function OrderDetailPage() {
     }
   };
 
+  const openCancelModal = () =>
+    modals.openConfirmModal({
+      title: 'Cancel Order',
+      children: (
+        <Text size="sm">
+          Are you sure you want to cancel this order? This action cannot be undone.
+        </Text>
+      ),
+      labels: { confirm: 'Cancel Order', cancel: 'Keep Order' },
+      confirmProps: { color: 'red' },
+      onConfirm: handleCancel,
+    });
+
   if (loading) {
     return (
-      <div role="status" aria-label="Loading order details" className="space-y-6">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div className="space-y-1">
-            <Skeleton className="h-4 w-28" />
-            <Skeleton className="h-6 w-44" />
-            <Skeleton className="h-4 w-40" />
-          </div>
-          <Skeleton variant="rectangular" className="h-7 w-24 self-start rounded-full" />
-        </div>
-        <Card>
-          <CardContent>
-            <div className="flex items-center justify-between">
-              {[1, 2, 3, 4, 5].map((i) => (
-                <div key={i} className="flex flex-1 items-center">
-                  <div className="flex flex-col items-center">
-                    <Skeleton variant="circular" className="h-8 w-8" />
-                    <Skeleton className="mt-1 h-3 w-12" />
-                  </div>
-                  {i < 5 && <Skeleton className="mx-1 h-0.5 flex-1" />}
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="space-y-4">
-            {[1, 2].map((i) => (
-              <div key={i} className="flex gap-4">
-                <Skeleton variant="rectangular" className="h-20 w-20 flex-shrink-0 rounded-md" />
-                <div className="flex-1 space-y-2">
-                  <Skeleton className="h-5 w-48" />
-                  <Skeleton className="h-4 w-24" />
-                </div>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      </div>
+      <Stack gap="lg" role="status" aria-label="Loading order details">
+        <Group justify="space-between" align="start">
+          <Stack gap="xs">
+            <Skeleton height={16} width={112} />
+            <Skeleton height={24} width={176} />
+            <Skeleton height={16} width={160} />
+          </Stack>
+          <Skeleton height={28} width={96} radius="xl" />
+        </Group>
+        <Card><Group justify="space-between">{Array.from({ length: 5 }).map((_, i) => (
+          <Stack key={i} align="center" gap={4}><Skeleton height={32} width={32} circle /><Skeleton height={12} width={48} /></Stack>
+        ))}</Group></Card>
+      </Stack>
     );
   }
 
@@ -135,260 +122,195 @@ export default function OrderDetailPage() {
   const isCancelled = ['CANCELLED', 'RETURNED', 'REFUNDED'].includes(order.status);
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <Link
-            href="/account/orders"
-            className="mb-1 inline-block text-sm text-primary hover:text-primary-dark"
-          >
-            &larr; Back to Orders
-          </Link>
-          <h2 className="text-lg font-semibold text-foreground">
-            Order #{order.order_number}
-          </h2>
-          <p className="text-sm text-muted-foreground">Placed on {formatDate(order.created_at)}</p>
-        </div>
-        <span
-          className={`inline-block self-start rounded-full px-3 py-1 text-sm font-medium ${statusColors[order.status]}`}
-        >
+    <Stack gap="lg">
+      <Group justify="space-between" align="start" wrap="wrap" gap="md">
+        <Stack gap={2}>
+          <Anchor component={Link} href="/account/orders" size="sm" c="brand">
+            ← Back to Orders
+          </Anchor>
+          <Title order={2} size="md">Order #{order.order_number}</Title>
+          <Text size="sm" c="dimmed">Placed on {formatDate(order.created_at)}</Text>
+        </Stack>
+        <Badge color={statusBadgeColor[order.status]} variant="light" size="lg" radius="xl">
           {order.status}
-        </span>
-      </div>
+        </Badge>
+      </Group>
 
-      {cancelError && (
-        <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-          {cancelError}
-        </div>
-      )}
+      {cancelError && <Alert color="red" title="Error">{cancelError}</Alert>}
 
-      {/* Status Timeline */}
       {!isCancelled && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm">Order Status</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-between">
+        <Card shadow="sm" radius="lg" padding="md">
+          <Stack gap="md">
+            <Title order={3} size="sm">Order Status</Title>
+            <Group justify="space-between" gap={0} wrap="nowrap">
               {statusTimeline.map((status, idx) => (
-                <div key={status} className="flex flex-1 items-center">
-                  <div className="flex flex-col items-center">
-                    <div
-                      className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold ${
-                        idx <= currentStatusIdx
-                          ? 'bg-primary text-white'
-                          : 'bg-gray-200 text-muted-foreground'
-                      }`}
+                <Group key={status} flex={1} wrap="nowrap" gap={4}>
+                  <Stack align="center" gap={4} flex="none">
+                    <ThemeIcon
+                      size={32}
+                      radius="xl"
+                      color={idx <= currentStatusIdx ? 'brand' : 'gray'}
+                      variant={idx <= currentStatusIdx ? 'filled' : 'light'}
                     >
                       {idx < currentStatusIdx ? (
-                        <CheckIcon className="h-4 w-4" strokeWidth={2.5} />
+                        <CheckIcon width={16} height={16} strokeWidth={2.5} />
                       ) : (
-                        idx + 1
+                        <Text size="xs" fw={700}>{idx + 1}</Text>
                       )}
-                    </div>
-                    <span className="mt-1 text-center text-[10px] text-muted-foreground sm:text-xs">
-                      {status}
-                    </span>
-                  </div>
+                    </ThemeIcon>
+                    <Text size="xs" c="dimmed" ta="center">{status}</Text>
+                  </Stack>
                   {idx < statusTimeline.length - 1 && (
-                    <div
-                      className={`mx-1 h-0.5 flex-1 ${
-                        idx < currentStatusIdx ? 'bg-primary' : 'bg-gray-200'
-                      }`}
+                    <Box
+                      flex={1}
+                      h={2}
+                      bg={idx < currentStatusIdx ? 'brand.5' : 'gray.3'}
                     />
                   )}
-                </div>
+                </Group>
               ))}
-            </div>
-          </CardContent>
+            </Group>
+          </Stack>
         </Card>
       )}
 
-      {/* Tracking Info */}
       {order.tracking_number && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm">Tracking Information</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <Card shadow="sm" radius="lg" padding="md">
+          <Stack gap="md">
+            <Title order={3} size="sm">Tracking Information</Title>
+            <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="md">
               {order.shipping_carrier && (
-                <div>
-                  <p className="text-xs text-muted-foreground">Courier</p>
-                  <p className="font-medium text-foreground">{order.shipping_carrier}</p>
-                </div>
+                <Stack gap={2}>
+                  <Text size="xs" c="dimmed">Courier</Text>
+                  <Text fw={500} c="navy.7">{order.shipping_carrier}</Text>
+                </Stack>
               )}
-              <div>
-                <p className="text-xs text-muted-foreground">AWB Number</p>
-                <p className="font-medium text-foreground">{order.tracking_number}</p>
-              </div>
+              <Stack gap={2}>
+                <Text size="xs" c="dimmed">AWB Number</Text>
+                <Text fw={500} c="navy.7">{order.tracking_number}</Text>
+              </Stack>
               {order.tracking_url && (
-                <div>
-                  <p className="text-xs text-muted-foreground">Track Shipment</p>
-                  <a
-                    href={order.tracking_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-sm font-medium text-primary hover:text-primary-dark"
-                  >
+                <Stack gap={2}>
+                  <Text size="xs" c="dimmed">Track Shipment</Text>
+                  <Anchor href={order.tracking_url} target="_blank" rel="noopener noreferrer" size="sm" c="brand">
                     Track on courier website
-                  </a>
-                </div>
+                  </Anchor>
+                </Stack>
               )}
-            </div>
+            </SimpleGrid>
             {order.shipped_at && (
-              <p className="mt-2 text-xs text-muted-foreground">
-                Shipped on {formatDate(order.shipped_at)}
-              </p>
+              <Text size="xs" c="dimmed">Shipped on {formatDate(order.shipped_at)}</Text>
             )}
             {order.delivered_at && (
-              <p className="mt-1 text-xs text-muted-foreground">
-                Delivered on {formatDate(order.delivered_at)}
-              </p>
+              <Text size="xs" c="dimmed">Delivered on {formatDate(order.delivered_at)}</Text>
             )}
-          </CardContent>
+          </Stack>
         </Card>
       )}
 
-      {/* Items */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-sm">Items</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="divide-y divide-border">
-            {order.items.map((item) => (
-              <div key={item.id} className="flex gap-4 py-4 first:pt-0 last:pb-0">
-                <div className="relative h-20 w-20 flex-shrink-0 overflow-hidden rounded-md bg-gray-100">
-                  {item.product_image ? (
-                    <Image
-                      src={item.product_image}
-                      alt={item.product_name}
-                      fill
-                      className="object-cover"
-                      sizes="80px"
-                    />
-                  ) : (
-                    <div className="flex h-full w-full items-center justify-center text-xs text-muted-foreground">
-                      No image
-                    </div>
-                  )}
-                </div>
-                <div className="flex flex-1 flex-col justify-between">
-                  <div>
-                    <p className="font-medium text-foreground">{item.product_name}</p>
-                    <p className="text-sm text-muted-foreground">SKU: {item.product_sku}</p>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <p className="text-sm text-muted-foreground">Qty: {item.quantity}</p>
-                    <p className="font-medium text-foreground">
-                      {formatPrice(item.total_price)}
-                    </p>
-                  </div>
-                </div>
-              </div>
+      <Card shadow="sm" radius="lg" padding="md">
+        <Stack gap="md">
+          <Title order={3} size="sm">Items</Title>
+          <Stack gap="md" style={{ divider: 'true' }}>
+            {order.items.map((item, idx) => (
+              <Box key={item.id}>
+                {idx > 0 && <Divider mb="md" />}
+                <Group gap="md" wrap="nowrap">
+                  <Box
+                    pos="relative"
+                    w={80}
+                    h={80}
+                    flex="none"
+                    style={{
+                      overflow: 'hidden',
+                      borderRadius: 'var(--mantine-radius-md)',
+                      background: 'var(--mantine-color-gray-1)',
+                    }}
+                  >
+                    {item.product_image ? (
+                      <Image
+                        src={item.product_image}
+                        alt={item.product_name}
+                        fill
+                        sizes="80px"
+                        style={{ objectFit: 'cover' }}
+                      />
+                    ) : (
+                      <Center h="100%">
+                        <Text size="xs" c="dimmed">No image</Text>
+                      </Center>
+                    )}
+                  </Box>
+                  <Stack flex={1} gap="xs" justify="space-between">
+                    <Stack gap={2}>
+                      <Text fw={500} c="navy.7">{item.product_name}</Text>
+                      <Text size="sm" c="dimmed">SKU: {item.product_sku}</Text>
+                    </Stack>
+                    <Group justify="space-between">
+                      <Text size="sm" c="dimmed">Qty: {item.quantity}</Text>
+                      <Text fw={500} c="navy.7">{formatPrice(item.total_price)}</Text>
+                    </Group>
+                  </Stack>
+                </Group>
+              </Box>
             ))}
-          </div>
-        </CardContent>
+          </Stack>
+        </Stack>
       </Card>
 
-      {/* Order Summary + Shipping Address */}
-      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm">Payment Summary</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Subtotal</span>
-                <span className="text-foreground">{formatPrice(order.subtotal)}</span>
-              </div>
+      <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="lg">
+        <Card shadow="sm" radius="lg" padding="md">
+          <Stack gap="md">
+            <Title order={3} size="sm">Payment Summary</Title>
+            <Stack gap="xs">
+              <Group justify="space-between"><Text size="sm" c="dimmed">Subtotal</Text><Text size="sm">{formatPrice(order.subtotal)}</Text></Group>
               {order.discount_amount > 0 && (
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Discount</span>
-                  <span className="text-green-600">-{formatPrice(order.discount_amount)}</span>
-                </div>
+                <Group justify="space-between"><Text size="sm" c="dimmed">Discount</Text><Text size="sm" c="teal.7">-{formatPrice(order.discount_amount)}</Text></Group>
               )}
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Shipping</span>
-                <span className="text-foreground">
-                  {order.shipping_amount === 0 ? 'FREE' : formatPrice(order.shipping_amount)}
-                </span>
-              </div>
+              <Group justify="space-between"><Text size="sm" c="dimmed">Shipping</Text><Text size="sm">{order.shipping_amount === 0 ? 'FREE' : formatPrice(order.shipping_amount)}</Text></Group>
               {order.tax_amount > 0 && (
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Tax</span>
-                  <span className="text-foreground">{formatPrice(order.tax_amount)}</span>
-                </div>
+                <Group justify="space-between"><Text size="sm" c="dimmed">Tax</Text><Text size="sm">{formatPrice(order.tax_amount)}</Text></Group>
               )}
-              <Separator />
-              <div className="flex justify-between font-semibold">
-                <span className="text-foreground">Total</span>
-                <span className="text-foreground">{formatPrice(order.total_amount)}</span>
-              </div>
-            </div>
-          </CardContent>
+              <Divider />
+              <Group justify="space-between"><Text fw={600}>Total</Text><Text fw={600}>{formatPrice(order.total_amount)}</Text></Group>
+            </Stack>
+          </Stack>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm">Shipping Address</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-sm">
-              <p className="font-medium text-foreground">
+        <Card shadow="sm" radius="lg" padding="md">
+          <Stack gap="md">
+            <Title order={3} size="sm">Shipping Address</Title>
+            <Stack gap={2}>
+              <Text fw={500} c="navy.7">
                 {order.shipping_address.first_name} {order.shipping_address.last_name}
-              </p>
-              <p className="mt-1 text-muted-foreground">{order.shipping_address.address_line1}</p>
+              </Text>
+              <Text size="sm" c="dimmed">{order.shipping_address.address_line1}</Text>
               {order.shipping_address.address_line2 && (
-                <p className="text-muted-foreground">{order.shipping_address.address_line2}</p>
+                <Text size="sm" c="dimmed">{order.shipping_address.address_line2}</Text>
               )}
-              <p className="text-muted-foreground">
+              <Text size="sm" c="dimmed">
                 {order.shipping_address.city}, {order.shipping_address.state} -{' '}
                 {order.shipping_address.postal_code}
-              </p>
-              <p className="text-muted-foreground">Phone: {order.shipping_address.phone}</p>
-            </div>
-          </CardContent>
+              </Text>
+              <Text size="sm" c="dimmed">Phone: {order.shipping_address.phone}</Text>
+            </Stack>
+          </Stack>
         </Card>
-      </div>
+      </SimpleGrid>
 
-      {/* Cancel button */}
       {canCancel && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm">Cancel Order</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="mb-4 text-sm text-muted-foreground">
+        <Card shadow="sm" radius="lg" padding="md">
+          <Stack gap="md">
+            <Title order={3} size="sm">Cancel Order</Title>
+            <Text size="sm" c="dimmed">
               You can cancel this order since it has not been processed yet.
-            </p>
-            <AlertDialog>
-              <AlertDialogTrigger
-                render={<Button variant="destructive" loading={cancelling} />}
-              >
-                Cancel Order
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Cancel Order</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    Are you sure you want to cancel this order? This action cannot be undone.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Keep Order</AlertDialogCancel>
-                  <AlertDialogAction variant="destructive" onClick={handleCancel}>
-                    Cancel Order
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-          </CardContent>
+            </Text>
+            <Button color="red" loading={cancelling} onClick={openCancelModal} w="fit-content">
+              Cancel Order
+            </Button>
+          </Stack>
         </Card>
       )}
-    </div>
+    </Stack>
   );
 }

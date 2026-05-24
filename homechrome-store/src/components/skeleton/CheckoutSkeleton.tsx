@@ -1,53 +1,52 @@
-import Skeleton from './Skeleton';
+'use client';
+
+import { Card, Container, Group, SimpleGrid, Skeleton, Stack } from '@mantine/core';
 
 export default function CheckoutSkeleton() {
   return (
-    <div role="status" aria-label="Loading checkout" className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
-      <Skeleton className="h-8 w-40 mb-2" />
-      <Skeleton className="h-4 w-64 mb-8" />
+    <Container size="lg" py="lg" role="status" aria-label="Loading checkout">
+      <Skeleton h={32} w={160} mb="xs" />
+      <Skeleton h={16} w={256} mb="xl" />
 
-      {/* Progress steps */}
-      <div className="mb-8 flex items-center gap-2">
+      <Group gap="sm" mb="xl">
         {[1, 2, 3].map((i) => (
-          <div key={i} className="flex items-center gap-2">
-            {i > 1 && <Skeleton className="h-px w-6 sm:w-12" />}
-            <Skeleton variant="rectangular" className="h-8 w-20 rounded-full" />
-          </div>
+          <Group key={i} gap="sm" wrap="nowrap">
+            {i > 1 && <Skeleton h={1} w={32} />}
+            <Skeleton h={32} w={80} radius="xl" />
+          </Group>
         ))}
-      </div>
+      </Group>
 
-      <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
-        <div className="lg:col-span-2">
-          <div className="rounded-lg border border-border bg-white p-6 space-y-4">
-            <Skeleton className="h-6 w-40" />
+      <SimpleGrid cols={{ base: 1, lg: 3 }} spacing="xl">
+        <Card shadow="sm" radius="lg" padding="md" style={{ gridColumn: 'span 2 / span 2' }}>
+          <Stack gap="md">
+            <Skeleton h={24} w={160} />
             {[1, 2].map((i) => (
-              <div key={i} className="rounded-lg border border-border p-4 space-y-2">
-                <Skeleton className="h-5 w-48" />
-                <Skeleton className="h-4 w-full" />
-                <Skeleton className="h-4 w-2/3" />
-              </div>
+              <Stack key={i} gap="xs" p="md" style={{ border: '1px solid var(--mantine-color-default-border)', borderRadius: 'var(--mantine-radius-md)' }}>
+                <Skeleton h={20} w={192} />
+                <Skeleton h={16} />
+                <Skeleton h={16} w="66%" />
+              </Stack>
             ))}
-            <Skeleton variant="rectangular" className="h-10 w-44 mt-4" />
-          </div>
-        </div>
-        <div>
-          <div className="rounded-lg border border-border bg-white p-6 space-y-3">
-            <Skeleton className="h-5 w-32" />
+            <Skeleton h={40} w={176} mt="md" />
+          </Stack>
+        </Card>
+        <Card shadow="sm" radius="lg" padding="md">
+          <Stack gap="sm">
+            <Skeleton h={20} w={128} />
             {[1, 2, 3].map((i) => (
-              <div key={i} className="flex justify-between">
-                <Skeleton className="h-4 w-24" />
-                <Skeleton className="h-4 w-16" />
-              </div>
+              <Group key={i} justify="space-between">
+                <Skeleton h={16} w={96} />
+                <Skeleton h={16} w={64} />
+              </Group>
             ))}
-            <div className="border-t border-border pt-3">
-              <div className="flex justify-between">
-                <Skeleton className="h-5 w-16" />
-                <Skeleton className="h-5 w-20" />
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
+            <Group justify="space-between" mt="sm">
+              <Skeleton h={20} w={64} />
+              <Skeleton h={20} w={80} />
+            </Group>
+          </Stack>
+        </Card>
+      </SimpleGrid>
+    </Container>
   );
 }
