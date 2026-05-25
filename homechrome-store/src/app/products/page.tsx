@@ -19,9 +19,12 @@ interface PageProps {
 
 async function getProducts(search: string): Promise<Product[]> {
   try {
-    const url = new URL(`${API_BASE}${ROUTES.CATALOG.PRODUCTS}`);
-    if (search) url.searchParams.set('search', search);
-    const res = await fetch(url.toString(), { next: { revalidate: 300 } });
+    // /search handles both filtered + filter-only listings now — empty q just
+    // returns all active products in sort_order.
+    const qs = new URLSearchParams({ limit: '50' });
+    if (search) qs.set('q', search);
+    const url = `${API_BASE}${ROUTES.CATALOG.SEARCH}?${qs.toString()}`;
+    const res = await fetch(url, { next: { revalidate: 300 } });
     if (!res.ok) return [];
     const json = await res.json();
     return json.data || [];

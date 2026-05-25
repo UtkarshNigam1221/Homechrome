@@ -34,7 +34,10 @@ export default function ProductsView({ products: initialProducts, initialSearch 
     skipInitialFetchWhenNoFilters: false,
     extraParams: () => {
       const p = new URLSearchParams();
-      if (currentSearch.trim()) p.set('search', currentSearch.trim());
+      // `q` (not `search`) — the hook routes to /search when q is present;
+      // both /search and the legacy /products fall back to identical
+      // behavior for empty q, so this works for both filtered + unfiltered.
+      if (currentSearch.trim()) p.set('q', currentSearch.trim());
       return p;
     },
     extraDeps: [currentSearch],

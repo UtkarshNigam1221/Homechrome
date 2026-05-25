@@ -8,6 +8,8 @@ import (
 
 	"github.com/pgvector/pgvector-go"
 	"github.com/stretchr/testify/require"
+
+	"github.com/handloom/admin/internal/repository/postgres"
 )
 
 // TestSearcher_Hybrid_ReturnsKnownProduct is an integration test against a
@@ -41,9 +43,10 @@ func TestSearcher_Hybrid_ReturnsKnownProduct(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _, _ = pool.Exec(ctx, `DELETE FROM products WHERE id = $1`, id) })
 
-	s := NewSearcher(pool, Weights{Semantic: 0.6, Keyword: 0.3, Trigram: 0.1})
+	productRepo := postgres.NewProductRepository(pool)
+	s := NewSearcher(pool, productRepo, Weights{Semantic: 0.6, Keyword: 0.3, Trigram: 0.1})
 
-	out, err := s.Search(ctx, knownVec, "silk", 5, 0)
+	out, err := s.Search(ctx, knownVec, SearchRequest{Query: "silk", Limit: 5}, 0)
 	require.NoError(t, err)
 	require.NotEmpty(t, out.Data, "search should return at least one row")
 	// Known product should be in top results.

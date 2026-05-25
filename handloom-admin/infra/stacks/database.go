@@ -16,6 +16,7 @@ type DatabaseStackProps struct {
 	awscdk.StackProps
 	Environment string
 	PostgresDSN string
+	LogsStack   *LogsStack // shared log groups (migrator writes to ApiLogGroup)
 }
 
 // DatabaseStack contains the DynamoDB tables and the Postgres DSN for catalog data
@@ -307,6 +308,7 @@ func NewDatabaseStack(scope constructs.Construct, id string, props *DatabaseStac
 		Architecture: awslambda.Architecture_ARM_64(),
 		MemorySize:   jsii.Number(128),
 		Timeout:      awscdk.Duration_Seconds(jsii.Number(60)),
+		LogGroup:     props.LogsStack.ApiLogGroup,
 		Environment: &map[string]*string{
 			"POSTGRES_DSN": postgresDSN,
 			"APP_ENV":      jsii.String(props.Environment),

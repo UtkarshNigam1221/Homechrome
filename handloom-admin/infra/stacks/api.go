@@ -3,6 +3,7 @@ package stacks
 import (
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/aws/aws-cdk-go/awscdk/v2"
@@ -24,6 +25,7 @@ type APIStackProps struct {
 	Environment    string
 	DatabaseStack  *DatabaseStack
 	StorageStack   *StorageStack
+	LogsStack      *LogsStack     // Shared CloudWatch log groups (ApiLogGroup, WorkerLogGroup)
 	EventStack     *EventStack    // Optional: event-driven async infrastructure
 	EmbedderStack  *EmbedderStack // Optional: embedder Lambda for hybrid semantic search
 	BaseDomain     string         // Base domain (e.g. homechrome.in) — used for cookie domain
@@ -55,6 +57,11 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 	stack := awscdk.NewStack(scope, &id, &sprops)
 	isProd := props.Environment == "prod"
 
+	// Shared log groups come from LogsStack — single source of truth for
+	// retention + lifecycle.
+	apiLogGroup := props.LogsStack.ApiLogGroup
+	workerLogGroup := props.LogsStack.WorkerLogGroup
+
 	// JWT secret parameter names. These SSM parameters must be created out-of-band
 	// (see scripts/bootstrap-env.sh) before deploying this stack. The stack only
 	// CONSUMES the values via dynamic reference — it does not create them. This is
@@ -76,6 +83,7 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 		Architecture:     awslambda.Architecture_ARM_64(),
 		MemorySize:       jsii.Number(1024),
 		Timeout:          awscdk.Duration_Seconds(jsii.Number(90)),
+		LogGroup:         apiLogGroup,
 		Bundling: &awslambdanodejs.BundlingOptions{
 			// Sharp must NOT be esbuild-bundled — it has native binaries.
 			// @aws-sdk/client-s3 is provided by the Node 20 Lambda runtime.
@@ -154,23 +162,8 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 		memorySize = 256 // Slightly higher for production, still cost-effective
 	}
 
-	// Log retention - minimize to reduce CloudWatch costs
-	// Free tier: 5GB ingestion, 5GB storage, 5GB data scanned
-	logRetention := awslogs.RetentionDays_THREE_DAYS
-	if isProd {
-		logRetention = awslogs.RetentionDays_ONE_WEEK
-	}
-
-	// Shared log group for all API Lambdas — single pane of glass for all services.
-	logRemovalPolicy := awscdk.RemovalPolicy_DESTROY
-	if isProd {
-		logRemovalPolicy = awscdk.RemovalPolicy_RETAIN
-	}
-	sharedLogGroup := awslogs.NewLogGroup(stack, jsii.String("SharedApiLogGroup"), &awslogs.LogGroupProps{
-		LogGroupName:  jsii.String(fmt.Sprintf("/aws/lambda/handloom-api-%s", props.Environment)),
-		Retention:     logRetention,
-		RemovalPolicy: logRemovalPolicy,
-	})
+	// apiLogGroup + workerLogGroup are declared at the top of this stack
+	// (sourced from LogsStack).
 
 	// Create Lambda functions for each service
 	// TODO: Uncomment services as they are implemented
@@ -206,7 +199,7 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 		if svc == "asset" {
 			timeout = 45
 		}
-		lambdaFn := createServiceLambda(stack, svc, props.Environment, commonEnv, memorySize, timeout, sharedLogGroup)
+		lambdaFn := createServiceLambda(stack, svc, props.Environment, commonEnv, memorySize, timeout, apiLogGroup)
 		lambdas[svc] = &ServiceLambda{
 			Function: lambdaFn,
 			Name:     svc,
@@ -269,7 +262,7 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 			Code:         awslambda.Code_FromAsset(jsii.String("../bin/lambda/worker-embedding-backfill"), &awss3assets.AssetOptions{}),
 			MemorySize:   jsii.Number(1769),
 			Timeout:      awscdk.Duration_Minutes(jsii.Number(15)),
-			LogRetention: awslogs.RetentionDays_TWO_WEEKS,
+			LogGroup:     workerLogGroup,
 			Environment: &map[string]*string{
 				"POSTGRES_DSN":            props.DatabaseStack.PostgresDSN,
 				"EMBEDDER_FN_NAME":        props.EmbedderStack.Function.FunctionName(),
@@ -317,7 +310,7 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 	})
 
 	// Create integrations and routes
-	setupAPIRoutes(api, lambdas)
+	setupAPIRoutes(api, lambdas, props.EmbedderStack)
 
 	// Custom domain for API Gateway (regional — lowest latency for ap-south-1 origin)
 	if props.CertArn != "" && props.DomainName != "" {
@@ -370,7 +363,7 @@ func createServiceLambda(
 	commonEnv map[string]*string,
 	memorySize float64,
 	timeout float64,
-	logGroup awslogs.LogGroup,
+	logGroup awslogs.ILogGroup,
 ) awslambda.Function {
 	// Add service-specific environment variable
 	env := make(map[string]*string)
@@ -396,7 +389,7 @@ func createServiceLambda(
 	})
 }
 
-func setupAPIRoutes(api awsapigateway.RestApi, lambdas map[string]*ServiceLambda) {
+func setupAPIRoutes(api awsapigateway.RestApi, lambdas map[string]*ServiceLambda, embedderStack *EmbedderStack) {
 	// Health check - use proxy integration to pass full path
 	health := api.Root().AddResource(jsii.String("health"), nil)
 	health.AddMethod(jsii.String("ANY"), awsapigateway.NewLambdaIntegration(lambdas["auth"].Function, &awsapigateway.LambdaIntegrationOptions{
@@ -561,7 +554,16 @@ func setupAPIRoutes(api awsapigateway.RestApi, lambdas map[string]*ServiceLambda
 		"webhooks": "store-webhooks",
 	}
 
-	for path, svcName := range storeRoutes {
+	// Sort to make CloudFormation output deterministic — Go map iteration is
+	// randomized per process and would otherwise create spurious cdk-diff noise.
+	storePaths := make([]string, 0, len(storeRoutes))
+	for k := range storeRoutes {
+		storePaths = append(storePaths, k)
+	}
+	sort.Strings(storePaths)
+
+	for _, path := range storePaths {
+		svcName := storeRoutes[path]
 		if svcLambda, ok := lambdas[svcName]; ok {
 			svcLambda.Function.AddPermission(jsii.String(fmt.Sprintf("%sApiInvoke", capitalize(svcName))), &awslambda.Permission{
 				Principal: awsiam.NewServicePrincipal(jsii.String("apigateway.amazonaws.com"), nil),
@@ -579,6 +581,40 @@ func setupAPIRoutes(api awsapigateway.RestApi, lambdas map[string]*ServiceLambda
 
 			resource := apiV1Store.AddResource(jsii.String(path), nil)
 			resource.AddMethod(jsii.String("ANY"), integration, nil)
+
+			// Mount embedder Lambda under /api/v1/store/catalog/{search,embedder-ping}.
+			// API Gateway matches exact static paths before the {proxy+} fallback,
+			// so these override the store-catalog Lambda for those two routes.
+			if path == "catalog" && embedderStack != nil {
+				embFn := embedderStack.Function
+				// Create the invoke permission in APIStack (not the embedder
+				// Lambda's stack) to avoid a cross-stack dependency cycle:
+				// APIStack already depends on EmbedderStack for the Function
+				// ARN; if AddPermission ran on the Lambda it would also make
+				// EmbedderStack depend on APIStack (for the API's RestApiId).
+				awslambda.NewCfnPermission(awscdk.Stack_Of(api), jsii.String("EmbedderApiInvoke"), &awslambda.CfnPermissionProps{
+					Action:       jsii.String("lambda:InvokeFunction"),
+					FunctionName: embFn.FunctionArn(),
+					Principal:    jsii.String("apigateway.amazonaws.com"),
+					SourceArn: jsii.String(fmt.Sprintf("arn:aws:execute-api:%s:%s:%s/*",
+						*awscdk.Aws_REGION(),
+						*awscdk.Aws_ACCOUNT_ID(),
+						*api.RestApiId(),
+					)),
+				})
+				embIntegration := awsapigateway.NewLambdaIntegration(embFn, &awsapigateway.LambdaIntegrationOptions{
+					Proxy: jsii.Bool(true),
+				})
+
+				search := resource.AddResource(jsii.String("search"), nil)
+				search.AddMethod(jsii.String("GET"), embIntegration, nil)
+				search.AddMethod(jsii.String("OPTIONS"), embIntegration, nil)
+
+				ping := resource.AddResource(jsii.String("embedder-ping"), nil)
+				ping.AddMethod(jsii.String("GET"), embIntegration, nil)
+				ping.AddMethod(jsii.String("OPTIONS"), embIntegration, nil)
+			}
+
 			resource.AddProxy(&awsapigateway.ProxyResourceOptions{
 				AnyMethod:          jsii.Bool(true),
 				DefaultIntegration: integration,

@@ -25,19 +25,33 @@ func main() {
 
 	postgresDSN := getPostgresDSN(app)
 
+	commonTags := &map[string]*string{
+		"Environment": jsii.String(environment),
+		"Project":     jsii.String("handloom-admin"),
+		"ManagedBy":   jsii.String("cdk"),
+	}
+
+	// Logs stack — owns ApiLogGroup + WorkerLogGroup. Created first so every
+	// downstream stack can reference the same log groups via props.LogsStack.
+	logsStack := stacks.NewLogsStack(app, "HandloomLogsStack-"+environment, &stacks.LogsStackProps{
+		StackProps: awscdk.StackProps{
+			Env:         env,
+			Description: jsii.String("Handloom Admin - Shared CloudWatch log groups (" + environment + ")"),
+			Tags:        commonTags,
+		},
+		Environment: environment,
+	})
+
 	// Database stack
 	databaseStack := stacks.NewDatabaseStack(app, "HandloomDatabaseStack-"+environment, &stacks.DatabaseStackProps{
 		StackProps: awscdk.StackProps{
 			Env:         env,
 			Description: jsii.String("Handloom Admin - Database resources (" + environment + ")"),
-			Tags: &map[string]*string{
-				"Environment": jsii.String(environment),
-				"Project":     jsii.String("handloom-admin"),
-				"ManagedBy":   jsii.String("cdk"),
-			},
+			Tags:        commonTags,
 		},
 		Environment: environment,
 		PostgresDSN: postgresDSN,
+		LogsStack:   logsStack,
 	})
 
 	// Storage stack
@@ -45,11 +59,7 @@ func main() {
 		StackProps: awscdk.StackProps{
 			Env:         env,
 			Description: jsii.String("Handloom Admin - Storage resources (" + environment + ")"),
-			Tags: &map[string]*string{
-				"Environment": jsii.String(environment),
-				"Project":     jsii.String("handloom-admin"),
-				"ManagedBy":   jsii.String("cdk"),
-			},
+			Tags:        commonTags,
 		},
 		Environment: environment,
 	})
@@ -79,30 +89,24 @@ func main() {
 		StackProps: awscdk.StackProps{
 			Env:         env,
 			Description: jsii.String("Handloom Admin - Embedder Lambda for hybrid semantic search (" + environment + ")"),
-			Tags: &map[string]*string{
-				"Environment": jsii.String(environment),
-				"Project":     jsii.String("handloom-admin"),
-				"ManagedBy":   jsii.String("cdk"),
-			},
+			Tags:        commonTags,
 		},
 		Environment:    environment,
 		StoreFrontHost: cfg.StoreFrontHost,
 		DatabaseStack:  databaseStack,
+		LogsStack:      logsStack,
 	})
 	// API stack (depends on database, storage, and events)
 	stacks.NewAPIStack(app, "HandloomAPIStack-"+environment, &stacks.APIStackProps{
 		StackProps: awscdk.StackProps{
 			Env:         env,
 			Description: jsii.String("Handloom Admin - API and Lambda functions (" + environment + ")"),
-			Tags: &map[string]*string{
-				"Environment": jsii.String(environment),
-				"Project":     jsii.String("handloom-admin"),
-				"ManagedBy":   jsii.String("cdk"),
-			},
+			Tags:        commonTags,
 		},
 		Environment:    environment,
 		DatabaseStack:  databaseStack,
 		StorageStack:   storageStack,
+		LogsStack:      logsStack,
 		EventStack:     nil,      // DISABLED: pass eventStack here when re-enabling
 		EmbedderStack:  embStack, // Embedder for hybrid semantic search
 		BaseDomain:     cfg.BaseDomain,

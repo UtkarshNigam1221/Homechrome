@@ -12,10 +12,10 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
-	"github.com/go-chi/chi/v5"
-	chiadapter "github.com/awslabs/aws-lambda-go-api-proxy/chi"
+	"github.com/awslabs/aws-lambda-go-api-proxy/httpadapter"
 
 	emb "github.com/handloom/admin/cmd/embedder/embedder"
+	"github.com/handloom/admin/internal/repository/postgres"
 )
 
 func main() {
@@ -30,21 +30,22 @@ func main() {
 	// Warmup pass — first inference is slow due to lazy graph init.
 	_, _ = onnx.Embed([]string{"warmup"})
 
+	productRepo := postgres.NewProductRepository(pool)
+
 	d := &deps{
 		onnx:        onnx,
-		searcher:    emb.NewSearcher(pool, cfg.Weights),
+		searcher:    emb.NewSearcher(pool, productRepo, cfg.Weights),
 		hmac:        emb.NewHMACVerifier([]byte(cfg.AuthKey)),
 		rl:          emb.NewIPRateLimiter(cfg.RatePerMin),
 		allowOrigin: cfg.AllowedOrigin,
 		startedAt:   time.Now(),
 	}
 
-	// newRouter returns http.Handler; the underlying value is always *chi.Mux.
-	mux := newRouter(d).(*chi.Mux)
-	adapter := chiadapter.NewV2(mux)
+	// API Gateway REST API (v1) — same adapter the other Lambdas use.
+	adapter := httpadapter.New(newRouter(d))
 
-	lambda.Start(func(ctx context.Context, req events.APIGatewayV2HTTPRequest) (events.APIGatewayV2HTTPResponse, error) {
-		return adapter.ProxyWithContextV2(ctx, req)
+	lambda.Start(func(ctx context.Context, req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+		return adapter.ProxyWithContext(ctx, req)
 	})
 }
 

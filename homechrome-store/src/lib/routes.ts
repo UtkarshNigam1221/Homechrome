@@ -31,6 +31,8 @@ export const ROUTES = {
     PRODUCTS: '/api/v1/store/catalog/products',
     PRODUCT: (slug: string) => `/api/v1/store/catalog/products/${slug}`,
     FILTER_OPTIONS: (categoryId: string) => `/api/v1/store/catalog/products/filter-options/${categoryId}`,
+    SEARCH: '/api/v1/store/catalog/search',
+    EMBEDDER_PING: '/api/v1/store/catalog/embedder-ping',
   },
   TRACK: (trackingNumber: string) => `/api/v1/store/track/${encodeURIComponent(trackingNumber)}`,
   EVENTS: '/api/v1/store/events',

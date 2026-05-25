@@ -22,20 +22,34 @@ func main() {
 		panic(fmt.Sprintf("unknown environment: %s (valid: dev, prod)", environment))
 	}
 
+	commonTags := &map[string]*string{
+		"Environment": jsii.String(environment),
+		"Project":     jsii.String("homechrome-store"),
+		"ManagedBy":   jsii.String("cdk"),
+	}
+
+	// Logs stack — owns ServerLogGroup. Created first so the storefront stack
+	// can reference it via props.LogsStack.
+	logsStack := stacks.NewLogsStack(app, "HomechromeStoreLogsStack-"+environment, &stacks.LogsStackProps{
+		StackProps: awscdk.StackProps{
+			Env:         env,
+			Description: jsii.String("Homechrome Store - Shared CloudWatch log groups (" + environment + ")"),
+			Tags:        commonTags,
+		},
+		Environment: environment,
+	})
+
 	stacks.NewStorefrontStack(app, "HomechromeStoreStack-"+environment, &stacks.StorefrontStackProps{
 		StackProps: awscdk.StackProps{
 			Env:         env,
 			Description: jsii.String("Homechrome Store - Next.js SSR hosting (" + environment + ")"),
-			Tags: &map[string]*string{
-				"Environment": jsii.String(environment),
-				"Project":     jsii.String("homechrome-store"),
-				"ManagedBy":   jsii.String("cdk"),
-			},
+			Tags:        commonTags,
 		},
 		Environment:   environment,
 		DomainNames:   cfg.DomainNames,
 		CertArn:       cfg.CertArn,
 		BackendApiUrl: cfg.BackendApiUrl,
+		LogsStack:     logsStack,
 	})
 
 	app.Synth(nil)

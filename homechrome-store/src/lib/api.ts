@@ -5,7 +5,7 @@ import axios, {
 } from 'axios';
 
 import { ROUTES } from '@/lib/routes';
-import { isSemanticEnabled, SearchResponse, semanticSearch } from '@/lib/semantic-search';
+import { SearchResponse } from '@/lib/semantic-search';
 
 interface ApiResponse<T> {
   success: boolean;
@@ -102,22 +102,64 @@ const api = {
 
 export default api;
 
+export interface SearchParams {
+  q?: string;
+  limit?: number;
+  cursor?: string;
+  category_id?: string;
+  min_price?: number;
+  max_price?: number;
+  in_stock?: boolean;
+  material?: string;
+  color?: string;
+  /** Attribute filters: { material: ['silk'], color: ['red'] } → af_material=silk&af_color=red */
+  attribute_filters?: Record<string, string[]>;
+}
+
 /**
- * Searches products. Delegates to the embedder Function URL when the
- * semantic-search feature flag is enabled; falls back to the legacy
- * keyword-search endpoint otherwise.
+ * Searches products via the embedder Lambda mounted under the existing
+ * REST API at GET /api/v1/store/catalog/search. Hybrid semantic + tsvector +
+ * trigram scoring backed by pgvector + HNSW. Accepts the same filters as the
+ * legacy /products endpoint (category_id, min/max_price, in_stock, material,
+ * color, af_*) so the storefront's useFilteredProducts hook can hit one
+ * endpoint for both search-with-filters and filter-only listings.
+ *
+ * Uses raw fetch (not the shared axios client) because the shared response
+ * interceptor unwraps {success, data, meta} → data only, which would strip
+ * the SearchResponse meta block. Also keeps a single 5xx retry to absorb
+ * embedder cold starts (~5–7 s).
  */
-export async function searchProducts(
-  q: string,
-  limit = 20,
-  offset = 0,
-): Promise<SearchResponse> {
-  if (isSemanticEnabled()) {
-    return semanticSearch(q, limit, offset);
+export async function searchProducts(params: SearchParams = {}): Promise<SearchResponse> {
+  const url = buildSearchURL(params);
+  const init: RequestInit = { method: 'GET', headers: { Accept: 'application/json' } };
+
+  let res = await fetch(url, init);
+  if (!res.ok && res.status >= 500) {
+    await new Promise((r) => setTimeout(r, 1000));
+    res = await fetch(url, init);
   }
-  // Legacy keyword search via the backend catalog endpoint.
-  const res = await client.get<SearchResponse>(ROUTES.CATALOG.PRODUCTS, {
-    params: { search: q, limit, offset },
-  });
-  return res.data;
+  if (!res.ok) {
+    throw new Error(`search failed: ${res.status}`);
+  }
+  return (await res.json()) as SearchResponse;
+}
+
+/** buildSearchURL serializes SearchParams to a query string. Exported for SSR
+ *  callers that need to call the embedder via absolute URL (e.g. page.tsx). */
+export function buildSearchURL(params: SearchParams): string {
+  const qs = new URLSearchParams();
+  if (params.q) qs.set('q', params.q);
+  if (params.limit !== undefined) qs.set('limit', String(params.limit));
+  if (params.cursor) qs.set('cursor', params.cursor);
+  if (params.category_id) qs.set('category_id', params.category_id);
+  if (params.min_price !== undefined) qs.set('min_price', String(params.min_price));
+  if (params.max_price !== undefined) qs.set('max_price', String(params.max_price));
+  if (params.in_stock) qs.set('in_stock', 'true');
+  if (params.material) qs.set('material', params.material);
+  if (params.color) qs.set('color', params.color);
+  for (const [name, values] of Object.entries(params.attribute_filters ?? {})) {
+    if (values.length > 0) qs.set(`af_${name}`, values.join(','));
+  }
+  const s = qs.toString();
+  return s ? `${ROUTES.CATALOG.SEARCH}?${s}` : ROUTES.CATALOG.SEARCH;
 }

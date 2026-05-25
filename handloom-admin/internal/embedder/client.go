@@ -52,28 +52,41 @@ type embedResponse struct {
 	Model   string      `json:"model"`
 }
 
-// fnURLRequest matches the API Gateway v2 HTTP payload format that Lambda
-// Function URLs deliver. The fields we set are sufficient for chi-proxy to
-// reconstruct an http.Request.
-type fnURLRequest struct {
-	Version        string            `json:"version"`
-	RawPath        string            `json:"rawPath"`
-	Headers        map[string]string `json:"headers"`
-	Body           string            `json:"body"`
-	IsBase64       bool              `json:"isBase64Encoded"`
-	RequestContext fnURLRequestCtx   `json:"requestContext"`
+// apiGwV1Request matches the API Gateway REST API (v1) proxy payload format
+// that httpadapter expects on the embedder Lambda. Embedder is now mounted
+// behind the existing REST API rather than a Function URL.
+//
+// RequestContext.DomainName is populated so httpadapter can build a
+// well-formed `http.Request` URL (`https://<domain>/embed`) rather than
+// `https:///embed`; routing works either way but `r.Host` would otherwise
+// be an empty string for any future middleware that inspects it.
+type apiGwV1Request struct {
+	HTTPMethod     string             `json:"httpMethod"`
+	Path           string             `json:"path"`
+	Headers        map[string]string  `json:"headers"`
+	Body           string             `json:"body"`
+	IsBase64       bool               `json:"isBase64Encoded"`
+	RequestContext apiGwV1RequestCtx  `json:"requestContext"`
 }
-type fnURLRequestCtx struct {
-	HTTP fnURLHTTP `json:"http"`
-}
-type fnURLHTTP struct {
-	Method string `json:"method"`
-	Path   string `json:"path"`
+type apiGwV1RequestCtx struct {
+	DomainName string `json:"domainName"`
+	HTTPMethod string `json:"httpMethod"`
+	Path       string `json:"path"`
 }
 
-type fnURLResponse struct {
+type apiGwV1Response struct {
 	StatusCode int    `json:"statusCode"`
 	Body       string `json:"body"`
+}
+
+// lambdaErrorPayload matches the JSON shape Lambda returns when the function
+// crashes outside the handler (init failure, runtime exit, OOM) and
+// `FunctionError` is NOT set on the SDK output. Treated as a separate path
+// from a 200-with-empty-statusCode response so the caller gets a useful
+// error message instead of `embedder returned 0:`.
+type lambdaErrorPayload struct {
+	ErrorMessage string `json:"errorMessage"`
+	ErrorType    string `json:"errorType"`
 }
 
 // Embed sends `texts` to the embedder and returns the resulting vectors.
@@ -92,9 +105,9 @@ func (c *Client) Embed(ctx context.Context, texts ...string) ([][]float32, error
 	}
 	sig := sign(c.authKey, ts, nonce, body)
 
-	outer := fnURLRequest{
-		Version: "2.0",
-		RawPath: "/embed",
+	outer := apiGwV1Request{
+		HTTPMethod: "POST",
+		Path:       "/embed",
 		Headers: map[string]string{
 			"Content-Type":         "application/json",
 			"X-Embedder-Timestamp": ts,
@@ -102,8 +115,10 @@ func (c *Client) Embed(ctx context.Context, texts ...string) ([][]float32, error
 			"X-Embedder-Signature": sig,
 		},
 		Body: string(body),
-		RequestContext: fnURLRequestCtx{
-			HTTP: fnURLHTTP{Method: "POST", Path: "/embed"},
+		RequestContext: apiGwV1RequestCtx{
+			DomainName: "embedder.internal",
+			HTTPMethod: "POST",
+			Path:       "/embed",
 		},
 	}
 	payload, err := json.Marshal(outer)
@@ -123,9 +138,19 @@ func (c *Client) Embed(ctx context.Context, texts ...string) ([][]float32, error
 		return nil, fmt.Errorf("embedder lambda error (%s): %s", aws.ToString(out.FunctionError), string(out.Payload))
 	}
 
-	var resp fnURLResponse
+	var resp apiGwV1Response
 	if err := json.Unmarshal(out.Payload, &resp); err != nil {
 		return nil, fmt.Errorf("decode embedder envelope: %w", err)
+	}
+	// Lambda runtime errors (OOM, init crash, panic) arrive as
+	// {errorMessage, errorType} payloads with no statusCode field and no
+	// FunctionError flag. Surface the real error instead of "returned 0:".
+	if resp.StatusCode == 0 {
+		var lerr lambdaErrorPayload
+		if jerr := json.Unmarshal(out.Payload, &lerr); jerr == nil && lerr.ErrorMessage != "" {
+			return nil, fmt.Errorf("embedder runtime error (%s): %s", lerr.ErrorType, lerr.ErrorMessage)
+		}
+		return nil, fmt.Errorf("embedder returned malformed envelope: %s", string(out.Payload))
 	}
 	if resp.StatusCode != 200 {
 		return nil, fmt.Errorf("embedder returned %d: %s", resp.StatusCode, resp.Body)

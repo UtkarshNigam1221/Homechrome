@@ -65,7 +65,8 @@ export interface Product {
   sku: string;
   category_id: string;
   selling_price: number; // in paise
-  mrp: number;
+  base_price: number;    // in paise — canonical field name from API
+  mrp: number;           // alias for base_price; kept for backward-compat with product detail pages
   images: ProductImage[];
   video_url?: string;
   video_poster_url?: string;

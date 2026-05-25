@@ -8,8 +8,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
 
-import api from '@/lib/api';
-import { ROUTES } from '@/lib/routes';
+import { searchProducts } from '@/lib/api';
 import { formatPrice } from '@/lib/utils';
 import { Category, Product } from '@/types';
 
@@ -28,12 +27,8 @@ export function SpotlightSearch({ categories }: SpotlightSearchProps) {
     enabled: opened && debounced.trim().length >= 2,
     staleTime: 60_000,
     queryFn: async () => {
-      const res = await api.get<{ data: Product[] } | Product[]>(ROUTES.CATALOG.PRODUCTS, {
-        params: { search: debounced.trim(), limit: 8 },
-      });
-      const body = res.data as { data?: Product[] } | Product[];
-      if (Array.isArray(body)) return body;
-      return body.data ?? [];
+      const res = await searchProducts({ q: debounced.trim(), limit: 8 });
+      return res.data;
     },
   });
 
@@ -115,6 +110,11 @@ export function SpotlightSearch({ categories }: SpotlightSearchProps) {
   return (
     <Spotlight
       actions={actions}
+      // Disable Mantine's client-side label/keyword filter — the embedder
+      // already ranked these by semantic + tsvector + trigram relevance, so
+      // re-filtering by exact substring match drops valid semantic matches
+      // (e.g. query "wedding" returning "Bridal Lehenga").
+      filter={(_query, actions) => actions}
       shortcut="mod + K"
       onSpotlightOpen={() => setOpened(true)}
       onSpotlightClose={() => {

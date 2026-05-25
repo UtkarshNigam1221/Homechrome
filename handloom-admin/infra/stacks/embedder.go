@@ -20,7 +20,6 @@ import (
 	"github.com/aws/aws-cdk-go/awscdk/v2/awsecrassets"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awsiam"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awslambda"
-	"github.com/aws/aws-cdk-go/awscdk/v2/awslogs"
 	"github.com/aws/constructs-go/constructs/v10"
 	"github.com/aws/jsii-runtime-go"
 )
@@ -31,18 +30,19 @@ type EmbedderStackProps struct {
 	Environment    string
 	StoreFrontHost string         // e.g. https://store-dev.homechrome.in — single allowed CORS origin
 	DatabaseStack  *DatabaseStack // for POSTGRES_DSN passed as plain env var (sourced from .env.{env} / GH secrets at deploy time)
+	LogsStack      *LogsStack     // shared CloudWatch log groups (embedder writes to ApiLogGroup)
 }
 
 // EmbedderStack publishes:
 //   - A container-image Lambda whose image is built from cmd/embedder/Dockerfile
 //     at synth time and stored in CDK's bootstrap ECR repo.
-//   - A Function URL (no AWS-side CORS — CORS is handled by chi middleware in
-//     cmd/embedder/handler.go so that preflight requests reach the app and the
-//     ALLOWED_ORIGIN env var is respected both in Lambda and in local dev).
+//
+// The Lambda is mounted onto the existing REST API by APIStack at
+// /api/v1/store/catalog/search and /api/v1/store/catalog/embedder-ping —
+// no separate Function URL or domain.
 type EmbedderStack struct {
 	awscdk.Stack
 	Function awslambda.Function
-	URL      awslambda.FunctionUrl
 }
 
 // NewEmbedderStack builds the EmbedderStack. The Lambda is created with
@@ -72,7 +72,9 @@ func NewEmbedderStack(scope constructs.Construct, id string, props *EmbedderStac
 		Architecture: awslambda.Architecture_ARM_64(),
 		MemorySize:   jsii.Number(1769),
 		Timeout:      awscdk.Duration_Seconds(jsii.Number(60)),
-		LogRetention: awslogs.RetentionDays_TWO_WEEKS,
+		// Shared API log group — embedder serves storefront /search and
+		// /embedder-ping, so logs alongside the rest of the request handlers.
+		LogGroup: props.LogsStack.ApiLogGroup,
 		// Cap concurrency to prevent burst abuse via the public Function URL.
 		// At 1769MB (1 vCPU) each cold-start costs ~6s × 1.769GB-sec; without
 		// this cap the account-default ~1000 concurrent containers can be
@@ -101,22 +103,12 @@ func NewEmbedderStack(scope constructs.Construct, id string, props *EmbedderStac
 		),
 	}))
 
-	// CORS is handled exclusively by chi middleware in cmd/embedder/handler.go
-	// (cors.Handler with ALLOWED_ORIGIN env var). Configuring AWS-side CORS as
-	// well would cause browsers to receive duplicate Access-Control-Allow-Origin
-	// headers, which some reject.
-	furl := fn.AddFunctionUrl(&awslambda.FunctionUrlOptions{
-		AuthType: awslambda.FunctionUrlAuthType_NONE,
-	})
-
-	awscdk.NewCfnOutput(stack, jsii.String("EmbedderURL"), &awscdk.CfnOutputProps{
-		Value:       furl.Url(),
-		Description: jsii.String("Public Function URL for the embedder Lambda (/ping, /search, /embed)"),
-	})
+	// No Function URL — the embedder is mounted on the existing REST API
+	// (APIStack) under /api/v1/store/catalog/search and /catalog/embedder-ping.
+	// CORS is handled by chi middleware in cmd/embedder/handler.go.
 
 	return &EmbedderStack{
 		Stack:    stack,
 		Function: fn,
-		URL:      furl,
 	}
 }
