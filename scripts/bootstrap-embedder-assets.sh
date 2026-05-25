@@ -14,7 +14,7 @@
 # Force a full rebuild: rm -rf ~/.cache/handloom-embedder
 set -euo pipefail
 
-ORT_VERSION=${ORT_VERSION:-1.22.0}
+ORT_VERSION=${ORT_VERSION:-1.19.2}
 
 # Locate the repo root (script lives in scripts/, assets go to handloom-admin/)
 ROOT_DIR=$(cd "$(dirname "$0")/.." && pwd)
