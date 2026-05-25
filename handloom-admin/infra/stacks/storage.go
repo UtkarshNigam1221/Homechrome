@@ -20,9 +20,9 @@ type StorageStackProps struct {
 // StorageStack contains the S3 buckets and CloudFront distribution
 type StorageStack struct {
 	awscdk.Stack
-	AssetsBucket  awss3.Bucket
-	UploadsBucket awss3.Bucket
-	CDNDomain     string // CloudFront distribution domain name
+	AssetsBucket      awss3.Bucket
+	UploadsBucket     awss3.Bucket
+	CDNDomain         string // CloudFront distribution domain name
 }
 
 // NewStorageStack creates a new storage stack

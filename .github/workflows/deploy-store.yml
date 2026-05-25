@@ -52,6 +52,12 @@ jobs:
       run:
         working-directory: homechrome-store
     steps:
+      - name: Guard prod deploy from non-main branches
+        if: inputs.environment == 'prod' && github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::Prod deploy must be triggered from main. Current ref: ${{ github.ref }}"
+          exit 1
+
       - uses: actions/checkout@v6
 
       - uses: aws-actions/configure-aws-credentials@v6

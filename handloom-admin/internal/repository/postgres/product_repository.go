@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	pgvector "github.com/pgvector/pgvector-go"
 
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/internal/repository/postgres/querybuilder"
@@ -41,21 +42,25 @@ func NewProductRepository(pool *pgxpool.Pool) *ProductRepository {
 
 // productRow is an intermediate scan target that handles the flattened
 // dimension columns (dim_length, dim_width, dim_height, dim_unit) which
-// don't map directly to the domain.Product.Dimensions struct, and the
-// nullable video columns which are stored as NULL when empty.
+// don't map directly to the domain.Product.Dimensions struct, the
+// nullable video columns which are stored as NULL when empty, and the
+// pgvector embedding column which requires a pgvector.Vector scan target.
 type productRow struct {
 	domain.Product
-	DimLength      *float64 `db:"dim_length"`
-	DimWidth       *float64 `db:"dim_width"`
-	DimHeight      *float64 `db:"dim_height"`
-	DimUnit        string   `db:"dim_unit"`
-	VideoURL       *string  `db:"video_url"`
-	VideoPosterURL *string  `db:"video_poster_url"`
+	DimLength          *float64        `db:"dim_length"`
+	DimWidth           *float64        `db:"dim_width"`
+	DimHeight          *float64        `db:"dim_height"`
+	DimUnit            string          `db:"dim_unit"`
+	VideoURL           *string         `db:"video_url"`
+	VideoPosterURL     *string         `db:"video_poster_url"`
+	EmbeddingVec       pgvector.Vector `db:"embedding"`
+	EmbeddingUpdatedAt *time.Time      `db:"embedding_updated_at"`
 }
 
 // toProduct converts a productRow into a *domain.Product, reconstructing
-// the Dimensions struct from the flat columns and coercing NULL video
-// columns back to empty strings.
+// the Dimensions struct from the flat columns, coercing NULL video columns
+// back to empty strings, and populating Embedding + EmbeddingUpdatedAt from
+// their pgvector scan targets.
 func (r *productRow) toProduct() *domain.Product {
 	p := r.Product
 	if r.DimLength != nil || r.DimWidth != nil || r.DimHeight != nil {
@@ -76,6 +81,12 @@ func (r *productRow) toProduct() *domain.Product {
 	}
 	if r.VideoPosterURL != nil {
 		p.VideoPosterURL = *r.VideoPosterURL
+	}
+	if slice := r.EmbeddingVec.Slice(); len(slice) > 0 {
+		p.Embedding = slice
+	}
+	if r.EmbeddingUpdatedAt != nil {
+		p.EmbeddingUpdatedAt = r.EmbeddingUpdatedAt
 	}
 	return &p
 }
@@ -101,7 +112,18 @@ func (r *ProductRepository) Create(ctx context.Context, product *domain.Product,
 		return errors.Internal(err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+	if err := r.createProductInTx(ctx, tx, product, inventory); err != nil {
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return errors.Internal(err)
+	}
+	return nil
+}
 
+// createProductInTx executes the full product+inventory insert on an existing
+// transaction. It mutates product.CreatedAt/UpdatedAt and inventory.ID/timestamps.
+func (r *ProductRepository) createProductInTx(ctx context.Context, tx pgx.Tx, product *domain.Product, inventory *domain.Inventory) error {
 	// --- product ---
 	var dimLength, dimWidth, dimHeight *float64
 	dimUnit := "cm"
@@ -145,8 +167,7 @@ func (r *ProductRepository) Create(ctx context.Context, product *domain.Product,
 		Set(ColUpdatedBy, product.UpdatedBy)
 
 	query, args := qb.Build()
-	_, err = tx.Exec(ctx, query, args...)
-	if err != nil {
+	if _, err := tx.Exec(ctx, query, args...); err != nil {
 		if strings.Contains(err.Error(), "duplicate key") {
 			if strings.Contains(err.Error(), "products_sku_key") {
 				return errors.New(errors.ErrCodeProductSKUExists, "Product with this SKU already exists")
@@ -189,15 +210,11 @@ func (r *ProductRepository) Create(ctx context.Context, product *domain.Product,
 			Set(ColUpdatedBy, inventory.UpdatedBy)
 
 		invSQL, invArgs := invQB.Build()
-		_, err = tx.Exec(ctx, invSQL, invArgs...)
-		if err != nil {
+		if _, err := tx.Exec(ctx, invSQL, invArgs...); err != nil {
 			return errors.Internal(err)
 		}
 	}
 
-	if err := tx.Commit(ctx); err != nil {
-		return errors.Internal(err)
-	}
 	return nil
 }
 
@@ -277,7 +294,18 @@ func (r *ProductRepository) Update(ctx context.Context, product *domain.Product)
 		return errors.Internal(err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+	if err := r.updateProductInTx(ctx, tx, product); err != nil {
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return errors.Internal(err)
+	}
+	return nil
+}
 
+// updateProductInTx executes the full product update (core columns + attribute
+// values + images) on an existing transaction. It mutates product.UpdatedAt.
+func (r *ProductRepository) updateProductInTx(ctx context.Context, tx pgx.Tx, product *domain.Product) error {
 	var dimLength, dimWidth, dimHeight *float64
 	dimUnit := "cm"
 	if product.Dimensions != nil {
@@ -340,6 +368,69 @@ func (r *ProductRepository) Update(ctx context.Context, product *domain.Product)
 		return err
 	}
 
+	return nil
+}
+
+// ---------------------------------------------------------------------------
+// UpsertProductWithEmbedding
+// ---------------------------------------------------------------------------
+
+// UpsertProductWithEmbedding is the embedding-aware create path. It performs
+// everything createProductInTx does (product row + attributes + images +
+// inventory), then conditionally writes the embedding vector, all in one
+// transaction. Passing a nil embedding leaves the embedding columns unset.
+func (r *ProductRepository) UpsertProductWithEmbedding(ctx context.Context, product *domain.Product, inventory *domain.Inventory, embedding []float32) error {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return errors.Internal(err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	if err := r.createProductInTx(ctx, tx, product, inventory); err != nil {
+		return err
+	}
+	if embedding != nil {
+		if _, err := tx.Exec(ctx,
+			`UPDATE products SET embedding = $1, embedding_updated_at = now() WHERE id = $2`,
+			pgvector.NewVector(embedding), product.ID,
+		); err != nil {
+			return errors.Wrap(err, "write embedding")
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return errors.Internal(err)
+	}
+	return nil
+}
+
+// ---------------------------------------------------------------------------
+// UpdateProductWithOptionalEmbedding
+// ---------------------------------------------------------------------------
+
+// UpdateProductWithOptionalEmbedding is the embedding-aware update path. It
+// performs everything updateProductInTx does, then conditionally writes the
+// embedding vector according to the contract:
+//   - writeEmbedding == false             → embedding columns untouched
+//   - writeEmbedding == true,  nil vec    → embedding columns untouched
+//   - writeEmbedding == true, !nil vec    → write embedding + embedding_updated_at = now()
+func (r *ProductRepository) UpdateProductWithOptionalEmbedding(ctx context.Context, product *domain.Product, embedding []float32, writeEmbedding bool) error {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return errors.Internal(err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	if err := r.updateProductInTx(ctx, tx, product); err != nil {
+		return err
+	}
+	if writeEmbedding && embedding != nil {
+		if _, err := tx.Exec(ctx,
+			`UPDATE products SET embedding = $1, embedding_updated_at = now() WHERE id = $2`,
+			pgvector.NewVector(embedding), product.ID,
+		); err != nil {
+			return errors.Wrap(err, "write embedding")
+		}
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return errors.Internal(err)
 	}

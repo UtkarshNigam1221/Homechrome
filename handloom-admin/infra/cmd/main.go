@@ -70,6 +70,25 @@ func main() {
 	// 	DatabaseStack: databaseStack,
 	// })
 
+	// Embedder Lambda stack — image built inline from cmd/embedder/Dockerfile
+	// via CDK's Code_FromAssetImage. CDK pushes the resulting image to its
+	// bootstrap ECR repo automatically. No custom-managed ECR repo. The
+	// download-embedder-assets Make target must have populated
+	// cmd/embedder/assets/ before this stack synthesizes.
+	embStack := stacks.NewEmbedderStack(app, "HandloomEmbedderStack-"+environment, &stacks.EmbedderStackProps{
+		StackProps: awscdk.StackProps{
+			Env:         env,
+			Description: jsii.String("Handloom Admin - Embedder Lambda for hybrid semantic search (" + environment + ")"),
+			Tags: &map[string]*string{
+				"Environment": jsii.String(environment),
+				"Project":     jsii.String("handloom-admin"),
+				"ManagedBy":   jsii.String("cdk"),
+			},
+		},
+		Environment:    environment,
+		StoreFrontHost: cfg.StoreFrontHost,
+		DatabaseStack:  databaseStack,
+	})
 	// API stack (depends on database, storage, and events)
 	stacks.NewAPIStack(app, "HandloomAPIStack-"+environment, &stacks.APIStackProps{
 		StackProps: awscdk.StackProps{
@@ -84,7 +103,8 @@ func main() {
 		Environment:    environment,
 		DatabaseStack:  databaseStack,
 		StorageStack:   storageStack,
-		EventStack:     nil, // DISABLED: pass eventStack here when re-enabling
+		EventStack:     nil,      // DISABLED: pass eventStack here when re-enabling
+		EmbedderStack:  embStack, // Embedder for hybrid semantic search
 		BaseDomain:     cfg.BaseDomain,
 		DomainName:     cfg.DomainName,
 		FrontendOrigin: cfg.FrontendOrigin,

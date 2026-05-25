@@ -5,6 +5,7 @@ import axios, {
 } from 'axios';
 
 import { ROUTES } from '@/lib/routes';
+import { isSemanticEnabled, SearchResponse, semanticSearch } from '@/lib/semantic-search';
 
 interface ApiResponse<T> {
   success: boolean;
@@ -100,3 +101,23 @@ const api = {
 };
 
 export default api;
+
+/**
+ * Searches products. Delegates to the embedder Function URL when the
+ * semantic-search feature flag is enabled; falls back to the legacy
+ * keyword-search endpoint otherwise.
+ */
+export async function searchProducts(
+  q: string,
+  limit = 20,
+  offset = 0,
+): Promise<SearchResponse> {
+  if (isSemanticEnabled()) {
+    return semanticSearch(q, limit, offset);
+  }
+  // Legacy keyword search via the backend catalog endpoint.
+  const res = await client.get<SearchResponse>(ROUTES.CATALOG.PRODUCTS, {
+    params: { search: q, limit, offset },
+  });
+  return res.data;
+}

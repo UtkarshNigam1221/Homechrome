@@ -24,6 +24,7 @@ type Config struct {
 	App      AppConfig
 	Store    StoreConfig
 	Event    EventConfig
+	Embedder EmbedderConfig
 }
 
 // PostgresConfig holds PostgreSQL connection configuration
@@ -58,6 +59,14 @@ type StoreConfig struct {
 	CustomerJWTSecret       string
 	CustomerAccessTokenTTL  time.Duration
 	CustomerRefreshTokenTTL time.Duration
+}
+
+// EmbedderConfig holds embedder Lambda configuration (used by catalog + backfill Lambdas).
+type EmbedderConfig struct {
+	FunctionName string // EMBEDDER_FN_NAME — e.g. handloom-embedder-dev
+	AuthKeyParam string // EMBEDDER_AUTH_KEY_PARAM — SSM SecureString path
+	TimeoutMs    int    // EMBEDDER_TIMEOUT_MS — default 10000
+	ModelVersion string // EMBEDDING_MODEL_VERSION — default l3cube-indic-sbert-nli-v1
 }
 
 // EventConfig holds event bus configuration
@@ -155,6 +164,12 @@ func Load() *Config {
 		Event: EventConfig{
 			SNSTopicARN: getEnv("SNS_TOPIC_ARN", ""),
 			Enabled:     getBoolEnv("EVENT_PUBLISHING_ENABLED", false),
+		},
+		Embedder: EmbedderConfig{
+			FunctionName: getEnv("EMBEDDER_FN_NAME", ""),
+			AuthKeyParam: getEnv("EMBEDDER_AUTH_KEY_PARAM", ""),
+			TimeoutMs:    getIntEnv("EMBEDDER_TIMEOUT_MS", 10000),
+			ModelVersion: getEnv("EMBEDDING_MODEL_VERSION", "l3cube-indic-sbert-nli-v1"),
 		},
 		Store: StoreConfig{
 			PhonePeClientID:        getEnv("PHONEPE_CLIENT_ID", ""),

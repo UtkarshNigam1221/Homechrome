@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	stdErrors "errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -13,6 +14,36 @@ import (
 	"github.com/handloom/admin/internal/mocks"
 	"github.com/handloom/admin/pkg/errors"
 )
+
+// mockEmbedder is a test stub for the Embedder interface.
+type mockEmbedder struct {
+	vec       []float32
+	err       error
+	callCount int
+	lastTexts []string
+}
+
+func (m *mockEmbedder) Embed(_ context.Context, texts ...string) ([][]float32, error) {
+	m.callCount++
+	m.lastTexts = texts
+	if m.err != nil {
+		return nil, m.err
+	}
+	return [][]float32{m.vec}, nil
+}
+
+func (m *mockEmbedder) reset() {
+	m.callCount = 0
+	m.lastTexts = nil
+}
+
+func makeVec(dim int, val float32) []float32 {
+	v := make([]float32, dim)
+	for i := range v {
+		v[i] = val
+	}
+	return v
+}
 
 func setupProductTest(t *testing.T) (
 	*ProductService,
@@ -33,7 +64,7 @@ func setupProductTest(t *testing.T) (
 	mockFinalizer.EXPECT().SyncImageVariants(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 
 	publisher := event.NewNoopPublisher()
-	svc := NewProductService(mockProdRepo, mockCatRepo, mockInvRepo, mockFinalizer, publisher)
+	svc := NewProductService(mockProdRepo, mockCatRepo, mockInvRepo, mockFinalizer, publisher, nil)
 	return svc, mockProdRepo, mockCatRepo, mockInvRepo, mockFinalizer, context.Background()
 }
 
@@ -57,7 +88,7 @@ func setupProductTestWithSpy(t *testing.T) (
 	mockFinalizer.EXPECT().SyncImageVariants(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 
 	spy := newSpyPublisher()
-	svc := NewProductService(mockProdRepo, mockCatRepo, mockInvRepo, mockFinalizer, spy)
+	svc := NewProductService(mockProdRepo, mockCatRepo, mockInvRepo, mockFinalizer, spy, nil)
 	return svc, mockProdRepo, mockCatRepo, mockInvRepo, mockFinalizer, spy, context.Background()
 }
 
@@ -89,8 +120,8 @@ func TestProductService_Create(t *testing.T) {
 			Return(category, nil)
 
 		mockProdRepo.EXPECT().
-			Create(ctx, gomock.Any(), gomock.Any()).
-			DoAndReturn(func(ctx context.Context, product *domain.Product, inv *domain.Inventory) error {
+			UpsertProductWithEmbedding(ctx, gomock.Any(), gomock.Any(), gomock.Any()).
+			DoAndReturn(func(ctx context.Context, product *domain.Product, inv *domain.Inventory, _ []float32) error {
 				assert.Contains(t, product.ID, "prod_")
 				assert.Equal(t, "Banarasi Silk Saree", product.Name)
 				assert.Equal(t, "banarasi-silk-saree", product.Slug)
@@ -137,8 +168,8 @@ func TestProductService_Create(t *testing.T) {
 			Return(category, nil)
 
 		mockProdRepo.EXPECT().
-			Create(ctx, gomock.Any(), gomock.Any()).
-			DoAndReturn(func(ctx context.Context, product *domain.Product, inv *domain.Inventory) error {
+			UpsertProductWithEmbedding(ctx, gomock.Any(), gomock.Any(), gomock.Any()).
+			DoAndReturn(func(ctx context.Context, product *domain.Product, inv *domain.Inventory, _ []float32) error {
 				assert.Equal(t, domain.ProductStatusActive, product.Status)
 				return nil
 			})
@@ -230,8 +261,8 @@ func TestProductService_Create(t *testing.T) {
 			Return("assets/product/img2.jpg", nil)
 
 		mockProdRepo.EXPECT().
-			Create(ctx, gomock.Any(), gomock.Any()).
-			DoAndReturn(func(ctx context.Context, product *domain.Product, _ *domain.Inventory) error {
+			UpsertProductWithEmbedding(ctx, gomock.Any(), gomock.Any(), gomock.Any()).
+			DoAndReturn(func(ctx context.Context, product *domain.Product, _ *domain.Inventory, _ []float32) error {
 				assert.Equal(t, "assets/product/img1.jpg", product.Images[0].URL)
 				assert.Equal(t, "assets/product/img2.jpg", product.Images[1].URL)
 				return nil
@@ -289,7 +320,7 @@ func TestProductService_Create(t *testing.T) {
 			Return(category, nil)
 
 		mockProdRepo.EXPECT().
-			Create(ctx, gomock.Any(), gomock.Any()).
+			UpsertProductWithEmbedding(ctx, gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(errors.Internal("db error"))
 
 		product, err := svc.Create(ctx, req, "admin_1")
@@ -412,8 +443,8 @@ func TestProductService_Update(t *testing.T) {
 			Return(category, nil)
 
 		mockProdRepo.EXPECT().
-			Update(ctx, gomock.Any()).
-			DoAndReturn(func(ctx context.Context, product *domain.Product) error {
+			UpdateProductWithOptionalEmbedding(ctx, gomock.Any(), gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, product *domain.Product, _ []float32, _ bool) error {
 				assert.Equal(t, "New Name", product.Name)
 				assert.Equal(t, "new-name", product.Slug)
 				assert.Equal(t, "admin_1", product.UpdatedBy)
@@ -467,7 +498,7 @@ func TestProductService_Update(t *testing.T) {
 			Return("assets/product/new.jpg", nil)
 
 		mockProdRepo.EXPECT().
-			Update(ctx, gomock.Any()).
+			UpdateProductWithOptionalEmbedding(ctx, gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil)
 
 		product, err := svc.Update(ctx, "prod_123", req, "admin_1")
@@ -760,7 +791,7 @@ func TestProductService_Create_EventPublishing(t *testing.T) {
 		category := &domain.Category{ID: "cat_123"}
 
 		mockCatRepo.EXPECT().GetByID(ctx, "cat_123").Return(category, nil)
-		mockProdRepo.EXPECT().Create(ctx, gomock.Any(), gomock.Any()).Return(nil)
+		mockProdRepo.EXPECT().UpsertProductWithEmbedding(ctx, gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 		mockCatRepo.EXPECT().IncrementProductCount(ctx, "cat_123", 1).Return(nil)
 
 		_, err := svc.Create(ctx, domain.CreateProductRequest{
@@ -781,11 +812,11 @@ func TestProductService_Create_EventPublishing(t *testing.T) {
 		mockFinalizer := mocks.NewMockAssetFinalizer(ctrl)
 		mockFinalizer.EXPECT().SyncImageVariants(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 		failPub := newFailingPublisher(errors.Internal("SNS down"))
-		svc := NewProductService(mockProdRepo, mockCatRepo, mockInvRepo, mockFinalizer, failPub)
+		svc := NewProductService(mockProdRepo, mockCatRepo, mockInvRepo, mockFinalizer, failPub, nil)
 		ctx := context.Background()
 
 		mockCatRepo.EXPECT().GetByID(ctx, "cat_123").Return(&domain.Category{ID: "cat_123"}, nil)
-		mockProdRepo.EXPECT().Create(ctx, gomock.Any(), gomock.Any()).Return(nil)
+		mockProdRepo.EXPECT().UpsertProductWithEmbedding(ctx, gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 		mockCatRepo.EXPECT().IncrementProductCount(ctx, "cat_123", 1).Return(nil)
 
 		product, err := svc.Create(ctx, domain.CreateProductRequest{
@@ -807,7 +838,7 @@ func TestProductService_Update_EventPublishing(t *testing.T) {
 
 		mockProdRepo.EXPECT().GetByID(ctx, "prod_123").Return(existing, nil)
 		mockCatRepo.EXPECT().GetByID(ctx, "cat_123").Return(category, nil)
-		mockProdRepo.EXPECT().Update(ctx, gomock.Any()).Return(nil)
+		mockProdRepo.EXPECT().UpdateProductWithOptionalEmbedding(ctx, gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 
 		_, err := svc.Update(ctx, "prod_123", domain.UpdateProductRequest{
 			Name: &newName,
@@ -882,8 +913,8 @@ func TestProductService_Create_Atomicity(t *testing.T) {
 
 		mockCatRepo.EXPECT().GetByID(ctx, "cat_123").Return(category, nil)
 		mockProdRepo.EXPECT().
-			Create(ctx, gomock.Any(), gomock.Any()).
-			DoAndReturn(func(ctx context.Context, product *domain.Product, inv *domain.Inventory) error {
+			UpsertProductWithEmbedding(ctx, gomock.Any(), gomock.Any(), gomock.Any()).
+			DoAndReturn(func(ctx context.Context, product *domain.Product, inv *domain.Inventory, _ []float32) error {
 				// Both product and inventory must be created
 				assert.NotNil(t, product)
 				assert.NotNil(t, inv)
@@ -910,7 +941,7 @@ func TestProductService_Create_Atomicity(t *testing.T) {
 		category := &domain.Category{ID: "cat_123"}
 
 		mockCatRepo.EXPECT().GetByID(ctx, "cat_123").Return(category, nil)
-		mockProdRepo.EXPECT().Create(ctx, gomock.Any(), gomock.Any()).Return(nil)
+		mockProdRepo.EXPECT().UpsertProductWithEmbedding(ctx, gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 		mockCatRepo.EXPECT().IncrementProductCount(ctx, "cat_123", 1).Return(errors.Internal("db error"))
 
 		_, err := svc.Create(ctx, domain.CreateProductRequest{
@@ -950,7 +981,7 @@ func TestProductService_Update_EdgeCases(t *testing.T) {
 
 		mockProdRepo.EXPECT().GetByID(ctx, "prod_123").Return(existing, nil)
 		mockCatRepo.EXPECT().GetByID(ctx, "cat_123").Return(category, nil)
-		mockProdRepo.EXPECT().Update(ctx, gomock.Any()).DoAndReturn(func(ctx context.Context, p *domain.Product) error {
+		mockProdRepo.EXPECT().UpdateProductWithOptionalEmbedding(ctx, gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, p *domain.Product, _ []float32, _ bool) error {
 			assert.Equal(t, "brand-new-name", p.Slug)
 			return nil
 		})
@@ -971,7 +1002,7 @@ func TestProductService_Update_EdgeCases(t *testing.T) {
 
 		mockProdRepo.EXPECT().GetByID(ctx, "prod_123").Return(existing, nil)
 		mockCatRepo.EXPECT().GetByID(ctx, "cat_123").Return(category, nil)
-		mockProdRepo.EXPECT().Update(ctx, gomock.Any()).DoAndReturn(func(ctx context.Context, p *domain.Product) error {
+		mockProdRepo.EXPECT().UpdateProductWithOptionalEmbedding(ctx, gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, p *domain.Product, _ []float32, _ bool) error {
 			assert.Equal(t, "original", p.Slug) // unchanged
 			return nil
 		})
@@ -1133,8 +1164,8 @@ func TestProductService_Create_FinalizesVideoAndPoster(t *testing.T) {
 	mockFinalizer.EXPECT().FinalizeIfTemp(ctx, "tmp/IMAGE/poster.jpg").
 		Return("https://cdn.example.com/assets/IMAGE/2026/05/22/poster.jpg", nil)
 
-	mockProdRepo.EXPECT().Create(ctx, gomock.Any(), gomock.Any()).
-		DoAndReturn(func(_ context.Context, p *domain.Product, _ *domain.Inventory) error {
+	mockProdRepo.EXPECT().UpsertProductWithEmbedding(ctx, gomock.Any(), gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, p *domain.Product, _ *domain.Inventory, _ []float32) error {
 			require.Equal(t, "https://cdn.example.com/assets/VIDEO/2026/05/22/uuid.mp4", p.VideoURL)
 			require.Equal(t, "https://cdn.example.com/assets/IMAGE/2026/05/22/poster.jpg", p.VideoPosterURL)
 			return nil
@@ -1219,7 +1250,7 @@ func TestProductService_Update_ReplacesVideoAndDeletesOld(t *testing.T) {
 	// SyncImageVariants is best-effort side effect, allow any invocation pattern.
 	mockFinalizer.EXPECT().SyncImageVariants(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 	publisher := event.NewNoopPublisher()
-	svc := NewProductService(mockProdRepo, mockCatRepo, mockInvRepo, mockFinalizer, publisher)
+	svc := NewProductService(mockProdRepo, mockCatRepo, mockInvRepo, mockFinalizer, publisher, nil)
 	ctx := context.Background()
 
 	existing := &domain.Product{
@@ -1235,8 +1266,8 @@ func TestProductService_Update_ReplacesVideoAndDeletesOld(t *testing.T) {
 
 	// Use InOrder to assert Update happens before DeleteAsset.
 	gomock.InOrder(
-		mockProdRepo.EXPECT().Update(ctx, gomock.Any()).
-			DoAndReturn(func(_ context.Context, p *domain.Product) error {
+		mockProdRepo.EXPECT().UpdateProductWithOptionalEmbedding(ctx, gomock.Any(), gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, p *domain.Product, _ []float32, _ bool) error {
 				require.Equal(t, "https://cdn.example.com/assets/VIDEO/new.mp4", p.VideoURL)
 				return nil
 			}),
@@ -1263,7 +1294,7 @@ func TestProductService_Update_NoDeleteAssetIfUpdateFails(t *testing.T) {
 	// SyncImageVariants is best-effort side effect, allow any invocation pattern.
 	mockFinalizer.EXPECT().SyncImageVariants(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 	publisher := event.NewNoopPublisher()
-	svc := NewProductService(mockProdRepo, mockCatRepo, mockInvRepo, mockFinalizer, publisher)
+	svc := NewProductService(mockProdRepo, mockCatRepo, mockInvRepo, mockFinalizer, publisher, nil)
 	ctx := context.Background()
 
 	existing := &domain.Product{
@@ -1277,7 +1308,7 @@ func TestProductService_Update_NoDeleteAssetIfUpdateFails(t *testing.T) {
 		Return("https://cdn.example.com/assets/VIDEO/new.mp4", nil)
 
 	// DB write fails — DeleteAsset must NOT be called (Times(0) enforces this).
-	mockProdRepo.EXPECT().Update(ctx, gomock.Any()).Return(errors.Internal("db fail"))
+	mockProdRepo.EXPECT().UpdateProductWithOptionalEmbedding(ctx, gomock.Any(), gomock.Any(), gomock.Any()).Return(errors.Internal("db fail"))
 	mockFinalizer.EXPECT().DeleteAsset(gomock.Any(), gomock.Any()).Times(0)
 
 	newVideo := "tmp/VIDEO/new.mp4"
@@ -1285,4 +1316,110 @@ func TestProductService_Update_NoDeleteAssetIfUpdateFails(t *testing.T) {
 		VideoURL: &newVideo,
 	}, "user-1")
 	require.Error(t, err)
+}
+
+// newServiceWithEmbedder builds a ProductService backed by fresh mocks and the
+// supplied Embedder stub. UpsertProductWithEmbedding is registered as
+// AnyTimes so callers only need to assert the embedder behaviour.
+func newServiceWithEmbedder(t *testing.T, emb Embedder) (
+	*ProductService,
+	*mocks.MockProductRepository,
+	*mocks.MockCategoryRepository,
+	context.Context,
+) {
+	t.Helper()
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+
+	mockProdRepo := mocks.NewMockProductRepository(ctrl)
+	mockCatRepo := mocks.NewMockCategoryRepository(ctrl)
+	mockInvRepo := mocks.NewMockInventoryRepository(ctrl)
+	mockFinalizer := mocks.NewMockAssetFinalizer(ctrl)
+	mockFinalizer.EXPECT().SyncImageVariants(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
+
+	// Default stub: category exists, upsert succeeds, count increments OK.
+	mockCatRepo.EXPECT().
+		GetByID(gomock.Any(), "cat_emb").
+		Return(&domain.Category{ID: "cat_emb"}, nil).
+		AnyTimes()
+	mockProdRepo.EXPECT().
+		UpsertProductWithEmbedding(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(nil).
+		AnyTimes()
+	mockCatRepo.EXPECT().
+		IncrementProductCount(gomock.Any(), "cat_emb", 1).
+		Return(nil).
+		AnyTimes()
+	mockProdRepo.EXPECT().
+		GetByID(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, id string) (*domain.Product, error) {
+			return &domain.Product{ID: id, CategoryID: "cat_emb"}, nil
+		}).
+		AnyTimes()
+	mockProdRepo.EXPECT().
+		UpdateProductWithOptionalEmbedding(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(nil).
+		AnyTimes()
+
+	publisher := event.NewNoopPublisher()
+	svc := NewProductService(mockProdRepo, mockCatRepo, mockInvRepo, mockFinalizer, publisher, emb)
+	return svc, mockProdRepo, mockCatRepo, context.Background()
+}
+
+// validEmbedCreateReq returns a minimal CreateProductRequest valid for embedder tests.
+func validEmbedCreateReq() domain.CreateProductRequest {
+	return domain.CreateProductRequest{
+		Name:         "Banarasi Silk Saree",
+		Description:  "Handwoven with pure silk",
+		SKU:          "BSS-EMB-001",
+		CategoryID:   "cat_emb",
+		BasePrice:    500000,
+		SellingPrice: 450000,
+	}
+}
+
+func TestProductService_Create_CallsEmbedderAndPersistsVector(t *testing.T) {
+	me := &mockEmbedder{vec: makeVec(768, 0.42)}
+	svc, _, _, ctx := newServiceWithEmbedder(t, me)
+
+	got, err := svc.Create(ctx, validEmbedCreateReq(), "admin_1")
+	require.NoError(t, err)
+
+	require.Equal(t, 1, me.callCount)
+	require.Contains(t, me.lastTexts[0], got.Name)
+}
+
+func TestProductService_Create_EmbedderFailureStillSavesProduct(t *testing.T) {
+	me := &mockEmbedder{err: stdErrors.New("boom")}
+	svc, _, _, ctx := newServiceWithEmbedder(t, me)
+
+	got, err := svc.Create(ctx, validEmbedCreateReq(), "admin_1")
+	require.NoError(t, err, "save must succeed even when embedder fails")
+	require.NotEmpty(t, got.ID)
+}
+
+func TestProductService_Update_ReembedsOnNameChange(t *testing.T) {
+	me := &mockEmbedder{vec: makeVec(768, 0.5)}
+	svc, _, _, ctx := newServiceWithEmbedder(t, me)
+	created, err := svc.Create(ctx, validEmbedCreateReq(), "admin_1")
+	require.NoError(t, err)
+	me.reset()
+
+	newName := "Brand New Saree"
+	_, err = svc.Update(ctx, created.ID, domain.UpdateProductRequest{Name: &newName}, "admin_1")
+	require.NoError(t, err)
+	require.Equal(t, 1, me.callCount, "name change must trigger re-embed")
+}
+
+func TestProductService_Update_NoEmbedderCallWhenPriceOnly(t *testing.T) {
+	me := &mockEmbedder{vec: makeVec(768, 0.5)}
+	svc, _, _, ctx := newServiceWithEmbedder(t, me)
+	created, err := svc.Create(ctx, validEmbedCreateReq(), "admin_1")
+	require.NoError(t, err)
+	me.reset()
+
+	newPrice := int64(20000)
+	_, err = svc.Update(ctx, created.ID, domain.UpdateProductRequest{SellingPrice: &newPrice}, "admin_1")
+	require.NoError(t, err)
+	require.Equal(t, 0, me.callCount, "price-only patch must NOT trigger re-embed")
 }

@@ -1,0 +1,38 @@
+# Keep the Docker build context lean. Without this file the
+# `COPY . .` in cmd/embedder/Dockerfile pulls in 15+ GB of CDK
+# synth cache + built Lambda binaries that the embedder build
+# does not need.
+
+# CDK output cache (10+ GB of JSII modules + asset zips)
+infra/cdk.out/
+infra/node_modules/
+
+# Built Lambda zip artifacts (we only need source for the embedder build)
+bin/
+
+# Editor / OS junk
+.git/
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Go test + coverage artifacts
+*.test
+*.out
+coverage.html
+
+# Local env files (secrets, not for image)
+.env
+.env.dev
+.env.prod
+.env.local
+.env.deploy
+
+# Stray Go build artifacts in module root
+/worker-embedding-backfill
+/embedder
+
+# IMPORTANT: do NOT ignore cmd/embedder/assets/ — the runtime stage
+# COPY-s libonnxruntime.so, model-int8.onnx, tokenizer.json from it.
+# Those files arrive via `make download-embedder-assets`.

@@ -16,6 +16,12 @@ import (
 	"github.com/handloom/admin/pkg/errors"
 )
 
+// Embedder is implemented by *internal/embedder.Client. The interface lives
+// here so unit tests can stub it without depending on AWS SDK fakes.
+type Embedder interface {
+	Embed(ctx context.Context, texts ...string) ([][]float32, error)
+}
+
 // ProductService implements domain.ProductService
 type ProductService struct {
 	productRepo    domain.ProductRepository
@@ -23,6 +29,7 @@ type ProductService struct {
 	inventoryRepo  domain.InventoryRepository
 	assetFinalizer domain.AssetFinalizer
 	publisher      event.EventPublisher
+	embedder       Embedder // may be nil — service tolerates absence
 }
 
 // NewProductService creates a new ProductService
@@ -32,6 +39,7 @@ func NewProductService(
 	inventoryRepo domain.InventoryRepository,
 	assetFinalizer domain.AssetFinalizer,
 	publisher event.EventPublisher,
+	embedder Embedder,
 ) *ProductService {
 	return &ProductService{
 		productRepo:    productRepo,
@@ -39,7 +47,15 @@ func NewProductService(
 		inventoryRepo:  inventoryRepo,
 		assetFinalizer: assetFinalizer,
 		publisher:      publisher,
+		embedder:       embedder,
 	}
+}
+
+func buildEmbeddingInput(name, description string) string {
+	if description == "" {
+		return name
+	}
+	return name + "\n" + description
 }
 
 // Create creates a new product
@@ -91,8 +107,20 @@ func (s *ProductService) Create(ctx context.Context, req domain.CreateProductReq
 	}
 	inventory.CreatedBy = createdBy
 
-	// Create product and inventory atomically
-	if err := s.productRepo.Create(ctx, product, inventory); err != nil {
+	// Generate embedding (failure-mode b: log + save without embedding).
+	var vec []float32
+	if s.embedder != nil {
+		text := buildEmbeddingInput(product.Name, product.Description)
+		vecs, err := s.embedder.Embed(ctx, text)
+		if err != nil {
+			slog.WarnContext(ctx, "embedding failed; saving without embedding",
+				"product_id", product.ID, "err", err)
+		} else if len(vecs) == 1 {
+			vec = vecs[0]
+		}
+	}
+
+	if err := s.productRepo.UpsertProductWithEmbedding(ctx, product, inventory, vec); err != nil {
 		return nil, err
 	}
 
@@ -226,8 +254,21 @@ func (s *ProductService) Update(ctx context.Context, id string, req domain.Updat
 	product.UpdatedBy = updatedBy
 	product.UpdatedAt = time.Now()
 
-	// Update product (repository handles attribute value sync)
-	if err := s.productRepo.Update(ctx, product); err != nil {
+	// Re-embed only when text fields change.
+	needsReembed := req.Name != nil || req.Description != nil
+	var vec []float32
+	if needsReembed && s.embedder != nil {
+		text := buildEmbeddingInput(product.Name, product.Description)
+		vecs, embedErr := s.embedder.Embed(ctx, text)
+		if embedErr != nil {
+			slog.WarnContext(ctx, "embedding failed; saving without re-embed",
+				"product_id", product.ID, "err", embedErr)
+		} else if len(vecs) == 1 {
+			vec = vecs[0]
+		}
+	}
+
+	if err := s.productRepo.UpdateProductWithOptionalEmbedding(ctx, product, vec, needsReembed); err != nil {
 		return nil, err
 	}
 

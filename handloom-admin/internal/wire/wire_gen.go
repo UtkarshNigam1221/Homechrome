@@ -9,6 +9,7 @@ package wire
 import (
 	"context"
 	"github.com/handloom/admin/internal/config"
+	"github.com/handloom/admin/internal/embedder"
 	"github.com/handloom/admin/internal/handler"
 	"github.com/handloom/admin/internal/handler/store"
 	"github.com/handloom/admin/internal/middleware"
@@ -87,15 +88,19 @@ func InitializeCatalogDeps(ctx context.Context, cfg *config.Config) (*CatalogDep
 	if err != nil {
 		return nil, err
 	}
-	productService := ProvideProductService(productRepository, categoryRepository, inventoryRepository, assetService, eventPublisher)
-	inventoryService := ProvideInventoryService(inventoryRepository, eventPublisher)
-	productHandler := ProvideProductHandler(productService, inventoryService, validation)
-	client, err := ProvideDynamoDBClient(ctx, cfg)
+	client, err := ProvideEmbedderClient(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}
-	userRepository := ProvideUserRepository(client)
-	tokenStore := ProvideTokenStore(client)
+	productService := ProvideProductService(productRepository, categoryRepository, inventoryRepository, assetService, eventPublisher, client)
+	inventoryService := ProvideInventoryService(inventoryRepository, eventPublisher)
+	productHandler := ProvideProductHandler(productService, inventoryService, validation)
+	dynamodbClient, err := ProvideDynamoDBClient(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+	userRepository := ProvideUserRepository(dynamodbClient)
+	tokenStore := ProvideTokenStore(dynamodbClient)
 	authService := ProvideAuthService(userRepository, tokenStore, cfg)
 	auth := ProvideAuthMiddleware(authService)
 	catalogDeps := &CatalogDeps{
@@ -103,6 +108,7 @@ func InitializeCatalogDeps(ctx context.Context, cfg *config.Config) (*CatalogDep
 		CategoryHandler: categoryHandler,
 		ProductHandler:  productHandler,
 		AuthMiddleware:  auth,
+		EmbedderClient:  client,
 	}
 	return catalogDeps, nil
 }
@@ -349,7 +355,11 @@ func InitializeReportDeps(ctx context.Context, cfg *config.Config) (*ReportDeps,
 	if err != nil {
 		return nil, err
 	}
-	productService := ProvideProductService(productRepository, categoryRepository, inventoryRepository, assetService, eventPublisher)
+	embedderClient, err := ProvideEmbedderClient(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+	productService := ProvideProductService(productRepository, categoryRepository, inventoryRepository, assetService, eventPublisher, embedderClient)
 	customerService := ProvideCustomerService(customerRepository, orderRepository)
 	inventoryService := ProvideInventoryService(inventoryRepository, eventPublisher)
 	analyticsRepository := ProvideAnalyticsRepository(client)
@@ -447,7 +457,11 @@ func InitializeStoreCatalogDeps(ctx context.Context, cfg *config.Config) (*Store
 	if err != nil {
 		return nil, err
 	}
-	productService := ProvideProductService(productRepository, categoryRepository, inventoryRepository, assetService, eventPublisher)
+	client, err := ProvideEmbedderClient(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+	productService := ProvideProductService(productRepository, categoryRepository, inventoryRepository, assetService, eventPublisher, client)
 	categoryService := ProvideCategoryService(categoryRepository, productRepository, assetService)
 	inventoryService := ProvideInventoryService(inventoryRepository, eventPublisher)
 	catalogHandler := ProvideStoreCatalogHandler(productService, categoryService, inventoryService)
@@ -700,7 +714,11 @@ func InitializeMonolithDeps(ctx context.Context, cfg *config.Config) (*MonolithD
 	analyticsHandler := ProvideAnalyticsEventHandler(eventsRepository, analyticsRepository, analyticsAggregator)
 	auditHandler := ProvideAuditEventHandler()
 	eventPublisher := ProvideLocalEventPublisher(notificationHandler, reportHandler, analyticsHandler, auditHandler)
-	productService := ProvideProductService(productRepository, categoryRepository, inventoryRepository, assetService, eventPublisher)
+	embedderClient, err := ProvideEmbedderClient(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+	productService := ProvideProductService(productRepository, categoryRepository, inventoryRepository, assetService, eventPublisher, embedderClient)
 	inventoryService := ProvideInventoryService(inventoryRepository, eventPublisher)
 	productHandler := ProvideProductHandler(productService, inventoryService, validation)
 	inventoryHandler := ProvideInventoryHandler(inventoryService)
@@ -784,6 +802,24 @@ func InitializeMonolithDeps(ctx context.Context, cfg *config.Config) (*MonolithD
 	return monolithDeps, nil
 }
 
+// InitializeBackfillDeps creates the backfill Lambda dependencies.
+func InitializeBackfillDeps(ctx context.Context, cfg *config.Config) (*BackfillDeps, error) {
+	pool, err := ProvidePostgresPool(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+	client, err := ProvideEmbedderClient(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+	backfillDeps := &BackfillDeps{
+		Config:         cfg,
+		Pool:           pool,
+		EmbedderClient: client,
+	}
+	return backfillDeps, nil
+}
+
 // wire.go:
 
 // AuthDeps holds dependencies for the Auth Lambda
@@ -806,6 +842,7 @@ type CatalogDeps struct {
 	CategoryHandler *handler.CategoryHandler
 	ProductHandler  *handler.ProductHandler
 	AuthMiddleware  *middleware.Auth
+	EmbedderClient  *embedder.Client
 }
 
 // OrderDeps holds dependencies for the Order Lambda
@@ -967,4 +1004,12 @@ type MonolithDeps struct {
 	AuthMiddleware         *middleware.Auth
 	CustomerAuthMiddleware *middleware.CustomerAuth
 	OptionalCartAuth       *middleware.OptionalCartAuth
+}
+
+// BackfillDeps holds the minimal dependencies needed by the backfill Lambda
+// (T19) to iterate over all products and upsert their embeddings.
+type BackfillDeps struct {
+	Config         *config.Config
+	Pool           *pgxpool.Pool
+	EmbedderClient *embedder.Client
 }

@@ -24,11 +24,12 @@ type APIStackProps struct {
 	Environment    string
 	DatabaseStack  *DatabaseStack
 	StorageStack   *StorageStack
-	EventStack     *EventStack // Optional: event-driven async infrastructure
-	BaseDomain     string      // Base domain (e.g. homechrome.in) — used for cookie domain
-	DomainName     string      // Optional: custom domain for API Gateway (e.g. dev-api.homechrome.in)
-	FrontendOrigin string      // Optional: frontend origin for CORS (e.g. https://dev-admin.homechrome.in)
-	CertArn        string      // Optional: ACM certificate ARN (us-east-1) for custom domain
+	EventStack     *EventStack    // Optional: event-driven async infrastructure
+	EmbedderStack  *EmbedderStack // Optional: embedder Lambda for hybrid semantic search
+	BaseDomain     string         // Base domain (e.g. homechrome.in) — used for cookie domain
+	DomainName     string         // Optional: custom domain for API Gateway (e.g. dev-api.homechrome.in)
+	FrontendOrigin string         // Optional: frontend origin for CORS (e.g. https://dev-admin.homechrome.in)
+	CertArn        string         // Optional: ACM certificate ARN (us-east-1) for custom domain
 }
 
 // ServiceLambda represents a Lambda function for a service
@@ -228,6 +229,70 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 		// Grant SNS publish permission when EventStack is available
 		if props.EventStack != nil {
 			props.EventStack.Topic.GrantPublish(lambdaFn)
+		}
+	}
+
+	// Embedder integration — grant catalog Lambda invoke + SSM read for embedder auth key.
+	// Only wired when EmbedderStack is provided (always the case in practice).
+	if props.EmbedderStack != nil {
+		catalogFn := lambdas["catalog"].Function
+
+		// Inject embedder config into catalog Lambda
+		catalogFn.AddEnvironment(jsii.String("EMBEDDER_FN_NAME"),
+			props.EmbedderStack.Function.FunctionName(), nil)
+		catalogFn.AddEnvironment(jsii.String("EMBEDDER_AUTH_KEY_PARAM"),
+			jsii.String(fmt.Sprintf("/handloom/%s/embedder-auth-key", props.Environment)), nil)
+		catalogFn.AddEnvironment(jsii.String("EMBEDDER_TIMEOUT_MS"),
+			jsii.String("10000"), nil)
+		catalogFn.AddEnvironment(jsii.String("EMBEDDING_MODEL_VERSION"),
+			jsii.String("l3cube-indic-sbert-nli-v1"), nil)
+
+		// Allow catalog Lambda to invoke the embedder
+		props.EmbedderStack.Function.GrantInvoke(catalogFn)
+
+		// Allow catalog Lambda to read the embedder auth key from SSM
+		catalogFn.AddToRolePolicy(awsiam.NewPolicyStatement(&awsiam.PolicyStatementProps{
+			Actions: jsii.Strings("ssm:GetParameter"),
+			Resources: jsii.Strings(fmt.Sprintf(
+				"arn:aws:ssm:*:*:parameter/handloom/%s/embedder-auth-key",
+				props.Environment,
+			)),
+		}))
+
+		// Backfill Lambda — one-shot job to embed all existing products.
+		// High memory (1769 MB = 1 vCPU) and long timeout (15 min) to handle large catalogs.
+		backfillFn := awslambda.NewFunction(stack, jsii.String("EmbeddingBackfill"), &awslambda.FunctionProps{
+			FunctionName: jsii.String(fmt.Sprintf("handloom-worker-embedding-backfill-%s", props.Environment)),
+			Runtime:      awslambda.Runtime_PROVIDED_AL2023(),
+			Architecture: awslambda.Architecture_ARM_64(),
+			Handler:      jsii.String("bootstrap"),
+			Code:         awslambda.Code_FromAsset(jsii.String("../bin/lambda/worker-embedding-backfill"), &awss3assets.AssetOptions{}),
+			MemorySize:   jsii.Number(1769),
+			Timeout:      awscdk.Duration_Minutes(jsii.Number(15)),
+			LogRetention: awslogs.RetentionDays_TWO_WEEKS,
+			Environment: &map[string]*string{
+				"POSTGRES_DSN":            props.DatabaseStack.PostgresDSN,
+				"EMBEDDER_FN_NAME":        props.EmbedderStack.Function.FunctionName(),
+				"EMBEDDER_AUTH_KEY_PARAM": jsii.String(fmt.Sprintf("/handloom/%s/embedder-auth-key", props.Environment)),
+				"EMBEDDING_MODEL_VERSION": jsii.String("l3cube-indic-sbert-nli-v1"),
+			},
+		})
+
+		// Allow backfill Lambda to invoke the embedder
+		props.EmbedderStack.Function.GrantInvoke(backfillFn)
+
+		// Allow backfill Lambda to read both the embedder auth key and Postgres DSN from SSM
+		backfillFn.AddToRolePolicy(awsiam.NewPolicyStatement(&awsiam.PolicyStatementProps{
+			Actions: jsii.Strings("ssm:GetParameter"),
+			Resources: jsii.Strings(
+				fmt.Sprintf("arn:aws:ssm:*:*:parameter/handloom/%s/embedder-auth-key", props.Environment),
+				fmt.Sprintf("arn:aws:ssm:*:*:parameter/handloom/%s/postgres-dsn", props.Environment),
+			),
+		}))
+
+		lambdas["embedding-backfill"] = &ServiceLambda{
+			Function: backfillFn,
+			Name:     "worker-embedding-backfill",
 		}
 	}
 

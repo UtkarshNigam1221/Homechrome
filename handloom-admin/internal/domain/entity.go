@@ -342,6 +342,14 @@ type Product struct {
 	Status    ProductStatus `json:"status" db:"status"`
 	SortOrder int           `json:"sort_order" db:"sort_order"`
 
+	// Embedding is the dense semantic vector (768-dim) used by hybrid search.
+	// Nil when not yet embedded; backfill populates lazily.
+	Embedding []float32 `json:"-"`
+
+	// EmbeddingUpdatedAt records when the embedding was last written.
+	// Nil paired with non-nil Embedding should not occur.
+	EmbeddingUpdatedAt *time.Time `json:"-" db:"embedding_updated_at"`
+
 	BaseEntity
 }
 

@@ -2,6 +2,7 @@ import { ColorSchemeScript, mantineHtmlProps } from '@mantine/core';
 import type { Metadata } from 'next';
 
 import { MiniCartDrawer } from '@/components/cart/MiniCartDrawer';
+import EmbedderWarmer from '@/components/EmbedderWarmer';
 import { FloatingActions } from '@/components/layout/FloatingActions';
 import Footer from '@/components/layout/Footer';
 import Header from '@/components/layout/Header';
@@ -46,6 +47,7 @@ export default async function RootLayout({
       </head>
       <body className={siteFont.className} style={{ minHeight: '100vh' }}>
         <Providers>
+          <EmbedderWarmer />
           <Header categories={categories} />
           <SpotlightSearch categories={categories} />
           <MiniCartDrawer />

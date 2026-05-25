@@ -8,13 +8,18 @@
 	build-lambda-store-profile build-lambda-store-events build-lambda-store-webhooks \
 	build-workers build-lambda-worker-notification build-lambda-worker-report \
 	build-lambda-worker-analytics build-lambda-worker-audit \
+	build-lambda-backfill \
 	create-events \
 	cdk-synth cdk-deploy-dev cdk-deploy-prod cdk-destroy \
 	init-s3 deploy-local redeploy-local teardown-local \
-	logs logs-lambda
+	logs logs-lambda \
+	install-libtokenizers
 
 # AWS region for deployment
 AWS_REGION ?= ap-south-1
+
+# Environment (dev | prod)
+ENV ?= dev
 
 # Config (certs, domains) lives in infra/cmd/config.go
 
@@ -459,6 +464,13 @@ build-lambda-worker-audit:
 	@mkdir -p $(LAMBDA_OUT_DIR)/worker-audit
 	$(LAMBDA_BUILD_FLAGS) $(GOBUILD) -ldflags="-s -w" -o $(LAMBDA_OUT_DIR)/worker-audit/bootstrap ./cmd/lambda/worker-audit
 
+## Build the embedding backfill Lambda (not included in build-lambdas-active; triggered manually via GH Actions)
+.PHONY: prepare-embedder-assets build-lambda-backfill
+build-lambda-backfill:
+	@echo "Building worker-embedding-backfill Lambda..."
+	@mkdir -p $(LAMBDA_OUT_DIR)/worker-embedding-backfill
+	$(LAMBDA_BUILD_FLAGS) $(GOBUILD) -ldflags="-s -w" -o $(LAMBDA_OUT_DIR)/worker-embedding-backfill/bootstrap ./cmd/lambda/worker-embedding-backfill
+
 ## Create SNS topic and SQS queues in LocalStack
 create-events:
 	@echo "Creating SNS topic and SQS queues..."
@@ -477,11 +489,11 @@ cdk-synth-prod:
 	@echo "Synthesizing CDK stacks for prod..."
 	export AWS_REGION=$(AWS_REGION) && cd infra && cdk synth -c environment=prod
 
-cdk-deploy-dev: build-lambdas-active
+cdk-deploy-dev: build-lambdas-active prepare-embedder-assets
 	@echo "Deploying to development environment..."
 	set -a && . ./.env.dev && set +a && export AWS_REGION=$(AWS_REGION) && cd infra && cdk deploy --all --require-approval never -c environment=dev
 
-cdk-deploy-prod: build-lambdas-active
+cdk-deploy-prod: build-lambdas-active prepare-embedder-assets
 	@echo "Deploying to production environment..."
 	set -a && . ./.env.prod && set +a && export AWS_REGION=$(AWS_REGION) && cd infra && cdk deploy --all --require-approval broadening -c environment=prod
 
@@ -590,3 +602,38 @@ help:
 	@echo "  Email:    admin@handloom.com"
 	@echo "  Password: Admin@123!"
 	@echo ""
+
+# ---- Embedder Lambda (container image built by CDK) ----
+TOKENIZERS_VERSION := v1.27.0
+
+# Populates cmd/embedder/assets/ from ~/.cache/handloom-embedder (which is
+# populated by scripts/bootstrap-embedder-assets.sh — slow first run, fast
+# subsequent runs). Required before `cdk synth` builds the embedder image.
+.PHONY: prepare-embedder-assets
+prepare-embedder-assets:
+	@../scripts/bootstrap-embedder-assets.sh
+
+# Install libtokenizers.a so local `go build` of the embedder works on macOS/Linux dev hosts.
+.PHONY: install-libtokenizers
+install-libtokenizers:
+	@OS=$$(uname -s | tr A-Z a-z); ARCH=$$(uname -m); \
+	case "$$OS-$$ARCH" in \
+		darwin-arm64) ASSET=libtokenizers.darwin-arm64.tar.gz ;; \
+		darwin-x86_64) ASSET=libtokenizers.darwin-x86_64.tar.gz ;; \
+		linux-aarch64|linux-arm64) ASSET=libtokenizers.linux-arm64.tar.gz ;; \
+		linux-x86_64) ASSET=libtokenizers.linux-x86_64.tar.gz ;; \
+		*) echo "unsupported platform $$OS-$$ARCH"; exit 1 ;; \
+	esac; \
+	URL="https://github.com/daulet/tokenizers/releases/download/$(TOKENIZERS_VERSION)/$$ASSET"; \
+	echo "Fetching $$URL"; \
+	tmp=$$(mktemp -d); \
+	curl -fsSL "$$URL" -o "$$tmp/libtok.tar.gz" && tar xzf "$$tmp/libtok.tar.gz" -C "$$tmp" && \
+	sudo install -m 0644 "$$tmp/libtokenizers.a" /usr/local/lib/libtokenizers.a; \
+	rm -rf "$$tmp"
+
+# NOTE: the previous build-embedder-image / push-embedder-image targets were
+# removed when the embedder switched to CDK Code_FromAssetImage. CDK now builds
+# the Dockerfile inline during `cdk synth` and pushes the image to its
+# bootstrap ECR repo automatically. To deploy a new embedder version, run
+# `make cdk-deploy-{env}` — CDK detects the source-content hash change and
+# rebuilds + pushes + updates the Lambda.
