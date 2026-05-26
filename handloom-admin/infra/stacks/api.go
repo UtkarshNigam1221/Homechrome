@@ -12,6 +12,7 @@ import (
 	"github.com/aws/aws-cdk-go/awscdk/v2/awsiam"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awslambda"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awslambdanodejs"
+	"github.com/aws/aws-cdk-go/awscdk/v2/awslogs"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awss3assets"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awsssm"
 	"github.com/aws/constructs-go/constructs/v10"
@@ -24,6 +25,7 @@ type APIStackProps struct {
 	Environment    string
 	DatabaseStack  *DatabaseStack
 	StorageStack   *StorageStack
+	LogsStack      *LogsStack     // Shared CloudWatch log groups (ApiLogGroup, WorkerLogGroup)
 	EventStack     *EventStack    // Optional: event-driven async infrastructure
 	EmbedderStack  *EmbedderStack // Optional: embedder Lambda for hybrid semantic search
 	BaseDomain     string         // Base domain (e.g. homechrome.in) — used for cookie domain
@@ -55,8 +57,10 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 	stack := awscdk.NewStack(scope, &id, &sprops)
 	isProd := props.Environment == "prod"
 
-	// LogGroup props on Lambdas intentionally omitted during LogsStack
-	// migration; Lambdas auto-create defaults until revert re-wires them.
+	// Shared log groups come from LogsStack — single source of truth for
+	// retention + lifecycle.
+	apiLogGroup := props.LogsStack.ApiLogGroup
+	workerLogGroup := props.LogsStack.WorkerLogGroup
 
 	// JWT secret parameter names. These SSM parameters must be created out-of-band
 	// (see scripts/bootstrap-env.sh) before deploying this stack. The stack only
@@ -79,6 +83,7 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 		Architecture:     awslambda.Architecture_ARM_64(),
 		MemorySize:       jsii.Number(1024),
 		Timeout:          awscdk.Duration_Seconds(jsii.Number(90)),
+		LogGroup:         apiLogGroup,
 		Bundling: &awslambdanodejs.BundlingOptions{
 			// Sharp must NOT be esbuild-bundled — it has native binaries.
 			// @aws-sdk/client-s3 is provided by the Node 20 Lambda runtime.
@@ -157,8 +162,8 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 		memorySize = 256 // Slightly higher for production, still cost-effective
 	}
 
-	// LogGroup props on service Lambdas intentionally omitted during
-	// LogsStack migration.
+	// apiLogGroup + workerLogGroup are declared at the top of this stack
+	// (sourced from LogsStack).
 
 	// Create Lambda functions for each service
 	// TODO: Uncomment services as they are implemented
@@ -194,7 +199,7 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 		if svc == "asset" {
 			timeout = 45
 		}
-		lambdaFn := createServiceLambda(stack, svc, props.Environment, commonEnv, memorySize, timeout)
+		lambdaFn := createServiceLambda(stack, svc, props.Environment, commonEnv, memorySize, timeout, apiLogGroup)
 		lambdas[svc] = &ServiceLambda{
 			Function: lambdaFn,
 			Name:     svc,
@@ -257,6 +262,7 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 			Code:         awslambda.Code_FromAsset(jsii.String("../bin/lambda/worker-embedding-backfill"), &awss3assets.AssetOptions{}),
 			MemorySize:   jsii.Number(1769),
 			Timeout:      awscdk.Duration_Minutes(jsii.Number(15)),
+			LogGroup:     workerLogGroup,
 			Environment: &map[string]*string{
 				"POSTGRES_DSN":            props.DatabaseStack.PostgresDSN,
 				"EMBEDDER_FN_NAME":        props.EmbedderStack.Function.FunctionName(),
@@ -357,6 +363,7 @@ func createServiceLambda(
 	commonEnv map[string]*string,
 	memorySize float64,
 	timeout float64,
+	logGroup awslogs.ILogGroup,
 ) awslambda.Function {
 	// Add service-specific environment variable
 	env := make(map[string]*string)
@@ -377,6 +384,7 @@ func createServiceLambda(
 		MemorySize:   jsii.Number(memorySize),
 		Timeout:      awscdk.Duration_Seconds(jsii.Number(timeout)),
 		Environment:  &env,
+		LogGroup:     logGroup,
 		Tracing:      awslambda.Tracing_DISABLED, // Disable X-Ray tracing (not free)
 	})
 }

@@ -31,10 +31,16 @@ func main() {
 		"ManagedBy":   jsii.String("cdk"),
 	}
 
-	// LogsStack instantiation DISABLED — release-ownership pass for prod
-	// migration. Revert this commit to restore LogsStack wiring.
-	//
-	// logsStack := stacks.NewLogsStack(app, "HandloomLogsStack-"+environment, &stacks.LogsStackProps{...})
+	// Logs stack — owns ApiLogGroup + WorkerLogGroup. Created first so every
+	// downstream stack can reference the same log groups via props.LogsStack.
+	logsStack := stacks.NewLogsStack(app, "HandloomLogsStack-"+environment, &stacks.LogsStackProps{
+		StackProps: awscdk.StackProps{
+			Env:         env,
+			Description: jsii.String("Handloom Admin - Shared CloudWatch log groups (" + environment + ")"),
+			Tags:        commonTags,
+		},
+		Environment: environment,
+	})
 
 	// Database stack
 	databaseStack := stacks.NewDatabaseStack(app, "HandloomDatabaseStack-"+environment, &stacks.DatabaseStackProps{
@@ -45,6 +51,7 @@ func main() {
 		},
 		Environment: environment,
 		PostgresDSN: postgresDSN,
+		LogsStack:   logsStack,
 	})
 
 	// Storage stack
@@ -87,6 +94,7 @@ func main() {
 		Environment:    environment,
 		StoreFrontHost: cfg.StoreFrontHost,
 		DatabaseStack:  databaseStack,
+		LogsStack:      logsStack,
 	})
 	// API stack (depends on database, storage, and events)
 	stacks.NewAPIStack(app, "HandloomAPIStack-"+environment, &stacks.APIStackProps{
@@ -98,6 +106,7 @@ func main() {
 		Environment:    environment,
 		DatabaseStack:  databaseStack,
 		StorageStack:   storageStack,
+		LogsStack:      logsStack,
 		EventStack:     nil,      // DISABLED: pass eventStack here when re-enabling
 		EmbedderStack:  embStack, // Embedder for hybrid semantic search
 		BaseDomain:     cfg.BaseDomain,

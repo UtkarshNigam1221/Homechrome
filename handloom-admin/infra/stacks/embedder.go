@@ -30,6 +30,7 @@ type EmbedderStackProps struct {
 	Environment    string
 	StoreFrontHost string         // e.g. https://store-dev.homechrome.in — single allowed CORS origin
 	DatabaseStack  *DatabaseStack // for POSTGRES_DSN passed as plain env var (sourced from .env.{env} / GH secrets at deploy time)
+	LogsStack      *LogsStack     // shared CloudWatch log groups (embedder writes to ApiLogGroup)
 }
 
 // EmbedderStack publishes:
@@ -71,9 +72,9 @@ func NewEmbedderStack(scope constructs.Construct, id string, props *EmbedderStac
 		Architecture: awslambda.Architecture_ARM_64(),
 		MemorySize:   jsii.Number(1769),
 		Timeout:      awscdk.Duration_Seconds(jsii.Number(60)),
-		// LogGroup intentionally omitted during LogsStack migration. Lambda
-		// auto-creates default group; revert restores LogsStack.ApiLogGroup.
-		//
+		// Shared API log group — embedder serves storefront /search and
+		// /embedder-ping, so logs alongside the rest of the request handlers.
+		LogGroup: props.LogsStack.ApiLogGroup,
 		// Cap concurrency to prevent burst abuse via the public Function URL.
 		// At 1769MB (1 vCPU) each cold-start costs ~6s × 1.769GB-sec; without
 		// this cap the account-default ~1000 concurrent containers can be
