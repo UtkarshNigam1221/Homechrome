@@ -21,7 +21,6 @@ type EventStackProps struct {
 	awscdk.StackProps
 	Environment   string
 	DatabaseStack *DatabaseStack
-	LogsStack     *LogsStack // shared CloudWatch log groups (workers write to WorkerLogGroup)
 }
 
 // EventStack contains the SNS topic, SQS queues, and worker Lambdas.
@@ -47,10 +46,8 @@ func NewEventStack(scope constructs.Construct, id string, props *EventStackProps
 		memorySize = 256
 	}
 
-	// Async worker Lambdas write into the shared WorkerLogGroup owned by
-	// LogsStack so per-message worker chatter stays separate from the
-	// request-traced API log group.
-	workerLogGroup := props.LogsStack.WorkerLogGroup
+	// LogGroup props on worker Lambdas intentionally omitted during
+	// LogsStack migration.
 
 	// --- SNS Topic ---
 	topic := awssns.NewTopic(stack, jsii.String("EventsTopic"), &awssns.TopicProps{
@@ -184,7 +181,6 @@ func NewEventStack(scope constructs.Construct, id string, props *EventStackProps
 			MemorySize:   jsii.Number(memorySize),
 			Timeout:      awscdk.Duration_Seconds(jsii.Number(60)),
 			Environment:  &env,
-			LogGroup:     workerLogGroup,
 			Tracing:      awslambda.Tracing_DISABLED,
 		})
 
