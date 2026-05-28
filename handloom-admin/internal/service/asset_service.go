@@ -48,7 +48,7 @@ type s3Ops interface {
 
 // resizerInvoker abstracts the Lambda call so it can be mocked in tests.
 type resizerInvoker interface {
-	InvokeSync(ctx context.Context, functionName string, payload []byte) ([]byte, error)
+	InvokeAsync(ctx context.Context, functionName string, payload []byte) error
 }
 
 // AssetService handles file uploads via S3.
@@ -199,11 +199,14 @@ func (s *AssetService) FinalizeUpload(ctx context.Context, tmpKey string) (strin
 	return finalURL, nil
 }
 
-// invokeImageResizer calls the ImageResizer Lambda synchronously with a synthetic
-// S3 event payload. Returns an error if the Lambda fails or any variant is missing.
+// invokeImageResizer fires off the ImageResizer Lambda asynchronously with a
+// synthetic S3 event payload. Async invocation (InvocationType=Event) returns
+// once Lambda has queued the request — typically <500ms — so the caller's API
+// handler isn't blocked on the 5–30s variant fan-out. Caller context still
+// bounds the queue-submission RPC; once accepted, the resizer runs against its
+// own 90s timeout independent of the caller.
 func (s *AssetService) invokeImageResizer(ctx context.Context, key string) error {
 	if s.resizer == nil || s.resizerFnName == "" {
-		// Resizer disabled (local dev without Lambda runtime). Skip silently.
 		slog.WarnContext(ctx, "ImageResizer not configured, skipping variant generation", "key", key)
 		return nil
 	}
@@ -212,8 +215,8 @@ func (s *AssetService) invokeImageResizer(ctx context.Context, key string) error
 		s.bucket, key,
 	)
 	start := time.Now()
-	_, err := s.resizer.InvokeSync(ctx, s.resizerFnName, []byte(payload))
-	slog.InfoContext(ctx, "image_resize",
+	err := s.resizer.InvokeAsync(ctx, s.resizerFnName, []byte(payload))
+	slog.InfoContext(ctx, "image_resize_dispatch",
 		"key", key,
 		"duration_ms", time.Since(start).Milliseconds(),
 		"error", err,

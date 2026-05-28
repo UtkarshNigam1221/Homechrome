@@ -75,3 +75,23 @@ func (c *LambdaClient) InvokeSync(ctx context.Context, functionName string, payl
 	}
 	return out.Payload, nil
 }
+
+// InvokeAsync calls a Lambda function with InvocationType=Event (fire-and-forget).
+// Returns once Lambda accepts the request for queued execution (HTTP 202); the
+// callee runs independently against its own configured timeout. Use for work the
+// caller does not need to await — e.g. background variant generation triggered
+// from a short-lived API handler.
+func (c *LambdaClient) InvokeAsync(ctx context.Context, functionName string, payload []byte) error {
+	out, err := c.client.Invoke(ctx, &lambda.InvokeInput{
+		FunctionName:   aws.String(functionName),
+		InvocationType: types.InvocationTypeEvent,
+		Payload:        payload,
+	})
+	if err != nil {
+		return fmt.Errorf("invoke %s: %w", functionName, err)
+	}
+	if out.StatusCode != 202 {
+		return fmt.Errorf("lambda %s async invoke returned status %d", functionName, out.StatusCode)
+	}
+	return nil
+}

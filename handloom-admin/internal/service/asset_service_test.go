@@ -53,12 +53,9 @@ type mockResizer struct {
 	returnErr   error
 }
 
-func (m *mockResizer) InvokeSync(_ context.Context, fn string, payload []byte) ([]byte, error) {
+func (m *mockResizer) InvokeAsync(_ context.Context, fn string, payload []byte) error {
 	m.invocations = append(m.invocations, resizerCall{FunctionName: fn, Payload: payload})
-	if m.returnErr != nil {
-		return nil, m.returnErr
-	}
-	return []byte(`{}`), nil
+	return m.returnErr
 }
 
 // ---------------------------------------------------------------------------
