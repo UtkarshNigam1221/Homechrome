@@ -1,15 +1,20 @@
 'use client';
 
-import { Center, Loader, LoaderProps } from '@mantine/core';
+import HCLoader, { HCLoaderSize } from './HCLoader';
 
-interface LoadingSpinnerProps extends Omit<LoaderProps, 'size'> {
+interface LoadingSpinnerProps {
   size?: 'sm' | 'md' | 'lg';
+  className?: string;
 }
 
-const sizeMap = { sm: 'sm', md: 'md', lg: 'lg' } as const;
+const legacyToHC: Record<'sm' | 'md' | 'lg', HCLoaderSize> = {
+  sm: 'sm',
+  md: 'md',
+  lg: 'lg',
+};
 
-export function LoadingSpinner({ size = 'md', ...rest }: LoadingSpinnerProps) {
-  return <Loader size={sizeMap[size]} color="brand" {...rest} />;
+export function LoadingSpinner({ size = 'md', className }: LoadingSpinnerProps) {
+  return <HCLoader size={legacyToHC[size]} className={className} />;
 }
 
 interface LoadingBlockProps {
@@ -18,10 +23,10 @@ interface LoadingBlockProps {
   label?: string;
 }
 
-export function LoadingBlock({ size = 'lg', className }: LoadingBlockProps) {
+export function LoadingBlock({ size = 'lg', className, label }: LoadingBlockProps) {
   return (
-    <Center py={80} className={className}>
-      <LoadingSpinner size={size} />
-    </Center>
+    <div className={`flex w-full items-center justify-center py-20 ${className ?? ''}`}>
+      <HCLoader size={legacyToHC[size]} label={label} />
+    </div>
   );
 }
