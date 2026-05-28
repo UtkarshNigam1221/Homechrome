@@ -26,12 +26,16 @@ const pixelSize: Record<Exclude<HCLoaderSize, 'fullPage'>, number> = {
 // prefers reduced motion. Visual presence preserved; no movement.
 const REDUCED_MOTION_FRAME = 75;
 
+function getReducedMotion(): boolean {
+  if (typeof window === 'undefined') return false;
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
 function useReducedMotion(): boolean {
-  const [reduced, setReduced] = useState(false);
+  const [reduced, setReduced] = useState<boolean>(getReducedMotion);
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
-    setReduced(mq.matches);
     const handler = (e: MediaQueryListEvent) => setReduced(e.matches);
     mq.addEventListener('change', handler);
     return () => mq.removeEventListener('change', handler);
