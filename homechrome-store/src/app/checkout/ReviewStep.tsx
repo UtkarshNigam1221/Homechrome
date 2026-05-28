@@ -2,6 +2,7 @@
 
 import { Anchor, Button, Card, Group, Stack, Text, Title } from '@mantine/core';
 
+import HCLoader from '@/components/ui/HCLoader';
 import { formatPrice } from '@/lib/utils';
 import { Address, CartItem, CourierOption } from '@/types';
 
@@ -10,6 +11,7 @@ interface ReviewStepProps {
   selectedCourier: CourierOption | null;
   items: CartItem[];
   initiating: boolean;
+  initiatingCheckout: boolean;
   onChangeAddress: () => void;
   onChangeShipping: () => void;
   onPayNow: () => void;
@@ -20,11 +22,13 @@ export function ReviewStep({
   selectedCourier,
   items,
   initiating,
+  initiatingCheckout,
   onChangeAddress,
   onChangeShipping,
   onPayNow,
 }: ReviewStepProps) {
   return (
+    <div className="relative">
     <Card shadow="sm" radius="lg" padding="lg">
       <Stack gap="md">
         <Title order={2} size="md">Review Your Order</Title>
@@ -66,6 +70,12 @@ export function ReviewStep({
         </Group>
       </Stack>
     </Card>
+    {initiatingCheckout && (
+      <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/70 backdrop-blur-[1px]">
+        <HCLoader size="md" label="Initiating payment" />
+      </div>
+    )}
+    </div>
   );
 }
 

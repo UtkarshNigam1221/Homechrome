@@ -3,6 +3,7 @@
 import { Alert, Anchor, Button, Card, Group, Stack, Text, Title } from '@mantine/core';
 
 import ShippingOptions from '@/components/checkout/ShippingOptions';
+import HCLoader from '@/components/ui/HCLoader';
 import { Address, CourierOption } from '@/types';
 
 interface ShippingStepProps {
@@ -11,6 +12,7 @@ interface ShippingStepProps {
   selectedCourierId: number | null;
   serviceabilityLoading: boolean;
   serviceabilityError: string | null;
+  checkingServiceability: boolean;
   onSelectCourier: (id: number) => void;
   onChangeAddress: () => void;
   onContinue: () => void;
@@ -22,11 +24,13 @@ export function ShippingStep({
   selectedCourierId,
   serviceabilityLoading,
   serviceabilityError,
+  checkingServiceability,
   onSelectCourier,
   onChangeAddress,
   onContinue,
 }: ShippingStepProps) {
   return (
+    <div className="relative">
     <Card shadow="sm" radius="lg" padding="lg">
       <Stack gap="md">
         <Title order={2} size="md">Shipping Method</Title>
@@ -78,5 +82,11 @@ export function ShippingStep({
         )}
       </Stack>
     </Card>
+    {checkingServiceability && (
+      <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/70 backdrop-blur-[1px]">
+        <HCLoader size="md" label="Checking delivery" />
+      </div>
+    )}
+    </div>
   );
 }

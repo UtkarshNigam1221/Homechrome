@@ -4,6 +4,7 @@ import { Anchor, Badge, Button, Card, Group, Radio, Stack, Text, Title } from '@
 import { useRouter } from 'next/navigation';
 
 import AddressForm from '@/components/checkout/AddressForm';
+import HCLoader from '@/components/ui/HCLoader';
 import { Address } from '@/types';
 
 interface AddressStepProps {
@@ -11,6 +12,7 @@ interface AddressStepProps {
   selectedAddressId: string | null;
   showAddressForm: boolean;
   addressSaving: boolean;
+  creatingAddress: boolean;
   onSelectAddress: (id: string) => void;
   onToggleForm: (show: boolean) => void;
   onSaveAddress: (data: Omit<Address, 'id'>) => Promise<void>;
@@ -22,6 +24,7 @@ export function AddressStep({
   selectedAddressId,
   showAddressForm,
   addressSaving,
+  creatingAddress,
   onSelectAddress,
   onToggleForm,
   onSaveAddress,
@@ -30,6 +33,7 @@ export function AddressStep({
   const router = useRouter();
 
   return (
+    <div className="relative">
     <Card shadow="sm" radius="lg" padding="lg">
       <Stack gap="md">
         <Title order={2} size="md">Shipping Address</Title>
@@ -99,5 +103,11 @@ export function AddressStep({
         )}
       </Stack>
     </Card>
+    {creatingAddress && (
+      <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/70 backdrop-blur-[1px]">
+        <HCLoader size="md" label="Saving address" />
+      </div>
+    )}
+    </div>
   );
 }
