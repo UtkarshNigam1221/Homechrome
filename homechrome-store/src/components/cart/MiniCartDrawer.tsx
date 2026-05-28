@@ -19,6 +19,7 @@ import {
 import Link from 'next/link';
 
 import { AssetImage } from '@/components/ui/asset-image';
+import HCLoader from '@/components/ui/HCLoader';
 import { QuantityStepper } from '@/components/ui/quantity-stepper';
 import { useCart } from '@/hooks/useCart';
 import { formatPrice } from '@/lib/utils';
@@ -29,7 +30,7 @@ export function MiniCartDrawer() {
   const isOpen = useUIStore((s) => s.miniCartOpen);
   const close = useUIStore((s) => s.closeMiniCart);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
-  const { cart, loading, updateQuantity, removeItem } = useCart();
+  const { cart, loading, updateQuantity, removeItem, updatingItemId, removingItemId } = useCart();
   const items = cart?.items ?? [];
   const subtotal = cart?.cart.subtotal ?? 0;
   const itemCount = cart?.cart.item_count ?? 0;
@@ -84,8 +85,11 @@ export function MiniCartDrawer() {
         </Stack>
       ) : (
         <Stack gap="md">
-          {items.map((item) => (
-            <Box key={item.product_id}>
+          {items.map((item) => {
+            const inFlight =
+              updatingItemId === item.product_id || removingItemId === item.product_id;
+            return (
+            <Box key={item.product_id} pos="relative">
               <Group gap="sm" wrap="nowrap" align="flex-start">
                 <Box w={64} flex="none">
                   <AspectRatio ratio={1}>
@@ -164,8 +168,14 @@ export function MiniCartDrawer() {
                 </ActionIcon>
               </Group>
               <Divider mt="md" />
+              {inFlight && (
+                <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/70 backdrop-blur-[1px]">
+                  <HCLoader size="sm" label="Updating item" />
+                </div>
+              )}
             </Box>
-          ))}
+            );
+          })}
 
           <Group justify="space-between">
             <Text c="dimmed">Subtotal</Text>
