@@ -1,5 +1,6 @@
 // Package lambdaclient provides a thin wrapper around aws-sdk-go-v2 Lambda
-// for synchronous (RequestResponse) invocations from in-process Go code.
+// for in-process Lambda invocations — both synchronous (RequestResponse) and
+// asynchronous (Event) modes.
 package lambdaclient
 
 import (
@@ -77,10 +78,13 @@ func (c *LambdaClient) InvokeSync(ctx context.Context, functionName string, payl
 }
 
 // InvokeAsync calls a Lambda function with InvocationType=Event (fire-and-forget).
-// Returns once Lambda accepts the request for queued execution (HTTP 202); the
-// callee runs independently against its own configured timeout. Use for work the
-// caller does not need to await — e.g. background variant generation triggered
-// from a short-lived API handler.
+// Returns once Lambda accepts the request for queued execution; the callee runs
+// independently against its own configured timeout.
+//
+// Note: AWS retries failed async invocations up to MaximumRetryAttempts (default
+// 2, up to MaximumEventAgeInSeconds — 6h by default) then drops the event.
+// Targets MUST be idempotent, and callers should configure a DLQ or OnFailure
+// destination on the callee Lambda for failure visibility.
 func (c *LambdaClient) InvokeAsync(ctx context.Context, functionName string, payload []byte) error {
 	out, err := c.client.Invoke(ctx, &lambda.InvokeInput{
 		FunctionName:   aws.String(functionName),
@@ -90,8 +94,8 @@ func (c *LambdaClient) InvokeAsync(ctx context.Context, functionName string, pay
 	if err != nil {
 		return fmt.Errorf("invoke %s: %w", functionName, err)
 	}
-	if out.StatusCode != 202 {
-		return fmt.Errorf("lambda %s async invoke returned status %d", functionName, out.StatusCode)
+	if out == nil || out.StatusCode < 200 || out.StatusCode >= 300 {
+		return fmt.Errorf("lambda %s async invoke returned non-2xx status", functionName)
 	}
 	return nil
 }

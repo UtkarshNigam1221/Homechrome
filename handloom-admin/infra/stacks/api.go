@@ -193,8 +193,9 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 
 	lambdas := make(map[string]*ServiceLambda)
 	for _, svc := range services {
-		// Asset Lambda gets a longer timeout: it synchronously invokes ImageResizer
-		// which can take up to ~30s for multi-variant generation.
+		// Asset Lambda keeps a longer timeout as headroom for batched finalize
+		// operations (multiple S3 copy/delete RTs per request). ImageResizer is
+		// now invoked async, so callers no longer block on the resize itself.
 		timeout := float64(15)
 		if svc == "asset" {
 			timeout = 45

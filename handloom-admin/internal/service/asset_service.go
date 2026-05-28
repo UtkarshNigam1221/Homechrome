@@ -61,7 +61,7 @@ type AssetService struct {
 	cdnHost       string // CloudFront domain (empty → fall back to direct S3 URL)
 	endpoint      string // AWS_ENDPOINT for local dev (empty in production)
 	resizer       resizerInvoker
-	resizerFnName string // empty disables sync resize (e.g. local dev without LocalStack Lambda)
+	resizerFnName string // empty disables variant generation (e.g. local dev without LocalStack Lambda)
 }
 
 // NewAssetService creates a new AssetService.
@@ -199,14 +199,12 @@ func (s *AssetService) FinalizeUpload(ctx context.Context, tmpKey string) (strin
 	return finalURL, nil
 }
 
-// invokeImageResizer fires off the ImageResizer Lambda asynchronously with a
-// synthetic S3 event payload. Async invocation (InvocationType=Event) returns
-// once Lambda has queued the request — typically <500ms — so the caller's API
-// handler isn't blocked on the 5–30s variant fan-out. Caller context still
-// bounds the queue-submission RPC; once accepted, the resizer runs against its
-// own 90s timeout independent of the caller.
+// invokeImageResizer fires the ImageResizer Lambda async (InvocationType=Event)
+// with a synthetic S3 event payload, so the caller's API handler isn't blocked
+// on the multi-variant resize. Returns once Lambda has queued the request.
 func (s *AssetService) invokeImageResizer(ctx context.Context, key string) error {
 	if s.resizer == nil || s.resizerFnName == "" {
+		// Resizer disabled (local dev without Lambda runtime). Skip silently.
 		slog.WarnContext(ctx, "ImageResizer not configured, skipping variant generation", "key", key)
 		return nil
 	}
