@@ -8,6 +8,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
 
+import HCLoader from '@/components/ui/HCLoader';
 import { searchProducts } from '@/lib/api';
 import { formatPrice } from '@/lib/utils';
 import { Category, Product } from '@/types';
@@ -22,7 +23,7 @@ export function SpotlightSearch({ categories }: SpotlightSearchProps) {
   const [opened, setOpened] = useState(false);
   const [debounced] = useDebouncedValue(query, 300);
 
-  const { data: products = [] } = useQuery<Product[]>({
+  const { data: products = [], isLoading } = useQuery<Product[]>({
     queryKey: ['spotlight-products', debounced],
     enabled: opened && debounced.trim().length >= 2,
     staleTime: 60_000,
@@ -61,6 +62,13 @@ export function SpotlightSearch({ categories }: SpotlightSearchProps) {
     }));
 
     if (debounced.trim().length >= 2) {
+      // While the query is in flight, suppress the "view-all" action so the
+      // actions list is empty and Mantine renders `nothingFound` (the loader).
+      // Once the fetch settles, "view-all" is always appended so the list is
+      // never empty when a real query is active.
+      if (isLoading) {
+        return [...productActions];
+      }
       return [
         ...productActions,
         {
@@ -105,7 +113,7 @@ export function SpotlightSearch({ categories }: SpotlightSearchProps) {
       ],
     });
     return groups;
-  }, [products, categories, debounced, router]);
+  }, [products, categories, debounced, isLoading, router]);
 
   return (
     <Spotlight
@@ -122,11 +130,17 @@ export function SpotlightSearch({ categories }: SpotlightSearchProps) {
         setQuery('');
       }}
       nothingFound={
-        <Group justify="center" py="lg">
-          <Text c="dimmed" size="sm">
-            No products match &ldquo;{debounced.trim()}&rdquo;
-          </Text>
-        </Group>
+        isLoading && debounced.trim().length > 0 ? (
+          <div className="flex w-full items-center justify-center py-6">
+            <HCLoader size="sm" label="Searching" />
+          </div>
+        ) : (
+          <Group justify="center" py="lg">
+            <Text c="dimmed" size="sm">
+              No products match &ldquo;{debounced.trim()}&rdquo;
+            </Text>
+          </Group>
+        )
       }
       highlightQuery
       query={query}
