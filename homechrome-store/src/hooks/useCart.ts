@@ -31,12 +31,10 @@ export function useCart() {
   const cart = data ?? null;
   const loading = isLoading;
 
-  // Sync Zustand store for Header badge
   useEffect(() => {
     setCartStore(cart?.items ?? []);
   }, [cart, setCartStore]);
 
-  // Invalidate cart on any auth transition (login merges guest→customer; logout needs fresh state)
   const wasAuthenticated = useRef(isAuthenticated);
   useEffect(() => {
     if (wasAuthenticated.current !== isAuthenticated) {
@@ -48,7 +46,6 @@ export function useCart() {
   const updateCache = useCallback(
     (newData: CartWithItems | null) => {
       queryClient.setQueryData<CartWithItems | null>(CART_QUERY_KEY, newData);
-      // Sync Zustand immediately instead of waiting for useEffect
       setCartStore(newData?.items ?? []);
     },
     [queryClient, setCartStore],
@@ -137,6 +134,18 @@ export function useCart() {
 
   const clearCart = async () => clearCartMutation.mutateAsync();
 
+  // Expose the product_id currently in flight per mutation. Consumers render
+  // a per-row loader when the row's product_id matches.
+  const addingItemId =
+    addItemMutation.isPending ? addItemMutation.variables?.productId ?? null : null;
+  const updatingItemId =
+    updateQuantityMutation.isPending
+      ? updateQuantityMutation.variables?.productId ?? null
+      : null;
+  const removingItemId =
+    removeItemMutation.isPending ? removeItemMutation.variables ?? null : null;
+  const clearingCart = clearCartMutation.isPending;
+
   return {
     cart,
     loading,
@@ -146,5 +155,9 @@ export function useCart() {
     updateQuantity,
     removeItem,
     clearCart,
+    addingItemId,
+    updatingItemId,
+    removingItemId,
+    clearingCart,
   };
 }
