@@ -6,13 +6,14 @@ import { Box, Container, SimpleGrid, Stack } from '@mantine/core';
 import CartItemComponent from '@/components/cart/CartItem';
 import CartSummary from '@/components/cart/CartSummary';
 import CartSkeleton from '@/components/skeleton/CartSkeleton';
+import HCLoader from '@/components/ui/HCLoader';
 import { EmptyState } from '@/components/ui/empty-state';
 import { PageHeader } from '@/components/ui/page-header';
 import { useCart } from '@/hooks/useCart';
 import { useAuthStore } from '@/stores/auth';
 
 export default function CartPage() {
-  const { cart, loading, updateQuantity, removeItem } = useCart();
+  const { cart, loading, updateQuantity, removeItem, updatingItemId, removingItemId } = useCart();
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const isAuthLoading = useAuthStore((s) => s.isLoading);
 
@@ -44,16 +45,22 @@ export default function CartPage() {
       <SimpleGrid cols={{ base: 1, lg: 3 }} spacing="xl">
         <Stack gap="md" style={{ gridColumn: 'span 2 / span 2' }}>
           {items.map((item) => (
-            <CartItemComponent
-              key={item.product_id}
-              item={item}
-              onUpdateQuantity={async (productId, qty) => {
-                await updateQuantity(productId, qty);
-              }}
-              onRemove={async (productId) => {
-                await removeItem(productId);
-              }}
-            />
+            <div key={item.product_id} className="relative">
+              <CartItemComponent
+                item={item}
+                onUpdateQuantity={async (productId, qty) => {
+                  await updateQuantity(productId, qty);
+                }}
+                onRemove={async (productId) => {
+                  await removeItem(productId);
+                }}
+              />
+              {(updatingItemId === item.product_id || removingItemId === item.product_id) && (
+                <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/70 backdrop-blur-[1px]">
+                  <HCLoader size="sm" label="Updating item" />
+                </div>
+              )}
+            </div>
           ))}
         </Stack>
 
