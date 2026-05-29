@@ -10,6 +10,7 @@ import {
   Divider,
   Drawer,
   Group,
+  Overlay,
   ScrollArea,
   Skeleton,
   Stack,
@@ -169,9 +170,11 @@ export function MiniCartDrawer() {
               </Group>
               <Divider mt="md" />
               {inFlight && (
-                <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/70 backdrop-blur-[1px]">
-                  <HCLoader size="sm" label="Updating item" />
-                </div>
+                <Overlay color="#fff" backgroundOpacity={0.7} blur={1} zIndex={10}>
+                  <Center h="100%">
+                    <HCLoader size="sm" label="Updating item" />
+                  </Center>
+                </Overlay>
               )}
             </Box>
             );

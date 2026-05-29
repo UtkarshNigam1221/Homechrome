@@ -1,6 +1,6 @@
 'use client';
 
-import { Anchor, Button, Card, Group, Stack, Text, Title } from '@mantine/core';
+import { Anchor, Box, Button, Card, Center, Group, Overlay, Stack, Text, Title } from '@mantine/core';
 
 import HCLoader from '@/components/ui/HCLoader';
 import { formatPrice } from '@/lib/utils';
@@ -28,7 +28,7 @@ export function ReviewStep({
   onPayNow,
 }: ReviewStepProps) {
   return (
-    <div className="relative">
+    <Box pos="relative">
     <Card shadow="sm" radius="lg" padding="lg">
       <Stack gap="md">
         <Title order={2} size="md">Review Your Order</Title>
@@ -71,11 +71,13 @@ export function ReviewStep({
       </Stack>
     </Card>
     {initiatingCheckout && (
-      <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/70 backdrop-blur-[1px]">
-        <HCLoader size="md" label="Initiating payment" />
-      </div>
+      <Overlay color="#fff" backgroundOpacity={0.7} blur={1} zIndex={10}>
+        <Center h="100%">
+          <HCLoader size="md" label="Initiating payment" />
+        </Center>
+      </Overlay>
     )}
-    </div>
+    </Box>
   );
 }
 

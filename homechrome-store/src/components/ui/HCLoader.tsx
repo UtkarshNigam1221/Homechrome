@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
 
+import { Center, Overlay, VisuallyHidden } from '@mantine/core';
+
 import loaderAnimation from '@/assets/loader.json';
 
 // Lottie player uses `window` internally — must not run on the server.
@@ -65,25 +67,26 @@ export default function HCLoader({
 
   if (size === 'fullPage') {
     return (
-      <div
-        role="status"
-        aria-live="polite"
-        className={`fixed inset-0 z-50 flex items-center justify-center bg-white/80 backdrop-blur-sm ${className ?? ''}`}
+      <Overlay
+        fixed
+        color="#fff"
+        backgroundOpacity={0.8}
+        blur={4}
+        zIndex={50}
+        className={className}
       >
-        {player}
-        <span className="sr-only">{label}</span>
-      </div>
+        <Center h="100%" role="status" aria-live="polite">
+          {player}
+          <VisuallyHidden>{label}</VisuallyHidden>
+        </Center>
+      </Overlay>
     );
   }
 
   return (
-    <div
-      role="status"
-      aria-live="polite"
-      className={`inline-flex items-center justify-center ${className ?? ''}`}
-    >
+    <Center inline role="status" aria-live="polite" className={className}>
       {player}
-      <span className="sr-only">{label}</span>
-    </div>
+      <VisuallyHidden>{label}</VisuallyHidden>
+    </Center>
   );
 }

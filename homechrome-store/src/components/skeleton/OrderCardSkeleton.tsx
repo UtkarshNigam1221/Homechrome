@@ -1,5 +1,7 @@
 'use client';
 
+import { Center } from '@mantine/core';
+
 import HCLoader from '@/components/ui/HCLoader';
 
 interface OrderCardSkeletonProps {
@@ -9,8 +11,8 @@ interface OrderCardSkeletonProps {
 
 export default function OrderCardSkeleton(_props: OrderCardSkeletonProps) {
   return (
-    <div className="flex w-full items-center justify-center py-20">
+    <Center py={80} w="100%">
       <HCLoader size="lg" label="Loading orders" />
-    </div>
+    </Center>
   );
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import { Anchor, Badge, Button, Card, Group, Radio, Stack, Text, Title } from '@mantine/core';
+import { Anchor, Badge, Box, Button, Card, Center, Group, Overlay, Radio, Stack, Text, Title } from '@mantine/core';
 import { useRouter } from 'next/navigation';
 
 import AddressForm from '@/components/checkout/AddressForm';
@@ -33,7 +33,7 @@ export function AddressStep({
   const router = useRouter();
 
   return (
-    <div className="relative">
+    <Box pos="relative">
     <Card shadow="sm" radius="lg" padding="lg">
       <Stack gap="md">
         <Title order={2} size="md">Shipping Address</Title>
@@ -104,10 +104,12 @@ export function AddressStep({
       </Stack>
     </Card>
     {creatingAddress && (
-      <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/70 backdrop-blur-[1px]">
-        <HCLoader size="md" label="Saving address" />
-      </div>
+      <Overlay color="#fff" backgroundOpacity={0.7} blur={1} zIndex={10}>
+        <Center h="100%">
+          <HCLoader size="md" label="Saving address" />
+        </Center>
+      </Overlay>
     )}
-    </div>
+    </Box>
   );
 }

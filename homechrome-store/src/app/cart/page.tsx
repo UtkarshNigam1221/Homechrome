@@ -1,7 +1,7 @@
 'use client';
 
 import { ShoppingBagIcon } from '@heroicons/react/24/outline';
-import { Box, Container, SimpleGrid, Stack } from '@mantine/core';
+import { Box, Center, Container, Overlay, SimpleGrid, Stack } from '@mantine/core';
 
 import CartItemComponent from '@/components/cart/CartItem';
 import CartSummary from '@/components/cart/CartSummary';
@@ -45,7 +45,7 @@ export default function CartPage() {
       <SimpleGrid cols={{ base: 1, lg: 3 }} spacing="xl">
         <Stack gap="md" style={{ gridColumn: 'span 2 / span 2' }}>
           {items.map((item) => (
-            <div key={item.product_id} className="relative">
+            <Box key={item.product_id} pos="relative">
               <CartItemComponent
                 item={item}
                 onUpdateQuantity={async (productId, qty) => {
@@ -56,11 +56,13 @@ export default function CartPage() {
                 }}
               />
               {(updatingItemId === item.product_id || removingItemId === item.product_id) && (
-                <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/70 backdrop-blur-[1px]">
-                  <HCLoader size="sm" label="Updating item" />
-                </div>
+                <Overlay color="#fff" backgroundOpacity={0.7} blur={1} zIndex={10}>
+                  <Center h="100%">
+                    <HCLoader size="sm" label="Updating item" />
+                  </Center>
+                </Overlay>
               )}
-            </div>
+            </Box>
           ))}
         </Stack>
 

@@ -1,5 +1,7 @@
 'use client';
 
+import { Center } from '@mantine/core';
+
 import HCLoader, { HCLoaderSize } from './HCLoader';
 
 interface LoadingSpinnerProps {
@@ -25,8 +27,8 @@ interface LoadingBlockProps {
 
 export function LoadingBlock({ size = 'lg', className, label }: LoadingBlockProps) {
   return (
-    <div className={`flex w-full items-center justify-center py-20 ${className ?? ''}`}>
+    <Center py={80} w="100%" className={className}>
       <HCLoader size={legacyToHC[size]} label={label} />
-    </div>
+    </Center>
   );
 }

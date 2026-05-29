@@ -1,5 +1,7 @@
 'use client';
 
+import { Center } from '@mantine/core';
+
 import HCLoader from '@/components/ui/HCLoader';
 
 interface ProductGridSkeletonProps {
@@ -9,8 +11,8 @@ interface ProductGridSkeletonProps {
 
 export default function ProductGridSkeleton(_props: ProductGridSkeletonProps) {
   return (
-    <div className="flex w-full items-center justify-center py-20">
+    <Center py={80} w="100%">
       <HCLoader size="lg" label="Loading products" />
-    </div>
+    </Center>
   );
 }
