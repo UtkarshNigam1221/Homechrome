@@ -72,7 +72,9 @@ export default function HCLoader({
         color="#fff"
         backgroundOpacity={0.8}
         blur={4}
-        zIndex={50}
+        // 400 = Mantine's `overlay` elevation, above Modal/Drawer (200) so the
+        // full-page loader always wins over any open modal stack.
+        zIndex={400}
         className={className}
       >
         <Center h="100%" role="status" aria-live="polite">

@@ -1,8 +1,8 @@
 'use client';
 
-import { Anchor, Box, Button, Card, Center, Group, Overlay, Stack, Text, Title } from '@mantine/core';
+import { Anchor, Box, Button, Card, Group, Stack, Text, Title } from '@mantine/core';
 
-import HCLoader from '@/components/ui/HCLoader';
+import InlineLoaderOverlay from '@/components/ui/InlineLoaderOverlay';
 import { formatPrice } from '@/lib/utils';
 import { Address, CartItem, CourierOption } from '@/types';
 
@@ -70,13 +70,7 @@ export function ReviewStep({
         </Group>
       </Stack>
     </Card>
-    {initiatingCheckout && (
-      <Overlay color="#fff" backgroundOpacity={0.7} blur={1} zIndex={10}>
-        <Center h="100%">
-          <HCLoader size="md" label="Initiating payment" />
-        </Center>
-      </Overlay>
-    )}
+    <InlineLoaderOverlay visible={initiatingCheckout} size="md" label="Initiating payment" />
     </Box>
   );
 }

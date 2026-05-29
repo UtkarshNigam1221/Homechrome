@@ -1,8 +1,6 @@
 'use client';
 
-import { Center } from '@mantine/core';
-
-import HCLoader from '@/components/ui/HCLoader';
+import { LoadingBlock } from '@/components/ui/loading-spinner';
 
 interface ProductGridSkeletonProps {
   // Kept for backward compatibility — no longer used.
@@ -10,9 +8,5 @@ interface ProductGridSkeletonProps {
 }
 
 export default function ProductGridSkeleton(_props: ProductGridSkeletonProps) {
-  return (
-    <Center py={80} w="100%">
-      <HCLoader size="lg" label="Loading products" />
-    </Center>
-  );
+  return <LoadingBlock label="Loading products" />;
 }

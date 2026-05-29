@@ -10,7 +10,6 @@ import {
   Divider,
   Drawer,
   Group,
-  Overlay,
   ScrollArea,
   Skeleton,
   Stack,
@@ -20,7 +19,7 @@ import {
 import Link from 'next/link';
 
 import { AssetImage } from '@/components/ui/asset-image';
-import HCLoader from '@/components/ui/HCLoader';
+import InlineLoaderOverlay from '@/components/ui/InlineLoaderOverlay';
 import { QuantityStepper } from '@/components/ui/quantity-stepper';
 import { useCart } from '@/hooks/useCart';
 import { formatPrice } from '@/lib/utils';
@@ -169,13 +168,7 @@ export function MiniCartDrawer() {
                 </ActionIcon>
               </Group>
               <Divider mt="md" />
-              {inFlight && (
-                <Overlay color="#fff" backgroundOpacity={0.7} blur={1} zIndex={10}>
-                  <Center h="100%">
-                    <HCLoader size="sm" label="Updating item" />
-                  </Center>
-                </Overlay>
-              )}
+              <InlineLoaderOverlay visible={inFlight} label="Updating item" />
             </Box>
             );
           })}

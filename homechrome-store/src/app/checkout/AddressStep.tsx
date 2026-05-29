@@ -1,10 +1,10 @@
 'use client';
 
-import { Anchor, Badge, Box, Button, Card, Center, Group, Overlay, Radio, Stack, Text, Title } from '@mantine/core';
+import { Anchor, Badge, Box, Button, Card, Group, Radio, Stack, Text, Title } from '@mantine/core';
 import { useRouter } from 'next/navigation';
 
 import AddressForm from '@/components/checkout/AddressForm';
-import HCLoader from '@/components/ui/HCLoader';
+import InlineLoaderOverlay from '@/components/ui/InlineLoaderOverlay';
 import { Address } from '@/types';
 
 interface AddressStepProps {
@@ -103,13 +103,7 @@ export function AddressStep({
         )}
       </Stack>
     </Card>
-    {creatingAddress && (
-      <Overlay color="#fff" backgroundOpacity={0.7} blur={1} zIndex={10}>
-        <Center h="100%">
-          <HCLoader size="md" label="Saving address" />
-        </Center>
-      </Overlay>
-    )}
+    <InlineLoaderOverlay visible={creatingAddress} size="md" label="Saving address" />
     </Box>
   );
 }

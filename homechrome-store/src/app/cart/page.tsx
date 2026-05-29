@@ -1,12 +1,12 @@
 'use client';
 
 import { ShoppingBagIcon } from '@heroicons/react/24/outline';
-import { Box, Center, Container, Overlay, SimpleGrid, Stack } from '@mantine/core';
+import { Box, Container, SimpleGrid, Stack } from '@mantine/core';
 
 import CartItemComponent from '@/components/cart/CartItem';
 import CartSummary from '@/components/cart/CartSummary';
 import CartSkeleton from '@/components/skeleton/CartSkeleton';
-import HCLoader from '@/components/ui/HCLoader';
+import InlineLoaderOverlay from '@/components/ui/InlineLoaderOverlay';
 import { EmptyState } from '@/components/ui/empty-state';
 import { PageHeader } from '@/components/ui/page-header';
 import { useCart } from '@/hooks/useCart';
@@ -55,13 +55,10 @@ export default function CartPage() {
                   await removeItem(productId);
                 }}
               />
-              {(updatingItemId === item.product_id || removingItemId === item.product_id) && (
-                <Overlay color="#fff" backgroundOpacity={0.7} blur={1} zIndex={10}>
-                  <Center h="100%">
-                    <HCLoader size="sm" label="Updating item" />
-                  </Center>
-                </Overlay>
-              )}
+              <InlineLoaderOverlay
+                visible={updatingItemId === item.product_id || removingItemId === item.product_id}
+                label="Updating item"
+              />
             </Box>
           ))}
         </Stack>

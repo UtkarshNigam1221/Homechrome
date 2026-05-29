@@ -1,9 +1,9 @@
 'use client';
 
-import { Alert, Anchor, Box, Button, Card, Center, Group, Overlay, Stack, Text, Title } from '@mantine/core';
+import { Alert, Anchor, Box, Button, Card, Group, Stack, Text, Title } from '@mantine/core';
 
 import ShippingOptions from '@/components/checkout/ShippingOptions';
-import HCLoader from '@/components/ui/HCLoader';
+import InlineLoaderOverlay from '@/components/ui/InlineLoaderOverlay';
 import { Address, CourierOption } from '@/types';
 
 interface ShippingStepProps {
@@ -82,13 +82,7 @@ export function ShippingStep({
         )}
       </Stack>
     </Card>
-    {checkingServiceability && (
-      <Overlay color="#fff" backgroundOpacity={0.7} blur={1} zIndex={10}>
-        <Center h="100%">
-          <HCLoader size="md" label="Checking delivery" />
-        </Center>
-      </Overlay>
-    )}
+    <InlineLoaderOverlay visible={checkingServiceability} size="md" label="Checking delivery" />
     </Box>
   );
 }
