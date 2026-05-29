@@ -119,6 +119,10 @@ export function useCheckoutState() {
     if (!state.selectedAddressId) return;
     setInitiatingCheckout(true);
     dispatch({ type: 'PAYMENT_START' });
+    // Keep the overlay visible across the redirect handoff. window.location.href
+    // is async — clearing the flag in finally causes the overlay to flash off
+    // a few hundred ms before the new page actually unloads.
+    let redirecting = false;
     try {
       const payload: { shipping_address_id: string; courier_id?: number } = {
         shipping_address_id: state.selectedAddressId,
@@ -127,6 +131,7 @@ export function useCheckoutState() {
         payload.courier_id = state.selectedCourierId;
       }
       const { data } = await api.post<CheckoutResult>(ROUTES.CHECKOUT.INITIATE, payload);
+      redirecting = true;
       window.location.href = data.redirect_url;
     } catch {
       dispatch({
@@ -134,7 +139,7 @@ export function useCheckoutState() {
         error: 'Failed to initiate payment. Please try again.',
       });
     } finally {
-      setInitiatingCheckout(false);
+      if (!redirecting) setInitiatingCheckout(false);
     }
   }, [state.selectedAddressId, state.selectedCourierId]);
 
