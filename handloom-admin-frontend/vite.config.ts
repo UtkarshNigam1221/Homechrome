@@ -6,6 +6,11 @@ import { defineConfig, loadEnv } from 'vite';
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
 
+  // Keep browser console.* in non-prod builds so the AWS dev deploy is
+  // debuggable from devtools. `build:dev` / `build:prod` map to mode
+  // 'dev' / 'prod'; the default `build` (no mode) lands as 'production'.
+  const stripConsole = mode === 'prod' || mode === 'production';
+
   return {
     plugins: [react()],
 
@@ -20,7 +25,7 @@ export default defineConfig(({ mode }) => {
       minify: 'terser',
       terserOptions: {
         compress: {
-          drop_console: true, // Remove console.log in production
+          drop_console: stripConsole,
           drop_debugger: true,
         },
       },
@@ -76,8 +81,10 @@ export default defineConfig(({ mode }) => {
         },
       },
 
-      // Generate source maps for debugging (can disable in production if needed)
-      sourcemap: false,
+      // Generate source maps for non-prod builds so devtools can resolve
+      // minified frames back to readable code. Skipped in prod to keep the
+      // shipped bundle small and to avoid leaking source.
+      sourcemap: !stripConsole,
 
       // Target modern browsers for smaller bundles
       target: 'es2020',

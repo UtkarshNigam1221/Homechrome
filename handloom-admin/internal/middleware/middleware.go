@@ -9,10 +9,12 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/pkg/response"
 	"github.com/handloom/admin/pkg/slogx"
+	"github.com/handloom/admin/pkg/telemetry"
 )
 
 // Use exported ContextKey constants from interfaces.go for all context keys.
@@ -34,25 +36,42 @@ func RequestID(next http.Handler) http.Handler {
 	})
 }
 
-// Logger logs HTTP requests
+// Logger logs HTTP requests with status-based severity and surfaces the
+// active trace ID on the response so the client can quote it in tickets.
+// At the end of every request it also force-flushes the OTel providers so
+// metrics and any buffered telemetry ship before the Lambda runtime freezes
+// the process. Outside Lambda the flush is a near no-op against a live
+// batch processor.
 func Logger() func(next http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			start := time.Now()
-
-			// Wrap response writer to capture status code
 			ww := &responseWriter{ResponseWriter: w, statusCode: http.StatusOK}
+
+			if span := trace.SpanFromContext(r.Context()); span.SpanContext().IsValid() {
+				w.Header().Set("X-Trace-ID", span.SpanContext().TraceID().String())
+			}
 
 			next.ServeHTTP(ww, r)
 
-			slog.InfoContext(r.Context(), "HTTP request",
+			level := slog.LevelInfo
+			switch {
+			case ww.statusCode >= 500:
+				level = slog.LevelError
+			case ww.statusCode >= 400:
+				level = slog.LevelWarn
+			}
+			slog.Log(r.Context(), level, "request_completed",
 				"method", r.Method,
 				"path", r.URL.Path,
 				"status", ww.statusCode,
-				"duration", time.Since(start).String(),
-				"user_agent", r.UserAgent(),
+				"duration_ms", time.Since(start).Milliseconds(),
 				"remote_ip", getRemoteIP(r),
 			)
+
+			flushCtx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+			defer cancel()
+			telemetry.ForceFlush(flushCtx)
 		})
 	}
 }

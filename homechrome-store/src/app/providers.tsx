@@ -8,6 +8,7 @@ import { isAxiosError } from 'axios';
 import { useEffect, useState } from 'react';
 
 import { initAnalytics, stopAnalytics } from '@/lib/analytics';
+import { initRUM } from '@/lib/rum';
 import { useAuthStore } from '@/stores/auth';
 
 import { theme } from './theme';
@@ -29,6 +30,7 @@ function AuthInit() {
 function AnalyticsProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     initAnalytics();
+    initRUM();
     return () => stopAnalytics();
   }, []);
   return <>{children}</>;

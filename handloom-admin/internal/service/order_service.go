@@ -5,12 +5,15 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/pkg/errors"
+	"github.com/handloom/admin/pkg/metrics"
+	"github.com/handloom/admin/pkg/telemetry"
 )
 
 // OrderService implements domain.OrderService
@@ -44,10 +47,14 @@ func NewOrderService(
 
 // Create creates a new order
 func (s *OrderService) Create(ctx context.Context, req domain.CreateOrderRequest, createdBy string) (*domain.Order, error) {
+	ctx, span := telemetry.StartServiceSpan(ctx, "order", "create")
+
 	// Validate customer
 	customer, err := s.customerRepo.GetByID(ctx, req.CustomerID)
 	if err != nil {
-		return nil, errors.New(errors.ErrCodeNotFound, "Customer not found")
+		notFoundErr := errors.New(errors.ErrCodeNotFound, "Customer not found")
+		span.EndWithError(notFoundErr)
+		return nil, notFoundErr
 	}
 
 	// Generate order number
@@ -61,7 +68,9 @@ func (s *OrderService) Create(ctx context.Context, req domain.CreateOrderRequest
 		// Get product
 		product, err := s.productRepo.GetByID(ctx, itemInput.ProductID)
 		if err != nil {
-			return nil, errors.New(errors.ErrCodeNotFound, fmt.Sprintf("Product not found: %s", itemInput.ProductID))
+			notFoundErr := errors.New(errors.ErrCodeNotFound, fmt.Sprintf("Product not found: %s", itemInput.ProductID))
+			span.EndWithError(notFoundErr)
+			return nil, notFoundErr
 		}
 
 		var unitPrice int64
@@ -73,7 +82,9 @@ func (s *OrderService) Create(ctx context.Context, req domain.CreateOrderRequest
 			var quote *domain.PriceQuote
 			quote, err = s.pricingService.GetQuote(ctx, *itemInput.QuoteID)
 			if err != nil {
-				return nil, errors.New(errors.ErrCodeQuoteExpired, fmt.Sprintf("Invalid or expired quote for item %d", i+1))
+				quoteErr := errors.New(errors.ErrCodeQuoteExpired, fmt.Sprintf("Invalid or expired quote for item %d", i+1))
+				span.EndWithError(quoteErr)
+				return nil, quoteErr
 			}
 			unitPrice = quote.CalculatedPrice / int64(quote.Quantity)
 			priceQuoteID = itemInput.QuoteID
@@ -94,7 +105,9 @@ func (s *OrderService) Create(ctx context.Context, req domain.CreateOrderRequest
 			var calcResp *domain.CalculatePriceResponse
 			calcResp, err = s.pricingService.CalculatePrice(ctx, calcReq)
 			if err != nil {
-				return nil, errors.Wrap(err, fmt.Sprintf("Failed to calculate price for item %d", i+1))
+				priceErr := errors.Wrap(err, fmt.Sprintf("Failed to calculate price for item %d", i+1))
+				span.EndWithError(priceErr)
+				return nil, priceErr
 			}
 			unitPrice = calcResp.PriceBreakdown.SubtotalPerUnit
 			quoteID := calcResp.QuoteID
@@ -107,11 +120,15 @@ func (s *OrderService) Create(ctx context.Context, req domain.CreateOrderRequest
 		// Check inventory
 		inventory, err := s.inventoryRepo.GetByProductID(ctx, itemInput.ProductID)
 		if err != nil {
-			return nil, errors.New(errors.ErrCodeNotFound, fmt.Sprintf("Inventory not found for product: %s", itemInput.ProductID))
+			invErr := errors.New(errors.ErrCodeNotFound, fmt.Sprintf("Inventory not found for product: %s", itemInput.ProductID))
+			span.EndWithError(invErr)
+			return nil, invErr
 		}
 
 		if inventory.AvailableQty < itemInput.Quantity {
-			return nil, errors.New(errors.ErrCodeInsufficientStock, fmt.Sprintf("Insufficient stock for product: %s (available: %d, requested: %d)", product.Name, inventory.AvailableQty, itemInput.Quantity))
+			stockErr := errors.New(errors.ErrCodeInsufficientStock, fmt.Sprintf("Insufficient stock for product: %s (available: %d, requested: %d)", product.Name, inventory.AvailableQty, itemInput.Quantity))
+			span.EndWithError(stockErr)
+			return nil, stockErr
 		}
 
 		item := domain.OrderItem{
@@ -119,6 +136,7 @@ func (s *OrderService) Create(ctx context.Context, req domain.CreateOrderRequest
 			ProductID:   itemInput.ProductID,
 			ProductSKU:  product.SKU,
 			ProductName: product.Name,
+			CategoryID:  product.CategoryID,
 			Quantity:    itemInput.Quantity,
 			UnitPrice:   unitPrice,
 			TotalPrice:  unitPrice * int64(itemInput.Quantity),
@@ -165,8 +183,71 @@ func (s *OrderService) Create(ctx context.Context, req domain.CreateOrderRequest
 	order.CreatedBy = createdBy
 
 	if err := s.orderRepo.Create(ctx, order); err != nil {
+		span.EndWithError(err)
 		return nil, err
 	}
+
+	span.SetAttribute("entity.id", order.ID)
+	span.SetAttribute("entity.type", "order")
+	span.SetAttribute("admin.action", "order.create")
+	span.SetAttribute("order.item_count", len(order.Items))
+
+	// Emit KPI metrics for the placed order (admin channel — this is the admin-facing Create path).
+	// Admin orders have no geo context; use "unknown" for country/city.
+	metrics.Record(ctx, "orders_placed", metrics.L{"country": "unknown", "city": "unknown"})
+	metrics.RecordSum(ctx, "orders_value", order.TotalAmount, metrics.L{
+		"country": "unknown", "city": "unknown", "gateway": string(domain.PaymentMethodUPI),
+	})
+	metrics.Record(ctx, "cart_size", metrics.L{
+		"country": "unknown",
+		"bucket":  metrics.BucketForCartSize(len(order.Items)),
+	})
+
+	// ── Product-analytics signals ──────────────────────────────────────────
+	// Fire-and-forget; errors are logged and never block the caller.
+
+	// 1. Per-line product purchase counts. revenuePaise = line.TotalPrice.
+	for _, line := range order.Items {
+		catID := line.CategoryID
+		if catID == "" {
+			catID = "unknown"
+		}
+		metrics.RecordSum(ctx, "product_purchased", line.TotalPrice, metrics.L{
+			"product_id":  line.ProductID,
+			"category_id": catID,
+		})
+	}
+
+	// 2. Coupon redemption (admin orders carry CouponCode from CreateOrderRequest).
+	if order.CouponCode != nil && *order.CouponCode != "" {
+		code := strings.ToUpper(strings.TrimSpace(*order.CouponCode))
+		if code != "" {
+			metrics.RecordSum(ctx, "coupon_redeemed", order.DiscountAmount, metrics.L{
+				"coupon_code": code,
+			})
+		}
+	}
+
+	// 3. First-purchase detection — atomic increment returns the new count.
+	// Admin-placed orders have no geo context (no CloudFront headers), so use "unknown".
+	if newCount, incErr := s.customerRepo.IncrementOrderCount(ctx, order.CustomerID); incErr != nil {
+		slog.WarnContext(ctx, "increment order count failed", "customer_id", order.CustomerID, "error", incErr)
+	} else if newCount == 1 {
+		// Admin-placed order — no visitor context, all attribution unknown.
+		metrics.Record(ctx, "customer_first_purchase", metrics.L{
+			"country":     "unknown",
+			"city":        "unknown",
+			"device_type": "unknown",
+			"utm_source":  "unknown",
+		})
+	} else if newCount > 1 {
+		metrics.Record(ctx, "repeat_purchase", metrics.L{
+			"country":     "unknown",
+			"city":        "unknown",
+			"device_type": "unknown",
+		})
+	}
+	// ── End product-analytics signals ─────────────────────────────────────
 
 	// Reserve inventory — track failures for visibility
 	var reservationFailures []string
@@ -191,6 +272,7 @@ func (s *OrderService) Create(ctx context.Context, req domain.CreateOrderRequest
 	}
 
 	slog.InfoContext(ctx, "Created order", "order_id", order.ID)
+	span.End()
 	return order, nil
 }
 
@@ -249,14 +331,23 @@ func (s *OrderService) List(ctx context.Context, req domain.ListOrdersRequest) (
 
 // UpdateStatus updates order status
 func (s *OrderService) UpdateStatus(ctx context.Context, id string, status domain.OrderStatus, updatedBy string) error {
+	ctx, span := telemetry.StartServiceSpan(ctx, "order", "update_status")
+	span.SetAttribute("entity.id", id)
+	span.SetAttribute("entity.type", "order")
+	span.SetAttribute("admin.action", "order.update_status")
+	span.SetAttribute("order.new_status", string(status))
+
 	order, err := s.orderRepo.GetByID(ctx, id)
 	if err != nil {
+		span.EndWithError(err)
 		return err
 	}
 
 	// Validate status transition
 	if !isValidStatusTransition(order.Status, status) {
-		return errors.BadRequest(fmt.Sprintf("Cannot transition from %s to %s", order.Status, status))
+		transitionErr := errors.BadRequest(fmt.Sprintf("Cannot transition from %s to %s", order.Status, status))
+		span.EndWithError(transitionErr)
+		return transitionErr
 	}
 
 	// Update status
@@ -282,13 +373,20 @@ func (s *OrderService) UpdateStatus(ctx context.Context, id string, status domai
 				slog.ErrorContext(ctx, "Failed to release stock", keyProductID, item.ProductID, "error", releaseErr)
 			}
 		}
+		// order_cancelled — status-transition path, no admin reason text.
+		metrics.Record(ctx, "order_cancelled", metrics.L{
+			"reason":  "status_update",
+			"gateway": "phonepe",
+		})
 	}
 
 	if err := s.orderRepo.Update(ctx, order); err != nil {
+		span.EndWithError(err)
 		return err
 	}
 
 	slog.InfoContext(ctx, "Updated order status", "order_id", id, "status", status)
+	span.End()
 	return nil
 }
 
@@ -321,14 +419,22 @@ func (s *OrderService) UpdateTracking(ctx context.Context, id string, trackingNu
 
 // CancelOrder cancels an order
 func (s *OrderService) CancelOrder(ctx context.Context, id string, reason string, updatedBy string) error {
+	ctx, span := telemetry.StartServiceSpan(ctx, "order", "cancel")
+	span.SetAttribute("entity.id", id)
+	span.SetAttribute("entity.type", "order")
+	span.SetAttribute("admin.action", "order.cancel")
+
 	order, err := s.orderRepo.GetByID(ctx, id)
 	if err != nil {
+		span.EndWithError(err)
 		return err
 	}
 
 	// Can only cancel pending or confirmed orders
 	if order.Status != domain.OrderStatusPending && order.Status != domain.OrderStatusConfirmed {
-		return errors.BadRequest("Order cannot be canceled in current status")
+		cancelErr := errors.BadRequest("Order cannot be canceled in current status")
+		span.EndWithError(cancelErr)
+		return cancelErr
 	}
 
 	// Update status
@@ -338,6 +444,7 @@ func (s *OrderService) CancelOrder(ctx context.Context, id string, reason string
 	order.UpdatedBy = updatedBy
 
 	if err := s.orderRepo.Update(ctx, order); err != nil {
+		span.EndWithError(err)
 		return err
 	}
 
@@ -349,8 +456,36 @@ func (s *OrderService) CancelOrder(ctx context.Context, id string, reason string
 		}
 	}
 
+	// order_cancelled — reason label is bounded (admin-supplied free text is
+	// truncated to a small prefix to keep cardinality under control).
+	reasonLabel := normaliseCancelReason(reason)
+	metrics.Record(ctx, "order_cancelled", metrics.L{
+		"reason":  reasonLabel,
+		"gateway": "phonepe",
+	})
+
 	slog.InfoContext(ctx, "Canceled order", "order_id", id)
+	span.End()
 	return nil
+}
+
+// normaliseCancelReason maps free-text reasons to a bounded label set.
+func normaliseCancelReason(reason string) string {
+	r := strings.ToLower(strings.TrimSpace(reason))
+	switch {
+	case r == "":
+		return "unspecified"
+	case strings.Contains(r, "payment"):
+		return "payment_failed"
+	case strings.Contains(r, "stock") || strings.Contains(r, "inventory"):
+		return "out_of_stock"
+	case strings.Contains(r, "fraud"):
+		return "fraud"
+	case strings.Contains(r, "customer"):
+		return "customer_request"
+	default:
+		return "other"
+	}
 }
 
 // RefundOrder initiates a refund for an order

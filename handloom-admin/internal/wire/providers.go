@@ -4,20 +4,23 @@ package wire
 import (
 	"context"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/lambda"
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/aws/aws-sdk-go-v2/otelaws"
 	"github.com/google/wire"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/handloom/admin/pkg/metrics/awsmiddleware"
 
 	"github.com/handloom/admin/internal/config"
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/internal/embedder"
-	"github.com/handloom/admin/internal/event"
-	eventhandlers "github.com/handloom/admin/internal/event/handlers"
+	metricsworker "github.com/handloom/admin/internal/worker/metrics"
 	"github.com/handloom/admin/internal/gateway/phonepe"
 	"github.com/handloom/admin/internal/gateway/shiprocket"
 	"github.com/handloom/admin/internal/gateway/sms"
@@ -75,6 +78,13 @@ func ProvideEmbedderClient(ctx context.Context, cfg *config.Config) (*embedder.C
 	if err != nil {
 		return nil, fmt.Errorf("load aws config for embedder: %w", err)
 	}
+
+	otelaws.AppendMiddlewares(&awsCfg.APIOptions)
+	svcName := os.Getenv("OTEL_SERVICE_NAME")
+	if svcName == "" {
+		svcName = "handloom-lambda"
+	}
+	awsCfg.APIOptions = append(awsCfg.APIOptions, awsmiddleware.With(svcName))
 
 	var authKey []byte
 	if cfg.Embedder.AuthKeyParam != "" {
@@ -146,11 +156,6 @@ func ProvidePriceQuoteRepository(client *dynamodb.Client) domain.PriceQuoteRepos
 	return dynamodb.NewPriceQuoteRepository(client)
 }
 
-// ProvideAnalyticsRepository creates a new AnalyticsRepository
-func ProvideAnalyticsRepository(client *dynamodb.Client) domain.AnalyticsRepository {
-	return dynamodb.NewAnalyticsRepository(client)
-}
-
 // ProvideNotificationRepository creates a new NotificationRepository
 func ProvideNotificationRepository(client *dynamodb.Client) domain.NotificationRepository {
 	return dynamodb.NewNotificationRepository(client)
@@ -171,11 +176,6 @@ func ProvideAuditRepository(client *dynamodb.Client) domain.AuditRepository {
 	return dynamodb.NewAuditRepository(client)
 }
 
-// ProvideEventsRepository creates a new EventsRepository
-func ProvideEventsRepository(client *dynamodb.Client) domain.EventsRepository {
-	return dynamodb.NewEventsRepository(client)
-}
-
 // RepositorySet contains all repository providers
 var RepositorySet = wire.NewSet(
 	ProvideUserRepository,
@@ -189,12 +189,10 @@ var RepositorySet = wire.NewSet(
 	ProvideCustomerRepository,
 	ProvidePricingRuleRepository,
 	ProvidePriceQuoteRepository,
-	ProvideAnalyticsRepository,
 	ProvideNotificationRepository,
 	ProvideCouponRepository,
 	ProvideReportRepository,
 	ProvideAuditRepository,
-	ProvideEventsRepository,
 )
 
 // ============================================================================
@@ -240,18 +238,16 @@ func ProvideProductService(
 	categoryRepo domain.CategoryRepository,
 	inventoryRepo domain.InventoryRepository,
 	assetService *service.AssetService,
-	publisher event.EventPublisher,
 	emb *embedder.Client,
 ) *service.ProductService {
-	return service.NewProductService(productRepo, categoryRepo, inventoryRepo, assetService, publisher, emb)
+	return service.NewProductService(productRepo, categoryRepo, inventoryRepo, assetService, emb)
 }
 
 // ProvideInventoryService creates a new InventoryService
 func ProvideInventoryService(
 	inventoryRepo domain.InventoryRepository,
-	publisher event.EventPublisher,
 ) *service.InventoryService {
-	return service.NewInventoryService(inventoryRepo, publisher)
+	return service.NewInventoryService(inventoryRepo)
 }
 
 // ProvidePricingService creates a new PricingService
@@ -289,16 +285,6 @@ func ProvideCustomerService(
 	orderRepo domain.OrderRepository,
 ) *service.CustomerService {
 	return service.NewCustomerService(customerRepo, orderRepo)
-}
-
-// ProvideAnalyticsService creates a new AnalyticsService
-func ProvideAnalyticsService(
-	analyticsRepo domain.AnalyticsRepository,
-	orderRepo domain.OrderRepository,
-	productRepo domain.ProductRepository,
-	inventoryRepo domain.InventoryRepository,
-) *service.AnalyticsService {
-	return service.NewAnalyticsService(analyticsRepo, orderRepo, productRepo, inventoryRepo)
 }
 
 // ProvideNotificationService creates a new NotificationService
@@ -340,9 +326,8 @@ func ProvideReportService(
 	productService *service.ProductService,
 	customerService *service.CustomerService,
 	inventoryService *service.InventoryService,
-	analyticsService *service.AnalyticsService,
 ) *service.ReportService {
-	return service.NewReportService(reportRepo, orderService, productService, customerService, inventoryService, analyticsService)
+	return service.NewReportService(reportRepo, orderService, productService, customerService, inventoryService)
 }
 
 // ProvideAuditService creates a new AuditService
@@ -352,23 +337,7 @@ func ProvideAuditService(
 	return service.NewAuditService(auditRepo)
 }
 
-// ProvideEventPublisher creates an EventPublisher for Lambda mode.
-// Returns SNSPublisher when events are enabled, NoopPublisher otherwise.
-// Monolith mode uses ProvideLocalEventPublisher instead.
-func ProvideEventPublisher(ctx context.Context, cfg *config.Config) (event.EventPublisher, error) {
-	if cfg.Event.Enabled {
-		return event.NewSNSPublisher(ctx, cfg.Event.SNSTopicARN, cfg.AWS.Region, cfg.AWS.Endpoint)
-	}
-	return event.NewNoopPublisher(), nil
-}
-
-// LambdaPublisherSet provides the Lambda-mode event publisher (SNS or Noop).
-var LambdaPublisherSet = wire.NewSet(
-	ProvideEventPublisher,
-)
-
-// ServiceSet contains all service providers (publisher excluded — choose
-// LambdaPublisherSet or MonolithPublisherSet per injector).
+// ServiceSet contains all service providers.
 var ServiceSet = wire.NewSet(
 	ProvideAuthService,
 	ProvideUserService,
@@ -378,7 +347,6 @@ var ServiceSet = wire.NewSet(
 	ProvideOrderService,
 	ProvideCustomerService,
 	ProvidePricingService,
-	ProvideAnalyticsService,
 	ProvideNotificationService,
 	ProvideCouponService,
 	ProvideAssetService,
@@ -460,12 +428,6 @@ func ProvidePricingHandler(
 	return handler.NewPricingHandler(pricingService, validation)
 }
 
-// ProvideAnalyticsHandler creates a new AnalyticsHandler
-func ProvideAnalyticsHandler(
-	analyticsService *service.AnalyticsService,
-) *handler.AnalyticsHandler {
-	return handler.NewAnalyticsHandler(analyticsService)
-}
 
 // ProvideNotificationHandler creates a new NotificationHandler
 func ProvideNotificationHandler(
@@ -516,7 +478,7 @@ var HandlerSet = wire.NewSet(
 	ProvideOrderHandler,
 	ProvideCustomerHandler,
 	ProvidePricingHandler,
-	ProvideAnalyticsHandler,
+
 	ProvideNotificationHandler,
 	ProvideCouponHandler,
 	ProvideAssetHandler,
@@ -590,7 +552,6 @@ func ProvideCustomerAuthService(
 	otpRepo domain.OTPRepository,
 	customerRepo domain.CustomerRepository,
 	tokenStore domain.CustomerTokenStore,
-	publisher event.EventPublisher,
 	cfg *config.Config,
 ) *service.CustomerAuthService {
 	var smsGateway domain.SMSGateway
@@ -604,7 +565,7 @@ func ProvideCustomerAuthService(
 		})
 	}
 	return service.NewCustomerAuthService(
-		otpRepo, customerRepo, tokenStore, smsGateway, publisher,
+		otpRepo, customerRepo, tokenStore, smsGateway,
 		service.CustomerAuthConfig{
 			JWTSecret:            cfg.Store.CustomerJWTSecret,
 			AccessTokenDuration:  cfg.Store.CustomerAccessTokenTTL,
@@ -644,10 +605,10 @@ func ProvidePaymentService(
 	orderRepo domain.OrderRepository,
 	inventoryRepo domain.InventoryRepository,
 	cartService *service.CartService,
+	customerRepo domain.CustomerRepository,
 	phonePeClient phonepe.Gateway,
-	publisher event.EventPublisher,
 ) *service.PaymentService {
-	return service.NewPaymentService(paymentRepo, orderRepo, inventoryRepo, cartService, phonePeClient, publisher)
+	return service.NewPaymentService(paymentRepo, orderRepo, inventoryRepo, cartService, customerRepo, phonePeClient)
 }
 
 // ProvideShippingService creates a new ShippingService with Shiprocket gateway
@@ -678,9 +639,8 @@ func ProvideCheckoutService(
 	shippingService *service.ShippingService,
 	inventoryRepo domain.InventoryRepository,
 	customerRepo domain.CustomerRepository,
-	publisher event.EventPublisher,
 ) *service.CheckoutService {
-	return service.NewCheckoutService(cartService, orderRepo, paymentService, shippingService, inventoryRepo, customerRepo, publisher)
+	return service.NewCheckoutService(cartService, orderRepo, paymentService, shippingService, inventoryRepo, customerRepo)
 }
 
 // ============================================================================
@@ -754,13 +714,17 @@ func ProvideStoreWebhookHandler(
 	return store.NewWebhookHandler(paymentService, phonePe, cfg.Store.PhonePeWebhookUsername, cfg.Store.PhonePeWebhookPassword)
 }
 
+// ProvideCentroidsRepository creates a new CentroidsRepository backed by PostgreSQL.
+func ProvideCentroidsRepository(pool *pgxpool.Pool) *postgres.CentroidsRepository {
+	return postgres.NewCentroidsRepository(pool)
+}
+
 // ProvideStoreEventsHandler creates a new store EventsHandler
 func ProvideStoreEventsHandler(
-	eventsRepo domain.EventsRepository,
-	analyticsRepo domain.AnalyticsRepository,
 	validation *middleware.Validation,
+	centroids *postgres.CentroidsRepository,
 ) *store.EventsHandler {
-	return store.NewEventsHandler(eventsRepo, analyticsRepo, validation)
+	return store.NewEventsHandler(validation, centroids)
 }
 
 // ============================================================================
@@ -806,6 +770,7 @@ var StoreHandlerSet = wire.NewSet(
 	ProvideStoreProfileHandler,
 	ProvideStoreWebhookHandler,
 	ProvideStoreEventsHandler,
+	ProvideCentroidsRepository,
 )
 
 var StoreMiddlewareSet = wire.NewSet(
@@ -813,49 +778,31 @@ var StoreMiddlewareSet = wire.NewSet(
 	ProvideOptionalCartAuth,
 )
 
-func ProvideNotificationEventHandler() *eventhandlers.NotificationHandler {
-	return eventhandlers.NewNotificationHandler()
+// ============================================================================
+// METRICS CONSUMER PROVIDERS
+// ============================================================================
+
+// ProvideMetricsRepository creates a new MetricsRepository backed by PostgreSQL.
+func ProvideMetricsRepository(pool *pgxpool.Pool) *postgres.MetricsRepository {
+	return postgres.NewMetricsRepository(pool)
 }
 
-func ProvideReportEventHandler() *eventhandlers.ReportHandler {
-	return eventhandlers.NewReportHandler()
+// ProvideIdempotencyCache creates a new IdempotencyCache for the metrics consumer.
+func ProvideIdempotencyCache() *metricsworker.IdempotencyCache {
+	return metricsworker.NewIdempotencyCache(100_000)
 }
 
-func ProvideAuditEventHandler() *eventhandlers.AuditHandler {
-	return eventhandlers.NewAuditHandler()
+// ProvideMetricsConsumerHandler creates the metrics consumer Handler.
+func ProvideMetricsConsumerHandler(
+	repo *postgres.MetricsRepository,
+	cache *metricsworker.IdempotencyCache,
+) *metricsworker.Handler {
+	return metricsworker.NewHandler(repo, cache)
 }
 
-func ProvideAnalyticsAggregator(
-	eventsRepo domain.EventsRepository,
-	analyticsRepo domain.AnalyticsRepository,
-) *service.AnalyticsAggregator {
-	return service.NewAnalyticsAggregator(eventsRepo, analyticsRepo)
-}
-
-func ProvideAnalyticsEventHandler(
-	eventsRepo domain.EventsRepository,
-	analyticsRepo domain.AnalyticsRepository,
-	aggregator *service.AnalyticsAggregator,
-) *eventhandlers.AnalyticsHandler {
-	return eventhandlers.NewAnalyticsHandler(eventsRepo, analyticsRepo, aggregator)
-}
-
-// ProvideLocalEventPublisher dispatches events in-process (monolith dev mode).
-// Lambda mode uses ProvideEventPublisher instead.
-func ProvideLocalEventPublisher(
-	notif *eventhandlers.NotificationHandler,
-	report *eventhandlers.ReportHandler,
-	analytics *eventhandlers.AnalyticsHandler,
-	audit *eventhandlers.AuditHandler,
-) event.EventPublisher {
-	return event.NewLocalPublisher(notif, report, analytics, audit)
-}
-
-var MonolithPublisherSet = wire.NewSet(
-	ProvideNotificationEventHandler,
-	ProvideReportEventHandler,
-	ProvideAuditEventHandler,
-	ProvideAnalyticsAggregator,
-	ProvideAnalyticsEventHandler,
-	ProvideLocalEventPublisher,
+// MetricsConsumerSet contains the providers for the metrics consumer Lambda.
+var MetricsConsumerSet = wire.NewSet(
+	ProvideMetricsRepository,
+	ProvideIdempotencyCache,
+	ProvideMetricsConsumerHandler,
 )

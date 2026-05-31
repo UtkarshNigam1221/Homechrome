@@ -6,10 +6,8 @@
 	build-lambda-store-auth build-lambda-store-catalog build-lambda-store-cart \
 	build-lambda-store-checkout build-lambda-store-orders build-lambda-store-tracking \
 	build-lambda-store-profile build-lambda-store-events build-lambda-store-webhooks \
-	build-workers build-lambda-worker-notification build-lambda-worker-report \
-	build-lambda-worker-analytics build-lambda-worker-audit \
+	build-lambda-worker-metrics-consumer \
 	build-lambda-backfill \
-	create-events \
 	cdk-synth cdk-deploy-dev cdk-deploy-prod cdk-destroy \
 	init-s3 deploy-local redeploy-local teardown-local \
 	logs logs-lambda \
@@ -37,11 +35,11 @@ LAMBDA_BUILD_FLAGS=CGO_ENABLED=0 GOOS=linux GOARCH=arm64
 LAMBDA_OUT_DIR=./bin/lambda
 LAMBDA_SERVICES=auth user catalog order pricing inventory analytics notification coupon asset report audit \
 	store-auth store-catalog store-cart store-checkout store-orders store-tracking store-profile store-events store-webhooks \
-	worker-notification worker-report worker-analytics worker-audit \
+	worker-metrics-consumer \
 	migrator
 
 # Active services for deployment
-LAMBDA_SERVICES_ACTIVE=auth user catalog asset order store-auth store-catalog store-cart store-checkout store-orders store-tracking store-profile store-events store-webhooks migrator
+LAMBDA_SERVICES_ACTIVE=auth user catalog asset order store-auth store-catalog store-cart store-checkout store-orders store-tracking store-profile store-events store-webhooks migrator worker-metrics-consumer
 
 # Main package path
 MAIN_PKG=./cmd/api
@@ -129,7 +127,6 @@ wire:
 generate-mocks:
 	@echo "Generating mocks..."
 	mockgen -source=internal/domain/repository.go -destination=internal/mocks/repository_mock.go -package=mocks
-	mockgen -source=internal/domain/analytics.go -destination=internal/mocks/analytics_mock.go -package=mocks
 	mockgen -source=internal/domain/service.go -destination=internal/mocks/service_mock.go -package=mocks
 	mockgen -source=internal/domain/asset.go -destination=internal/mocks/asset_domain_mock.go -package=mocks
 	mockgen -source=internal/domain/audit_repository.go -destination=internal/mocks/audit_repository_mock.go -package=mocks
@@ -207,8 +204,8 @@ seed-data:
 	chmod +x scripts/seed-data.sh
 	./scripts/seed-data.sh
 
-## Setup local development (start services, create tables, init S3, create events infra, seed data)
-setup-local: docker-up create-tables init-s3 create-events seed-data
+## Setup local development (start services, create tables, init S3, seed data)
+setup-local: docker-up create-tables init-s3 seed-data
 	@echo "Local development environment ready!"
 	@echo ""
 	@echo "Services:"
@@ -273,7 +270,6 @@ reset-db: docker-up
 	@AWS_ACCESS_KEY_ID=local AWS_SECRET_ACCESS_KEY=local aws dynamodb delete-table --table-name handloom-core --endpoint-url http://localhost:4566 --region ap-south-1 2>/dev/null || true
 	@AWS_ACCESS_KEY_ID=local AWS_SECRET_ACCESS_KEY=local aws dynamodb delete-table --table-name handloom-orders --endpoint-url http://localhost:4566 --region ap-south-1 2>/dev/null || true
 	@AWS_ACCESS_KEY_ID=local AWS_SECRET_ACCESS_KEY=local aws dynamodb delete-table --table-name handloom-audit --endpoint-url http://localhost:4566 --region ap-south-1 2>/dev/null || true
-	@AWS_ACCESS_KEY_ID=local AWS_SECRET_ACCESS_KEY=local aws dynamodb delete-table --table-name handloom-analytics --endpoint-url http://localhost:4566 --region ap-south-1 2>/dev/null || true
 	@AWS_ACCESS_KEY_ID=local AWS_SECRET_ACCESS_KEY=local aws dynamodb delete-table --table-name handloom-sessions --endpoint-url http://localhost:4566 --region ap-south-1 2>/dev/null || true
 	@echo "Resetting PostgreSQL catalog tables..."
 	@docker exec handloom-postgres psql -U handloom -d handloom -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;" 2>/dev/null || true
@@ -320,6 +316,7 @@ build-lambdas:
 	@for service in $(LAMBDA_SERVICES); do \
 		echo "Building $$service Lambda..."; \
 		$(LAMBDA_BUILD_FLAGS) $(GOBUILD) -ldflags="-s -w" -o $(LAMBDA_OUT_DIR)/$$service/bootstrap ./cmd/lambda/$$service; \
+		cp infra/configs/otel-collector.yaml $(LAMBDA_OUT_DIR)/$$service/otel.yaml; \
 	done
 	@echo "All Lambda functions built successfully!"
 
@@ -330,6 +327,7 @@ build-lambdas-active:
 	@for service in $(LAMBDA_SERVICES_ACTIVE); do \
 		echo "Building $$service Lambda..."; \
 		$(LAMBDA_BUILD_FLAGS) $(GOBUILD) -ldflags="-s -w" -o $(LAMBDA_OUT_DIR)/$$service/bootstrap ./cmd/lambda/$$service; \
+		cp infra/configs/otel-collector.yaml $(LAMBDA_OUT_DIR)/$$service/otel.yaml; \
 	done
 	@echo "Active Lambda functions built successfully!"
 
@@ -440,29 +438,10 @@ build-lambda-store-webhooks:
 	@mkdir -p $(LAMBDA_OUT_DIR)/store-webhooks
 	$(LAMBDA_BUILD_FLAGS) $(GOBUILD) -ldflags="-s -w" -o $(LAMBDA_OUT_DIR)/store-webhooks/bootstrap ./cmd/lambda/store-webhooks
 
-## Build all worker Lambda binaries
-build-workers: build-lambda-worker-notification build-lambda-worker-report build-lambda-worker-analytics build-lambda-worker-audit
-	@echo "All worker lambdas built successfully"
-
-build-lambda-worker-notification:
-	@echo "Building worker-notification Lambda..."
-	@mkdir -p $(LAMBDA_OUT_DIR)/worker-notification
-	$(LAMBDA_BUILD_FLAGS) $(GOBUILD) -ldflags="-s -w" -o $(LAMBDA_OUT_DIR)/worker-notification/bootstrap ./cmd/lambda/worker-notification
-
-build-lambda-worker-report:
-	@echo "Building worker-report Lambda..."
-	@mkdir -p $(LAMBDA_OUT_DIR)/worker-report
-	$(LAMBDA_BUILD_FLAGS) $(GOBUILD) -ldflags="-s -w" -o $(LAMBDA_OUT_DIR)/worker-report/bootstrap ./cmd/lambda/worker-report
-
-build-lambda-worker-analytics:
-	@echo "Building worker-analytics Lambda..."
-	@mkdir -p $(LAMBDA_OUT_DIR)/worker-analytics
-	$(LAMBDA_BUILD_FLAGS) $(GOBUILD) -ldflags="-s -w" -o $(LAMBDA_OUT_DIR)/worker-analytics/bootstrap ./cmd/lambda/worker-analytics
-
-build-lambda-worker-audit:
-	@echo "Building worker-audit Lambda..."
-	@mkdir -p $(LAMBDA_OUT_DIR)/worker-audit
-	$(LAMBDA_BUILD_FLAGS) $(GOBUILD) -ldflags="-s -w" -o $(LAMBDA_OUT_DIR)/worker-audit/bootstrap ./cmd/lambda/worker-audit
+build-lambda-worker-metrics-consumer:
+	@echo "Building worker-metrics-consumer Lambda..."
+	@mkdir -p $(LAMBDA_OUT_DIR)/worker-metrics-consumer
+	$(LAMBDA_BUILD_FLAGS) $(GOBUILD) -ldflags="-s -w" -o $(LAMBDA_OUT_DIR)/worker-metrics-consumer/bootstrap ./cmd/lambda/worker-metrics-consumer
 
 ## Build the embedding backfill Lambda (not included in build-lambdas-active; triggered manually via GH Actions)
 .PHONY: prepare-embedder-assets build-lambda-backfill
@@ -470,11 +449,6 @@ build-lambda-backfill:
 	@echo "Building worker-embedding-backfill Lambda..."
 	@mkdir -p $(LAMBDA_OUT_DIR)/worker-embedding-backfill
 	$(LAMBDA_BUILD_FLAGS) $(GOBUILD) -ldflags="-s -w" -o $(LAMBDA_OUT_DIR)/worker-embedding-backfill/bootstrap ./cmd/lambda/worker-embedding-backfill
-
-## Create SNS topic and SQS queues in LocalStack
-create-events:
-	@echo "Creating SNS topic and SQS queues..."
-	@bash scripts/create-events.sh
 
 ## CDK commands
 cdk-synth:
@@ -637,3 +611,4 @@ install-libtokenizers:
 # bootstrap ECR repo automatically. To deploy a new embedder version, run
 # `make cdk-deploy-{env}` — CDK detects the source-content hash change and
 # rebuilds + pushes + updates the Lambda.
+

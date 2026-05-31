@@ -29,6 +29,16 @@ Thumbs.db
 .env.*
 !.env.example
 !**/.env.example
+# Allow committed non-secret env files (only public URLs, never tokens/keys).
+# Local overrides go in .env.local (still ignored).
+!.env.dev
+!**/.env.dev
+!.env.prod
+!**/.env.prod
+!.env.local-backend
+!**/.env.local-backend
+!.env.local-lambda
+!**/.env.local-lambda
 
 # Logs
 *.log

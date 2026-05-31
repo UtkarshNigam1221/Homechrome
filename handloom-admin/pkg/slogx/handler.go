@@ -3,15 +3,16 @@ package slogx
 import (
 	"context"
 	"log/slog"
+
+	"go.opentelemetry.io/otel/trace"
 )
 
 // ContextHandler wraps a slog.Handler and enriches each record with
-// request_id and user_id from context.
+// request_id, user_id, trace_id and span_id taken from the context.
 type ContextHandler struct {
 	inner slog.Handler
 }
 
-// NewContextHandler creates a handler that extracts context values into log attributes.
 func NewContextHandler(inner slog.Handler) *ContextHandler {
 	return &ContextHandler{inner: inner}
 }
@@ -26,6 +27,12 @@ func (h *ContextHandler) Handle(ctx context.Context, r slog.Record) error {
 	}
 	if id := GetUserID(ctx); id != "" {
 		r.AddAttrs(slog.String("user_id", id))
+	}
+	if span := trace.SpanFromContext(ctx); span.SpanContext().IsValid() {
+		r.AddAttrs(
+			slog.String("trace_id", span.SpanContext().TraceID().String()),
+			slog.String("span_id", span.SpanContext().SpanID().String()),
+		)
 	}
 	return h.inner.Handle(ctx, r)
 }

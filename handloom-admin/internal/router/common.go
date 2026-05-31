@@ -11,6 +11,8 @@ import (
 	"github.com/go-chi/cors"
 
 	"github.com/handloom/admin/internal/middleware"
+	metricsmw "github.com/handloom/admin/pkg/metrics/middleware"
+	"github.com/handloom/admin/pkg/telemetry"
 )
 
 // Config contains router configuration
@@ -24,8 +26,21 @@ type Config struct {
 func NewBaseRouter(cfg Config, addHealthCheck bool) *chi.Mux {
 	r := chi.NewRouter()
 
+	// OTel HTTP server middleware — creates a SERVER span per request.
+	// Without this, Lambda invocations show no traces in Tempo.
+	// Service name comes from OTEL_SERVICE_NAME injected by CDK applyTelemetry.
+	otelServiceName := os.Getenv("OTEL_SERVICE_NAME")
+	if otelServiceName == "" {
+		otelServiceName = "handloom-lambda"
+	}
+	r.Use(telemetry.HTTPMiddleware(otelServiceName))
+	r.Use(telemetry.TraceIDMiddleware)
+
 	// Global middleware
 	r.Use(middleware.RequestID)
+	r.Use(metricsmw.Buffer)                       // injects metrics buffer + defers flush
+	r.Use(metricsmw.HTTPServer(otelServiceName))  // emits http_request{} + duration
+	r.Use(middleware.GeoExtractor)                // reads X-Geo-City/Country/Lat/Lng into ctx
 	r.Use(middleware.Logger())
 	r.Use(middleware.Recoverer())
 	r.Use(chimiddleware.RealIP)

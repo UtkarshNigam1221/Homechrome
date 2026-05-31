@@ -9,6 +9,9 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/aws/aws-sdk-go-v2/otelaws"
+
+	"github.com/handloom/admin/pkg/metrics/awsmiddleware"
 )
 
 // defaultJWTSecret is the fallback JWT secret used for local development.
@@ -16,15 +19,15 @@ const defaultJWTSecret = "your-super-secret-key-change-in-production"
 
 // Config holds all application configuration
 type Config struct {
-	Server   ServerConfig
-	AWS      AWSConfig
-	DynamoDB DynamoDBConfig
-	Postgres PostgresConfig
-	JWT      JWTConfig
-	App      AppConfig
-	Store    StoreConfig
-	Event    EventConfig
-	Embedder EmbedderConfig
+	Server    ServerConfig
+	AWS       AWSConfig
+	DynamoDB  DynamoDBConfig
+	Postgres  PostgresConfig
+	JWT       JWTConfig
+	App       AppConfig
+	Store     StoreConfig
+	Embedder  EmbedderConfig
+	Telemetry TelemetryConfig
 }
 
 // PostgresConfig holds PostgreSQL connection configuration
@@ -69,10 +72,14 @@ type EmbedderConfig struct {
 	ModelVersion string // EMBEDDING_MODEL_VERSION — default l3cube-indic-sbert-nli-v1
 }
 
-// EventConfig holds event bus configuration
-type EventConfig struct {
-	SNSTopicARN string
-	Enabled     bool
+// TelemetryConfig holds OpenTelemetry-related runtime settings.
+type TelemetryConfig struct {
+	ServiceName    string  // OTEL_SERVICE_NAME — set per-Lambda by CDK
+	ServiceVersion string  // OTEL_SERVICE_VERSION — git short SHA at build time
+	Environment    string  // matches App.Environment
+	OTLPEndpoint   string  // OTEL_EXPORTER_OTLP_ENDPOINT — defaults to http://localhost:4318
+	SampleRate     float64 // OTEL_TRACE_SAMPLE_RATE — defaults to 1.0
+	LogLevel       string  // LOG_LEVEL — info/debug/warn/error
 }
 
 // ServerConfig holds server configuration
@@ -100,9 +107,7 @@ type DynamoDBConfig struct {
 	OrdersTable        string
 	SessionsTable      string
 	AuditTable         string
-	AnalyticsTable     string // + Report
 	NotificationsTable string // Notification
-	EventsTable        string // Raw event store
 }
 
 // JWTConfig holds JWT configuration
@@ -122,7 +127,7 @@ type AppConfig struct {
 
 // Load loads configuration from environment variables
 func Load() *Config {
-	return &Config{
+	cfg := &Config{
 		Server: ServerConfig{
 			Port:         getEnv("SERVER_PORT", "8080"),
 			ReadTimeout:  getDurationEnv("SERVER_READ_TIMEOUT", 15*time.Second),
@@ -143,9 +148,7 @@ func Load() *Config {
 			OrdersTable:        getEnv("DYNAMODB_ORDERS_TABLE", "handloom-orders"),
 			SessionsTable:      getEnv("DYNAMODB_SESSIONS_TABLE", "handloom-sessions"),
 			AuditTable:         getEnv("DYNAMODB_AUDIT_TABLE", "handloom-audit"),
-			AnalyticsTable:     getEnv("DYNAMODB_ANALYTICS_TABLE", "handloom-analytics"),
 			NotificationsTable: getEnv("DYNAMODB_NOTIFICATIONS_TABLE", "handloom-notifications"),
-			EventsTable:        getEnv("DYNAMODB_EVENTS_TABLE", "handloom-events"),
 		},
 		JWT: JWTConfig{
 			SecretKey:            getJWTSecret(),
@@ -160,10 +163,6 @@ func Load() *Config {
 		},
 		Postgres: PostgresConfig{
 			DSN: getEnv("POSTGRES_DSN", ""),
-		},
-		Event: EventConfig{
-			SNSTopicARN: getEnv("SNS_TOPIC_ARN", ""),
-			Enabled:     getBoolEnv("EVENT_PUBLISHING_ENABLED", false),
 		},
 		Embedder: EmbedderConfig{
 			FunctionName: getEnv("EMBEDDER_FN_NAME", ""),
@@ -195,6 +194,15 @@ func Load() *Config {
 			CustomerRefreshTokenTTL: getDurationEnv("CUSTOMER_REFRESH_TOKEN_TTL", 30*24*time.Hour),
 		},
 	}
+	cfg.Telemetry = TelemetryConfig{
+		ServiceName:    getEnv("OTEL_SERVICE_NAME", "handloom-unknown"),
+		ServiceVersion: getEnv("OTEL_SERVICE_VERSION", "dev"),
+		Environment:    cfg.App.Environment,
+		OTLPEndpoint:   getEnv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4318"),
+		SampleRate:     getEnvFloat("OTEL_TRACE_SAMPLE_RATE", 1.0),
+		LogLevel:       getEnv("LOG_LEVEL", "info"),
+	}
+	return cfg
 }
 
 // IsProduction returns true if running in production
@@ -256,6 +264,18 @@ func getDurationEnv(key string, defaultValue time.Duration) time.Duration {
 	return defaultValue
 }
 
+func getEnvFloat(key string, defaultValue float64) float64 {
+	v := os.Getenv(key)
+	if v == "" {
+		return defaultValue
+	}
+	f, err := strconv.ParseFloat(v, 64)
+	if err != nil {
+		return defaultValue
+	}
+	return f
+}
+
 // getJWTSecret gets the JWT secret from SSM Parameter Store or environment variable
 func getJWTSecret() string {
 	// First check if we have a direct secret key
@@ -277,6 +297,13 @@ func getJWTSecret() string {
 		// Fall back to default if we can't load AWS config
 		return defaultJWTSecret
 	}
+
+	otelaws.AppendMiddlewares(&cfg.APIOptions)
+	svcName := os.Getenv("OTEL_SERVICE_NAME")
+	if svcName == "" {
+		svcName = "handloom-lambda"
+	}
+	cfg.APIOptions = append(cfg.APIOptions, awsmiddleware.With(svcName))
 
 	ssmClient := ssm.NewFromConfig(cfg)
 	result, err := ssmClient.GetParameter(ctx, &ssm.GetParameterInput{

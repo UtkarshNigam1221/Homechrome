@@ -594,6 +594,11 @@ type PriceQuote struct {
 	ValidUntil  time.Time `json:"valid_until" dynamodbav:"valid_until"`
 	UsedInOrder *string   `json:"used_in_order,omitempty" dynamodbav:"used_in_order,omitempty"`
 
+	// Geo — copied from the checkout request context so downstream
+	// payment-completion metrics can read them off the quote.
+	State string `json:"state,omitempty" dynamodbav:"state,omitempty"`
+	City  string `json:"city,omitempty"  dynamodbav:"city,omitempty"`
+
 	CreatedAt time.Time `json:"created_at" dynamodbav:"created_at"`
 }
 

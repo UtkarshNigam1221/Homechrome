@@ -14,8 +14,10 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/handloom/admin/internal/domain"
-	"github.com/handloom/admin/internal/event"
+	"github.com/handloom/admin/internal/middleware"
 	"github.com/handloom/admin/pkg/errors"
+	"github.com/handloom/admin/pkg/metrics"
+	"github.com/handloom/admin/pkg/telemetry"
 )
 
 const (
@@ -48,7 +50,6 @@ type CustomerAuthService struct {
 	customerRepo domain.CustomerRepository
 	tokenStore   domain.CustomerTokenStore
 	smsGateway   domain.SMSGateway
-	publisher    event.EventPublisher
 	config       CustomerAuthConfig
 	jwtSecret    []byte
 }
@@ -59,7 +60,6 @@ func NewCustomerAuthService(
 	customerRepo domain.CustomerRepository,
 	tokenStore domain.CustomerTokenStore,
 	smsGateway domain.SMSGateway,
-	publisher event.EventPublisher,
 	cfg CustomerAuthConfig,
 ) *CustomerAuthService {
 	return &CustomerAuthService{
@@ -67,7 +67,6 @@ func NewCustomerAuthService(
 		customerRepo: customerRepo,
 		tokenStore:   tokenStore,
 		smsGateway:   smsGateway,
-		publisher:    publisher,
 		config:       cfg,
 		jwtSecret:    []byte(cfg.JWTSecret),
 	}
@@ -75,9 +74,13 @@ func NewCustomerAuthService(
 
 // SendOTP generates and sends an OTP to the given phone number
 func (s *CustomerAuthService) SendOTP(ctx context.Context, phone string) error {
+	ctx, span := telemetry.StartServiceSpan(ctx, "customer_auth", "send_otp")
+
 	code, err := generateOTPCode()
 	if err != nil {
-		return errors.Internal("Failed to generate OTP code")
+		genErr := errors.Internal("Failed to generate OTP code")
+		span.EndWithError(genErr)
+		return genErr
 	}
 
 	otp := &domain.OTP{
@@ -87,31 +90,44 @@ func (s *CustomerAuthService) SendOTP(ctx context.Context, phone string) error {
 	}
 
 	if err := s.otpRepo.Store(ctx, otp); err != nil {
+		span.EndWithError(err)
 		return err
 	}
 
 	if err := s.smsGateway.SendOTP(ctx, phone, code); err != nil {
 		slog.ErrorContext(ctx, "Failed to send OTP SMS", "error", err)
-		return errors.Internal("Failed to send OTP")
+		metrics.Record(ctx, "otp_outcome", metrics.L{"outcome": "send_failed"})
+		smsErr := errors.Internal("Failed to send OTP")
+		span.EndWithError(smsErr)
+		return smsErr
 	}
 
+	metrics.Record(ctx, "otp_outcome", metrics.L{"outcome": "sent"})
 	slog.InfoContext(ctx, "OTP sent", "phone", phone)
+	span.End()
 	return nil
 }
 
 // VerifyOTP verifies an OTP code and returns the customer, tokens, and whether the customer is new
 func (s *CustomerAuthService) VerifyOTP(ctx context.Context, phone, code string) (*domain.Customer, *domain.TokenPair, bool, error) {
+	ctx, span := telemetry.StartServiceSpan(ctx, "customer_auth", "verify_otp")
+
 	otp, err := s.otpRepo.Get(ctx, phone)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			return nil, nil, false, errors.New(errors.ErrCodeInvalidToken, "OTP not found or expired")
+			notFoundErr := errors.New(errors.ErrCodeInvalidToken, "OTP not found or expired")
+			span.EndWithError(notFoundErr)
+			return nil, nil, false, notFoundErr
 		}
+		span.EndWithError(err)
 		return nil, nil, false, err
 	}
 
 	if otp.Attempts >= otpMaxAttempts {
 		_ = s.otpRepo.Delete(ctx, phone)
-		return nil, nil, false, errors.New(errors.ErrCodeInvalidToken, "Too many OTP attempts")
+		attemptsErr := errors.New(errors.ErrCodeInvalidToken, "Too many OTP attempts")
+		span.EndWithError(attemptsErr)
+		return nil, nil, false, attemptsErr
 	}
 
 	if incrErr := s.otpRepo.IncrementAttempts(ctx, phone); incrErr != nil {
@@ -119,7 +135,10 @@ func (s *CustomerAuthService) VerifyOTP(ctx context.Context, phone, code string)
 	}
 
 	if hashSHA256(code) != otp.CodeHash {
-		return nil, nil, false, errors.New(errors.ErrCodeInvalidCredentials, "Invalid OTP code")
+		metrics.Record(ctx, "otp_outcome", metrics.L{"outcome": "verify_failed"})
+		invalidErr := errors.New(errors.ErrCodeInvalidCredentials, "Invalid OTP code")
+		span.EndWithError(invalidErr)
+		return nil, nil, false, invalidErr
 	}
 
 	if delErr := s.otpRepo.Delete(ctx, phone); delErr != nil {
@@ -128,25 +147,35 @@ func (s *CustomerAuthService) VerifyOTP(ctx context.Context, phone, code string)
 
 	customer, isNew, err := s.findOrCreateCustomer(ctx, phone)
 	if err != nil {
+		span.EndWithError(err)
 		return nil, nil, false, err
-	}
-
-	if isNew {
-		if pubErr := s.publisher.Publish(ctx, event.New(event.CustomerRegistered, customer)); pubErr != nil {
-			slog.ErrorContext(ctx, "Failed to publish customer.registered event", "error", pubErr)
-		}
 	}
 
 	tokens, err := s.generateTokenPair(customer)
 	if err != nil {
+		span.EndWithError(err)
 		return nil, nil, false, err
 	}
 
 	if err := s.storeRefreshToken(ctx, customer.ID, tokens.RefreshToken); err != nil {
+		span.EndWithError(err)
 		return nil, nil, false, err
 	}
 
+	span.SetAttribute("entity.id", customer.ID)
+	span.SetAttribute("customer.is_new", isNew)
+	metrics.Record(ctx, "otp_outcome", metrics.L{"outcome": "verified"})
+	// session_started fires on OTP verify — i.e. an already-on-site visitor
+	// completed authentication. Device + UTM attribution belong on
+	// visitor-level signals (site_visitor) and conversion events
+	// (payment_completed, customer_first_purchase), not here.
+	metrics.Record(ctx, "session_started", metrics.L{
+		"country":     middleware.GetCountry(ctx),
+		"city":        middleware.GetCity(ctx),
+		"is_new_user": fmt.Sprintf("%t", isNew),
+	})
 	slog.InfoContext(ctx, "Customer authenticated", "customer_id", customer.ID, "is_new", isNew)
+	span.End()
 	return customer, tokens, isNew, nil
 }
 

@@ -39,17 +39,38 @@ func main() {
 		Environment: environment,
 	})
 
+	// Telemetry — layer ARN and SSM param names are passed at deploy time via env vars.
+	// The layer is the community-published OpenTelemetry Collector (account 184161586896).
+	// Compute the ARN using stacks.OtelCollectorLayerArn in handloom-admin/infra/stacks/telemetry.go,
+	// then pass it here at deploy time:
+	//   OTEL_COLLECTOR_LAYER_ARN=arn:aws:lambda:ap-south-1:184161586896:layer:opentelemetry-collector-arm64-0_22_0:1 npm run cdk:deploy:dev
+	// Leave unset to skip telemetry (no-op path in StorefrontStack).
+	collectorLayerArn := os.Getenv("OTEL_COLLECTOR_LAYER_ARN")
+	nodeAutoInstrLayerArn := os.Getenv("NODE_AUTO_INSTR_LAYER_ARN")
+	grafanaEndpointSSMParam := os.Getenv("GRAFANA_ENDPOINT_SSM_PARAM")
+	if grafanaEndpointSSMParam == "" {
+		grafanaEndpointSSMParam = "/handloom/" + environment + "/grafana-otlp-endpoint"
+	}
+	grafanaAuthSSMParam := os.Getenv("GRAFANA_AUTH_SSM_PARAM")
+	if grafanaAuthSSMParam == "" {
+		grafanaAuthSSMParam = "/handloom/" + environment + "/grafana-otlp-auth"
+	}
+
 	stacks.NewStorefrontStack(app, "HomechromeStoreStack-"+environment, &stacks.StorefrontStackProps{
 		StackProps: awscdk.StackProps{
 			Env:         env,
 			Description: jsii.String("Homechrome Store - Next.js SSR hosting (" + environment + ")"),
 			Tags:        commonTags,
 		},
-		Environment:   environment,
-		DomainNames:   cfg.DomainNames,
-		CertArn:       cfg.CertArn,
-		BackendApiUrl: cfg.BackendApiUrl,
-		LogsStack:     logsStack,
+		Environment:             environment,
+		DomainNames:             cfg.DomainNames,
+		CertArn:                 cfg.CertArn,
+		BackendApiUrl:           cfg.BackendApiUrl,
+		LogsStack:               logsStack,
+		CollectorLayerArn:       collectorLayerArn,
+		NodeAutoInstrLayerArn:   nodeAutoInstrLayerArn,
+		GrafanaEndpointSSMParam: grafanaEndpointSSMParam,
+		GrafanaAuthSSMParam:     grafanaAuthSSMParam,
 	})
 
 	app.Synth(nil)

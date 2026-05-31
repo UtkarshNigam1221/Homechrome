@@ -26,9 +26,7 @@ type DatabaseStack struct {
 	OrdersTable        awsdynamodb.Table
 	SessionsTable      awsdynamodb.Table
 	AuditTable         awsdynamodb.Table
-	AnalyticsTable     awsdynamodb.Table
 	NotificationsTable awsdynamodb.Table
-	EventsTable        awsdynamodb.Table
 	// External PostgreSQL (Neon) connection string
 	PostgresDSN *string
 }
@@ -249,53 +247,6 @@ func NewDatabaseStack(scope constructs.Construct, id string, props *DatabaseStac
 		ProjectionType: awsdynamodb.ProjectionType_ALL,
 	})
 
-	// Analytics Table - analytics data
-	analyticsTable := awsdynamodb.NewTable(stack, jsii.String("AnalyticsTable"), &awsdynamodb.TableProps{
-		TableName:     jsii.String("handloom-analytics-" + props.Environment),
-		BillingMode:   billingMode,
-		RemovalPolicy: removalPolicy,
-		PartitionKey: &awsdynamodb.Attribute{
-			Name: jsii.String("PK"),
-			Type: awsdynamodb.AttributeType_STRING,
-		},
-		SortKey: &awsdynamodb.Attribute{
-			Name: jsii.String("SK"),
-			Type: awsdynamodb.AttributeType_STRING,
-		},
-		TimeToLiveAttribute: jsii.String("ttl"),
-	})
-
-	// GSI1 - General purpose index for analytics
-	analyticsTable.AddGlobalSecondaryIndex(&awsdynamodb.GlobalSecondaryIndexProps{
-		IndexName: jsii.String("GSI1"),
-		PartitionKey: &awsdynamodb.Attribute{
-			Name: jsii.String("GSI1PK"),
-			Type: awsdynamodb.AttributeType_STRING,
-		},
-		SortKey: &awsdynamodb.Attribute{
-			Name: jsii.String("GSI1SK"),
-			Type: awsdynamodb.AttributeType_STRING,
-		},
-		ProjectionType: awsdynamodb.ProjectionType_ALL,
-	})
-
-	// Events Table - raw frontend tracking events with 30-day TTL
-	// Simple PK/SK table, no GSIs needed
-	eventsTable := awsdynamodb.NewTable(stack, jsii.String("EventsTable"), &awsdynamodb.TableProps{
-		TableName:     jsii.String("handloom-events-" + props.Environment),
-		BillingMode:   billingMode,
-		RemovalPolicy: removalPolicy,
-		PartitionKey: &awsdynamodb.Attribute{
-			Name: jsii.String("PK"),
-			Type: awsdynamodb.AttributeType_STRING,
-		},
-		SortKey: &awsdynamodb.Attribute{
-			Name: jsii.String("SK"),
-			Type: awsdynamodb.AttributeType_STRING,
-		},
-		TimeToLiveAttribute: jsii.String("ttl"),
-	})
-
 	// --- Schema Migrator Lambda ---
 	// Runs embedded SQL migrations against external Postgres (Neon) during CDK deploy.
 	postgresDSN := jsii.String(props.PostgresDSN)
@@ -345,21 +296,13 @@ func NewDatabaseStack(scope constructs.Construct, id string, props *DatabaseStac
 		ExportName:  jsii.String("handloom-notifications-table-" + props.Environment),
 	})
 
-	awscdk.NewCfnOutput(stack, jsii.String("EventsTableName"), &awscdk.CfnOutputProps{
-		Value:       eventsTable.TableName(),
-		Description: jsii.String("Events DynamoDB table name"),
-		ExportName:  jsii.String("handloom-events-table-" + props.Environment),
-	})
-
 	return &DatabaseStack{
 		Stack:              stack,
 		CoreTable:          coreTable,
 		OrdersTable:        ordersTable,
 		SessionsTable:      sessionsTable,
 		AuditTable:         auditTable,
-		AnalyticsTable:     analyticsTable,
 		NotificationsTable: notificationsTable,
-		EventsTable:        eventsTable,
 		PostgresDSN:        postgresDSN,
 	}
 }

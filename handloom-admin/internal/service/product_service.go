@@ -12,7 +12,6 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/handloom/admin/internal/domain"
-	"github.com/handloom/admin/internal/event"
 	"github.com/handloom/admin/pkg/errors"
 )
 
@@ -28,7 +27,6 @@ type ProductService struct {
 	categoryRepo   domain.CategoryRepository
 	inventoryRepo  domain.InventoryRepository
 	assetFinalizer domain.AssetFinalizer
-	publisher      event.EventPublisher
 	embedder       Embedder // may be nil — service tolerates absence
 }
 
@@ -38,7 +36,6 @@ func NewProductService(
 	categoryRepo domain.CategoryRepository,
 	inventoryRepo domain.InventoryRepository,
 	assetFinalizer domain.AssetFinalizer,
-	publisher event.EventPublisher,
 	embedder Embedder,
 ) *ProductService {
 	return &ProductService{
@@ -46,7 +43,6 @@ func NewProductService(
 		categoryRepo:   categoryRepo,
 		inventoryRepo:  inventoryRepo,
 		assetFinalizer: assetFinalizer,
-		publisher:      publisher,
 		embedder:       embedder,
 	}
 }
@@ -131,10 +127,6 @@ func (s *ProductService) Create(ctx context.Context, req domain.CreateProductReq
 
 	// Generate image variants for all new product images (best-effort).
 	s.assetFinalizer.SyncImageVariants(ctx, nil, imageURLs(product.Images))
-
-	if pubErr := s.publisher.Publish(ctx, event.New(event.ProductCreated, product)); pubErr != nil {
-		slog.ErrorContext(ctx, "Failed to publish product.created event", "error", pubErr)
-	}
 
 	slog.InfoContext(ctx, "Created product", keyProductID, product.ID)
 	return product, nil
@@ -287,10 +279,6 @@ func (s *ProductService) Update(ctx context.Context, id string, req domain.Updat
 	// Resize newly added product images + clean up variants for removed ones.
 	s.assetFinalizer.SyncImageVariants(ctx, oldImageURLs, imageURLs(product.Images))
 
-	if pubErr := s.publisher.Publish(ctx, event.New(event.ProductUpdated, product)); pubErr != nil {
-		slog.ErrorContext(ctx, "Failed to publish product.updated event", "error", pubErr)
-	}
-
 	slog.InfoContext(ctx, "Updated product", keyProductID, id)
 	return product, nil
 }
@@ -315,12 +303,6 @@ func (s *ProductService) Delete(ctx context.Context, id string) error {
 
 	// Best-effort cleanup of S3 assets — never fail the delete on cleanup errors.
 	s.deleteProductAssets(ctx, product)
-
-	if pubErr := s.publisher.Publish(ctx, event.New(event.ProductDeleted, map[string]interface{}{
-		keyProductID: id,
-	})); pubErr != nil {
-		slog.ErrorContext(ctx, "Failed to publish product.deleted event", "error", pubErr)
-	}
 
 	slog.InfoContext(ctx, "Deleted product", keyProductID, id)
 	return nil

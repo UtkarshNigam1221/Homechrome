@@ -3,6 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 
+import { track } from '@/lib/analytics';
 import { FilterValues } from '@/components/catalog/FilterSidebar';
 import api from '@/lib/api';
 import { ROUTES } from '@/lib/routes';
@@ -60,6 +61,30 @@ export function hasActiveFilters(filters: FilterValues): boolean {
     filters.inStockOnly ||
     Object.values(filters.attributeFilters).some((v) => v.length > 0)
   );
+}
+
+/**
+ * Returns the list of filter-key names that differ between two filter
+ * snapshots. Keys returned are the human-readable names the backend
+ * stamps on `catalog_filter_applied.filter_key`: min_price, max_price,
+ * in_stock, or any attribute name (material, color, ...). Attribute
+ * filters are compared as sorted-string sets to ignore reordering.
+ */
+function diffFilterKeys(a: FilterValues, b: FilterValues): string[] {
+  const changed: string[] = [];
+  if (a.minPrice !== b.minPrice) changed.push('min_price');
+  if (a.maxPrice !== b.maxPrice) changed.push('max_price');
+  if (a.inStockOnly !== b.inStockOnly) changed.push('in_stock');
+  const keys = new Set([
+    ...Object.keys(a.attributeFilters),
+    ...Object.keys(b.attributeFilters),
+  ]);
+  for (const k of keys) {
+    const av = [...(a.attributeFilters[k] ?? [])].sort().join(',');
+    const bv = [...(b.attributeFilters[k] ?? [])].sort().join(',');
+    if (av !== bv) changed.push(k);
+  }
+  return changed;
 }
 
 /** Build a stable query key string from filters + extra params. */
@@ -132,13 +157,32 @@ export function useFilteredProducts({
     return () => clearTimeout(debounceRef.current);
   }, [filters]);
 
+  // Search input lives in extraDeps (the `q` query param). It has a longer
+  // debounce than the filter sliders because the user is typing — a 1s
+  // pause feels right for "I've finished my query" and dramatically cuts
+  // intermediate-keystroke fetches.
+
+  // Fire catalog_filter_applied per filter that actually changed once the
+  // debounce settles. Diff against the previous debounced state so dragging
+  // a slider only counts once at rest, not per intermediate value.
+  const prevDebouncedRef = useRef<FilterValues | null>(null);
+  useEffect(() => {
+    const prev = prevDebouncedRef.current;
+    prevDebouncedRef.current = debouncedFilters;
+    if (prev === null) return; // first run — no diff to emit
+    const changed = diffFilterKeys(prev, debouncedFilters);
+    for (const key of changed) {
+      track('catalog_filter_applied', { filter_key: key });
+    }
+  }, [debouncedFilters]);
+
   // Also debounce extra deps (e.g. searchQuery)
   const extraDepsKey = JSON.stringify(extraDeps);
   const [debouncedExtraDepsKey, setDebouncedExtraDepsKey] = useState(extraDepsKey);
   const extraDebounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   useEffect(() => {
-    extraDebounceRef.current = setTimeout(() => setDebouncedExtraDepsKey(extraDepsKey), 300);
+    extraDebounceRef.current = setTimeout(() => setDebouncedExtraDepsKey(extraDepsKey), 1000);
     return () => clearTimeout(extraDebounceRef.current);
   }, [extraDepsKey]);
 

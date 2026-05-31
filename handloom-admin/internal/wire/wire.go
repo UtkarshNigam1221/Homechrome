@@ -15,6 +15,7 @@ import (
 	"github.com/handloom/admin/internal/handler"
 	"github.com/handloom/admin/internal/handler/store"
 	"github.com/handloom/admin/internal/middleware"
+	metricsworker "github.com/handloom/admin/internal/worker/metrics"
 )
 
 // ============================================================================
@@ -66,12 +67,6 @@ type InventoryDeps struct {
 	AuthMiddleware *middleware.Auth
 }
 
-// AnalyticsDeps holds dependencies for the Analytics Lambda
-type AnalyticsDeps struct {
-	Config         *config.Config
-	Handler        *handler.AnalyticsHandler
-	AuthMiddleware *middleware.Auth
-}
 
 // NotificationDeps holds dependencies for the Notification Lambda
 type NotificationDeps struct {
@@ -160,7 +155,6 @@ func InitializeCatalogDeps(ctx context.Context, cfg *config.Config) (*CatalogDep
 		ProvideCategoryRepository,
 		ProvideProductRepository,
 		ProvideInventoryRepository,
-		ProvideEventPublisher,
 		ProvideAuthService,
 		ProvideAssetService,
 		ProvideCategoryService,
@@ -198,7 +192,6 @@ func InitializeOrderDeps(ctx context.Context, cfg *config.Config) (*OrderDeps, e
 		ProvideCartService,
 		ProvidePhonePeGateway,
 		ProvidePaymentService,
-		ProvideEventPublisher,
 		ProvideOrderHandler,
 		ProvideCustomerHandler,
 		ProvideAuthMiddleware,
@@ -235,7 +228,6 @@ func InitializeInventoryDeps(ctx context.Context, cfg *config.Config) (*Inventor
 		ProvideUserRepository,
 		ProvideTokenStore,
 		ProvideInventoryRepository,
-		ProvideEventPublisher,
 		ProvideAuthService,
 		ProvideInventoryService,
 		ProvideInventoryHandler,
@@ -245,24 +237,6 @@ func InitializeInventoryDeps(ctx context.Context, cfg *config.Config) (*Inventor
 	return nil, nil
 }
 
-// InitializeAnalyticsDeps creates Analytics Lambda dependencies
-func InitializeAnalyticsDeps(ctx context.Context, cfg *config.Config) (*AnalyticsDeps, error) {
-	wire.Build(
-		CoreSet,
-		ProvideUserRepository,
-		ProvideTokenStore,
-		ProvideAnalyticsRepository,
-		ProvideOrderRepository,
-		ProvideProductRepository,
-		ProvideInventoryRepository,
-		ProvideAuthService,
-		ProvideAnalyticsService,
-		ProvideAnalyticsHandler,
-		ProvideAuthMiddleware,
-		wire.Struct(new(AnalyticsDeps), "*"),
-	)
-	return nil, nil
-}
 
 // InitializeNotificationDeps creates Notification Lambda dependencies
 func InitializeNotificationDeps(ctx context.Context, cfg *config.Config) (*NotificationDeps, error) {
@@ -338,8 +312,6 @@ func InitializeReportDeps(ctx context.Context, cfg *config.Config) (*ReportDeps,
 		ProvidePriceQuoteRepository,
 		ProvidePricingRuleRepository,
 		ProvideCategoryRepository,
-		ProvideAnalyticsRepository,
-		ProvideEventPublisher,
 		ProvideAuthService,
 		ProvideAssetService,
 		ProvidePricingService,
@@ -347,7 +319,6 @@ func InitializeReportDeps(ctx context.Context, cfg *config.Config) (*ReportDeps,
 		ProvideProductService,
 		ProvideCustomerService,
 		ProvideInventoryService,
-		ProvideAnalyticsService,
 		ProvideReportService,
 		ProvideReportHandler,
 		ProvideAuthMiddleware,
@@ -448,7 +419,6 @@ func InitializeStoreAuthDeps(ctx context.Context, cfg *config.Config) (*StoreAut
 		ProvideOTPRepository,
 		ProvideCustomerRepository,
 		ProvideCustomerTokenStore,
-		ProvideEventPublisher,
 		ProvideCustomerAuthService,
 		// Cart deps needed for guest merge in auth handler
 		ProvideCartRepository,
@@ -472,7 +442,6 @@ func InitializeStoreCatalogDeps(ctx context.Context, cfg *config.Config) (*Store
 		ProvideS3Client,
 		ProvideLambdaClient,
 		ProvideEmbedderClient,
-		ProvideEventPublisher,
 		ProvideAssetService,
 		ProvideCategoryService,
 		ProvideProductService,
@@ -495,7 +464,6 @@ func InitializeStoreCartDeps(ctx context.Context, cfg *config.Config) (*StoreCar
 		ProvideOTPRepository,
 		ProvideCustomerRepository,
 		ProvideCustomerTokenStore,
-		ProvideEventPublisher,
 		ProvideCustomerAuthService,
 		ProvideCartService,
 		ProvideStoreCartHandler,
@@ -520,7 +488,6 @@ func InitializeStoreCheckoutDeps(ctx context.Context, cfg *config.Config) (*Stor
 		ProvideShipmentRepository,
 		ProvideOTPRepository,
 		ProvideCustomerTokenStore,
-		ProvideEventPublisher,
 		ProvideCustomerAuthService,
 		ProvideCartService,
 		ProvidePhonePeGateway,
@@ -547,7 +514,6 @@ func InitializeStoreOrdersDeps(ctx context.Context, cfg *config.Config) (*StoreO
 		ProvideCategoryRepository,
 		ProvideOTPRepository,
 		ProvideCustomerTokenStore,
-		ProvideEventPublisher,
 		ProvideCustomerAuthService,
 		ProvidePricingService,
 		ProvideOrderService,
@@ -579,7 +545,6 @@ func InitializeStoreProfileDeps(ctx context.Context, cfg *config.Config) (*Store
 		ProvideCustomerRepository,
 		ProvideOTPRepository,
 		ProvideCustomerTokenStore,
-		ProvideEventPublisher,
 		ProvideCustomerAuthService,
 		ProvideStoreProfileHandler,
 		ProvideCustomerAuthMiddleware,
@@ -594,11 +559,11 @@ func InitializeStoreWebhooksDeps(ctx context.Context, cfg *config.Config) (*Stor
 		CoreSet,
 		ProvidePaymentRepository,
 		ProvideOrderRepository,
+		ProvideCustomerRepository,
 		ProvideInventoryRepository,
 		ProvideCartRepository,
 		ProvideProductRepository,
 		ProvideCartService,
-		ProvideEventPublisher,
 		ProvidePhonePeGateway,
 		ProvidePaymentService,
 		ProvideStoreWebhookHandler,
@@ -607,14 +572,16 @@ func InitializeStoreWebhooksDeps(ctx context.Context, cfg *config.Config) (*Stor
 	return nil, nil
 }
 
-// InitializeStoreEventsDeps creates Store Events Lambda dependencies
+// InitializeStoreEventsDeps creates Store Events Lambda dependencies.
+// Needs PG for lazy-upsert into city_centroids on first sighting of a
+// (city, country) pair. Metric counters themselves still flow via the
+// SQS publisher initialised in bootstrap.
 func InitializeStoreEventsDeps(ctx context.Context, cfg *config.Config) (*StoreEventsDeps, error) {
 	wire.Build(
-		CoreSet,
+		ProvidePostgresPool,
 		ProvideValidator,
 		ProvideValidation,
-		ProvideEventsRepository,
-		ProvideAnalyticsRepository,
+		ProvideCentroidsRepository,
 		ProvideStoreEventsHandler,
 		wire.Struct(new(StoreEventsDeps), "*"),
 	)
@@ -638,7 +605,7 @@ type MonolithDeps struct {
 	AuditHandler        *handler.AuditHandler
 	NotificationHandler *handler.NotificationHandler
 	CouponHandler       *handler.CouponHandler
-	AnalyticsHandler    *handler.AnalyticsHandler
+
 	AssetHandler        *handler.AssetHandler
 	ReportHandler       *handler.ReportHandler
 
@@ -660,7 +627,6 @@ type MonolithDeps struct {
 }
 
 // InitializeMonolithDeps wires the full monolith dependency graph.
-// Uses MonolithPublisherSet so events dispatch in-process via LocalPublisher.
 func InitializeMonolithDeps(ctx context.Context, cfg *config.Config) (*MonolithDeps, error) {
 	wire.Build(
 		CoreSet,
@@ -670,7 +636,6 @@ func InitializeMonolithDeps(ctx context.Context, cfg *config.Config) (*MonolithD
 		StoreRepositorySet,
 		ServiceSet,
 		StoreServiceSet,
-		MonolithPublisherSet,
 		HandlerSet,
 		StoreHandlerSet,
 		MiddlewareSet,
@@ -698,6 +663,25 @@ func InitializeBackfillDeps(ctx context.Context, cfg *config.Config) (*BackfillD
 		ProvidePostgresPool,
 		ProvideEmbedderClient,
 		wire.Struct(new(BackfillDeps), "*"),
+	)
+	return nil, nil
+}
+
+// ============================================================================
+// METRICS CONSUMER DEPENDENCY CONTAINER
+// ============================================================================
+
+// MetricsConsumerDeps holds dependencies for the metrics consumer Lambda.
+type MetricsConsumerDeps struct {
+	Handler *metricsworker.Handler
+}
+
+// InitializeMetricsConsumerDeps creates the metrics consumer Lambda dependencies.
+func InitializeMetricsConsumerDeps(ctx context.Context, cfg *config.Config) (*MetricsConsumerDeps, error) {
+	wire.Build(
+		ProvidePostgresPool,
+		MetricsConsumerSet,
+		wire.Struct(new(MetricsConsumerDeps), "*"),
 	)
 	return nil, nil
 }

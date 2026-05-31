@@ -4,11 +4,21 @@ import "time"
 
 // ValidStoreEventTypes is the set of accepted frontend tracking event types.
 var ValidStoreEventTypes = map[string]struct{}{
-	"page_view":        {},
-	"product_viewed":   {},
-	"add_to_cart":      {},
-	"checkout_started": {},
-	"scroll_depth":     {},
+	"page_view":                       {},
+	"product_viewed":                  {},
+	"add_to_cart":                     {},
+	"checkout_started":                {},
+	"scroll_depth":                    {},
+	"category_viewed":                 {},
+	"out_of_stock_shown":              {},
+	"back_in_stock_notify_requested":  {},
+	"catalog_filter_applied":          {},
+	"rum_lcp":                         {},
+	"rum_inp":                         {},
+	"rum_cls":                         {},
+	"rum_ttfb":                        {},
+	"rum_js_error":                    {},
+	"rum_page_view":                   {},
 }
 
 // IsValidStoreEventType checks if the event type is in the allowlist.

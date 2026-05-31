@@ -5,18 +5,23 @@ package postgres
 import (
 	"context"
 	"fmt"
+	"os"
 
+	"github.com/exaring/otelpgx"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/multitracer"
 	"github.com/jackc/pgx/v5/pgxpool"
 	pgvecpgx "github.com/pgvector/pgvector-go/pgx"
 
 	appconfig "github.com/handloom/admin/internal/config"
+	"github.com/handloom/admin/pkg/metrics/dbtracer"
 )
 
-// NewPool creates a PostgreSQL connection pool.
-// Uses POSTGRES_DSN environment variable in all environments.
-// Registers the pgvector type codec on each connection so that vector(N)
-// columns can be scanned into pgvector.Vector and written back.
+// NewPool creates a PostgreSQL connection pool with an OTel tracer attached.
+// Each query produces a CLIENT span and includes its SQL text + parameters.
+// Uses POSTGRES_DSN in all environments. Registers the pgvector type codec on
+// each connection so vector(N) columns can be scanned into pgvector.Vector
+// and written back.
 func NewPool(ctx context.Context, pgCfg *appconfig.PostgresConfig) (*pgxpool.Pool, error) {
 	if pgCfg.DSN == "" {
 		return nil, fmt.Errorf("no postgres DSN configured (set POSTGRES_DSN)")
@@ -26,6 +31,17 @@ func NewPool(ctx context.Context, pgCfg *appconfig.PostgresConfig) (*pgxpool.Poo
 	if err != nil {
 		return nil, fmt.Errorf("parse postgres DSN: %w", err)
 	}
+
+	// otelpgx → traces (Tempo); dbtracer → metrics (PG). Multitracer fans
+	// each query callback to both.
+	svcName := os.Getenv("OTEL_SERVICE_NAME")
+	if svcName == "" {
+		svcName = "handloom-lambda"
+	}
+	cfg.ConnConfig.Tracer = multitracer.New(
+		otelpgx.NewTracer(otelpgx.WithIncludeQueryParameters()),
+		&dbtracer.Tracer{Service: svcName},
+	)
 
 	cfg.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
 		if err := pgvecpgx.RegisterTypes(ctx, conn); err != nil {

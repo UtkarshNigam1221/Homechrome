@@ -22,12 +22,25 @@ import (
 	"github.com/handloom/admin/internal/middleware"
 	"github.com/handloom/admin/internal/wire"
 	"github.com/handloom/admin/pkg/slogx"
+	"github.com/handloom/admin/pkg/telemetry"
 )
 
 func main() {
 	cfg := config.Load()
 
 	slogx.Setup(cfg.App.Debug)
+
+	telShutdown := telemetry.MustInit(
+		"handloom-monolith",
+		cfg.Telemetry.ServiceVersion,
+		cfg.Telemetry.Environment,
+	)
+	defer func() {
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer shutdownCancel()
+		telShutdown(shutdownCtx)
+	}()
+
 	slog.Info("Starting handloom-admin API server", "environment", cfg.App.Environment)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -76,6 +89,9 @@ func main() {
 
 func createRouter(d *wire.MonolithDeps) *chi.Mux {
 	r := chi.NewRouter()
+
+	r.Use(telemetry.HTTPMiddleware("handloom-monolith"))
+	r.Use(telemetry.TraceIDMiddleware)
 
 	r.Use(middleware.RequestID)
 	r.Use(middleware.Logger())
@@ -160,7 +176,6 @@ func createRouter(d *wire.MonolithDeps) *chi.Mux {
 
 			r.Mount("/notifications", d.NotificationHandler.Routes())
 			r.Mount("/coupons", d.CouponHandler.Routes())
-			r.Mount("/analytics", analyticsRoutes(d.AnalyticsHandler))
 			r.Mount("/assets", d.AssetHandler.Routes())
 			r.Mount("/reports", d.ReportHandler.Routes())
 		})
@@ -178,13 +193,4 @@ func auditRoutes(h *handler.AuditHandler) chi.Router {
 	return r
 }
 
-func analyticsRoutes(h *handler.AnalyticsHandler) chi.Router {
-	r := chi.NewRouter()
-	r.Get("/dashboard", h.GetDashboardStats)
-	r.Get("/sales", h.GetSalesAnalytics)
-	r.Get("/top-products", h.GetTopProducts)
-	r.Get("/top-categories", h.GetTopCategories)
-	r.Get("/customers", h.GetCustomerAnalytics)
-	r.Get("/inventory", h.GetInventoryAnalytics)
-	return r
-}
+

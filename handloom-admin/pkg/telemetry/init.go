@@ -1,0 +1,67 @@
+package telemetry
+
+import (
+	"context"
+	"log/slog"
+	"os"
+	"time"
+)
+
+// Shutdown is a closure callers must invoke before process exit to flush
+// and stop all telemetry providers.
+type Shutdown func(context.Context)
+
+// Package-level provider so middleware can invoke ForceFlush per-request
+// without threading it through every dependency. Metrics meter provider was
+// removed in M30 — only the tracer remains.
+var (
+	globalTracerProvider *TracerProvider
+)
+
+// ForceFlush drains buffered traces to the collector. Safe to call from any
+// goroutine. No-op if MustInit hasn't run yet. Lambda paths use
+// SimpleSpanProcessor — spans are already sync, this call is cheap.
+func ForceFlush(ctx context.Context) {
+	if globalTracerProvider != nil && globalTracerProvider.provider != nil {
+		_ = globalTracerProvider.provider.ForceFlush(ctx)
+	}
+}
+
+// MustInit boots the tracer provider from env config and returns a shutdown
+// closure. Panics on construction failure — telemetry init must be
+// deterministic. Honours OTEL_SDK_DISABLED=true as an emergency kill switch.
+func MustInit(serviceName, serviceVersion, environment string) Shutdown {
+	if os.Getenv("OTEL_SDK_DISABLED") == "true" {
+		slog.Info("telemetry disabled via OTEL_SDK_DISABLED")
+		return func(context.Context) {}
+	}
+
+	endpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+	if endpoint == "" {
+		endpoint = "localhost:4317"
+	}
+
+	cfg := NewConfigFromApp(
+		serviceName, serviceVersion, environment,
+		"otlp-grpc", endpoint, 1.0, true /*insecure*/, true, /*traceCorrelation*/
+	)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	tp, err := NewTracerProvider(ctx, cfg)
+	if err != nil {
+		panic("telemetry: tracer provider: " + err.Error())
+	}
+	globalTracerProvider = tp
+
+	slog.Info("telemetry initialized",
+		"version", serviceVersion,
+		"environment", environment,
+		"endpoint", endpoint,
+	)
+
+	return func(ctx context.Context) {
+		_ = tp.Shutdown(ctx)
+	}
+}

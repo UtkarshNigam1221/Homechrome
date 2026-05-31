@@ -7,8 +7,13 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"sync"
 	"time"
+
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+
+	metricsmw "github.com/handloom/admin/pkg/metrics/middleware"
 )
 
 // Client implements the Shiprocket shipping gateway
@@ -24,9 +29,23 @@ func NewClient(config Config) *Client {
 	if config.BaseURL == "" {
 		config.BaseURL = "https://apiv2.shiprocket.in/v1/external"
 	}
+	svcName := os.Getenv("OTEL_SERVICE_NAME")
+	if svcName == "" {
+		svcName = "handloom-lambda"
+	}
 	return &Client{
 		config:     config,
-		httpClient: &http.Client{Timeout: 30 * time.Second},
+		httpClient: &http.Client{
+			Timeout: 30 * time.Second,
+			Transport: &metricsmw.HTTPClientTransport{
+				Service: svcName,
+				Base: otelhttp.NewTransport(http.DefaultTransport,
+					otelhttp.WithSpanNameFormatter(func(_ string, r *http.Request) string {
+						return "shiprocket " + r.Method + " " + r.URL.Path
+					}),
+				),
+			},
+		},
 	}
 }
 

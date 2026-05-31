@@ -1,0 +1,126 @@
+import type { AxiosInstance } from 'axios';
+import axios from 'axios';
+
+import { getNeonAuthToken } from '@/shared/auth/neonAuth';
+
+// Neon Data API: REST over Postgres, JWT-authed, role-scoped via RLS.
+// Browser hits Neon directly — no backend hop. JWT is minted on demand
+// from Neon Auth (Better Auth) — see src/shared/auth/neonAuth.ts.
+
+const BASE_URL = import.meta.env.VITE_NEON_DATA_API_URL ?? '';
+
+if (!BASE_URL) {
+  console.warn('VITE_NEON_DATA_API_URL not set — dashboards will not load.');
+}
+
+const client: AxiosInstance = axios.create({
+  baseURL: BASE_URL,
+  headers: {
+    Accept: 'application/json',
+    Prefer: 'count=exact',
+  },
+});
+
+// Attach a fresh Neon Auth JWT to every request. If no session, request
+// goes out unauthenticated — Data API will 401 and the NeonAuthGate
+// component will redirect the user to sign in.
+client.interceptors.request.use(async (config) => {
+  const token = await getNeonAuthToken();
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+/**
+ * Generic Data API row fetcher.
+ *
+ * Data API exposes tables via PostgREST-style URLs:
+ *   GET /rest/v1/metric_counters?metric=eq.session_started&bucket_start=gte.2026-06-01
+ *
+ * Query operators we use:
+ *   eq.   — equal
+ *   gte.  — greater-than-or-equal
+ *   lte.  — less-than-or-equal
+ *   in.   — in list (comma-separated, parenthesised)
+ *   order — column.asc / column.desc
+ *   select — projection (e.g. metric,bucket_start,count)
+ *   limit — row cap
+ */
+export async function fetchRows<T = Record<string, unknown>>(
+  table: string,
+  params: Record<string, string | number | undefined>
+): Promise<T[]> {
+  // strip empty/undefined params — Data API rejects empty strings as filters
+  const clean: Record<string, string> = {};
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== undefined && v !== '') clean[k] = String(v);
+  }
+  const { data } = await client.get<T[]>(`/rest/v1/${table}`, { params: clean });
+  return data;
+}
+
+// ─── High-level query helpers tailored to metric_counters ───
+
+export interface BucketRow {
+  metric: string;
+  labels: Record<string, string>;
+  bucket_start: string;
+  count: number;
+  sum_value: number;
+  retention_class: 'business' | 'service';
+}
+
+/**
+ * Fetch raw bucket rows for a single metric over a time range.
+ * Caller aggregates client-side in Recharts.
+ */
+export function fetchMetricBuckets(opts: {
+  metric: string;
+  from: Date;
+  to: Date;
+  limit?: number;
+}): Promise<BucketRow[]> {
+  return fetchRows<BucketRow>('metric_counters', {
+    metric: `eq.${opts.metric}`,
+    bucket_start: `gte.${opts.from.toISOString()}`,
+    // PostgREST supports repeated column filters — second range bound via and=
+    and: `(bucket_start.lte.${opts.to.toISOString()})`,
+    select: 'metric,labels,bucket_start,count,sum_value',
+    order: 'bucket_start.asc',
+    limit: opts.limit ?? 5000,
+  });
+}
+
+/**
+ * Fetch buckets for multiple metrics in one request (using in.).
+ */
+export function fetchMultiMetricBuckets(opts: {
+  metrics: string[];
+  from: Date;
+  to: Date;
+  limit?: number;
+}): Promise<BucketRow[]> {
+  return fetchRows<BucketRow>('metric_counters', {
+    metric: `in.(${opts.metrics.join(',')})`,
+    bucket_start: `gte.${opts.from.toISOString()}`,
+    and: `(bucket_start.lte.${opts.to.toISOString()})`,
+    select: 'metric,labels,bucket_start,count,sum_value',
+    order: 'bucket_start.asc',
+    limit: opts.limit ?? 10000,
+  });
+}
+
+export interface CityCentroid {
+  city: string;
+  country: string;
+  lat: number;
+  lng: number;
+}
+
+export function fetchCityCentroids(): Promise<CityCentroid[]> {
+  return fetchRows<CityCentroid>('city_centroids', {
+    select: 'city,country,lat,lng',
+    order: 'city.asc',
+  });
+}

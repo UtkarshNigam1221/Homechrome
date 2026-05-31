@@ -52,6 +52,14 @@ type Order struct {
 	TrackingURL     string   `json:"tracking_url,omitempty" dynamodbav:"tracking_url,omitempty"`
 	ShippingCarrier string   `json:"shipping_carrier,omitempty" dynamodbav:"shipping_carrier,omitempty"`
 
+	// Geo — resolved from the checkout request context (CloudFront headers)
+	// and persisted here so downstream payment/order-placed metrics can read
+	// them without relying on the gateway webhook's request context.
+	State      string `json:"state,omitempty"       dynamodbav:"state,omitempty"`
+	City       string `json:"city,omitempty"        dynamodbav:"city,omitempty"`
+	DeviceType string `json:"device_type,omitempty" dynamodbav:"device_type,omitempty"`
+	UTMSource  string `json:"utm_source,omitempty"  dynamodbav:"utm_source,omitempty"`
+
 	// Notes
 	CustomerNote  string      `json:"customer_note,omitempty" dynamodbav:"customer_note,omitempty"`
 	InternalNotes []OrderNote `json:"internal_notes,omitempty" dynamodbav:"internal_notes,omitempty"`
@@ -182,6 +190,7 @@ type Customer struct {
 	// Stats
 	TotalOrders int     `json:"total_orders" dynamodbav:"total_orders"`
 	TotalSpent  float64 `json:"total_spent" dynamodbav:"total_spent"`
+	OrderCount  int     `json:"order_count" dynamodbav:"order_count"`
 
 	Addresses []Address `json:"addresses,omitempty" dynamodbav:"addresses,omitempty"`
 	Tags      []string  `json:"tags,omitempty" dynamodbav:"tags,omitempty"`

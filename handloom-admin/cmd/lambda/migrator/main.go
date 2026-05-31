@@ -13,22 +13,20 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/handloom/admin/internal/config"
+	"github.com/handloom/admin/internal/bootstrap"
 	"github.com/handloom/admin/internal/repository/postgres"
 	"github.com/handloom/admin/migrations"
-	"github.com/handloom/admin/pkg/slogx"
 )
 
 // advisoryLockID is a fixed key for pg_advisory_lock to prevent concurrent migration runs.
 const advisoryLockID = 7_248_301_945
 
 func main() {
-	cfg := config.Load()
-	slogx.Setup(cfg.App.Debug)
-	slog.Info("Starting Migrator Lambda")
+	bc := bootstrap.InitLambda("handloom-migrator")
+	defer bc.Shutdown()
 
 	lambda.Start(func(ctx context.Context) (string, error) {
-		pool, err := postgres.NewPool(ctx, &cfg.Postgres)
+		pool, err := postgres.NewPool(ctx, &bc.Cfg.Postgres)
 		if err != nil {
 			return "", fmt.Errorf("connect to postgres: %w", err)
 		}

@@ -378,6 +378,8 @@ func (h *CatalogHandler) GetProduct(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		// product.viewed emitted via /events beacon, not here — this handler is
+		// cached by Next.js ISR and would only fire ~once/hour per slug.
 		response.Success(w, toStoreProductFromRelations(pwr))
 		return
 	}

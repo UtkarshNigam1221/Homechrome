@@ -31,6 +31,7 @@ type EmbedderStackProps struct {
 	StoreFrontHost string         // e.g. https://store-dev.homechrome.in — single allowed CORS origin
 	DatabaseStack  *DatabaseStack // for POSTGRES_DSN passed as plain env var (sourced from .env.{env} / GH secrets at deploy time)
 	LogsStack      *LogsStack     // shared CloudWatch log groups (embedder writes to ApiLogGroup)
+	MetricsStack   *MetricsStack  // for METRICS_QUEUE_URL env injection + SendMessage grant
 }
 
 // EmbedderStack publishes:
@@ -81,16 +82,32 @@ func NewEmbedderStack(scope constructs.Construct, id string, props *EmbedderStac
 		// triggered by anyone who discovers the URL. 20 matches expected peak
 		// and is tunable via CDK without a code change.
 		ReservedConcurrentExecutions: jsii.Number(20),
-		Environment: &map[string]*string{
-			"EMBEDDER_AUTH_KEY_PARAM":   jsii.String(fmt.Sprintf("/handloom/%s/embedder-auth-key", props.Environment)),
-			"POSTGRES_DSN":              props.DatabaseStack.PostgresDSN,
-			"ALLOWED_ORIGIN":            jsii.String(props.StoreFrontHost),
-			"SEARCH_WEIGHT_SEMANTIC":    jsii.String("0.60"),
-			"SEARCH_WEIGHT_KEYWORD":     jsii.String("0.30"),
-			"SEARCH_WEIGHT_TRIGRAM":     jsii.String("0.10"),
-			"RATE_LIMIT_PER_IP_PER_MIN": jsii.String("60"),
-		},
+		Environment: func() *map[string]*string {
+			envMap := map[string]*string{
+				"EMBEDDER_AUTH_KEY_PARAM":   jsii.String(fmt.Sprintf("/handloom/%s/embedder-auth-key", props.Environment)),
+				"POSTGRES_DSN":              props.DatabaseStack.PostgresDSN,
+				"ALLOWED_ORIGIN":            jsii.String(props.StoreFrontHost),
+				"SEARCH_WEIGHT_SEMANTIC":    jsii.String("0.60"),
+				"SEARCH_WEIGHT_KEYWORD":     jsii.String("0.30"),
+				"SEARCH_WEIGHT_TRIGRAM":     jsii.String("0.10"),
+				"RATE_LIMIT_PER_IP_PER_MIN": jsii.String("60"),
+				"OTEL_SERVICE_NAME":         jsii.String("handloom-embedder"),
+			}
+			// METRICS_QUEUE_URL triggers SQSPublisher init in main.go; without
+			// it search_query metrics fall through to the noop publisher.
+			if props.MetricsStack != nil {
+				envMap["METRICS_QUEUE_URL"] = props.MetricsStack.Queue.QueueUrl()
+			}
+			return &envMap
+		}(),
 	})
+
+	// SendMessage on the metrics queue so search_query events actually leave
+	// this Lambda. Grant only when the queue is wired; otherwise the env var
+	// is absent and the publisher stays noop, so the IAM grant would be dead.
+	if props.MetricsStack != nil {
+		props.MetricsStack.Queue.GrantSendMessages(fn)
+	}
 
 	// SSM read perm for the embedder-auth-key SecureString only. POSTGRES_DSN
 	// is passed as a plain Lambda env var (same pattern as the other

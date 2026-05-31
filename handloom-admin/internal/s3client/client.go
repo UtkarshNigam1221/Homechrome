@@ -3,12 +3,16 @@ package s3client
 
 import (
 	"context"
+	"os"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/aws/aws-sdk-go-v2/otelaws"
+
+	"github.com/handloom/admin/pkg/metrics/awsmiddleware"
 )
 
 // S3Client wraps the AWS S3 client with presigned URL support
@@ -38,6 +42,13 @@ func New(ctx context.Context, region string, endpoint string) (*S3Client, error)
 	if err != nil {
 		return nil, err
 	}
+
+	otelaws.AppendMiddlewares(&cfg.APIOptions)
+	svcName := os.Getenv("OTEL_SERVICE_NAME")
+	if svcName == "" {
+		svcName = "handloom-lambda"
+	}
+	cfg.APIOptions = append(cfg.APIOptions, awsmiddleware.With(svcName))
 
 	var client *s3.Client
 	if endpoint != "" {

@@ -5,14 +5,17 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/handloom/admin/internal/domain"
-	"github.com/handloom/admin/internal/event"
 	"github.com/handloom/admin/internal/gateway/phonepe"
+	"github.com/handloom/admin/internal/middleware"
 	"github.com/handloom/admin/pkg/errors"
+	"github.com/handloom/admin/pkg/metrics"
+	"github.com/handloom/admin/pkg/telemetry"
 )
 
 const (
@@ -36,8 +39,8 @@ type PaymentService struct {
 	orderRepo     domain.OrderRepository
 	inventoryRepo domain.InventoryRepository
 	cartService   domain.CartService
+	customerRepo  domain.CustomerRepository
 	phonePe       phonepe.Gateway
-	publisher     event.EventPublisher
 }
 
 // NewPaymentService creates a new PaymentService
@@ -46,21 +49,25 @@ func NewPaymentService(
 	orderRepo domain.OrderRepository,
 	inventoryRepo domain.InventoryRepository,
 	cartService domain.CartService,
+	customerRepo domain.CustomerRepository,
 	phonePe phonepe.Gateway,
-	publisher event.EventPublisher,
 ) *PaymentService {
 	return &PaymentService{
 		paymentRepo:   paymentRepo,
 		orderRepo:     orderRepo,
 		inventoryRepo: inventoryRepo,
 		cartService:   cartService,
+		customerRepo:  customerRepo,
 		phonePe:       phonePe,
-		publisher:     publisher,
 	}
 }
 
 // InitiatePayment creates a payment record and initiates payment with PhonePe
 func (s *PaymentService) InitiatePayment(ctx context.Context, req domain.InitiatePaymentRequest) (*domain.PaymentResponse, error) {
+	ctx, span := telemetry.StartServiceSpan(ctx, "payment", "initiate")
+	span.SetAttribute("entity.type", "payment")
+	span.SetAttribute("order.id", req.OrderID)
+
 	merchantTxnID := merchantTxnPrefix + uuid.New().String()
 
 	payment := &domain.Payment{
@@ -76,7 +83,9 @@ func (s *PaymentService) InitiatePayment(ctx context.Context, req domain.Initiat
 	}
 
 	if err := s.paymentRepo.Create(ctx, payment); err != nil {
-		return nil, errors.Wrap(err, "Failed to create payment record")
+		createErr := errors.Wrap(err, "Failed to create payment record")
+		span.EndWithError(createErr)
+		return nil, createErr
 	}
 
 	redirectURL, err := s.phonePe.InitiatePayment(ctx, merchantTxnID, req.CustomerID, req.Amount, req.OrderID)
@@ -86,9 +95,21 @@ func (s *PaymentService) InitiatePayment(ctx context.Context, req domain.Initiat
 		}); updateErr != nil {
 			slog.ErrorContext(ctx, "Failed to update payment status to failed", "payment_id", payment.ID, "error", updateErr)
 		}
-		return nil, errors.Wrap(err, "Failed to initiate payment with provider")
+		providerErr := errors.Wrap(err, "Failed to initiate payment with provider")
+		span.EndWithError(providerErr)
+		return nil, providerErr
 	}
 
+	// Gateway accepted the request and returned a redirect URL — record the
+	// funnel event. Only PhonePe exists today; the gateway label is hardcoded
+	// to keep cardinality bounded.
+	metrics.Record(ctx, "payment_initiated", metrics.L{
+		"gateway": "phonepe", "country": middleware.GetCountry(ctx),
+	})
+
+	span.SetAttribute("entity.id", payment.ID)
+	span.SetAttribute("payment.merchant_txn_id", merchantTxnID)
+	span.End()
 	return &domain.PaymentResponse{
 		PaymentID:     payment.ID,
 		RedirectURL:   redirectURL,
@@ -98,23 +119,31 @@ func (s *PaymentService) InitiatePayment(ctx context.Context, req domain.Initiat
 
 // HandlePaymentSuccess processes a successful payment webhook event.
 func (s *PaymentService) HandlePaymentSuccess(ctx context.Context, evt domain.PaymentWebhookEvent) error {
+	ctx, span := telemetry.StartServiceSpan(ctx, "payment", "handle_success")
+	span.SetAttribute("entity.type", "payment")
+	span.SetAttribute("payment.merchant_txn_id", evt.MerchantTxnID)
+
 	payment, err := s.resolvePayment(ctx, evt.MerchantTxnID, domain.PaymentStatusInitiated, domain.PaymentStatusPending)
 	if err != nil {
 		if err == errPaymentAlreadyProcessed {
+			span.End()
 			return nil // Idempotent — not an error
 		}
+		span.EndWithError(err)
 		return err
 	}
 
 	if err := s.updatePaymentStatus(ctx, payment.ID, domain.PaymentStatusSuccess, evt, map[string]interface{}{
 		metaCompletedAt: time.Now().Format(time.RFC3339),
 	}); err != nil {
+		span.EndWithError(err)
 		return err
 	}
 
 	// Update order to CONFIRMED + PAID
 	if err := s.updateOrderStatus(ctx, payment.OrderID, domain.OrderStatusConfirmed, domain.PaymentStatusPaid, payment.ID); err != nil {
 		slog.ErrorContext(ctx, "Failed to update order status after payment success", "order_id", payment.OrderID, "error", err)
+		span.EndWithError(err)
 		return err
 	}
 
@@ -123,29 +152,138 @@ func (s *PaymentService) HandlePaymentSuccess(ctx context.Context, evt domain.Pa
 		slog.ErrorContext(ctx, "Failed to clear cart after payment success", "customer_id", payment.CustomerID, "error", err)
 	}
 
-	s.publishPaymentEvent(ctx, event.PaymentReceived, payment)
+	// Emit purchase-completion signals. These were previously emitted at
+	// order-create time in CheckoutService.Initiate, which caused failed-payment
+	// orders to inflate KPIs. All four signals now fire here, after the order
+	// has been confirmed as paid. resolvePayment already returned
+	// errPaymentAlreadyProcessed for webhook replays, so we never double-count.
+	if order, err := s.orderRepo.GetByID(ctx, payment.OrderID); err == nil {
+		// Webhook ctx is server-to-server (no CloudFront / X-Geo / X-Utm
+		// headers). All visitor attribution flows through fields the order
+		// denormalised at checkout-initiate time.
+		city := order.City
+		if city == "" {
+			city = "unknown"
+		}
+		country := "unknown"
+		device := order.DeviceType
+		if device == "" {
+			device = "unknown"
+		}
+		utmSource := order.UTMSource
+		if utmSource == "" {
+			utmSource = "unknown"
+		}
+
+		// 1. Per-line product purchase counts. revenuePaise = line.TotalPrice.
+		for _, line := range order.Items {
+			catID := line.CategoryID
+			if catID == "" {
+				catID = "unknown"
+			}
+			metrics.RecordSum(ctx, "product_purchased", line.TotalPrice, metrics.L{
+				"product_id":  line.ProductID,
+				"category_id": catID,
+			})
+		}
+
+		// 2. Coupon redemption. DiscountAmount is the total order-level discount.
+		if order.CouponCode != nil && *order.CouponCode != "" {
+			code := strings.ToUpper(strings.TrimSpace(*order.CouponCode))
+			if code != "" {
+				metrics.RecordSum(ctx, "coupon_redeemed", order.DiscountAmount, metrics.L{
+					"coupon_code": code,
+				})
+			}
+		}
+
+		// 3. First-purchase detection — atomic increment returns the new count.
+		// Two concurrent successful payments for the same customer will get
+		// newCount==1 and newCount==2 respectively; only the first fires the
+		// metric. repeat_purchase fires when newCount > 1.
+		if newCount, incErr := s.customerRepo.IncrementOrderCount(ctx, order.CustomerID); incErr != nil {
+			slog.WarnContext(ctx, "increment order count failed", "customer_id", order.CustomerID, "error", incErr)
+		} else if newCount == 1 {
+			// First-touch attribution: utm_source captured at site_visitor
+			// emit time was denormalised onto the order; carry through so
+			// "new customers by acquisition channel" is queryable.
+			metrics.Record(ctx, "customer_first_purchase", metrics.L{
+				"country":     country,
+				"city":        city,
+				"device_type": device,
+				"utm_source":  utmSource,
+			})
+		} else if newCount > 1 {
+			metrics.Record(ctx, "repeat_purchase", metrics.L{
+				"country":     country,
+				"city":        city,
+				"device_type": device,
+			})
+		}
+
+		// payment_completed carries utm_source (for ROAS) + device_type (per-
+		// device funnel completion). Both read from the order — webhook ctx
+		// is server-to-server with no browser headers.
+		metrics.Record(ctx, "payment_completed", metrics.L{
+			"gateway":     "phonepe",
+			"country":     country,
+			"city":        city,
+			"device_type": device,
+			"utm_source":  utmSource,
+		})
+
+		if !order.CreatedAt.IsZero() {
+			metrics.RecordDuration(ctx, "cart_to_payment_duration", time.Since(order.CreatedAt), nil)
+		}
+	} else {
+		slog.WarnContext(ctx, "Failed to fetch order for payment telemetry", "order_id", payment.OrderID, "error", err)
+	}
+
+	metrics.Record(ctx, "payment_outcome", metrics.L{
+		"gateway": "phonepe", "outcome": "success", "country": middleware.GetCountry(ctx),
+	})
+
+	// RecordOrderPlaced moved to CheckoutService.Initiate (at order creation
+	// time) so the metric also fires on the DevClient path where this webhook
+	// never runs. Don't emit here.
+
+	span.SetAttribute("entity.id", payment.ID)
+	span.SetAttribute("order.id", payment.OrderID)
 	slog.InfoContext(ctx, "Payment completed", "payment_id", payment.ID, "order_id", payment.OrderID)
+	span.End()
 	return nil
 }
 
 // HandlePaymentFailure processes a failed payment webhook event.
 func (s *PaymentService) HandlePaymentFailure(ctx context.Context, evt domain.PaymentWebhookEvent) error {
+	ctx, span := telemetry.StartServiceSpan(ctx, "payment", "handle_failure")
+	span.SetAttribute("entity.type", "payment")
+	span.SetAttribute("payment.merchant_txn_id", evt.MerchantTxnID)
+
 	payment, err := s.resolvePayment(ctx, evt.MerchantTxnID, domain.PaymentStatusInitiated, domain.PaymentStatusPending)
 	if err != nil {
 		if err == errPaymentAlreadyProcessed {
+			span.End()
 			return nil // Idempotent — not an error
 		}
+		span.EndWithError(err)
 		return err
 	}
 
 	if err := s.updatePaymentStatus(ctx, payment.ID, domain.PaymentStatusFailed, evt, nil); err != nil {
+		span.EndWithError(err)
 		return err
 	}
 
+	span.SetAttribute("entity.id", payment.ID)
+	span.SetAttribute("order.id", payment.OrderID)
+	metrics.Record(ctx, "payment_outcome", metrics.L{
+		"gateway": "phonepe", "outcome": "failed", "country": middleware.GetCountry(ctx),
+	})
 	s.releaseOrderInventory(ctx, payment.OrderID)
 
-	s.publishPaymentEvent(ctx, event.PaymentFailed, payment)
 	slog.InfoContext(ctx, "Payment failed", "payment_id", payment.ID, "order_id", payment.OrderID)
+	span.End()
 	return nil
 }
 
@@ -171,6 +309,9 @@ func (s *PaymentService) HandlePaymentPending(ctx context.Context, evt domain.Pa
 		return err
 	}
 
+	metrics.Record(ctx, "payment_outcome", metrics.L{
+		"gateway": "phonepe", "outcome": "pending", "country": middleware.GetCountry(ctx),
+	})
 	slog.InfoContext(ctx, "Payment pending", "payment_id", payment.ID, "order_id", payment.OrderID)
 	return nil
 }
@@ -236,17 +377,6 @@ func (s *PaymentService) releaseOrderInventory(ctx context.Context, orderID stri
 		if _, err := s.inventoryRepo.ReleaseStock(ctx, item.ProductID, item.Quantity, orderID); err != nil {
 			slog.ErrorContext(ctx, "Failed to release inventory", keyProductID, item.ProductID, "order_id", orderID, "error", err)
 		}
-	}
-}
-
-// publishPaymentEvent publishes a payment event (fire-and-forget).
-func (s *PaymentService) publishPaymentEvent(ctx context.Context, eventType event.EventType, payment *domain.Payment) {
-	if err := s.publisher.Publish(ctx, event.New(eventType, map[string]interface{}{
-		"payment_id": payment.ID,
-		"order_id":   payment.OrderID,
-		"amount":     payment.Amount,
-	})); err != nil {
-		slog.ErrorContext(ctx, "Failed to publish payment event", "event", eventType, "error", err)
 	}
 }
 

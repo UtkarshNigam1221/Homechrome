@@ -6,20 +6,18 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/handloom/admin/internal/config"
+	"github.com/handloom/admin/internal/bootstrap"
 	"github.com/handloom/admin/internal/router"
 	"github.com/handloom/admin/internal/wire"
-	"github.com/handloom/admin/pkg/slogx"
 )
 
 func main() {
-	cfg := config.Load()
-	slogx.Setup(cfg.App.Debug)
-	slog.Info("Starting Store Profile Lambda")
+	bc := bootstrap.InitLambda("handloom-store-profile")
+	defer bc.Shutdown()
 
 	ctx := context.Background()
 
-	deps, err := wire.InitializeStoreProfileDeps(ctx, cfg)
+	deps, err := wire.InitializeStoreProfileDeps(ctx, bc.Cfg)
 	if err != nil {
 		slog.Error("Failed to initialize dependencies", "error", err)
 		os.Exit(1)
@@ -27,7 +25,7 @@ func main() {
 
 	routerCfg := router.Config{
 		AllowedOrigins: getAllowedOrigins(),
-		Debug:          cfg.App.Debug,
+		Debug:          bc.Cfg.App.Debug,
 	}
 	r := router.NewBaseRouter(routerCfg, true)
 

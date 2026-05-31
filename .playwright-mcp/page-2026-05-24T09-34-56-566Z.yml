@@ -1,0 +1,120 @@
+- generic [active] [ref=e1]:
+  - banner [ref=e2]:
+    - generic [ref=e3]:
+      - link "Homechrome HOMECHROME" [ref=e5] [cursor=pointer]:
+        - /url: /
+        - img "Homechrome" [ref=e6]
+        - generic [ref=e7]: HOMECHROME
+      - generic [ref=e9]:
+        - textbox "Search handloom textiles..." [ref=e10]
+        - button "Search" [ref=e11] [cursor=pointer]:
+          - img [ref=e12]
+      - generic [ref=e14]:
+        - navigation [ref=e15]:
+          - link "Shop" [ref=e16] [cursor=pointer]:
+            - /url: /products
+          - link "Categories" [ref=e17] [cursor=pointer]:
+            - /url: /categories
+        - link "Login" [ref=e18] [cursor=pointer]:
+          - /url: /login
+        - link [ref=e19] [cursor=pointer]:
+          - /url: /cart
+          - img [ref=e20]
+  - main [ref=e22]:
+    - generic [ref=e23]:
+      - generic [ref=e26]:
+        - heading "Handwoven with tradition" [level=1] [ref=e27]
+        - paragraph [ref=e28]: Discover premium handloom textiles crafted with tradition across India. Each piece tells a story of heritage and craftsmanship.
+        - generic [ref=e29]:
+          - link "Shop Now" [ref=e30] [cursor=pointer]:
+            - /url: /products
+          - link "Browse Categories" [ref=e31] [cursor=pointer]:
+            - /url: /categories
+      - generic [ref=e34]:
+        - generic [ref=e35]:
+          - img [ref=e37]
+          - heading "Handcrafted" [level=3] [ref=e39]
+          - paragraph [ref=e40]: Each piece is handwoven by skilled weavers preserving centuries-old techniques.
+        - generic [ref=e41]:
+          - img [ref=e43]
+          - heading "Free Shipping" [level=3] [ref=e45]
+          - paragraph [ref=e46]: Free delivery on all orders above Rs. 999 across India.
+        - generic [ref=e47]:
+          - img [ref=e49]
+          - heading "Quality Assured" [level=3] [ref=e51]
+          - paragraph [ref=e52]: Authenticity guaranteed with GI-tagged handloom products.
+      - generic [ref=e54]:
+        - generic [ref=e55]:
+          - heading "Shop by Category" [level=2] [ref=e56]
+          - link "View All" [ref=e57] [cursor=pointer]:
+            - /url: /categories
+        - generic [ref=e58]:
+          - link "DOHAR DOUBLE BED 1 product" [ref=e59] [cursor=pointer]:
+            - /url: /c/dohar-double-bed
+            - img [ref=e62]
+            - generic [ref=e64]:
+              - heading "DOHAR DOUBLE BED" [level=3] [ref=e65]
+              - paragraph [ref=e66]: 1 product
+          - link "BEDSHEETS DOUBLE BED BEDSHEETS DOUBLE BED 2 products" [ref=e67] [cursor=pointer]:
+            - /url: /c/bedsheets-double-bed
+            - img "BEDSHEETS DOUBLE BED" [ref=e69]
+            - generic [ref=e70]:
+              - heading "BEDSHEETS DOUBLE BED" [level=3] [ref=e71]
+              - paragraph [ref=e72]: 2 products
+      - generic [ref=e74]:
+        - generic [ref=e75]:
+          - heading "New Arrivals" [level=2] [ref=e76]
+          - link "View All" [ref=e77] [cursor=pointer]:
+            - /url: /products
+        - generic [ref=e78]:
+          - article [ref=e79]:
+            - link "POLY COTTON BLEND / MICRO FIBRE" [ref=e80] [cursor=pointer]:
+              - /url: /p/poly-cotton-blend-micro-fibre
+              - img "POLY COTTON BLEND / MICRO FIBRE" [ref=e81]
+            - generic [ref=e82]:
+              - link "POLY COTTON BLEND / MICRO FIBRE" [ref=e83] [cursor=pointer]:
+                - /url: /p/poly-cotton-blend-micro-fibre
+                - heading "POLY COTTON BLEND / MICRO FIBRE" [level=3] [ref=e84]
+              - generic [ref=e86]: ₹699
+              - button "Add to Cart" [ref=e88] [cursor=pointer]
+          - article [ref=e89]:
+            - link "Testsuccess" [ref=e90] [cursor=pointer]:
+              - /url: /p/testsuccess
+              - img "Testsuccess" [ref=e91]
+            - generic [ref=e92]:
+              - link "Testsuccess" [ref=e93] [cursor=pointer]:
+                - /url: /p/testsuccess
+                - heading "Testsuccess" [level=3] [ref=e94]
+              - generic [ref=e96]: ₹9
+              - button "Add to Cart" [ref=e98] [cursor=pointer]
+  - contentinfo [ref=e99]:
+    - generic [ref=e100]:
+      - generic [ref=e101]:
+        - generic [ref=e102]:
+          - link "Homechrome HOMECHROME" [ref=e103] [cursor=pointer]:
+            - /url: /
+            - img "Homechrome" [ref=e104]
+            - generic [ref=e105]: HOMECHROME
+          - paragraph [ref=e106]: Premium handloom textiles from across India. Celebrating the art of traditional weaving.
+        - generic [ref=e107]:
+          - heading "Shop" [level=3] [ref=e108]
+          - list [ref=e109]:
+            - listitem [ref=e110]:
+              - link "All Products" [ref=e111] [cursor=pointer]:
+                - /url: /products
+            - listitem [ref=e112]:
+              - link "Categories" [ref=e113] [cursor=pointer]:
+                - /url: /categories
+        - generic [ref=e114]:
+          - heading "Customer" [level=3] [ref=e115]
+          - list [ref=e116]:
+            - listitem [ref=e117]:
+              - link "Track Order" [ref=e118] [cursor=pointer]:
+                - /url: /track
+            - listitem [ref=e119]:
+              - link "My Account" [ref=e120] [cursor=pointer]:
+                - /url: /account
+      - separator [ref=e121]
+      - paragraph [ref=e122]: © 2026 Homechrome. All rights reserved.
+  - region "Notifications alt+T"
+  - alert [ref=e123]

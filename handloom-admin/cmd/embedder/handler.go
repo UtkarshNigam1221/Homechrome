@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -12,11 +13,15 @@ import (
 	"github.com/go-chi/cors"
 
 	emb "github.com/handloom/admin/cmd/embedder/embedder"
+	"github.com/handloom/admin/internal/middleware"
+	"github.com/handloom/admin/pkg/metrics"
+	metricsmw "github.com/handloom/admin/pkg/metrics/middleware"
 )
 
 type deps struct {
 	onnx        *emb.ONNXSession
 	searcher    *emb.Searcher
+	classifier  *emb.Classifier
 	hmac        *emb.HMACVerifier
 	rl          *emb.IPRateLimiter
 	allowOrigin string
@@ -36,6 +41,12 @@ func newRouter(d *deps) http.Handler {
 		AllowCredentials: false,
 		MaxAge:           300,
 	}))
+	// Metrics buffer must come BEFORE GeoExtractor so emit calls downstream
+	// see both the buffer in ctx + the geo labels. Without Buffer the
+	// metrics.Record() calls in handleSearch silently drop — the search_query
+	// rows never reach Postgres.
+	r.Use(metricsmw.Buffer)
+	r.Use(middleware.GeoExtractor) // reads X-Geo-City/Country/Lat/Lng into ctx for search metrics
 
 	// Public endpoints — mounted at the absolute paths that API Gateway forwards
 	// (REST API proxy integration does not strip the prefix). /search is GET so
@@ -114,6 +125,31 @@ func (d *deps) handleSearch(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "search failed", http.StatusInternalServerError)
 		return
 	}
+
+	if strings.TrimSpace(req.Query) != "" {
+		hasResults := len(resp.Data) > 0
+		// Zero-shot intent classification reuses the embedding we just
+		// computed for semantic search — no extra ONNX invocation. Empty
+		// label space stays bounded: ~7 intents × ~6 categories + a few
+		// "*_other" / "direct_*" + "unknown" → ~50 distinct values total.
+		intent := "unknown"
+		if qvec != nil {
+			intent = d.classifier.Classify(qvec)
+		}
+		metrics.Record(r.Context(), "search_query", metrics.L{
+			"has_results": fmt.Sprintf("%t", hasResults),
+			"country":     middleware.GetCountry(r.Context()),
+			"intent":      intent,
+		})
+		slog.InfoContext(r.Context(), "store.search",
+			slog.String("query", req.Query),
+			slog.Bool("has_results", hasResults),
+			slog.Int("result_count", len(resp.Data)),
+			slog.String("country", middleware.GetCountry(r.Context())),
+			slog.String("city", middleware.GetCity(r.Context())),
+		)
+	}
+
 	writeJSON(w, http.StatusOK, resp)
 }
 

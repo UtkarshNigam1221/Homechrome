@@ -6,6 +6,7 @@ import axios, {
 
 import { ROUTES } from '@/lib/routes';
 import { SearchResponse } from '@/lib/semantic-search';
+import { buildVisitorHeader, VISITOR_HEADER } from '@/lib/visitor-context';
 
 interface ApiResponse<T> {
   success: boolean;
@@ -23,6 +24,18 @@ const client: AxiosInstance = axios.create({
   baseURL: '',
   withCredentials: true,
   headers: { 'Content-Type': 'application/json' },
+});
+
+// Request interceptor — attach the single visitor-attribution header. The
+// Next.js middleware on the server side merges in CloudFront viewer-geo
+// bits before forwarding to backend; this side only knows browser-side
+// fields (device + sticky UTM tuple). Skipped on SSR since there's no
+// window context to read.
+client.interceptors.request.use((config) => {
+  if (typeof window === 'undefined') return config;
+  const visitor = buildVisitorHeader();
+  if (visitor) config.headers.set(VISITOR_HEADER, visitor);
+  return config;
 });
 
 // 429 retry configuration

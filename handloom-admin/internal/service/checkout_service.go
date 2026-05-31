@@ -9,8 +9,10 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/handloom/admin/internal/domain"
-	"github.com/handloom/admin/internal/event"
+	"github.com/handloom/admin/internal/middleware"
 	"github.com/handloom/admin/pkg/errors"
+	"github.com/handloom/admin/pkg/metrics"
+	"github.com/handloom/admin/pkg/telemetry"
 )
 
 // defaultPickupPincode is the warehouse/pickup location pincode
@@ -27,7 +29,6 @@ type CheckoutService struct {
 	shippingService domain.ShippingService
 	inventoryRepo   domain.InventoryRepository
 	customerRepo    domain.CustomerRepository
-	publisher       event.EventPublisher
 	pickupPincode   string
 }
 
@@ -39,7 +40,6 @@ func NewCheckoutService(
 	shippingService domain.ShippingService,
 	inventoryRepo domain.InventoryRepository,
 	customerRepo domain.CustomerRepository,
-	publisher event.EventPublisher,
 ) *CheckoutService {
 	return &CheckoutService{
 		cartService:     cartService,
@@ -48,7 +48,6 @@ func NewCheckoutService(
 		shippingService: shippingService,
 		inventoryRepo:   inventoryRepo,
 		customerRepo:    customerRepo,
-		publisher:       publisher,
 		pickupPincode:   defaultPickupPincode,
 	}
 }
@@ -74,10 +73,18 @@ func (s *CheckoutService) CheckServiceability(ctx context.Context, customerID, p
 // Initiate orchestrates the full checkout flow: reserve inventory, create order,
 // initiate payment, and clear the cart.
 func (s *CheckoutService) Initiate(ctx context.Context, customerID string, req domain.CheckoutRequest) (*domain.CheckoutResult, error) {
+	ctx, span := telemetry.StartServiceSpan(ctx, "checkout", "initiate")
+	span.SetAttribute("entity.type", "checkout")
+
+	// Resolve geo context once; used for metrics + persisted on the order.
+	country := middleware.GetCountry(ctx)
+	city := middleware.GetCity(ctx)
+
 	// 1. Get customer
 	customer, err := s.customerRepo.GetByID(ctx, customerID)
 	if err != nil {
 		slog.ErrorContext(ctx, "Failed to get customer during checkout", "error", err)
+		span.EndWithError(err)
 		return nil, err
 	}
 
@@ -92,19 +99,24 @@ func (s *CheckoutService) Initiate(ctx context.Context, customerID string, req d
 		}
 	}
 	if !addressFound {
-		return nil, errors.NotFound("Shipping address")
+		addrErr := errors.NotFound("Shipping address")
+		span.EndWithError(addrErr)
+		return nil, addrErr
 	}
 
 	// 3. Get cart
 	cart, err := s.cartService.GetCart(ctx, customerID, false)
 	if err != nil {
 		slog.ErrorContext(ctx, "Failed to get cart during checkout", "error", err)
+		span.EndWithError(err)
 		return nil, err
 	}
 
 	// 4. Validate cart is not empty
 	if len(cart.Items) == 0 {
-		return nil, errors.BadRequest("Cart is empty")
+		emptyErr := errors.BadRequest("Cart is empty")
+		span.EndWithError(emptyErr)
+		return nil, emptyErr
 	}
 
 	// 5. Reserve inventory for each item
@@ -115,7 +127,9 @@ func (s *CheckoutService) Initiate(ctx context.Context, customerID string, req d
 			// Rollback: release all previously reserved items
 			s.releaseReservedItems(ctx, reservedItems)
 			slog.ErrorContext(ctx, "Failed to reserve stock", keyProductID, item.ProductID, "error", reserveErr)
-			return nil, errors.Wrap(reserveErr, fmt.Sprintf("Failed to reserve stock for product %s", item.ProductID))
+			stockErr := errors.Wrap(reserveErr, fmt.Sprintf("Failed to reserve stock for product %s", item.ProductID))
+			span.EndWithError(stockErr)
+			return nil, stockErr
 		}
 		reservedItems = append(reservedItems, item)
 	}
@@ -168,6 +182,17 @@ func (s *CheckoutService) Initiate(ctx context.Context, customerID string, req d
 
 	totalAmount := subtotal - discountAmount + taxAmount + shippingAmount
 
+	// shipping_cost_shown: emitted once the price is computed so we can
+	// dashboard shipping revenue/cost by country. Fires even when shippingAmount==0.
+	metrics.Record(ctx, "shipping_cost_shown", metrics.L{
+		"country": country,
+	})
+	if shippingAmount > 0 {
+		metrics.RecordSum(ctx, "shipping_cost_shown", shippingAmount, metrics.L{
+			"country": country,
+		})
+	}
+
 	// 8. Generate order number
 	orderNumber := generateOrderNumber()
 
@@ -191,6 +216,9 @@ func (s *CheckoutService) Initiate(ctx context.Context, customerID string, req d
 		Status:          domain.OrderStatusPending,
 		PaymentStatus:   domain.PaymentStatusPending,
 		ShippingAddress: &shippingAddr,
+		City:            city,
+		DeviceType:      middleware.GetDeviceType(ctx),
+		UTMSource:       checkoutUTMSource(ctx),
 		BaseEntity: domain.BaseEntity{
 			CreatedAt: now,
 			UpdatedAt: now,
@@ -202,8 +230,25 @@ func (s *CheckoutService) Initiate(ctx context.Context, customerID string, req d
 	if err = s.orderRepo.Create(ctx, order); err != nil {
 		s.releaseReservedItems(ctx, reservedItems)
 		slog.ErrorContext(ctx, "Failed to create order", "error", err)
-		return nil, errors.Wrap(err, "Failed to create order")
+		createErr := errors.Wrap(err, "Failed to create order")
+		span.EndWithError(createErr)
+		return nil, createErr
 	}
+
+	// Order placed — record business KPI.
+	metrics.Record(ctx, "orders_placed", metrics.L{"country": country, "city": city})
+	metrics.RecordSum(ctx, "orders_value", order.TotalAmount, metrics.L{
+		"country": country, "city": city, "gateway": "phonepe",
+	})
+	metrics.Record(ctx, "cart_size", metrics.L{
+		"country": country,
+		"bucket":  metrics.BucketForCartSize(order.ItemCount),
+	})
+
+	// NOTE: Per-product purchase counts, coupon-redeemed, first-purchase, and
+	// order geomap are emitted in PaymentService.HandlePaymentSuccess AFTER
+	// payment is confirmed — not here. Emitting them before payment completes
+	// would inflate KPIs for failed-payment orders.
 
 	// 11. Initiate payment
 	paymentResp, err := s.paymentService.InitiatePayment(ctx, domain.InitiatePaymentRequest{
@@ -215,19 +260,28 @@ func (s *CheckoutService) Initiate(ctx context.Context, customerID string, req d
 	if err != nil {
 		s.releaseReservedItems(ctx, reservedItems)
 		slog.ErrorContext(ctx, "Failed to initiate payment", "error", err)
-		return nil, errors.Wrap(err, "Failed to initiate payment")
+		payErr := errors.Wrap(err, "Failed to initiate payment")
+		span.EndWithError(payErr)
+		return nil, payErr
 	}
 
 	// 12. Cart is NOT cleared here — it's cleared after payment success
 	// in PaymentService.HandlePaymentSuccess. This ensures the cart
 	// is preserved if payment fails, so the user can retry.
 
-	// 13. Publish order.created event
-	if pubErr := s.publisher.Publish(ctx, event.New(event.OrderCreated, order)); pubErr != nil {
-		slog.ErrorContext(ctx, "Failed to publish order.created event", "error", pubErr)
-	}
+	// Funnel counter: checkout.initiated. cart_to_checkout duration + geomap
+	// were dropped per metrics-PG migration plan (covered by cart_to_payment
+	// + country/city labels on funnel metrics).
+	metrics.Record(ctx, "checkout_initiated", metrics.L{
+		"country":     country,
+		"city":        city,
+		"device_type": middleware.GetDeviceType(ctx),
+	})
 
+	span.SetAttribute("entity.id", order.ID)
+	span.SetAttribute("order.item_count", len(orderItems))
 	slog.InfoContext(ctx, "Checkout completed", "order_number", order.OrderNumber, "customer_id", customerID)
+	span.End()
 
 	return &domain.CheckoutResult{
 		Order:         order,
@@ -277,6 +331,15 @@ func (s *CheckoutService) releaseReservedItems(ctx context.Context, items []doma
 			// Continue releasing other items even if one fails
 		}
 	}
+}
+
+// checkoutUTMSource returns the visitor's first-touch utm_source from
+// context for denormalising onto the order. PhonePe webhook ctx is
+// server-to-server (no browser headers), so payment_completed +
+// customer_first_purchase have to read it back from order.UTMSource.
+func checkoutUTMSource(ctx context.Context) string {
+	src, _, _ := middleware.GetUTM(ctx)
+	return src
 }
 
 // Ensure interface compliance

@@ -3,6 +3,7 @@ package telemetry
 import (
 	"context"
 	"fmt"
+	"os"
 
 	"go.opentelemetry.io/contrib/propagators/b3"
 	"go.opentelemetry.io/otel"
@@ -15,7 +16,7 @@ import (
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
-	semconv "go.opentelemetry.io/otel/semconv/v1.39.0"
+	semconv "go.opentelemetry.io/otel/semconv/v1.41.0"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -41,20 +42,18 @@ func NewTracerProvider(ctx context.Context, cfg *Config) (*TracerProvider, error
 		return nil, fmt.Errorf("failed to create trace exporter: %w", err)
 	}
 
-	// Create the resource with service information
-	res, err := resource.Merge(
-		resource.Default(),
-		resource.NewWithAttributes(
-			semconv.SchemaURL,
-			semconv.ServiceName(cfg.ServiceName),
-			semconv.ServiceVersion(cfg.ServiceVersion),
-			semconv.DeploymentEnvironmentName(cfg.Environment),
-			semconv.ServiceNamespace("handloom"),
-		),
+	// Create the resource with service information.
+	// Avoid resource.Merge(resource.Default(), ...) — the default resource
+	// uses the SDK's latest schema URL which may drift ahead of our semconv
+	// import and cause Merge to error on schema mismatch. Build the resource
+	// explicitly with our pinned schema URL instead.
+	res := resource.NewWithAttributes(
+		semconv.SchemaURL,
+		attribute.String("service.name", cfg.ServiceName),
+		attribute.String("service.version", cfg.ServiceVersion),
+		attribute.String("service.namespace", "handloom"),
+		attribute.String("deployment.environment.name", cfg.Environment),
 	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create resource: %w", err)
-	}
 
 	// Create the sampler based on sample rate
 	var sampler sdktrace.Sampler
@@ -66,12 +65,22 @@ func NewTracerProvider(ctx context.Context, cfg *Config) (*TracerProvider, error
 		sampler = sdktrace.TraceIDRatioBased(cfg.Tracing.SampleRate)
 	}
 
-	// Create the TracerProvider with batch span processor
-	tp := sdktrace.NewTracerProvider(
-		sdktrace.WithBatcher(exporter,
+	// Pick span processor based on runtime. In Lambda, BatchSpanProcessor's
+	// 5s timeout often fires AFTER the runtime freezes the process between
+	// invocations — buffered spans are lost. Use SimpleSpanProcessor (synchronous
+	// export on Span.End()) in Lambda. Outside Lambda (monolith) batching is fine.
+	var spanProcessor sdktrace.TracerProviderOption
+	if os.Getenv("AWS_LAMBDA_FUNCTION_NAME") != "" {
+		spanProcessor = sdktrace.WithSyncer(exporter)
+	} else {
+		spanProcessor = sdktrace.WithBatcher(exporter,
 			sdktrace.WithBatchTimeout(cfg.Tracing.BatchTimeout),
 			sdktrace.WithMaxExportBatchSize(cfg.Tracing.MaxExportBatchSize),
-		),
+		)
+	}
+
+	tp := sdktrace.NewTracerProvider(
+		spanProcessor,
 		sdktrace.WithResource(res),
 		sdktrace.WithSampler(sdktrace.ParentBased(sampler)),
 	)

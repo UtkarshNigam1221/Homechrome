@@ -18,7 +18,7 @@ func newTestReportService(ctrl *gomock.Controller) (*ReportService, *mocks.MockR
 	mockReportRepo := mocks.NewMockReportRepository(ctrl)
 
 	// Pass nil for concrete service pointers - they are only used in processReport (async goroutine)
-	service := NewReportService(mockReportRepo, nil, nil, nil, nil, nil)
+	service := NewReportService(mockReportRepo, nil, nil, nil, nil)
 
 	return service, mockReportRepo
 }

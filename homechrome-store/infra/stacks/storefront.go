@@ -22,6 +22,17 @@ type StorefrontStackProps struct {
 	CertArn       string
 	BackendApiUrl string     // e.g. https://dev-api.homechrome.in
 	LogsStack     *LogsStack // shared CloudWatch log groups (server Lambda → ServerLogGroup)
+
+	// Telemetry — two community-published OTel Lambda layers attach to the
+	// Server Lambda when CollectorLayerArn is non-empty:
+	//   1. Collector layer (OTLP receiver + Grafana exporter)
+	//   2. Node auto-instrumentation layer (wraps Node runtime, no app code needed)
+	// We removed instrumentation.ts because Next.js 16 + OpenNext fails to
+	// include it in the standalone bundle; auto-instrumentation layer covers it.
+	CollectorLayerArn       string // ADOT Collector layer
+	NodeAutoInstrLayerArn   string // Node auto-instrumentation layer
+	GrafanaEndpointSSMParam string // Plain SSM String, e.g. /handloom/dev/grafana-otlp-endpoint
+	GrafanaAuthSSMParam     string // Plain SSM String, e.g. /handloom/dev/grafana-otlp-auth
 }
 
 type StorefrontStack struct {
@@ -61,7 +72,10 @@ func NewStorefrontStack(scope constructs.Construct, id string, props *Storefront
 		Handler:      jsii.String("index.handler"),
 		Code:         awslambda.Code_FromAsset(jsii.String("../.open-next/server-functions/default"), nil),
 		Architecture: awslambda.Architecture_ARM_64(),
-		MemorySize:   jsii.Number(1024),
+		// 1769MB = 1 full vCPU (per AWS Lambda pricing tiers). Memory used by
+		// the workload is only ~270MB; we bump for CPU not RAM. Next.js SSR +
+		// OTel auto-instr layer is CPU-bound during cold start and SSR render.
+		MemorySize: jsii.Number(1769),
 		Timeout:      awscdk.Duration_Seconds(jsii.Number(15)),
 		LogGroup:     props.LogsStack.ServerLogGroup,
 		Environment: &map[string]*string{
@@ -72,6 +86,53 @@ func NewStorefrontStack(scope constructs.Construct, id string, props *Storefront
 		},
 	})
 	bucket.GrantReadWrite(serverFn, nil)
+
+	// ─── OTel Collector layer (no-op when CollectorLayerArn is empty) ───
+	// Uses the community-published OpenTelemetry Collector layer (account 184161586896).
+	// Compute the ARN with stacks.OtelCollectorLayerArn from handloom-admin/infra/stacks/telemetry.go,
+	// then pass via OTEL_COLLECTOR_LAYER_ARN at deploy time (see infra/cmd/main.go).
+	//
+	// otel.yaml is bundled into the OpenNext server-function zip via the open-next:build
+	// script in package.json (copied from handloom-admin/infra/configs/otel-collector.yaml
+	// into .open-next/server-functions/default/otel.yaml after open-next build).
+	// Lambda extracts the zip to /var/task/, so the collector reads it from there.
+	if props.CollectorLayerArn != "" {
+		collectorLayer := awslambda.LayerVersion_FromLayerVersionArn(
+			stack, jsii.String("ImportedOtelCollectorLayer"), jsii.String(props.CollectorLayerArn),
+		)
+		serverFn.AddLayers(collectorLayer)
+		if props.NodeAutoInstrLayerArn != "" {
+			nodeAutoInstrLayer := awslambda.LayerVersion_FromLayerVersionArn(
+				stack, jsii.String("ImportedOtelNodeAutoInstrLayer"), jsii.String(props.NodeAutoInstrLayerArn),
+			)
+			serverFn.AddLayers(nodeAutoInstrLayer)
+		}
+		serverFn.AddEnvironment(jsii.String("OTEL_SERVICE_NAME"), jsii.String("homechrome-store"), nil)
+		serverFn.AddEnvironment(jsii.String("OTEL_RESOURCE_ATTRIBUTES"),
+			jsii.String(fmt.Sprintf("deployment.environment=%s,service.namespace=handloom", env)), nil)
+		// Node OTel SDK wants a full URL with scheme. Use HTTP/protobuf to
+		// localhost:4318 (collector's HTTP port). Without scheme the Node SDK
+		// parses 'localhost:4317' wrong and ends up dialing localhost:443.
+		serverFn.AddEnvironment(jsii.String("OTEL_EXPORTER_OTLP_PROTOCOL"), jsii.String("http/protobuf"), nil)
+		serverFn.AddEnvironment(jsii.String("OTEL_EXPORTER_OTLP_ENDPOINT"), jsii.String("http://localhost:4318"), nil)
+		// Disable OTel metrics export — backend collector dropped the metrics pipeline
+		// (M30) and Grafana Cloud returns 404 on /v1/metrics. Traces + logs continue.
+		serverFn.AddEnvironment(jsii.String("OTEL_METRICS_EXPORTER"), jsii.String("none"), nil)
+		// /opt/otel-handler is provided by both layers; the Node auto-instr layer's
+		// version overrides the collector's and wraps the Node runtime so app code
+		// is traced without any instrumentation.ts in source.
+		serverFn.AddEnvironment(jsii.String("AWS_LAMBDA_EXEC_WRAPPER"), jsii.String("/opt/otel-handler"), nil)
+		serverFn.AddEnvironment(jsii.String("OPENTELEMETRY_COLLECTOR_CONFIG_URI"),
+			jsii.String("/var/task/otel.yaml"), nil) // yaml bundled into Lambda zip, not baked into layer
+		if props.GrafanaEndpointSSMParam != "" {
+			serverFn.AddEnvironment(jsii.String("GRAFANA_OTLP_ENDPOINT"),
+				jsii.String("{{resolve:ssm:"+props.GrafanaEndpointSSMParam+"}}"), nil)
+		}
+		if props.GrafanaAuthSSMParam != "" {
+			serverFn.AddEnvironment(jsii.String("GRAFANA_OTLP_AUTH"),
+				jsii.String("{{resolve:ssm:"+props.GrafanaAuthSSMParam+"}}"), nil)
+		}
+	}
 
 	serverUrl := serverFn.AddFunctionUrl(&awslambda.FunctionUrlOptions{
 		AuthType:   awslambda.FunctionUrlAuthType_NONE,
@@ -171,6 +232,40 @@ func NewStorefrontStack(scope constructs.Construct, id string, props *Storefront
 		},
 	}
 
+	// ─── Origin Request Policy ───
+	// ALL_VIEWER_EXCEPT_HOST_HEADER is a managed policy that forwards all viewer
+	// headers but does NOT include CloudFront-injected geo headers. We replace it
+	// with a custom allowlist so the Next.js middleware can read viewer geo data.
+	storefrontOriginPolicy := awscloudfront.NewOriginRequestPolicy(stack, jsii.String("StorefrontOriginPolicy"), &awscloudfront.OriginRequestPolicyProps{
+		OriginRequestPolicyName: jsii.String(fmt.Sprintf("homechrome-store-origin-policy-%s", env)),
+		Comment:                 jsii.String("Forward viewer headers + CloudFront geo headers to origin"),
+		// AllowList capped at 10 headers (default CloudFront quota). Visitor
+		// attribution is packed into a single X-Hc-Visitor header (assembled
+		// browser-side by axios, geo-augmented server-side by middleware.ts)
+		// so we spend just one slot on the entire attribution tuple instead
+		// of one per label. Leaves room for future expansion.
+		//
+		// IMPORTANT: do NOT switch to `All` mode. OpenNext's Server Lambda
+		// is fronted by a Function URL with OAC; OAC signs requests with
+		// SigV4 including the Host header. `All` forwards viewer Host →
+		// signature mismatch → 403 AccessDeniedException at the edge.
+		//
+		// Accept-Encoding + Authorization cannot be forwarded via
+		// OriginRequestPolicy per CloudFront constraint; OpenNext's default
+		// cache policy already covers Accept-Encoding for compression.
+		HeaderBehavior: awscloudfront.OriginRequestHeaderBehavior_AllowList(
+			jsii.String("Accept"),
+			jsii.String("x-forwarded-host"),
+			jsii.String("CloudFront-Viewer-Country"),
+			jsii.String("CloudFront-Viewer-City"),
+			jsii.String("CloudFront-Viewer-Latitude"),
+			jsii.String("CloudFront-Viewer-Longitude"),
+			jsii.String("X-Hc-Visitor"),
+		),
+		QueryStringBehavior: awscloudfront.OriginRequestQueryStringBehavior_All(),
+		CookieBehavior:      awscloudfront.OriginRequestCookieBehavior_All(),
+	})
+
 	// ─── CloudFront Distribution ───
 	distributionProps := &awscloudfront.DistributionProps{
 		DefaultBehavior: &awscloudfront.BehaviorOptions{
@@ -179,7 +274,7 @@ func NewStorefrontStack(scope constructs.Construct, id string, props *Storefront
 			AllowedMethods:        awscloudfront.AllowedMethods_ALLOW_ALL(),
 			CachedMethods:         awscloudfront.CachedMethods_CACHE_GET_HEAD_OPTIONS(),
 			CachePolicy:           serverCachePolicy,
-			OriginRequestPolicy:   awscloudfront.OriginRequestPolicy_ALL_VIEWER_EXCEPT_HOST_HEADER(),
+			OriginRequestPolicy:   storefrontOriginPolicy,
 			ResponseHeadersPolicy: responseHeadersPolicy,
 			Compress:              jsii.Bool(true),
 			FunctionAssociations:  lambdaFunctionAssociations,

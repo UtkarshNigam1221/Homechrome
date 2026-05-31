@@ -6,9 +6,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"time"
 
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+
 	"github.com/handloom/admin/internal/domain"
+	metricsmw "github.com/handloom/admin/pkg/metrics/middleware"
 )
 
 // Client implements the MSG91 SMS gateway
@@ -19,9 +23,23 @@ type Client struct {
 
 // NewClient creates a new MSG91 SMS client
 func NewClient(config Config) *Client {
+	svcName := os.Getenv("OTEL_SERVICE_NAME")
+	if svcName == "" {
+		svcName = "handloom-lambda"
+	}
 	return &Client{
 		config:     config,
-		httpClient: &http.Client{Timeout: 10 * time.Second},
+		httpClient: &http.Client{
+			Timeout: 10 * time.Second,
+			Transport: &metricsmw.HTTPClientTransport{
+				Service: svcName,
+				Base: otelhttp.NewTransport(http.DefaultTransport,
+					otelhttp.WithSpanNameFormatter(func(_ string, r *http.Request) string {
+						return "msg91 " + r.Method + " " + r.URL.Path
+					}),
+				),
+			},
+		},
 	}
 }
 

@@ -5,14 +5,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/aws/aws-sdk-go-v2/otelaws"
 
 	appconfig "github.com/handloom/admin/internal/config"
+	"github.com/handloom/admin/pkg/metrics/awsmiddleware"
 )
 
 // Client wraps DynamoDB client with table names
@@ -22,9 +25,7 @@ type Client struct {
 	ordersTable        string
 	sessionsTable      string
 	auditTable         string
-	analyticsTable     string
 	notificationsTable string
-	eventsTable        string
 }
 
 // NewClient creates a new DynamoDB client
@@ -55,6 +56,13 @@ func NewClient(ctx context.Context, cfg *appconfig.Config) (*Client, error) {
 		}
 	}
 
+	otelaws.AppendMiddlewares(&awsCfg.APIOptions)
+	svcName := os.Getenv("OTEL_SERVICE_NAME")
+	if svcName == "" {
+		svcName = "handloom-lambda"
+	}
+	awsCfg.APIOptions = append(awsCfg.APIOptions, awsmiddleware.With(svcName))
+
 	var client *dynamodb.Client
 	if cfg.IsLocal() {
 		client = dynamodb.NewFromConfig(awsCfg, func(o *dynamodb.Options) {
@@ -70,9 +78,7 @@ func NewClient(ctx context.Context, cfg *appconfig.Config) (*Client, error) {
 		ordersTable:        cfg.DynamoDB.OrdersTable,
 		sessionsTable:      cfg.DynamoDB.SessionsTable,
 		auditTable:         cfg.DynamoDB.AuditTable,
-		analyticsTable:     cfg.DynamoDB.AnalyticsTable,
 		notificationsTable: cfg.DynamoDB.NotificationsTable,
-		eventsTable:        cfg.DynamoDB.EventsTable,
 	}, nil
 }
 
@@ -101,19 +107,9 @@ func (c *Client) SessionsTable() string {
 	return c.sessionsTable
 }
 
-// AnalyticsTable returns the analytics table name
-func (c *Client) AnalyticsTable() string {
-	return c.analyticsTable
-}
-
 // NotificationsTable returns the notifications table name
 func (c *Client) NotificationsTable() string {
 	return c.notificationsTable
-}
-
-// EventsTable returns the events table name
-func (c *Client) EventsTable() string {
-	return c.eventsTable
 }
 
 // isConditionalCheckFailed checks if an error is a DynamoDB conditional check failure

@@ -1,4 +1,6 @@
 import './index.css';
+// Leaflet base stylesheet — required for tile rendering on the geomap.
+import 'leaflet/dist/leaflet.css';
 
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';

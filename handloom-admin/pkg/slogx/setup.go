@@ -6,27 +6,25 @@ import (
 )
 
 // Setup configures the global slog default logger.
-// Debug mode: text handler with source info, debug level.
-// Production: JSON handler, info level.
-// If SERVICE_NAME is set, it is attached to every log record.
+// Handler chain: Context -> Redacting -> JSON/Text -> stdout.
 func Setup(debug bool) {
-	var inner slog.Handler
-
+	var base slog.Handler
+	// AddSource intentionally omitted everywhere — file:line is noise once
+	// you have trace_id + span_id correlation, and it bloats log size.
 	if debug {
-		inner = slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
-			Level:     slog.LevelDebug,
-			AddSource: true,
+		base = slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+			Level: slog.LevelDebug,
 		})
 	} else {
-		inner = slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		base = slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 			Level: slog.LevelInfo,
 		})
 	}
 
 	if svc := os.Getenv("SERVICE_NAME"); svc != "" {
-		inner = inner.WithAttrs([]slog.Attr{slog.String("service", svc)})
+		base = base.WithAttrs([]slog.Attr{slog.String("service", svc)})
 	}
 
-	handler := NewContextHandler(inner)
+	handler := NewContextHandler(NewRedactingHandler(base))
 	slog.SetDefault(slog.New(handler))
 }

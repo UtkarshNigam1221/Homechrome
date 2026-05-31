@@ -17,7 +17,6 @@ const (
 	testOrdersTable        = "handloom-orders-test"
 	testSessionsTable      = "handloom-sessions-test"
 	testAuditTable         = "handloom-audit-test"
-	testAnalyticsTable     = "handloom-analytics-test"
 	testNotificationsTable = "handloom-notifications-test"
 )
 
@@ -114,7 +113,6 @@ func testWrappedClient(t *testing.T) (*Client, *dynamodb.Client) {
 		ordersTable:        testOrdersTable,
 		sessionsTable:      testSessionsTable,
 		auditTable:         testAuditTable,
-		analyticsTable:     testAnalyticsTable,
 		notificationsTable: testNotificationsTable,
 	}
 	return wrapped, raw

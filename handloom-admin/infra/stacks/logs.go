@@ -1,10 +1,9 @@
 // Package stacks — LogsStack centralizes ownership of all CloudWatch log
 // groups consumed by every other stack in this app (DatabaseStack migrator,
-// APIStack service + image-resizer Lambdas, EmbedderStack, and the future
-// EventStack workers). Owning the groups in one place enforces a single
-// retention policy and removes ad-hoc inline log group creation that caused
-// physical-name collisions during the SharedApiLogGroup → ApiLogGroup
-// refactor.
+// APIStack service + image-resizer Lambdas, EmbedderStack). Owning the groups
+// in one place enforces a single retention policy and removes ad-hoc inline
+// log group creation that caused physical-name collisions during the
+// SharedApiLogGroup → ApiLogGroup refactor.
 package stacks
 
 import (
@@ -31,15 +30,15 @@ type LogsStack struct {
 	// ApiLogGroup — synchronous API services: all admin + store handler
 	// Lambdas, embedder, image-resizer, migrator.
 	ApiLogGroup awslogs.ILogGroup
-	// WorkerLogGroup — async workers (backfill + the 4 event-driven workers
-	// when EventStack is enabled). Kept separate so chatty per-message worker
-	// logs don't drown out request-trace logs.
+	// WorkerLogGroup — async workers (backfill, metrics consumer). Kept
+	// separate so chatty per-message worker logs don't drown out request-trace
+	// logs.
 	WorkerLogGroup awslogs.ILogGroup
 }
 
-// NewLogsStack creates the log groups. 3-day retention everywhere
-// (CloudWatch storage is the dominant log cost in dev); RemovalPolicy DESTROY
-// so `cdk destroy` cleans them up.
+// NewLogsStack creates the log groups. 1-day retention everywhere
+// (CloudWatch is a short-lived safety net — Grafana via OTel holds the real
+// logs); RemovalPolicy DESTROY so `cdk destroy` cleans them up.
 func NewLogsStack(scope constructs.Construct, id string, props *LogsStackProps) *LogsStack {
 	var sprops awscdk.StackProps
 	if props != nil {
@@ -49,12 +48,12 @@ func NewLogsStack(scope constructs.Construct, id string, props *LogsStackProps) 
 
 	api := awslogs.NewLogGroup(stack, jsii.String("ApiLogGroup"), &awslogs.LogGroupProps{
 		LogGroupName:  jsii.String(fmt.Sprintf("/aws/lambda/handloom-api-%s", props.Environment)),
-		Retention:     awslogs.RetentionDays_THREE_DAYS,
+		Retention:     awslogs.RetentionDays_ONE_DAY,
 		RemovalPolicy: awscdk.RemovalPolicy_DESTROY,
 	})
 	workers := awslogs.NewLogGroup(stack, jsii.String("WorkerLogGroup"), &awslogs.LogGroupProps{
 		LogGroupName:  jsii.String(fmt.Sprintf("/aws/lambda/handloom-workers-%s", props.Environment)),
-		Retention:     awslogs.RetentionDays_THREE_DAYS,
+		Retention:     awslogs.RetentionDays_ONE_DAY,
 		RemovalPolicy: awscdk.RemovalPolicy_DESTROY,
 	})
 

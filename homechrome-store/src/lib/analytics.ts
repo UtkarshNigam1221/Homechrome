@@ -1,12 +1,17 @@
 import { ROUTES } from '@/lib/routes';
+import {
+  buildVisitorHeader,
+  captureUTMFromURL,
+  getDeviceType as resolveDeviceType,
+  VISITOR_HEADER,
+} from '@/lib/visitor-context';
 
 const BATCH_SIZE = 10;
 const FLUSH_INTERVAL_MS = 30_000;
 const API_URL = ROUTES.EVENTS;
 
-// Kill-switch: analytics is opt-in via env var. Default off — set
-// NEXT_PUBLIC_ANALYTICS_ENABLED=true to re-enable.
-const ENABLED = process.env.NEXT_PUBLIC_ANALYTICS_ENABLED === 'false';
+// Kill-switch: default on. Set NEXT_PUBLIC_ANALYTICS_ENABLED=false to disable.
+const ENABLED = process.env.NEXT_PUBLIC_ANALYTICS_ENABLED !== 'false';
 
 interface TrackingEvent {
   event_type: string;
@@ -41,10 +46,7 @@ function getVisitorId(): string {
 }
 
 function getDeviceType(): 'mobile' | 'desktop' | 'tablet' {
-  const width = window.innerWidth;
-  if (width < 768) return 'mobile';
-  if (width < 1024) return 'tablet';
-  return 'desktop';
+  return resolveDeviceType();
 }
 
 function flush() {
@@ -53,20 +55,25 @@ function flush() {
   const batch = eventBuffer.splice(0);
   const body = JSON.stringify({ events: batch });
 
-  // Use sendBeacon for reliability (works during page unload)
-  if (navigator.sendBeacon) {
-    navigator.sendBeacon(
-      API_URL,
-      new Blob([body], { type: 'application/json' }),
-    );
-  } else {
-    fetch(API_URL, {
-      method: 'POST',
-      body,
-      headers: { 'Content-Type': 'application/json' },
-      keepalive: true,
-    });
-  }
+  // fetch+keepalive instead of navigator.sendBeacon because sendBeacon
+  // cannot set custom request headers (spec-level limitation) and we
+  // need X-Hc-Visitor on this beacon so the backend tags every
+  // site_visitor / rum_page_view / product_viewed row with the visitor's
+  // device + sticky UTM tuple. keepalive: true gives near-equivalent
+  // page-unload reliability across modern browsers.
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  const visitor = buildVisitorHeader();
+  if (visitor) headers[VISITOR_HEADER] = visitor;
+
+  fetch(API_URL, {
+    method: 'POST',
+    body,
+    headers,
+    keepalive: true,
+  }).catch(() => {
+    // Beacon endpoint is fire-and-forget — never let a network error
+    // surface to the user.
+  });
 }
 
 export function track(
@@ -102,6 +109,11 @@ export function initAnalytics() {
   if (typeof window === 'undefined') return;
   if (initialized) return;
   initialized = true;
+
+  // Sticky-attribution UTM capture. Runs once per page load — if any
+  // ?utm_* params are present they overwrite the last stored set so
+  // latest-touch attribution wins (matches GA / Mixpanel default).
+  captureUTMFromURL();
 
   flushTimer = setInterval(flush, FLUSH_INTERVAL_MS);
   window.addEventListener('beforeunload', flush);

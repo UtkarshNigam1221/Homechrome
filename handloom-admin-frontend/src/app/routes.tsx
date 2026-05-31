@@ -46,8 +46,24 @@ const Coupons = withSuspense(
 const Inventory = withSuspense(
   lazy(() => import('@/features/inventory').then((m) => ({ default: m.InventoryPage })))
 );
-const Analytics = withSuspense(
-  lazy(() => import('@/features/analytics').then((m) => ({ default: m.AnalyticsPage })))
+
+const DashboardsLayoutLazy = withSuspense(
+  lazy(() => import('@/features/dashboards').then((m) => ({ default: m.DashboardLayout })))
+);
+const DashboardsIndexLazy = withSuspense(
+  lazy(() => import('@/features/dashboards').then((m) => ({ default: m.DashboardsIndex })))
+);
+const FunnelDashboardLazy = withSuspense(
+  lazy(() => import('@/features/dashboards').then((m) => ({ default: m.FunnelDashboard })))
+);
+const ProductsDashboardLazy = withSuspense(
+  lazy(() => import('@/features/dashboards').then((m) => ({ default: m.ProductsDashboard })))
+);
+const GeographyDashboardLazy = withSuspense(
+  lazy(() => import('@/features/dashboards').then((m) => ({ default: m.GeographyDashboard })))
+);
+const RUMDashboardLazy = withSuspense(
+  lazy(() => import('@/features/dashboards').then((m) => ({ default: m.RUMDashboard })))
 );
 const Reports = withSuspense(
   lazy(() => import('@/features/reports').then((m) => ({ default: m.ReportsPage })))
@@ -134,9 +150,17 @@ export function AppRoutes() {
           <Route path="/pricing" element={<PricingRules />} />
           <Route path="/coupons" element={<Coupons />} />
 
-          {/* Analytics & Reports */}
-          <Route path="/analytics" element={<Analytics />} />
+          {/* Reports */}
           <Route path="/reports" element={<Reports />} />
+
+          {/* Dashboards (Neon Data API backed — N4 shell, N5-N8 fill tabs) */}
+          <Route path="/dashboards" element={<DashboardsLayoutLazy />}>
+            <Route index element={<DashboardsIndexLazy />} />
+            <Route path="funnel" element={<FunnelDashboardLazy />} />
+            <Route path="products" element={<ProductsDashboardLazy />} />
+            <Route path="geography" element={<GeographyDashboardLazy />} />
+            <Route path="rum" element={<RUMDashboardLazy />} />
+          </Route>
 
           {/* Operations */}
           <Route path="/notifications" element={<Notifications />} />

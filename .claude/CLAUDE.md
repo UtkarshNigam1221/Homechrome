@@ -8,7 +8,7 @@ Homechrome is a monorepo for a handloom e-commerce platform. It contains three i
 
 | Directory | Stack | Purpose |
 |-----------|-------|---------|
-| `handloom-admin/` | Go 1.25, Chi, DynamoDB + PostgreSQL, AWS Lambda | Backend API (22 Lambdas in dev; 26 with event stack enabled) |
+| `handloom-admin/` | Go 1.25, Chi, DynamoDB + PostgreSQL, AWS Lambda | Backend API (22 Lambdas in dev) |
 | `handloom-admin-frontend/` | React 19, TypeScript, Vite 7, Tailwind CSS 4 | Admin dashboard SPA |
 | `homechrome-store/` | Next.js 16, React 19, Tailwind CSS 4 | B2C customer storefront |
 
@@ -120,22 +120,13 @@ domain/ (entities + interfaces) ← handler/ → service/ → repository/{dynamo
 - **Backend routes**: Consumes `/api/v1/store/*` (auth, catalog, cart, checkout, orders, profile, tracking, events, webhooks)
 - **Deployment**: OpenNext (`@opennextjs/aws`) compiles `.next/` → `.open-next/` for Lambda. CDK deploys CloudFront + Server Lambda (Node.js 20, ARM64, 128MB) + Image Lambda (256MB for Sharp). 3 cache behaviors: default, `_next/static/*`, `_next/image`. S3 for static assets (`_assets/`, `_cache/`) and ISR cache seeding.
 
-### Event-Driven Architecture
-- **Three publishers**: `SNSPublisher` (Lambda mode with events enabled), `LocalPublisher` (monolith mode, calls handlers in-process), `NoopPublisher` (Lambda mode with events disabled — logs and discards)
-- **Dev: event stack disabled** — EventStack (SNS + SQS + 4 worker Lambdas + EventBridge rule) is commented out in `infra/cmd/main.go` for cost savings. `nil` is passed to APIStack, which handles it gracefully (no `SNS_TOPIC_ARN`, no `EVENT_PUBLISHING_ENABLED`). To re-enable: uncomment the EventStack block and pass it to APIStack.
-- SNS fan-out (when enabled): single `handloom-events-{env}` topic → 4 SQS queues (with DLQs) → 4 worker Lambdas: `worker-notification`, `worker-report`, `worker-analytics`, `worker-audit`
-- 20 event types across 7 categories: `order.*`, `payment.*`, `shipment.*`, `product.*`, `inventory.*`, `customer.*`, `admin.*`
-- `internal/event/` — publisher + event types; `internal/event/handlers/` — SQS consumers (also implement `EventHandler` for `LocalPublisher`)
-- Fire-and-forget: publish errors are logged, never propagate to callers
-- Config: `SNS_TOPIC_ARN`, `EVENT_PUBLISHING_ENABLED`
-
 ### Infrastructure
 - **All CDK stacks are Go** — each project has its own `infra/` directory with `cmd/main.go` entry point
-- Backend CDK: 4 stacks (DatabaseStack, StorageStack, APIStack, EventStack) — EventStack is currently disabled in dev (commented out in `infra/cmd/main.go`)
+- Backend CDK: LogsStack, DatabaseStack, StorageStack, EmbedderStack, MetricsStack, APIStack
 - Admin Frontend CDK: S3 static hosting (dev) or CloudFront + S3 (prod), custom domain via ACM cert
 - Storefront CDK: CloudFront + S3 + Server Lambda + Image Lambda (OpenNext architecture), custom domain via ACM cert (requires `certArn` context param in us-east-1)
 - All backend Lambdas: ARM64, `provided.al2023`, 128MB (dev) / 256MB (prod)
-- Lambda count: 22 in dev (12 admin + 9 store + 1 migrator), 26 with event stack (+ 4 workers)
+- Lambda count: 22 in dev (12 admin + 9 store + 1 migrator)
 - Region: `ap-south-1` (Mumbai)
 
 ## Key Conventions
