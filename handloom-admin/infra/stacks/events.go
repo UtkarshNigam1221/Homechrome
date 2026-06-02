@@ -8,7 +8,6 @@ import (
 	"github.com/aws/aws-cdk-go/awscdk/v2/awseventstargets"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awslambda"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awslambdaeventsources"
-	"github.com/aws/aws-cdk-go/awscdk/v2/awslogs"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awss3assets"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awssns"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awssnssubscriptions"
@@ -22,6 +21,7 @@ type EventStackProps struct {
 	awscdk.StackProps
 	Environment   string
 	DatabaseStack *DatabaseStack
+	LogsStack     *LogsStack // shared CloudWatch log groups (workers write to WorkerLogGroup)
 }
 
 // EventStack contains the SNS topic, SQS queues, and worker Lambdas.
@@ -47,11 +47,10 @@ func NewEventStack(scope constructs.Construct, id string, props *EventStackProps
 		memorySize = 256
 	}
 
-	// Log retention — minimize CloudWatch costs
-	logRetention := awslogs.RetentionDays_THREE_DAYS
-	if isProd {
-		logRetention = awslogs.RetentionDays_ONE_WEEK
-	}
+	// Async worker Lambdas write into the shared WorkerLogGroup owned by
+	// LogsStack so per-message worker chatter stays separate from the
+	// request-traced API log group.
+	workerLogGroup := props.LogsStack.WorkerLogGroup
 
 	// --- SNS Topic ---
 	topic := awssns.NewTopic(stack, jsii.String("EventsTopic"), &awssns.TopicProps{
@@ -175,13 +174,6 @@ func NewEventStack(scope constructs.Construct, id string, props *EventStackProps
 			"POSTGRES_DSN":                 props.DatabaseStack.PostgresDSN,
 			"SERVICE_NAME":                 jsii.String(workerName),
 		}
-
-		// Explicit log group (replaces deprecated LogRetention on Lambda)
-		workerLogGroup := awslogs.NewLogGroup(stack, jsii.String(fmt.Sprintf("%sLogGroup", capitalize(workerName))), &awslogs.LogGroupProps{
-			LogGroupName:  jsii.String(fmt.Sprintf("/aws/lambda/handloom-%s-%s", workerName, props.Environment)),
-			Retention:     logRetention,
-			RemovalPolicy: awscdk.RemovalPolicy_DESTROY,
-		})
 
 		lambdaFn := awslambda.NewFunction(stack, jsii.String(fmt.Sprintf("%sFunction", capitalize(workerName))), &awslambda.FunctionProps{
 			FunctionName: jsii.String(fmt.Sprintf("handloom-%s-%s", workerName, props.Environment)),

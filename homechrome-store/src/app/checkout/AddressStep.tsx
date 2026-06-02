@@ -1,9 +1,10 @@
 'use client';
 
-import { Anchor, Badge, Button, Card, Group, Radio, Stack, Text, Title } from '@mantine/core';
+import { Anchor, Badge, Box, Button, Card, Group, Radio, Stack, Text, Title } from '@mantine/core';
 import { useRouter } from 'next/navigation';
 
 import AddressForm from '@/components/checkout/AddressForm';
+import InlineLoaderOverlay from '@/components/ui/InlineLoaderOverlay';
 import { Address } from '@/types';
 
 interface AddressStepProps {
@@ -11,6 +12,7 @@ interface AddressStepProps {
   selectedAddressId: string | null;
   showAddressForm: boolean;
   addressSaving: boolean;
+  creatingAddress: boolean;
   onSelectAddress: (id: string) => void;
   onToggleForm: (show: boolean) => void;
   onSaveAddress: (data: Omit<Address, 'id'>) => Promise<void>;
@@ -22,6 +24,7 @@ export function AddressStep({
   selectedAddressId,
   showAddressForm,
   addressSaving,
+  creatingAddress,
   onSelectAddress,
   onToggleForm,
   onSaveAddress,
@@ -30,6 +33,7 @@ export function AddressStep({
   const router = useRouter();
 
   return (
+    <Box pos="relative">
     <Card shadow="sm" radius="lg" padding="lg">
       <Stack gap="md">
         <Title order={2} size="md">Shipping Address</Title>
@@ -99,5 +103,7 @@ export function AddressStep({
         )}
       </Stack>
     </Card>
+    <InlineLoaderOverlay visible={creatingAddress} size="md" label="Saving address" />
+    </Box>
   );
 }

@@ -1,7 +1,8 @@
 'use client';
 
-import { Anchor, Button, Card, Group, Stack, Text, Title } from '@mantine/core';
+import { Anchor, Box, Button, Card, Group, Stack, Text, Title } from '@mantine/core';
 
+import InlineLoaderOverlay from '@/components/ui/InlineLoaderOverlay';
 import { formatPrice } from '@/lib/utils';
 import { Address, CartItem, CourierOption } from '@/types';
 
@@ -10,6 +11,7 @@ interface ReviewStepProps {
   selectedCourier: CourierOption | null;
   items: CartItem[];
   initiating: boolean;
+  initiatingCheckout: boolean;
   onChangeAddress: () => void;
   onChangeShipping: () => void;
   onPayNow: () => void;
@@ -20,11 +22,13 @@ export function ReviewStep({
   selectedCourier,
   items,
   initiating,
+  initiatingCheckout,
   onChangeAddress,
   onChangeShipping,
   onPayNow,
 }: ReviewStepProps) {
   return (
+    <Box pos="relative">
     <Card shadow="sm" radius="lg" padding="lg">
       <Stack gap="md">
         <Title order={2} size="md">Review Your Order</Title>
@@ -66,6 +70,8 @@ export function ReviewStep({
         </Group>
       </Stack>
     </Card>
+    <InlineLoaderOverlay visible={initiatingCheckout} size="md" label="Initiating payment" />
+    </Box>
   );
 }
 

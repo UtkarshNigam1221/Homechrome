@@ -8,8 +8,8 @@ import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
 
-import api from '@/lib/api';
-import { ROUTES } from '@/lib/routes';
+import HCLoader from '@/components/ui/HCLoader';
+import { searchProducts } from '@/lib/api';
 import { formatPrice } from '@/lib/utils';
 import { Category, Product } from '@/types';
 
@@ -23,17 +23,13 @@ export function SpotlightSearch({ categories }: SpotlightSearchProps) {
   const [opened, setOpened] = useState(false);
   const [debounced] = useDebouncedValue(query, 300);
 
-  const { data: products = [] } = useQuery<Product[]>({
+  const { data: products = [], isLoading } = useQuery<Product[]>({
     queryKey: ['spotlight-products', debounced],
     enabled: opened && debounced.trim().length >= 2,
     staleTime: 60_000,
     queryFn: async () => {
-      const res = await api.get<{ data: Product[] } | Product[]>(ROUTES.CATALOG.PRODUCTS, {
-        params: { search: debounced.trim(), limit: 8 },
-      });
-      const body = res.data as { data?: Product[] } | Product[];
-      if (Array.isArray(body)) return body;
-      return body.data ?? [];
+      const res = await searchProducts({ q: debounced.trim(), limit: 8 });
+      return res.data;
     },
   });
 
@@ -66,6 +62,13 @@ export function SpotlightSearch({ categories }: SpotlightSearchProps) {
     }));
 
     if (debounced.trim().length >= 2) {
+      // While the query is in flight, suppress the "view-all" action so the
+      // actions list is empty and Mantine renders `nothingFound` (the loader).
+      // Once the fetch settles, "view-all" is always appended so the list is
+      // never empty when a real query is active.
+      if (isLoading) {
+        return [...productActions];
+      }
       return [
         ...productActions,
         {
@@ -110,11 +113,16 @@ export function SpotlightSearch({ categories }: SpotlightSearchProps) {
       ],
     });
     return groups;
-  }, [products, categories, debounced, router]);
+  }, [products, categories, debounced, isLoading, router]);
 
   return (
     <Spotlight
       actions={actions}
+      // Disable Mantine's client-side label/keyword filter — the embedder
+      // already ranked these by semantic + tsvector + trigram relevance, so
+      // re-filtering by exact substring match drops valid semantic matches
+      // (e.g. query "wedding" returning "Bridal Lehenga").
+      filter={(_query, actions) => actions}
       shortcut="mod + K"
       onSpotlightOpen={() => setOpened(true)}
       onSpotlightClose={() => {
@@ -122,11 +130,17 @@ export function SpotlightSearch({ categories }: SpotlightSearchProps) {
         setQuery('');
       }}
       nothingFound={
-        <Group justify="center" py="lg">
-          <Text c="dimmed" size="sm">
-            No products match &ldquo;{debounced.trim()}&rdquo;
-          </Text>
-        </Group>
+        isLoading && debounced.trim().length > 0 ? (
+          <div className="flex w-full items-center justify-center py-6">
+            <HCLoader size="sm" label="Searching" />
+          </div>
+        ) : (
+          <Group justify="center" py="lg">
+            <Text c="dimmed" size="sm">
+              No products match &ldquo;{debounced.trim()}&rdquo;
+            </Text>
+          </Group>
+        )
       }
       highlightQuery
       query={query}

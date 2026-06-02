@@ -27,6 +27,9 @@ export default function CheckoutPage() {
     handleAddAddress,
     handlePayNow,
     goToStep,
+    checkingServiceability,
+    creatingAddress,
+    initiatingCheckout,
   } = useCheckoutState();
 
   const {
@@ -71,6 +74,7 @@ export default function CheckoutPage() {
               selectedAddressId={selectedAddressId}
               showAddressForm={showAddressForm}
               addressSaving={addressSaving}
+              creatingAddress={creatingAddress}
               onSelectAddress={(id) => dispatch({ type: 'SELECT_ADDRESS', id })}
               onToggleForm={(show) => dispatch({ type: 'TOGGLE_ADDRESS_FORM', show })}
               onSaveAddress={handleAddAddress}
@@ -85,6 +89,7 @@ export default function CheckoutPage() {
               selectedCourierId={selectedCourierId}
               serviceabilityLoading={serviceabilityLoading}
               serviceabilityError={serviceabilityError}
+              checkingServiceability={checkingServiceability}
               onSelectCourier={(id) => dispatch({ type: 'SELECT_COURIER', id })}
               onChangeAddress={() => dispatch({ type: 'GO_TO_STEP', step: 'address' })}
               onContinue={handleShippingNext}
@@ -97,6 +102,7 @@ export default function CheckoutPage() {
               selectedCourier={selectedCourier}
               items={cart.items}
               initiating={initiating}
+              initiatingCheckout={initiatingCheckout}
               onChangeAddress={() => dispatch({ type: 'GO_TO_STEP', step: 'address' })}
               onChangeShipping={() => dispatch({ type: 'GO_TO_STEP', step: 'shipping' })}
               onPayNow={handlePayNow}

@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/handloom/admin/internal/config"
+	"github.com/handloom/admin/internal/embedder"
 	"github.com/handloom/admin/internal/handler"
 	"github.com/handloom/admin/internal/handler/store"
 	"github.com/handloom/admin/internal/middleware"
@@ -40,6 +41,7 @@ type CatalogDeps struct {
 	CategoryHandler *handler.CategoryHandler
 	ProductHandler  *handler.ProductHandler
 	AuthMiddleware  *middleware.Auth
+	EmbedderClient  *embedder.Client
 }
 
 // OrderDeps holds dependencies for the Order Lambda
@@ -152,6 +154,7 @@ func InitializeCatalogDeps(ctx context.Context, cfg *config.Config) (*CatalogDep
 		ProvideValidation,
 		ProvideS3Client,
 		ProvideLambdaClient,
+		ProvideEmbedderClient,
 		ProvideUserRepository,
 		ProvideTokenStore,
 		ProvideCategoryRepository,
@@ -324,6 +327,7 @@ func InitializeReportDeps(ctx context.Context, cfg *config.Config) (*ReportDeps,
 		ProvideValidation,
 		ProvideS3Client,
 		ProvideLambdaClient,
+		ProvideEmbedderClient,
 		ProvideUserRepository,
 		ProvideTokenStore,
 		ProvideReportRepository,
@@ -467,6 +471,7 @@ func InitializeStoreCatalogDeps(ctx context.Context, cfg *config.Config) (*Store
 		ProvideInventoryRepository,
 		ProvideS3Client,
 		ProvideLambdaClient,
+		ProvideEmbedderClient,
 		ProvideEventPublisher,
 		ProvideAssetService,
 		ProvideCategoryService,
@@ -671,6 +676,28 @@ func InitializeMonolithDeps(ctx context.Context, cfg *config.Config) (*MonolithD
 		MiddlewareSet,
 		StoreMiddlewareSet,
 		wire.Struct(new(MonolithDeps), "*"),
+	)
+	return nil, nil
+}
+
+// ============================================================================
+// BACKFILL DEPENDENCY CONTAINER
+// ============================================================================
+
+// BackfillDeps holds the minimal dependencies needed by the backfill Lambda
+// (T19) to iterate over all products and upsert their embeddings.
+type BackfillDeps struct {
+	Config         *config.Config
+	Pool           *pgxpool.Pool
+	EmbedderClient *embedder.Client
+}
+
+// InitializeBackfillDeps creates the backfill Lambda dependencies.
+func InitializeBackfillDeps(ctx context.Context, cfg *config.Config) (*BackfillDeps, error) {
+	wire.Build(
+		ProvidePostgresPool,
+		ProvideEmbedderClient,
+		wire.Struct(new(BackfillDeps), "*"),
 	)
 	return nil, nil
 }

@@ -1,8 +1,9 @@
 'use client';
 
-import { Alert, Anchor, Button, Card, Group, Stack, Text, Title } from '@mantine/core';
+import { Alert, Anchor, Box, Button, Card, Group, Stack, Text, Title } from '@mantine/core';
 
 import ShippingOptions from '@/components/checkout/ShippingOptions';
+import InlineLoaderOverlay from '@/components/ui/InlineLoaderOverlay';
 import { Address, CourierOption } from '@/types';
 
 interface ShippingStepProps {
@@ -11,6 +12,7 @@ interface ShippingStepProps {
   selectedCourierId: number | null;
   serviceabilityLoading: boolean;
   serviceabilityError: string | null;
+  checkingServiceability: boolean;
   onSelectCourier: (id: number) => void;
   onChangeAddress: () => void;
   onContinue: () => void;
@@ -22,11 +24,13 @@ export function ShippingStep({
   selectedCourierId,
   serviceabilityLoading,
   serviceabilityError,
+  checkingServiceability,
   onSelectCourier,
   onChangeAddress,
   onContinue,
 }: ShippingStepProps) {
   return (
+    <Box pos="relative">
     <Card shadow="sm" radius="lg" padding="lg">
       <Stack gap="md">
         <Title order={2} size="md">Shipping Method</Title>
@@ -78,5 +82,7 @@ export function ShippingStep({
         )}
       </Stack>
     </Card>
+    <InlineLoaderOverlay visible={checkingServiceability} size="md" label="Checking delivery" />
+    </Box>
   );
 }

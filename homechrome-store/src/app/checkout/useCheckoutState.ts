@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useMemo, useReducer } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useState } from 'react';
 
 import api from '@/lib/api';
 import { ROUTES } from '@/lib/routes';
@@ -23,6 +23,9 @@ export function useCheckoutState() {
   const customer = useAuthStore((s) => s.customer);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const [state, dispatch] = useReducer(checkoutReducer, initialCheckoutState);
+  const [checkingServiceability, setCheckingServiceability] = useState(false);
+  const [creatingAddress, setCreatingAddress] = useState(false);
+  const [initiatingCheckout, setInitiatingCheckout] = useState(false);
 
   const addresses = useMemo(() => customer?.addresses || [], [customer?.addresses]);
   const selectedAddress = addresses.find((a) => a.id === state.selectedAddressId) || null;
@@ -59,6 +62,7 @@ export function useCheckoutState() {
 
   const checkServiceability = useCallback(async () => {
     if (!selectedAddress) return;
+    setCheckingServiceability(true);
     dispatch({ type: 'SERVICEABILITY_START' });
     try {
       const { data } = await api.post<ServiceabilityResult>(
@@ -78,6 +82,8 @@ export function useCheckoutState() {
         type: 'SERVICEABILITY_FAIL',
         error: 'Failed to check delivery availability. Please try again.',
       });
+    } finally {
+      setCheckingServiceability(false);
     }
   }, [selectedAddress]);
 
@@ -93,6 +99,7 @@ export function useCheckoutState() {
   }, [state.selectedCourierId]);
 
   const handleAddAddress = useCallback(async (data: Omit<Address, 'id'>) => {
+    setCreatingAddress(true);
     dispatch({ type: 'ADDRESS_SAVE_START' });
     try {
       const { data: newAddr } = await api.post<Address>(ROUTES.ME.ADDRESSES, data);
@@ -103,12 +110,19 @@ export function useCheckoutState() {
         type: 'ADDRESS_SAVE_FAILED',
         error: 'Failed to save address. Please try again.',
       });
+    } finally {
+      setCreatingAddress(false);
     }
   }, []);
 
   const handlePayNow = useCallback(async () => {
     if (!state.selectedAddressId) return;
+    setInitiatingCheckout(true);
     dispatch({ type: 'PAYMENT_START' });
+    // Keep the overlay visible across the redirect handoff. window.location.href
+    // is async — clearing the flag in finally causes the overlay to flash off
+    // a few hundred ms before the new page actually unloads.
+    let redirecting = false;
     try {
       const payload: { shipping_address_id: string; courier_id?: number } = {
         shipping_address_id: state.selectedAddressId,
@@ -117,12 +131,15 @@ export function useCheckoutState() {
         payload.courier_id = state.selectedCourierId;
       }
       const { data } = await api.post<CheckoutResult>(ROUTES.CHECKOUT.INITIATE, payload);
+      redirecting = true;
       window.location.href = data.redirect_url;
     } catch {
       dispatch({
         type: 'PAYMENT_FAILED',
         error: 'Failed to initiate payment. Please try again.',
       });
+    } finally {
+      if (!redirecting) setInitiatingCheckout(false);
     }
   }, [state.selectedAddressId, state.selectedCourierId]);
 
@@ -149,5 +166,8 @@ export function useCheckoutState() {
     handleAddAddress,
     handlePayNow,
     goToStep,
+    checkingServiceability,
+    creatingAddress,
+    initiatingCheckout,
   };
 }

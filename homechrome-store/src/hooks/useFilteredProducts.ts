@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 
 import { FilterValues } from '@/components/catalog/FilterSidebar';
 import api from '@/lib/api';
+import { ROUTES } from '@/lib/routes';
 import { Product } from '@/types';
 
 /**
@@ -158,10 +159,18 @@ export function useFilteredProducts({
   // skipInitialFetchWhenNoFilters is set (avoids refetching what SSR provided).
   const useInitialData = skipInitialFetchWhenNoFilters && !filtersActive;
 
+  // Search-aware routing: when the caller's extraParams includes a non-empty
+  // `q` we hit the embedder /search endpoint (semantic + filters); otherwise
+  // we hit the legacy /products endpoint (filters only). Both return the
+  // same JSON envelope so the response handling below is identical.
+  const params = new URLSearchParams(queryString);
+  const hasSearchQuery = params.get('q') !== null && params.get('q')!.trim() !== '';
+  const targetEndpoint = hasSearchQuery ? ROUTES.CATALOG.SEARCH : endpoint;
+
   const { data, isFetching } = useQuery<Product[]>({
-    queryKey: ['filtered-products', endpoint, queryString, debouncedExtraDepsKey],
+    queryKey: ['filtered-products', targetEndpoint, queryString, debouncedExtraDepsKey],
     queryFn: async () => {
-      const { data } = await api.get<Product[]>(`${endpoint}?${queryString}`);
+      const { data } = await api.get<Product[]>(`${targetEndpoint}?${queryString}`);
       return Array.isArray(data) ? data : [];
     },
     placeholderData: (prev) => prev ?? initialProducts,

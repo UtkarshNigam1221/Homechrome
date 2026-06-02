@@ -18,9 +18,10 @@ import (
 type StorefrontStackProps struct {
 	awscdk.StackProps
 	Environment   string
-	DomainNames   []string // Primary domain first, then aliases (e.g. ["homechrome.in", "www.homechrome.in"])
+	DomainNames   []string   // Primary domain first, then aliases (e.g. ["homechrome.in", "www.homechrome.in"])
 	CertArn       string
-	BackendApiUrl string // e.g. https://dev-api.homechrome.in
+	BackendApiUrl string     // e.g. https://dev-api.homechrome.in
+	LogsStack     *LogsStack // shared CloudWatch log groups (server Lambda → ServerLogGroup)
 }
 
 type StorefrontStack struct {
@@ -52,6 +53,8 @@ func NewStorefrontStack(scope constructs.Construct, id string, props *Storefront
 	// ─── Server Lambda ───
 	// 1024 MB gives ~0.5 vCPU on ARM64. Cuts init from ~3s (on 128) to <1s and
 	// halves SSR render time, freeing concurrency slots faster under cold-cache bursts.
+	//
+	// Log group comes from LogsStack — single source of truth for retention.
 	serverFn := awslambda.NewFunction(stack, jsii.String("ServerFunction"), &awslambda.FunctionProps{
 		FunctionName: jsii.String(fmt.Sprintf("homechrome-store-server-%s", env)),
 		Runtime:      awslambda.Runtime_NODEJS_22_X(),
@@ -60,6 +63,7 @@ func NewStorefrontStack(scope constructs.Construct, id string, props *Storefront
 		Architecture: awslambda.Architecture_ARM_64(),
 		MemorySize:   jsii.Number(1024),
 		Timeout:      awscdk.Duration_Seconds(jsii.Number(15)),
+		LogGroup:     props.LogsStack.ServerLogGroup,
 		Environment: &map[string]*string{
 			"CACHE_BUCKET_NAME":       bucket.BucketName(),
 			"CACHE_BUCKET_KEY_PREFIX": jsii.String("_cache"),

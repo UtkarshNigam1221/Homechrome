@@ -3,12 +3,19 @@ package wire
 
 import (
 	"context"
+	"fmt"
+	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/lambda"
+	"github.com/aws/aws-sdk-go-v2/service/ssm"
 	"github.com/google/wire"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/handloom/admin/internal/config"
 	"github.com/handloom/admin/internal/domain"
+	"github.com/handloom/admin/internal/embedder"
 	"github.com/handloom/admin/internal/event"
 	eventhandlers "github.com/handloom/admin/internal/event/handlers"
 	"github.com/handloom/admin/internal/gateway/phonepe"
@@ -54,6 +61,41 @@ var CoreSet = wire.NewSet(
 	ProvideDynamoDBClient,
 	ProvidePostgresPool,
 )
+
+// ProvideEmbedderClient builds an embedder.Client. The auth key is fetched
+// from SSM at startup and cached in-process; rotation requires Lambda restart
+// (via `aws lambda update-function-configuration` to force a cold start).
+// When FunctionName is empty (local dev / unit tests), returns nil — the
+// ProductService handles the nil-tolerant path gracefully.
+func ProvideEmbedderClient(ctx context.Context, cfg *config.Config) (*embedder.Client, error) {
+	if cfg.Embedder.FunctionName == "" {
+		return nil, nil
+	}
+	awsCfg, err := awsconfig.LoadDefaultConfig(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("load aws config for embedder: %w", err)
+	}
+
+	var authKey []byte
+	if cfg.Embedder.AuthKeyParam != "" {
+		ssmc := ssm.NewFromConfig(awsCfg)
+		out, err := ssmc.GetParameter(ctx, &ssm.GetParameterInput{
+			Name:           aws.String(cfg.Embedder.AuthKeyParam),
+			WithDecryption: aws.Bool(true),
+		})
+		if err != nil {
+			return nil, fmt.Errorf("ssm get embedder auth key: %w", err)
+		}
+		authKey = []byte(aws.ToString(out.Parameter.Value))
+	}
+
+	lambdac := lambda.NewFromConfig(awsCfg)
+	timeout := time.Duration(cfg.Embedder.TimeoutMs) * time.Millisecond
+	if timeout == 0 {
+		timeout = 10 * time.Second
+	}
+	return embedder.NewClient(lambdac, cfg.Embedder.FunctionName, authKey, timeout), nil
+}
 
 // ============================================================================
 // REPOSITORY PROVIDERS
@@ -199,8 +241,9 @@ func ProvideProductService(
 	inventoryRepo domain.InventoryRepository,
 	assetService *service.AssetService,
 	publisher event.EventPublisher,
+	emb *embedder.Client,
 ) *service.ProductService {
-	return service.NewProductService(productRepo, categoryRepo, inventoryRepo, assetService, publisher)
+	return service.NewProductService(productRepo, categoryRepo, inventoryRepo, assetService, publisher, emb)
 }
 
 // ProvideInventoryService creates a new InventoryService
@@ -344,6 +387,7 @@ var ServiceSet = wire.NewSet(
 	ProvideCartService,
 	ProvidePhonePeGateway,
 	ProvidePaymentService,
+	ProvideEmbedderClient,
 )
 
 // ============================================================================

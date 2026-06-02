@@ -308,7 +308,6 @@ func (h *CatalogHandler) ListProducts(w http.ResponseWriter, r *http.Request) {
 	// Parse optional query params.
 	q := r.URL.Query()
 	req.CategoryID = queryStr(q, "category_id")
-	req.Search = q.Get("search")
 	req.MinPrice = queryInt64(q, "min_price")
 	req.MaxPrice = queryInt64(q, "max_price")
 	if inStock := q.Get("in_stock"); inStock == "true" {

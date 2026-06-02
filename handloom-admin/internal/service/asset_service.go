@@ -48,7 +48,7 @@ type s3Ops interface {
 
 // resizerInvoker abstracts the Lambda call so it can be mocked in tests.
 type resizerInvoker interface {
-	InvokeSync(ctx context.Context, functionName string, payload []byte) ([]byte, error)
+	InvokeAsync(ctx context.Context, functionName string, payload []byte) error
 }
 
 // AssetService handles file uploads via S3.
@@ -61,7 +61,7 @@ type AssetService struct {
 	cdnHost       string // CloudFront domain (empty → fall back to direct S3 URL)
 	endpoint      string // AWS_ENDPOINT for local dev (empty in production)
 	resizer       resizerInvoker
-	resizerFnName string // empty disables sync resize (e.g. local dev without LocalStack Lambda)
+	resizerFnName string // empty disables variant generation (e.g. local dev without LocalStack Lambda)
 }
 
 // NewAssetService creates a new AssetService.
@@ -199,8 +199,9 @@ func (s *AssetService) FinalizeUpload(ctx context.Context, tmpKey string) (strin
 	return finalURL, nil
 }
 
-// invokeImageResizer calls the ImageResizer Lambda synchronously with a synthetic
-// S3 event payload. Returns an error if the Lambda fails or any variant is missing.
+// invokeImageResizer fires the ImageResizer Lambda async (InvocationType=Event)
+// with a synthetic S3 event payload, so the caller's API handler isn't blocked
+// on the multi-variant resize. Returns once Lambda has queued the request.
 func (s *AssetService) invokeImageResizer(ctx context.Context, key string) error {
 	if s.resizer == nil || s.resizerFnName == "" {
 		// Resizer disabled (local dev without Lambda runtime). Skip silently.
@@ -212,8 +213,8 @@ func (s *AssetService) invokeImageResizer(ctx context.Context, key string) error
 		s.bucket, key,
 	)
 	start := time.Now()
-	_, err := s.resizer.InvokeSync(ctx, s.resizerFnName, []byte(payload))
-	slog.InfoContext(ctx, "image_resize",
+	err := s.resizer.InvokeAsync(ctx, s.resizerFnName, []byte(payload))
+	slog.InfoContext(ctx, "image_resize_dispatch",
 		"key", key,
 		"duration_ms", time.Since(start).Milliseconds(),
 		"error", err,

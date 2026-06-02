@@ -1,0 +1,93 @@
+name: Backfill product embeddings
+
+on:
+  workflow_dispatch:
+    inputs:
+      env:
+        description: 'Environment'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - prod
+      batch_size:
+        description: 'Rows per backfill batch'
+        required: true
+        default: '100'
+        type: string
+      force_reembed:
+        description: 'Re-embed even when embedding_updated_at is fresh'
+        required: true
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: embedding-backfill-${{ inputs.env }}
+  cancel-in-progress: false
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Guard prod backfill from non-main branches
+        if: inputs.env == 'prod' && github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::Prod backfill must be triggered from main. Current ref: ${{ github.ref }}"
+          exit 1
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/gh-actions-handloom-${{ inputs.env }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Loop backfill until done
+        env:
+          BATCH_SIZE: ${{ inputs.batch_size }}
+          FORCE_REEMBED: ${{ inputs.force_reembed }}
+          ENV: ${{ inputs.env }}
+        run: |
+          set -euo pipefail
+          FN="handloom-worker-embedding-backfill-${ENV}"
+          PAYLOAD=$(jq -c -n \
+            --argjson b "${BATCH_SIZE}" \
+            --argjson f "${FORCE_REEMBED}" \
+            '{batch_size:$b, force_reembed:$f, max_duration_seconds:840}')
+          ITER=0
+          while :; do
+            ITER=$((ITER+1))
+            echo "::group::Iteration $ITER"
+            aws lambda invoke \
+              --function-name "$FN" \
+              --payload "$PAYLOAD" \
+              --cli-binary-format raw-in-base64-out \
+              response.json > /dev/null
+            ERR=$(jq -r '.error // empty' response.json)
+            if [ -n "$ERR" ]; then
+              echo "Lambda reported error: $ERR"
+              echo "::endgroup::"
+              exit 1
+            fi
+            REMAINING=$(jq -r '.remaining_estimate' response.json)
+            PROCESSED=$(jq -r '.processed' response.json)
+            DURATION=$(jq -r '.duration_ms' response.json)
+            echo "iteration=$ITER processed=$PROCESSED remaining=$REMAINING duration_ms=$DURATION"
+            echo "::endgroup::"
+            if [ "$REMAINING" = "0" ]; then
+              echo "Backfill complete after $ITER iteration(s)"
+              break
+            fi
+            # Safety stop in case the Lambda keeps reporting work without progress.
+            if [ "$ITER" -ge 50 ]; then
+              echo "Hit iteration safety cap ($ITER); something is wrong" >&2
+              exit 1
+            fi
+          done

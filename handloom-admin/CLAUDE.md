@@ -197,3 +197,48 @@ External service clients no longer use `IsDevelopment()` to decide dev vs real m
 - **Mock generation**: After changing interfaces in `domain/`, run `make generate-mocks`
 - **Import ordering**: enforced by goimports with local prefix `github.com/handloom/admin`
 - **golangci-lint**: complexity thresholds — gocognit=30, gocyclo=25, dupl=200
+
+## Embedder Secrets
+
+The embedder Lambda + its callers (catalog + backfill Lambdas) need **one** SSM SecureString provisioned **out-of-band** (CDK does not create it):
+
+| Parameter | Purpose | Rotation |
+|---|---|---|
+| `/handloom/{env}/embedder-auth-key` | HMAC shared secret between the embedder server-side `/embed` route and the catalog/backfill Lambdas. | Manual. Generate a new value, update SSM, then force a cold start on all consumer Lambdas (e.g. `aws lambda update-function-configuration --function-name <fn> --environment Variables={...}` to bump an env var). |
+
+`POSTGRES_DSN` is **not** in SSM. It's passed to all Lambdas (including the embedder) as a plain env var by CDK at deploy time, sourced from:
+- `handloom-admin/.env.{env}` for local `make cdk-deploy-{env}` (the Makefile target does `set -a && . ./.env.{env} && set +a`).
+- `secrets.BACKEND_ENV_{ENV}` written to `.env.deploy` by the `deploy-backend.yml` workflow.
+
+### Provisioning the auth key
+
+```bash
+ENV=dev
+aws ssm put-parameter \
+  --name "/handloom/${ENV}/embedder-auth-key" \
+  --type SecureString \
+  --value "$(openssl rand -hex 32)" \
+  --region ap-south-1
+```
+
+## Embedder First-Deploy (fresh environment)
+
+The embedder Lambda's container image is built by CDK during `cdk synth` from `cmd/embedder/Dockerfile` (`Code_FromAssetImage`). CDK pushes the image to its bootstrap ECR repo automatically — no custom ECR repo, no manual `docker push`, no S3 cache bucket.
+
+The Dockerfile copies in three runtime assets (model + tokenizer + ONNX runtime) that live under `cmd/embedder/assets/`. The `prepare-embedder-assets` Make target (a prereq of `cdk-deploy-{env}`) runs `scripts/bootstrap-embedder-assets.sh` which populates them. First run is slow (~10 min — downloads from HuggingFace + exports to ONNX + quantizes); subsequent runs hit `~/.cache/handloom-embedder/` and finish in seconds.
+
+One-command flow per environment:
+
+```bash
+ENV=dev  # or prod
+
+# Step 1 — provision the auth key SSM SecureString (one time per env)
+aws ssm put-parameter --name "/handloom/${ENV}/embedder-auth-key" \
+  --type SecureString --value "$(openssl rand -hex 32)" --region ap-south-1
+
+# Step 2 — deploy everything. CDK synth depends on prepare-embedder-assets,
+# which runs the bootstrap script. Bootstrap is idempotent + cached.
+cd handloom-admin && make cdk-deploy-${ENV}
+```
+
+For subsequent embedder code changes: just run `make cdk-deploy-${ENV}`. CDK content-hashes the Docker build context; rebuilds + redeploys the Lambda image only when something under `cmd/embedder/**` actually changed.

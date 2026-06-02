@@ -209,6 +209,16 @@ func (m *MockProductRepository) GetAttributeFilterOptions(ctx context.Context, c
 	return args.Get(0).(map[string][]string), args.Error(1)
 }
 
+func (m *MockProductRepository) UpsertProductWithEmbedding(ctx context.Context, product *domain.Product, inventory *domain.Inventory, embedding []float32) error {
+	args := m.Called(ctx, product, inventory, embedding)
+	return args.Error(0)
+}
+
+func (m *MockProductRepository) UpdateProductWithOptionalEmbedding(ctx context.Context, product *domain.Product, embedding []float32, writeEmbedding bool) error {
+	args := m.Called(ctx, product, embedding, writeEmbedding)
+	return args.Error(0)
+}
+
 func TestPricingService_CalculatePrice_AreaBased(t *testing.T) {
 	ctx := context.Background()
 

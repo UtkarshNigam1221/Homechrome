@@ -133,6 +133,18 @@ type ProductRepository interface {
 
 	// GetAttributeFilterOptions returns distinct values for each attribute in a category
 	GetAttributeFilterOptions(ctx context.Context, categoryID string, attrNames []string) (map[string][]string, error)
+
+	// UpsertProductWithEmbedding writes a new product + inventory row + (optionally)
+	// its embedding in one transaction. Pass nil embedding to leave the embedding
+	// columns NULL (backfill will populate later).
+	UpsertProductWithEmbedding(ctx context.Context, product *Product, inventory *Inventory, embedding []float32) error
+
+	// UpdateProductWithOptionalEmbedding updates an existing product and writes the
+	// embedding only when writeEmbedding == true and embedding != nil. The contract:
+	//   writeEmbedding=false             → embedding columns untouched
+	//   writeEmbedding=true,  nil  vec   → embedding columns untouched (preserve good vec on transient embedder failure)
+	//   writeEmbedding=true, !nil vec    → write embedding + embedding_updated_at = now()
+	UpdateProductWithOptionalEmbedding(ctx context.Context, product *Product, embedding []float32, writeEmbedding bool) error
 }
 
 // ListProductsRequest contains parameters for listing products

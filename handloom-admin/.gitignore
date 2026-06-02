@@ -1,0 +1,5 @@
+# Embedder Lambda binary assets (fetched from S3, not committed)
+cmd/embedder/assets/
+
+# Backfill / Lambda invoke output files
+response.json
