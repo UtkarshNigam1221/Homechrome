@@ -12,8 +12,8 @@ import (
 var intentPrototypes = map[string]string{
 	"material": "silk cotton linen wool jute fabric weave",
 	"color":    "red blue green yellow pink black white maroon ivory color shade",
-	"style":    "banarasi kanjivaram ikat block-print kalamkari pattern handloom traditional",
-	"occasion": "wedding festival diwali pooja casual everyday gift ceremony",
+	"style":    "jaipuri south patoola printed panipat gujrati embroidery patchwork handloom traditional",
+	"occasion": "wedding festival diwali pooja casual everyday gift ceremony heavy",
 	"price":    "cheap expensive budget affordable under below over premium",
 }
 
@@ -33,12 +33,12 @@ var intentPrecedence = []string{
 // Hand-curated rather than auto-loaded from PG so cardinality of the
 // combined label stays predictable across catalog changes.
 var categoryPrototypes = map[string]string{
-	"saree":     "saree silk-saree banarasi-saree kanjivaram-saree",
-	"dupatta":   "dupatta scarf chunni stole-dupatta",
-	"bedsheet":  "bedsheet bedspread bedding bed-cover quilt",
-	"kurta":     "kurta kurti tunic mens-kurta womens-kurta",
-	"scarf":     "scarf stole wrap shawl",
-	"blouse":    "blouse choli top",
+	"saree":    "saree silk-saree banarasi-saree kanjivaram-saree",
+	"dupatta":  "dupatta scarf chunni stole-dupatta",
+	"bedsheet": "bedsheet bedspread bedding bed-cover quilt",
+	"kurta":    "kurta kurti tunic mens-kurta womens-kurta",
+	"scarf":    "scarf stole wrap shawl",
+	"blouse":   "blouse choli top",
 }
 
 // Classifier maps a query embedding to a combined "<intent>_<category>"
@@ -46,8 +46,8 @@ var categoryPrototypes = map[string]string{
 // query classification is then O(N) cosine products on float32 vectors
 // (microseconds for tens of prototypes).
 type Classifier struct {
-	intentNames  []string
-	intentVecs   [][]float32
+	intentNames   []string
+	intentVecs    [][]float32
 	categoryNames []string
 	categoryVecs  [][]float32
 	threshold     float32
