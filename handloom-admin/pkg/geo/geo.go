@@ -11,12 +11,15 @@ import "strings"
 // to keep the labels JSONB small.
 const MaxCityNameLen = 64
 
+// unknownLabel is the fallback for empty / malformed geo header values.
+const unknownLabel = "unknown"
+
 // NormalizeCity lowercases, trims, and truncates the input. Returns
 // "unknown" for empty input.
 func NormalizeCity(input string) string {
 	s := strings.ToLower(strings.TrimSpace(input))
 	if s == "" {
-		return "unknown"
+		return unknownLabel
 	}
 	if len(s) > MaxCityNameLen {
 		s = s[:MaxCityNameLen]
@@ -29,7 +32,7 @@ func NormalizeCity(input string) string {
 func NormalizeCountry(input string) string {
 	s := strings.ToUpper(strings.TrimSpace(input))
 	if len(s) != 2 {
-		return "unknown"
+		return unknownLabel
 	}
 	return s
 }
@@ -41,6 +44,6 @@ func NormalizeDevice(input string) string {
 	case "mobile", "tablet", "desktop":
 		return strings.ToLower(strings.TrimSpace(input))
 	default:
-		return "unknown"
+		return unknownLabel
 	}
 }

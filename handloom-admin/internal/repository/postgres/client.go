@@ -40,8 +40,8 @@ func NewPool(ctx context.Context, pgCfg *appconfig.PostgresConfig) (*pgxpool.Poo
 	)
 
 	cfg.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
-		if err := pgvecpgx.RegisterTypes(ctx, conn); err != nil {
-			return fmt.Errorf("register pgvector types: %w", err)
+		if rtErr := pgvecpgx.RegisterTypes(ctx, conn); rtErr != nil {
+			return fmt.Errorf("register pgvector types: %w", rtErr)
 		}
 		return nil
 	}

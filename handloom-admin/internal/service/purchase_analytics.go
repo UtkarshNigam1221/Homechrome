@@ -31,7 +31,7 @@ func recordPurchaseAnalytics(ctx context.Context, customerRepo domain.CustomerRe
 	for _, line := range order.Items {
 		catID := line.CategoryID
 		if catID == "" {
-			catID = "unknown"
+			catID = labelUnknown
 		}
 		metrics.RecordSum(ctx, "product_purchased", line.TotalPrice, metrics.L{
 			"product_id":  line.ProductID,

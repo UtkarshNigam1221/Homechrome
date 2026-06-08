@@ -2,6 +2,7 @@ package embedder
 
 import (
 	"bytes"
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -19,7 +20,7 @@ func TestHMACAuth_AcceptsValidSignature(t *testing.T) {
 	ts, nonce := nowSecForTest(), "nonce-1"
 	sig := signForTest(key, ts, nonce, body)
 
-	req := httptest.NewRequest(http.MethodPost, "/embed", bytes.NewReader(body))
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/embed", bytes.NewReader(body))
 	req.Header.Set("X-Embedder-Timestamp", ts)
 	req.Header.Set("X-Embedder-Nonce", nonce)
 	req.Header.Set("X-Embedder-Signature", sig)
@@ -35,7 +36,7 @@ func TestHMACAuth_AcceptsValidSignature(t *testing.T) {
 func TestHMACAuth_RejectsBadSignature(t *testing.T) {
 	v := NewHMACVerifier([]byte("test-key"))
 	body := []byte(`{"texts":["hi"]}`)
-	req := httptest.NewRequest(http.MethodPost, "/embed", bytes.NewReader(body))
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/embed", bytes.NewReader(body))
 	req.Header.Set("X-Embedder-Timestamp", nowSecForTest())
 	req.Header.Set("X-Embedder-Nonce", "n2")
 	req.Header.Set("X-Embedder-Signature", "deadbeef")
@@ -54,7 +55,7 @@ func TestHMACAuth_RejectsExpiredTimestamp(t *testing.T) {
 	nonce := "n3"
 	sig := signForTest(key, staleTs, nonce, body)
 
-	req := httptest.NewRequest(http.MethodPost, "/embed", bytes.NewReader(body))
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/embed", bytes.NewReader(body))
 	req.Header.Set("X-Embedder-Timestamp", staleTs)
 	req.Header.Set("X-Embedder-Nonce", nonce)
 	req.Header.Set("X-Embedder-Signature", sig)
@@ -72,7 +73,7 @@ func TestHMACAuth_RejectsReplayedNonce(t *testing.T) {
 	sig := signForTest(key, ts, nonce, body)
 
 	build := func() *http.Request {
-		req := httptest.NewRequest(http.MethodPost, "/embed", bytes.NewReader(body))
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/embed", bytes.NewReader(body))
 		req.Header.Set("X-Embedder-Timestamp", ts)
 		req.Header.Set("X-Embedder-Nonce", nonce)
 		req.Header.Set("X-Embedder-Signature", sig)

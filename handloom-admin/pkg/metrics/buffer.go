@@ -39,8 +39,8 @@ func WithBuffer(ctx context.Context) context.Context {
 }
 
 func bufferFromContext(ctx context.Context) *buffer {
-	if v := ctx.Value(bufferKey{}); v != nil {
-		return v.(*buffer)
+	if b, ok := ctx.Value(bufferKey{}).(*buffer); ok {
+		return b
 	}
 	return nil
 }

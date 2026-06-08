@@ -132,7 +132,7 @@ func (s *PaymentService) HandlePaymentSuccess(ctx context.Context, evt domain.Pa
 		return err
 	}
 
-	if err := s.updatePaymentStatus(ctx, payment.ID, domain.PaymentStatusSuccess, evt, map[string]interface{}{
+	if err = s.updatePaymentStatus(ctx, payment.ID, domain.PaymentStatusSuccess, evt, map[string]interface{}{
 		metaCompletedAt: time.Now().Format(time.RFC3339),
 	}); err != nil {
 		span.EndWithError(err)
@@ -164,19 +164,19 @@ func (s *PaymentService) HandlePaymentSuccess(ctx context.Context, evt domain.Pa
 		// updateOrderStatus above rather than re-reading it.
 		city := order.City
 		if city == "" {
-			city = "unknown"
+			city = labelUnknown
 		}
 		country := order.Country
 		if country == "" {
-			country = "unknown"
+			country = labelUnknown
 		}
 		device := order.DeviceType
 		if device == "" {
-			device = "unknown"
+			device = labelUnknown
 		}
 		utmSource := order.UTMSource
 		if utmSource == "" {
-			utmSource = "unknown"
+			utmSource = labelUnknown
 		}
 
 		// Shared product-purchase signals (product_purchased, coupon_redeemed,

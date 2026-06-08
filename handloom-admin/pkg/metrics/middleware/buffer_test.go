@@ -31,7 +31,7 @@ func TestBuffer_capturesEmits(t *testing.T) {
 		w.WriteHeader(200)
 	}))
 
-	req := httptest.NewRequest("GET", "/", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/", nil)
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
@@ -48,7 +48,7 @@ func TestBuffer_noEmits_noPublish(t *testing.T) {
 		w.WriteHeader(204)
 	}))
 
-	req := httptest.NewRequest("GET", "/", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/", nil)
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 

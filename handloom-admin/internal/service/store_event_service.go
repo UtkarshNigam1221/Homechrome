@@ -58,7 +58,7 @@ func (s *StoreEventService) mapProductViewed(ctx context.Context, evt domain.Sto
 	productID, _ := evt.Properties["product_id"].(string)
 	categoryID, _ := evt.Properties["category_id"].(string)
 	if categoryID == "" {
-		categoryID = "unknown"
+		categoryID = labelUnknown
 	}
 	if productID != "" {
 		metrics.Record(ctx, "product_viewed", metrics.L{
@@ -72,7 +72,7 @@ func (s *StoreEventService) mapProductViewed(ctx context.Context, evt domain.Sto
 func (s *StoreEventService) mapCategoryViewed(ctx context.Context, evt domain.StoreEvent, _ string) {
 	categoryID, _ := evt.Properties["category_id"].(string)
 	if categoryID == "" {
-		categoryID = "unknown"
+		categoryID = labelUnknown
 	}
 	metrics.Record(ctx, "category_viewed", metrics.L{"category_id": categoryID})
 }
@@ -80,7 +80,7 @@ func (s *StoreEventService) mapCategoryViewed(ctx context.Context, evt domain.St
 func (s *StoreEventService) mapOutOfStockShown(ctx context.Context, evt domain.StoreEvent, _ string) {
 	productID, _ := evt.Properties["product_id"].(string)
 	if productID == "" {
-		productID = "unknown"
+		productID = labelUnknown
 	}
 	metrics.Record(ctx, "out_of_stock_shown", metrics.L{"product_id": productID})
 }
@@ -88,7 +88,7 @@ func (s *StoreEventService) mapOutOfStockShown(ctx context.Context, evt domain.S
 func (s *StoreEventService) mapBackInStockNotify(ctx context.Context, evt domain.StoreEvent, _ string) {
 	productID, _ := evt.Properties["product_id"].(string)
 	if productID == "" {
-		productID = "unknown"
+		productID = labelUnknown
 	}
 	metrics.Record(ctx, "back_in_stock_notify_requested", metrics.L{"product_id": productID})
 }
@@ -96,7 +96,7 @@ func (s *StoreEventService) mapBackInStockNotify(ctx context.Context, evt domain
 func (s *StoreEventService) mapCatalogFilterApplied(ctx context.Context, evt domain.StoreEvent, _ string) {
 	filterKey, _ := evt.Properties["filter_key"].(string)
 	if filterKey == "" {
-		filterKey = "unknown"
+		filterKey = labelUnknown
 	}
 	metrics.Record(ctx, "catalog_filter_applied", metrics.L{"filter_key": truncate(filterKey, 32)})
 }
@@ -105,7 +105,7 @@ func (s *StoreEventService) mapRUMJSError(ctx context.Context, evt domain.StoreE
 	pageType, _ := evt.Properties["page_type"].(string)
 	errorType, _ := evt.Properties["error_type"].(string)
 	if pageType == "" {
-		pageType = "other"
+		pageType = labelOther
 	}
 	if errorType == "" {
 		errorType = "Error"
@@ -119,7 +119,7 @@ func (s *StoreEventService) mapRUMJSError(ctx context.Context, evt domain.StoreE
 func (s *StoreEventService) mapRUMPageView(ctx context.Context, evt domain.StoreEvent, device string) {
 	pageType, _ := evt.Properties["page_type"].(string)
 	if pageType == "" {
-		pageType = "other"
+		pageType = labelOther
 	}
 	metrics.Record(ctx, "rum_page_view", metrics.L{
 		"page_type":   pageType,
@@ -143,7 +143,7 @@ func (s *StoreEventService) mapRUMPageView(ctx context.Context, evt domain.Store
 	// Skipped when city/country unknown or lat/lng absent — keeps the table
 	// free of nonsense rows. ON CONFLICT DO NOTHING means repeat emits cost one
 	// round-trip and one no-op.
-	if lat, lng, ok := middleware.GetLatLng(ctx); ok && city != "unknown" && country != "unknown" {
+	if lat, lng, ok := middleware.GetLatLng(ctx); ok && city != labelUnknown && country != labelUnknown {
 		if err := s.centroids.Upsert(ctx, city, country, lat, lng); err != nil {
 			slog.WarnContext(ctx, "centroid upsert failed", "city", city, "country", country, "err", err)
 			// Observable failure signal — constant label keeps cardinality bounded.
@@ -163,7 +163,7 @@ func rumMapper(name string) func(*StoreEventService, context.Context, domain.Sto
 func emitRUM(ctx context.Context, metricName string, evt domain.StoreEvent, device string) {
 	pageType, _ := evt.Properties["page_type"].(string)
 	if pageType == "" {
-		pageType = "other"
+		pageType = labelOther
 	}
 	v := rumValue(evt.Properties["value"])
 	metrics.Record(ctx, metricName, metrics.L{
@@ -173,6 +173,13 @@ func emitRUM(ctx context.Context, metricName string, evt domain.StoreEvent, devi
 	})
 }
 
+// Web-Vitals bucket labels.
+const (
+	rumGood             = "good"
+	rumNeedsImprovement = "needs_improvement"
+	rumPoor             = "poor"
+)
+
 // bucketForRUM returns the Web-Vitals "good / needs-improvement / poor" bucket
 // label for the named metric.
 func bucketForRUM(name string, value float64) string {
@@ -180,42 +187,42 @@ func bucketForRUM(name string, value float64) string {
 	case "rum_lcp":
 		switch {
 		case value <= 2500:
-			return "good"
+			return rumGood
 		case value <= 4000:
-			return "needs_improvement"
+			return rumNeedsImprovement
 		default:
-			return "poor"
+			return rumPoor
 		}
 	case "rum_inp":
 		switch {
 		case value <= 200:
-			return "good"
+			return rumGood
 		case value <= 500:
-			return "needs_improvement"
+			return rumNeedsImprovement
 		default:
-			return "poor"
+			return rumPoor
 		}
 	case "rum_cls":
 		// CLS shipped from client as value*100 (see rum.ts).
 		switch {
 		case value <= 10:
-			return "good"
+			return rumGood
 		case value <= 25:
-			return "needs_improvement"
+			return rumNeedsImprovement
 		default:
-			return "poor"
+			return rumPoor
 		}
 	case "rum_ttfb":
 		switch {
 		case value <= 800:
-			return "good"
+			return rumGood
 		case value <= 1800:
-			return "needs_improvement"
+			return rumNeedsImprovement
 		default:
-			return "poor"
+			return rumPoor
 		}
 	}
-	return "unknown"
+	return labelUnknown
 }
 
 // rumValue coerces the beacon-shipped value (number-as-JSON or string) to a float.

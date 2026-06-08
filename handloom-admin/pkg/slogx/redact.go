@@ -21,7 +21,7 @@ var dropKeys = []string{
 
 // RedactingHandler wraps another slog.Handler and scrubs PII attribute values
 // before forwarding the record. Keys are matched case-insensitively at word
-// boundaries (start, end, or non-alphanumeric neighbour), so "user_password"
+// boundaries (start, end, or non-alphanumeric neighbor), so "user_password"
 // IS redacted (token match around `_`) while "span_id" is NOT (the `pan`
 // token is surrounded by alphanumerics on both sides).
 type RedactingHandler struct {

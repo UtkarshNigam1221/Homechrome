@@ -154,8 +154,9 @@ func (d *deps) handleSearch(w http.ResponseWriter, r *http.Request) {
 }
 
 // parseSearchRequest builds a SearchRequest from query-string params:
-//   q, limit, cursor, category_id, min_price, max_price, in_stock,
-//   material, color, af_<name>=val1,val2
+//
+//	q, limit, cursor, category_id, min_price, max_price, in_stock,
+//	material, color, af_<name>=val1,val2
 func parseSearchRequest(r *http.Request) emb.SearchRequest {
 	q := r.URL.Query()
 	req := emb.SearchRequest{

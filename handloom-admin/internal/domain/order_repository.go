@@ -81,7 +81,7 @@ type CustomerRepository interface {
 
 	// IncrementOrderCount atomically increments the customer's OrderCount by 1
 	// and returns the new count. Uses DynamoDB ADD with ReturnValues=UPDATED_NEW,
-	// which initialises the attribute to 0 if absent (so first-ever increment returns 1).
+	// which initializes the attribute to 0 if absent (so first-ever increment returns 1).
 	IncrementOrderCount(ctx context.Context, customerID string) (int64, error)
 }
 

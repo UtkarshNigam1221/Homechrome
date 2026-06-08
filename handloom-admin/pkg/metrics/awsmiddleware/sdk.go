@@ -22,7 +22,7 @@ func ServiceName() string {
 }
 
 // Instrument appends both the OpenTelemetry tracing middleware (otelaws) and
-// the aws_sdk_call{} metric middleware to cfg, labelled with ServiceName().
+// the aws_sdk_call{} metric middleware to cfg, labeled with ServiceName().
 // Call once on every aws.Config built for a Lambda or local process.
 func Instrument(cfg *aws.Config) {
 	otelaws.AppendMiddlewares(&cfg.APIOptions)

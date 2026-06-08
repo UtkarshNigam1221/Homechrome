@@ -30,6 +30,9 @@ func Flush(ctx context.Context) error {
 	if len(events) == 0 {
 		return nil
 	}
-	p := defaultPublisher.Load().(publisherHolder).p
-	return p.Publish(ctx, events)
+	holder, _ := defaultPublisher.Load().(publisherHolder)
+	if holder.p == nil {
+		return nil
+	}
+	return holder.p.Publish(ctx, events)
 }

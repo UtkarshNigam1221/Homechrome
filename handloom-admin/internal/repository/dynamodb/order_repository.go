@@ -547,7 +547,7 @@ func (r *CustomerRepository) Search(ctx context.Context, query string, paginatio
 }
 
 // IncrementOrderCount atomically bumps the customer's OrderCount by 1 and
-// returns the new value. DynamoDB ADD initialises the attribute to 0 when it
+// returns the new value. DynamoDB ADD initializes the attribute to 0 when it
 // does not yet exist, so the very first call always returns 1. Using
 // ReturnValues=UPDATED_NEW means callers can gate first-purchase logic on
 // newCount==1 without a separate read, closing the concurrent-payment race.

@@ -192,5 +192,3 @@ func auditRoutes(h *handler.AuditHandler) chi.Router {
 	r.Get("/user/{id}", h.GetByUser)
 	return r
 }
-
-

@@ -1,5 +1,4 @@
-import { useMemo } from 'react';
-
+import { useEffect, useMemo, useState } from 'react';
 import { create } from 'zustand';
 
 // Time-range presets the dashboards offer. `custom` opens a date picker.
@@ -36,18 +35,27 @@ function rangeToMs(range: Range): number {
   }
 }
 
+// minuteBucket returns the epoch-ms of the start of the current minute.
+function currentMinuteBucket(): number {
+  return Math.floor(Date.now() / 60_000) * 60_000;
+}
+
 // useResolvedRange returns memoised {from, to} for the current range.
-// `from` and `to` reset to a stable bucket aligned to the START of the
-// current minute, so calling this hook every render does NOT produce a
-// new Date object each tick (which would cause infinite useQuery refetches).
+// `from` and `to` align to a bucket at the START of the current minute, so
+// calling this hook every render does NOT produce a new Date object each tick
+// (which would cause infinite useQuery refetches). The bucket lives in state
+// and is advanced by a timer — reading Date.now() during render is impure.
 export function useResolvedRange(): { from: Date; to: Date } {
   const range = useDashboardFilters((s) => s.range);
   const customFromMs = useDashboardFilters((s) => s.customFrom?.getTime());
   const customToMs = useDashboardFilters((s) => s.customTo?.getTime());
 
-  // Round to the current minute → stable reference within a 60s window.
-  // Window advances every minute, which is acceptable refresh cadence.
-  const minuteBucket = useMemo(() => Math.floor(Date.now() / 60_000) * 60_000, []);
+  // Seeded once (lazy init), then advanced every minute by the timer below.
+  const [minuteBucket, setMinuteBucket] = useState(currentMinuteBucket);
+  useEffect(() => {
+    const id = setInterval(() => setMinuteBucket(currentMinuteBucket()), 60_000);
+    return () => clearInterval(id);
+  }, []);
 
   return useMemo(() => {
     if (range === 'custom' && customFromMs && customToMs) {

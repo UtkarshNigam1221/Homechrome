@@ -194,22 +194,22 @@ func (s *OrderService) Create(ctx context.Context, req domain.CreateOrderRequest
 
 	// Emit KPI metrics for the placed order (admin channel — this is the admin-facing Create path).
 	// Admin orders have no geo context; use "unknown" for country/city.
-	metrics.Record(ctx, "orders_placed", metrics.L{"country": "unknown", "city": "unknown"})
+	metrics.Record(ctx, "orders_placed", metrics.L{"country": labelUnknown, "city": labelUnknown})
 	metrics.RecordSum(ctx, "orders_value", order.TotalAmount, metrics.L{
-		"country": "unknown", "city": "unknown", "gateway": string(domain.PaymentMethodUPI),
+		"country": labelUnknown, "city": labelUnknown, "gateway": string(domain.PaymentMethodUPI),
 	})
 	metrics.Record(ctx, "cart_size", metrics.L{
-		"country": "unknown",
+		"country": labelUnknown,
 		"bucket":  metrics.BucketForCartSize(len(order.Items)),
 	})
 
 	// Product-analytics signals (fire-and-forget). Admin-placed orders have no
 	// visitor context (no CloudFront headers), so all attribution is "unknown".
 	recordPurchaseAnalytics(ctx, s.customerRepo, order, purchaseAttribution{
-		country:   "unknown",
-		city:      "unknown",
-		device:    "unknown",
-		utmSource: "unknown",
+		country:   labelUnknown,
+		city:      labelUnknown,
+		device:    labelUnknown,
+		utmSource: labelUnknown,
 	})
 
 	// Reserve inventory — track failures for visibility
@@ -447,7 +447,7 @@ func normaliseCancelReason(reason string) string {
 	case strings.Contains(r, "customer"):
 		return "customer_request"
 	default:
-		return "other"
+		return labelOther
 	}
 }
 

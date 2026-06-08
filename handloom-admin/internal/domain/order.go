@@ -56,7 +56,7 @@ type Order struct {
 	// and persisted here so downstream payment/order-placed metrics can read
 	// them without relying on the gateway webhook's request context. No `state`
 	// field: the geo pipeline is country/city only (CloudFront does not resolve
-	// state, and migration 010 purges any state-labelled metrics).
+	// state, and migration 010 purges any state-labeled metrics).
 	Country    string `json:"country,omitempty"     dynamodbav:"country,omitempty"`
 	City       string `json:"city,omitempty"        dynamodbav:"city,omitempty"`
 	DeviceType string `json:"device_type,omitempty" dynamodbav:"device_type,omitempty"`

@@ -3,6 +3,11 @@
 
 # Claude Code
 .claude/worktrees/
+.claude/skills/
+
+# AI agent tooling (local only — not part of the repo)
+.agents/
+skills-lock.json
 
 # Superpowers
 .superpowers/

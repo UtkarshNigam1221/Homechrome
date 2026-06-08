@@ -11,7 +11,7 @@ import (
 // ortOnce ensures the ORT environment is initialized exactly once per process.
 var (
 	ortOnce    sync.Once
-	ortInitErr error
+	errOrtInit error
 )
 
 // ONNXSession wraps a loaded ONNX model session plus the tokenizer.
@@ -49,10 +49,10 @@ func NewONNXSession(modelPath, libPath, tokenizerPath string, maxLen int) (*ONNX
 		if libPath != "" {
 			ort.SetSharedLibraryPath(libPath)
 		}
-		ortInitErr = ort.InitializeEnvironment()
+		errOrtInit = ort.InitializeEnvironment()
 	})
-	if ortInitErr != nil {
-		return nil, fmt.Errorf("onnxruntime init: %w", ortInitErr)
+	if errOrtInit != nil {
+		return nil, fmt.Errorf("onnxruntime init: %w", errOrtInit)
 	}
 
 	tok, err := NewTokenizer(tokenizerPath, maxLen)

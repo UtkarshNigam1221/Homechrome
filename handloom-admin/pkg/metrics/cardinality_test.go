@@ -91,7 +91,7 @@ func TestNoUnknownLabelsInMetricsRecord(t *testing.T) {
 		fset := token.NewFileSet()
 		node, err := parser.ParseFile(fset, path, nil, 0)
 		if err != nil {
-			return nil
+			return nil //nolint:nilerr // skip files that don't parse; not a walk error
 		}
 
 		ast.Inspect(node, func(n ast.Node) bool {

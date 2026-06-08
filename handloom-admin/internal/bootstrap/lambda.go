@@ -1,4 +1,4 @@
-// Package bootstrap centralises Lambda main-function setup so every
+// Package bootstrap centralizes Lambda main-function setup so every
 // cmd/lambda/* entry point shares the same init steps.
 package bootstrap
 
@@ -42,7 +42,7 @@ func InitLambda(serviceName string) *LambdaContext {
 		cfg.Telemetry.Environment,
 	)
 
-	// Initialise the SQS-backed metrics publisher (no-op when METRICS_QUEUE_URL
+	// Initialize the SQS-backed metrics publisher (no-op when METRICS_QUEUE_URL
 	// is unset — e.g. the consumer Lambda, local dev). Shared with the embedder
 	// Lambda via awsmiddleware so the wiring lives in one place.
 	awsmiddleware.InitSQSMetricsPublisher(context.Background(), cfg.Telemetry.ServiceName)

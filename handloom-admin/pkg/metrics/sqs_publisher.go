@@ -92,7 +92,7 @@ func (p *SQSPublisher) sendChunk(ctx context.Context, events []Event) error {
 	return fmt.Errorf("metrics: SQS publish failed after 3 attempts: %w", lastErr)
 }
 
-// chunkEvents splits events into groups whose marshalled JSON body stays under
+// chunkEvents splits events into groups whose marshaled JSON body stays under
 // maxSQSBodyBytes. An event whose own size exceeds the budget is emitted as a
 // singleton chunk (it will fail at SQS and be logged rather than silently
 // dropping the whole batch).

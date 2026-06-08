@@ -29,7 +29,7 @@ func ForceFlush(ctx context.Context) {
 
 // MustInit boots the tracer provider from env config and returns a shutdown
 // closure. Panics on construction failure — telemetry init must be
-// deterministic. Honours OTEL_SDK_DISABLED=true as an emergency kill switch.
+// deterministic. Honors OTEL_SDK_DISABLED=true as an emergency kill switch.
 func MustInit(serviceName, serviceVersion, environment string) Shutdown {
 	if os.Getenv("OTEL_SDK_DISABLED") == "true" {
 		slog.Info("telemetry disabled via OTEL_SDK_DISABLED")
@@ -55,7 +55,8 @@ func MustInit(serviceName, serviceVersion, environment string) Shutdown {
 	}
 	globalTracerProvider = tp
 
-	slog.Info("telemetry initialized",
+	// All attrs are operator-supplied build/env config, not user input.
+	slog.Info("telemetry initialized", //nolint:gosec // G706: operator env/build config, not user input
 		"version", serviceVersion,
 		"environment", environment,
 		"endpoint", endpoint,

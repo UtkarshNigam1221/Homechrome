@@ -55,8 +55,8 @@ func (s *CartService) AddItem(ctx context.Context, cartOwner string, isGuest boo
 		return nil, errors.BadRequest("Product is not available")
 	}
 
-	if err := s.validateStock(ctx, req.ProductID, req.Quantity); err != nil {
-		return nil, err
+	if stockErr := s.validateStock(ctx, req.ProductID, req.Quantity); stockErr != nil {
+		return nil, stockErr
 	}
 
 	pk := cartPK(cartOwner)

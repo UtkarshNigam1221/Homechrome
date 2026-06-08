@@ -32,5 +32,6 @@ func InitSQSMetricsPublisher(ctx context.Context, serviceName string) {
 	}
 	awsCfg.APIOptions = append(awsCfg.APIOptions, With(serviceName))
 	pkgmetrics.SetDefault(pkgmetrics.NewSQSPublisher(sqs.NewFromConfig(awsCfg), qURL))
-	slog.Info("metrics: SQS publisher initialised", "queue_url", qURL)
+	// queue_url is operator-supplied env config (METRICS_QUEUE_URL), not user input.
+	slog.Info("metrics: SQS publisher initialized", "queue_url", qURL) //nolint:gosec // G706: operator env config, not user input
 }

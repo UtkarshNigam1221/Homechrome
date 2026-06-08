@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -19,7 +20,7 @@ func TestGeoExtractor_PopulatesContext(t *testing.T) {
 		gotSrc, gotMed, gotCamp = GetUTM(r.Context())
 	}))
 
-	req := httptest.NewRequest("GET", "/x", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/x", nil)
 	req.Header.Set(VisitorHeader,
 		"city=Hyderabad;country=in;lat=17.3850;lng=78.4867;"+
 			"device=Mobile;utm_source=Google;utm_medium=CPC;utm_campaign=Diwali_2026")
@@ -50,7 +51,7 @@ func TestGeoExtractor_URLDecodesValues(t *testing.T) {
 
 	// Campaign with a `;` in it — URL-encoded by packer so it doesn't split
 	// the visitor-header pairs.
-	req := httptest.NewRequest("GET", "/x", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/x", nil)
 	req.Header.Set(VisitorHeader, "utm_campaign=spring%3Bsale")
 	h.ServeHTTP(httptest.NewRecorder(), req)
 
@@ -71,7 +72,7 @@ func TestGeoExtractor_DefaultsToUnknown(t *testing.T) {
 		gotSrc, gotMed, gotCamp = GetUTM(r.Context())
 	}))
 
-	req := httptest.NewRequest("GET", "/x", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/x", nil)
 	h.ServeHTTP(httptest.NewRecorder(), req)
 
 	if gotCity != "unknown" {

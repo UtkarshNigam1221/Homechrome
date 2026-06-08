@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
+
 	"github.com/handloom/admin/pkg/metrics"
 )
 
@@ -44,7 +45,7 @@ func HTTPServer(service string) func(http.Handler) http.Handler {
 }
 
 // statusOrOK treats an unwritten status (0) as 200, matching net/http's
-// implicit-200-on-first-write behaviour.
+// implicit-200-on-first-write behavior.
 func statusOrOK(code int) int {
 	if code == 0 {
 		return http.StatusOK

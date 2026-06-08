@@ -14,6 +14,9 @@ import (
 	"github.com/handloom/admin/pkg/metrics"
 )
 
+// coupon validation outcome label (repeated across validation branches).
+const outcomeInvalid = "invalid"
+
 // CouponService implements domain.CouponService
 type CouponService struct {
 	couponRepo domain.CouponRepository
@@ -173,13 +176,13 @@ func (s *CouponService) Validate(ctx context.Context, code string, orderTotal in
 
 	coupon, _ := s.couponRepo.GetByCode(ctx, strings.ToUpper(code))
 	if coupon == nil {
-		outcome = "invalid"
+		outcome = outcomeInvalid
 		return s.invalidCouponResult(code, "Coupon not found"), nil
 	}
 
 	// Check status
 	if coupon.Status != domain.CouponStatusActive {
-		outcome = "invalid"
+		outcome = outcomeInvalid
 		return &domain.CouponValidationResult{
 			Valid:        false,
 			Code:         code,
@@ -190,7 +193,7 @@ func (s *CouponService) Validate(ctx context.Context, code string, orderTotal in
 	// Check validity dates
 	now := time.Now()
 	if now.Before(coupon.ValidFrom) {
-		outcome = "invalid"
+		outcome = outcomeInvalid
 		return &domain.CouponValidationResult{
 			Valid:        false,
 			Code:         code,
@@ -208,7 +211,7 @@ func (s *CouponService) Validate(ctx context.Context, code string, orderTotal in
 
 	// Check minimum order value
 	if orderTotal < coupon.MinOrderValue {
-		outcome = "invalid"
+		outcome = outcomeInvalid
 		return &domain.CouponValidationResult{
 			Valid:        false,
 			Code:         code,

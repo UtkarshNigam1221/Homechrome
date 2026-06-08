@@ -1210,7 +1210,7 @@ func TestProductService_Update_NoDeleteAssetIfUpdateFails(t *testing.T) {
 
 // newServiceWithEmbedder builds a ProductService backed by fresh mocks and the
 // supplied Embedder stub. UpsertProductWithEmbedding is registered as
-// AnyTimes so callers only need to assert the embedder behaviour.
+// AnyTimes so callers only need to assert the embedder behavior.
 func newServiceWithEmbedder(t *testing.T, emb Embedder) (
 	*ProductService,
 	*mocks.MockProductRepository,

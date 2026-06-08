@@ -28,7 +28,7 @@ func NewTokenizer(path string, maxLen int) (*Tokenizer, error) {
 }
 
 // Close releases the underlying tokenizer resources.
-func (t *Tokenizer) Close() { t.inner.Close() }
+func (t *Tokenizer) Close() { _ = t.inner.Close() }
 
 // Encode tokenizes text, truncates to maxLen, and pads with zeros to exactly
 // maxLen. Returns parallel int64 slices for input IDs and attention mask
