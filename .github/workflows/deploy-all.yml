@@ -1,0 +1,51 @@
+name: Deploy All
+
+# One-click build + deploy of all three projects (backend API, admin frontend,
+# storefront) to a single environment. Backend deploys first so the API is up
+# before the two frontends; admin + store then run in parallel.
+#
+# Each project's workflow owns its own build→deploy split (separate jobs with
+# artifact handoff); this orchestrator only sequences them via `workflow_call`.
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy'
+        required: true
+        type: choice
+        options: [dev, prod]
+        default: dev
+      branch:
+        description: 'Branch/ref to build & deploy across all three projects (prod requires main)'
+        required: false
+        type: string
+        default: main
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  backend:
+    uses: ./.github/workflows/deploy-backend.yml
+    with:
+      environment: ${{ inputs.environment }}
+      branch: ${{ inputs.branch }}
+    secrets: inherit
+
+  admin-frontend:
+    needs: backend
+    uses: ./.github/workflows/deploy-admin-frontend.yml
+    with:
+      environment: ${{ inputs.environment }}
+      branch: ${{ inputs.branch }}
+    secrets: inherit
+
+  store:
+    needs: backend
+    uses: ./.github/workflows/deploy-store.yml
+    with:
+      environment: ${{ inputs.environment }}
+      branch: ${{ inputs.branch }}
+    secrets: inherit

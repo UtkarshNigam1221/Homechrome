@@ -34,7 +34,7 @@ import {
   totalCount,
 } from '../lib/aggregate';
 
-// caveman RUM + service health. 8 panels.
+// RUM + service-health dashboard — 8 panels.
 
 const RUM_METRICS = [
   'rum_lcp',

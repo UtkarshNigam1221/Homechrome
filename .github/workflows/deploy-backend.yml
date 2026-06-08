@@ -12,6 +12,24 @@ on:
         type: choice
         options: [dev, prod]
         default: dev
+      branch:
+        description: 'Branch/ref to build & deploy (prod requires main)'
+        required: false
+        type: string
+        default: main
+
+  # Allows the deploy-all orchestrator to invoke this workflow.
+  workflow_call:
+    inputs:
+      environment:
+        description: 'Environment to deploy'
+        required: true
+        type: string
+      branch:
+        description: 'Branch/ref to build & deploy'
+        required: false
+        type: string
+        default: main
 
 permissions:
   id-token: write
@@ -27,6 +45,8 @@ jobs:
         working-directory: handloom-admin
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.branch }}
 
       - uses: actions/setup-go@v6
         with:
@@ -50,27 +70,79 @@ jobs:
       - name: Build check
         run: make build-lambdas-active
 
+  build:
+    name: Build Lambdas
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Guard prod deploy from non-main branches
+        if: inputs.environment == 'prod' && inputs.branch != 'main'
+        run: |
+          echo "::error::Prod deploy must target main. Chosen branch: ${{ inputs.branch }}"
+          exit 1
+
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.branch }}
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.25'
+          cache-dependency-path: handloom-admin/go.sum
+
+      - name: Build active Lambdas
+        working-directory: handloom-admin
+        run: make build-lambdas-active
+
+      # tar before upload: actions/upload-artifact does not preserve the Unix
+      # executable bit, and provided.al2023 requires an executable `bootstrap`.
+      - name: Package binaries
+        working-directory: handloom-admin
+        run: tar czf lambda-bin.tar.gz bin/lambda
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: backend-lambdas-${{ inputs.environment }}
+          path: handloom-admin/lambda-bin.tar.gz
+          retention-days: 1
+          if-no-files-found: error
+
   deploy:
     name: Deploy
-    if: github.event_name == 'workflow_dispatch'
+    needs: build
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: handloom-admin
     steps:
       - name: Guard prod deploy from non-main branches
-        if: inputs.environment == 'prod' && github.ref != 'refs/heads/main'
+        if: inputs.environment == 'prod' && inputs.branch != 'main'
         run: |
-          echo "::error::Prod deploy must be triggered from main. Current ref: ${{ github.ref }}"
+          echo "::error::Prod deploy must target main. Chosen branch: ${{ inputs.branch }}"
           exit 1
 
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.branch }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: backend-lambdas-${{ inputs.environment }}
+          path: handloom-admin
+
+      - name: Unpack binaries
+        run: |
+          tar xzf lambda-bin.tar.gz
+          # restore exec bit the artifact round-trip may have dropped
+          chmod +x bin/lambda/*/bootstrap
 
       - uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
 
+      # CDK app is `go run ./cmd/` — Go is required to synth/deploy.
       - uses: actions/setup-go@v6
         with:
           go-version: '1.25'
@@ -106,9 +178,6 @@ jobs:
             echo "::error::POSTGRES_DSN is missing or empty in BACKEND_ENV_${{ inputs.environment }}." >&2
             exit 1
           fi
-
-      - name: Build Lambdas
-        run: make build-lambdas-active
 
       - name: CDK Deploy
         env:

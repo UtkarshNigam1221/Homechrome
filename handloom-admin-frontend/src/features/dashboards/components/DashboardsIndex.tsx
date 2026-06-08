@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 
-// caveman landing tab. quick-link cards to each sub-dashboard
+// Landing tab: quick-link cards to each sub-dashboard.
 
 const CARDS = [
   {

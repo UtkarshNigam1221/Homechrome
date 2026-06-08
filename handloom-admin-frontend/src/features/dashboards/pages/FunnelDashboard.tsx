@@ -27,7 +27,7 @@ import {
 import { useMetricBuckets } from '../hooks/useMetricBuckets';
 import { groupByLabel, totalCount } from '../lib/aggregate';
 
-// caveman funnel page. 5 KPIs + 4 ratios + timeseries + device + UTM table
+// Funnel page: 5 KPIs + 4 ratios + timeseries + device + UTM table.
 
 // Funnel-top is site_visitor (every page load, anonymous-friendly).
 // session_started fires on OTP verify so it's downstream of visit and

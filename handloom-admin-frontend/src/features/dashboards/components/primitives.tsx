@@ -6,7 +6,7 @@ import type { BucketRow } from '@/shared/api/neonDataApi';
 
 import { aggregateByTime } from '../lib/aggregate';
 
-// caveman shared cards. no logic, just chrome.
+// Shared presentational primitives for dashboards — no business logic.
 
 // Shared <thead> styling for dashboard data tables. stickyTableHeadClass pins
 // the header for scrollable panels (adds the same classes Tailwind-wise).

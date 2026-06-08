@@ -1,7 +1,7 @@
 import type { BucketRow } from '@/shared/api/neonDataApi';
 
-// caveman aggregate row -> chart-ready shape
-// all helpers pure. no fetch, no state.
+// Pure helpers turning metric_counters rows into chart-ready shapes.
+// No fetching, no state.
 
 /**
  * Sum all `count` fields. Default reducer for "how many events in window".
