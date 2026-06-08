@@ -23,9 +23,13 @@ func SetDefault(p Publisher) {
 // It is a no-op when the buffer is empty or absent.
 func Flush(ctx context.Context) error {
 	buf := bufferFromContext(ctx)
-	if buf == nil || len(buf.events) == 0 {
+	if buf == nil {
+		return nil
+	}
+	events := buf.snapshot()
+	if len(events) == 0 {
 		return nil
 	}
 	p := defaultPublisher.Load().(publisherHolder).p
-	return p.Publish(ctx, buf.events)
+	return p.Publish(ctx, events)
 }

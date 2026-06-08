@@ -4,8 +4,8 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
-  FunnelChart,
   Funnel,
+  FunnelChart,
   LabelList,
   Pie,
   PieChart,
@@ -44,7 +44,15 @@ const FUNNEL_METRICS = [
 // for the Authentication + Attribution sections — both are parallel signals
 // (OTP-verified users, channel-attributed new customers). Module-level so the
 // reference stays stable across renders for useMetricBuckets.
-const FETCH_METRICS = [...FUNNEL_METRICS, 'session_started', 'customer_first_purchase'];
+// payment_initiated (emitted by PaymentService.InitiatePayment) is fetched so
+// the Checkout->Pay-Initiated and Pay-Completion ratios have a real
+// intermediate denominator instead of collapsing onto checkout_initiated.
+const FETCH_METRICS = [
+  ...FUNNEL_METRICS,
+  'payment_initiated',
+  'session_started',
+  'customer_first_purchase',
+];
 
 // distinct colors per funnel stage
 const STAGE_COLOR: Record<string, string> = {
@@ -187,8 +195,12 @@ export function FunnelDashboard() {
   // so anonymous browsers count too (session_started used to skip them).
   const rateVisitorCart = pct(counts.cart_added, counts.site_visitor);
   const rateCartCheckout = pct(counts.checkout_initiated, counts.cart_added);
-  const rateCheckoutPayInit = pct(counts.payment_completed, counts.checkout_initiated);
-  const ratePayCompletion = pct(counts.payment_completed, counts.checkout_initiated);
+  // Checkout -> Pay Initiated: how many started checkout actually reached the
+  // payment gateway. Pay Completion: of those, how many gateway payments
+  // succeeded. Distinct denominators — previously both divided by
+  // checkout_initiated, making the two tiles always identical.
+  const rateCheckoutPayInit = pct(counts.payment_initiated, counts.checkout_initiated);
+  const ratePayCompletion = pct(counts.payment_completed, counts.payment_initiated);
 
   // Hero TL;DR — one-line answer to "is this period good or bad?".
   const heroVisitors = counts.site_visitor ?? 0;

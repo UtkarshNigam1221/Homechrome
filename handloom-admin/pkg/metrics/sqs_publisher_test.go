@@ -2,7 +2,9 @@ package metrics
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -68,4 +70,37 @@ func TestSQSPublisher_emptyEventsNoOp(t *testing.T) {
 	err := p.Publish(context.Background(), nil)
 	require.NoError(t, err)
 	assert.Equal(t, 0, fake.calls)
+}
+
+func TestSQSPublisher_chunksOversizedBatch(t *testing.T) {
+	defer zeroDelays()()
+
+	// 20 events of ~30 KB each ≈ 600 KB total — must split into several
+	// messages, each under maxSQSBodyBytes (240 KB).
+	big := strings.Repeat("x", 30*1024)
+	events := make([]Event, 20)
+	for i := range events {
+		events[i] = Event{Metric: "m", Labels: L{"reason": big}, Value: 1}
+	}
+
+	fake := &fakeSQS{}
+	p := NewSQSPublisher(fake, "https://sqs.test/queue")
+	require.NoError(t, p.Publish(context.Background(), events))
+	assert.Greater(t, fake.calls, 1, "oversized batch should be split into multiple messages")
+}
+
+func TestChunkEvents_keepsChunksUnderLimit(t *testing.T) {
+	big := strings.Repeat("y", 50*1024)
+	events := make([]Event, 12)
+	for i := range events {
+		events[i] = Event{Metric: "m", Labels: L{"reason": big}}
+	}
+	chunks, err := chunkEvents(events)
+	require.NoError(t, err)
+	require.Greater(t, len(chunks), 1)
+	for _, c := range chunks {
+		body, err := json.Marshal(c)
+		require.NoError(t, err)
+		assert.LessOrEqual(t, len(body), maxSQSBodyBytes)
+	}
 }

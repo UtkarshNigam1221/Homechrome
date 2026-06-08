@@ -10,6 +10,11 @@ const BATCH_SIZE = 10;
 const FLUSH_INTERVAL_MS = 30_000;
 const API_URL = ROUTES.EVENTS;
 
+// Per-request body budget. The Fetch spec caps total in-flight keepalive body
+// size at 64 KB per origin; a large unload/visibility flush above that is
+// silently dropped. We chunk each flush so no single request exceeds this.
+const MAX_KEEPALIVE_BYTES = 60_000;
+
 // Kill-switch: default on. Set NEXT_PUBLIC_ANALYTICS_ENABLED=false to disable.
 const ENABLED = process.env.NEXT_PUBLIC_ANALYTICS_ENABLED !== "false";
 
@@ -49,7 +54,6 @@ function flush() {
   if (eventBuffer.length === 0) return;
 
   const batch = eventBuffer.splice(0);
-  const body = JSON.stringify({ events: batch });
 
   // fetch+keepalive instead of navigator.sendBeacon because sendBeacon
   // cannot set custom request headers (spec-level limitation) and we
@@ -63,15 +67,38 @@ function flush() {
   const visitor = buildVisitorHeader();
   if (visitor) headers[VISITOR_HEADER] = visitor;
 
-  fetch(API_URL, {
-    method: "POST",
-    body,
-    headers,
-    keepalive: true,
-  }).catch(() => {
-    // Beacon endpoint is fire-and-forget — never let a network error
-    // surface to the user.
-  });
+  for (const chunk of chunkBySize(batch)) {
+    fetch(API_URL, {
+      method: "POST",
+      body: JSON.stringify({ events: chunk }),
+      headers,
+      keepalive: true,
+    }).catch(() => {
+      // Beacon endpoint is fire-and-forget — never let a network error
+      // surface to the user.
+    });
+  }
+}
+
+// chunkBySize splits events into groups whose serialized body stays under the
+// keepalive limit. An event larger than the budget on its own is still sent
+// alone rather than dropping the whole batch.
+function chunkBySize(events: TrackingEvent[]): TrackingEvent[][] {
+  const chunks: TrackingEvent[][] = [];
+  let current: TrackingEvent[] = [];
+  let size = 0;
+  for (const ev of events) {
+    const evSize = JSON.stringify(ev).length + 1; // + separator
+    if (current.length > 0 && size + evSize > MAX_KEEPALIVE_BYTES) {
+      chunks.push(current);
+      current = [];
+      size = 0;
+    }
+    current.push(ev);
+    size += evSize;
+  }
+  if (current.length > 0) chunks.push(current);
+  return chunks;
 }
 
 export function track(

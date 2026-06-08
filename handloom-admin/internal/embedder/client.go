@@ -61,12 +61,12 @@ type embedResponse struct {
 // `https:///embed`; routing works either way but `r.Host` would otherwise
 // be an empty string for any future middleware that inspects it.
 type apiGwV1Request struct {
-	HTTPMethod     string             `json:"httpMethod"`
-	Path           string             `json:"path"`
-	Headers        map[string]string  `json:"headers"`
-	Body           string             `json:"body"`
-	IsBase64       bool               `json:"isBase64Encoded"`
-	RequestContext apiGwV1RequestCtx  `json:"requestContext"`
+	HTTPMethod     string            `json:"httpMethod"`
+	Path           string            `json:"path"`
+	Headers        map[string]string `json:"headers"`
+	Body           string            `json:"body"`
+	IsBase64       bool              `json:"isBase64Encoded"`
+	RequestContext apiGwV1RequestCtx `json:"requestContext"`
 }
 type apiGwV1RequestCtx struct {
 	DomainName string `json:"domainName"`

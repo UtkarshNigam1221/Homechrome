@@ -277,4 +277,3 @@ type ListInventoryResponse struct {
 	Inventories []*Inventory       `json:"inventories"`
 	Pagination  PaginationResponse `json:"pagination"`
 }
-

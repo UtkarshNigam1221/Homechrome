@@ -96,6 +96,16 @@ jobs:
           else
             echo "${{ secrets.BACKEND_ENV_DEV }}" > .env.deploy
           fi
+          # Fail fast: an unset/empty BACKEND_ENV_* secret would otherwise deploy
+          # Lambdas with no POSTGRES_DSN and only surface as runtime failures.
+          if [ ! -s .env.deploy ]; then
+            echo "::error::.env.deploy is empty — BACKEND_ENV_${{ inputs.environment }} secret is unset or blank." >&2
+            exit 1
+          fi
+          if ! grep -q '^POSTGRES_DSN=.\+' .env.deploy; then
+            echo "::error::POSTGRES_DSN is missing or empty in BACKEND_ENV_${{ inputs.environment }}." >&2
+            exit 1
+          fi
 
       - name: Build Lambdas
         run: make build-lambdas-active

@@ -47,17 +47,41 @@ client.interceptors.request.use(async (config) => {
  *   select — projection (e.g. metric,bucket_start,count)
  *   limit — row cap
  */
+// Tables the dashboards are allowed to read. RLS + role grants on the Neon side
+// are the real security boundary; this allowlist is defense-in-depth so a typo
+// or future code path can't point the browser at an unintended table.
+const ALLOWED_TABLES = new Set(['metric_counters', 'city_centroids']);
+
 export async function fetchRows<T = Record<string, unknown>>(
   table: string,
   params: Record<string, string | number | undefined>
 ): Promise<T[]> {
+  if (!ALLOWED_TABLES.has(table)) {
+    throw new Error(`neonDataApi: table "${table}" is not in the dashboard allowlist`);
+  }
   // strip empty/undefined params — Data API rejects empty strings as filters
   const clean: Record<string, string> = {};
   for (const [k, v] of Object.entries(params)) {
     if (v !== undefined && v !== '') clean[k] = String(v);
   }
-  const { data } = await client.get<T[]>(`/rest/v1/${table}`, { params: clean });
-  return data;
+  const res = await client.get<T[]>(`/rest/v1/${table}`, { params: clean });
+  warnIfTruncated(table, res.headers['content-range'], res.data.length);
+  return res.data;
+}
+
+// PostgREST returns a Content-Range header (e.g. "0-9999/52340") when
+// Prefer: count=exact is set. If the total exceeds the rows we got back, the
+// client-side aggregation is operating on a silently truncated set and the
+// dashboard numbers are wrong — surface that loudly rather than hiding it.
+function warnIfTruncated(table: string, contentRange: unknown, returned: number): void {
+  if (typeof contentRange !== 'string') return;
+  const total = Number(contentRange.split('/')[1]);
+  if (Number.isFinite(total) && total > returned) {
+    console.error(
+      `neonDataApi: "${table}" returned ${returned} of ${total} rows — results are truncated and ` +
+        `aggregated dashboard values will be INCORRECT. Narrow the time range or raise the row limit.`
+    );
+  }
 }
 
 // ─── High-level query helpers tailored to metric_counters ───

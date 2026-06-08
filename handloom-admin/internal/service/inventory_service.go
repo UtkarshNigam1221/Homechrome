@@ -6,6 +6,7 @@ import (
 	"log/slog"
 
 	"github.com/handloom/admin/internal/domain"
+	"github.com/handloom/admin/pkg/metrics"
 )
 
 // InventoryService implements domain.InventoryService
@@ -55,6 +56,8 @@ func (s *InventoryService) RemoveStock(ctx context.Context, productID string, re
 
 	slog.InfoContext(ctx, "Removed stock", keyProductID, productID, "quantity", req.Quantity)
 
+	s.emitStockLevelMetrics(ctx, productID)
+
 	return &domain.InventoryTransactionResult{
 		ProductID:        productID,
 		PreviousQuantity: txn.PreviousQty,
@@ -63,6 +66,23 @@ func (s *InventoryService) RemoveStock(ctx context.Context, productID string, re
 		AvailableQty:     txn.NewQty,
 		TransactionID:    txn.ID,
 	}, nil
+}
+
+// emitStockLevelMetrics records out-of-stock / low-stock signals after a stock
+// removal. Replaces the InventoryOutOfStock / InventoryLowStock events the old
+// event system emitted. Best-effort: a failed read is logged, never returned.
+func (s *InventoryService) emitStockLevelMetrics(ctx context.Context, productID string) {
+	inv, err := s.inventoryRepo.GetByProductID(ctx, productID)
+	if err != nil {
+		slog.WarnContext(ctx, "Failed to read inventory for stock-level metrics", keyProductID, productID, "error", err)
+		return
+	}
+	switch {
+	case inv.AvailableQty <= 0:
+		metrics.Record(ctx, "inventory_out_of_stock", metrics.L{"product_id": productID})
+	case inv.AvailableQty <= inv.LowStockThreshold:
+		metrics.Record(ctx, "inventory_low_stock", metrics.L{"product_id": productID})
+	}
 }
 
 // AdjustStock adjusts stock to a specific quantity

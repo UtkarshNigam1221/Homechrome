@@ -65,18 +65,36 @@ jobs:
           while :; do
             ITER=$((ITER+1))
             echo "::group::Iteration $ITER"
-            aws lambda invoke \
+            # Capture invoke metadata so a true Lambda crash (unhandled
+            # exception → FunctionError) fails immediately instead of looping to
+            # the safety cap. A function error writes an {errorMessage,...}
+            # payload that lacks our .error/.remaining_estimate fields, which the
+            # old check missed.
+            META=$(aws lambda invoke \
               --function-name "$FN" \
               --payload "$PAYLOAD" \
               --cli-binary-format raw-in-base64-out \
-              response.json > /dev/null
+              response.json)
+            FUNC_ERR=$(echo "$META" | jq -r '.FunctionError // empty')
+            if [ -n "$FUNC_ERR" ]; then
+              echo "Lambda function error ($FUNC_ERR):"
+              cat response.json >&2
+              echo "::endgroup::"
+              exit 1
+            fi
             ERR=$(jq -r '.error // empty' response.json)
             if [ -n "$ERR" ]; then
               echo "Lambda reported error: $ERR"
               echo "::endgroup::"
               exit 1
             fi
-            REMAINING=$(jq -r '.remaining_estimate' response.json)
+            REMAINING=$(jq -r '.remaining_estimate // empty' response.json)
+            if ! echo "$REMAINING" | grep -qE '^[0-9]+$'; then
+              echo "Malformed response: remaining_estimate='$REMAINING'" >&2
+              cat response.json >&2
+              echo "::endgroup::"
+              exit 1
+            fi
             PROCESSED=$(jq -r '.processed' response.json)
             DURATION=$(jq -r '.duration_ms' response.json)
             echo "iteration=$ITER processed=$PROCESSED remaining=$REMAINING duration_ms=$DURATION"

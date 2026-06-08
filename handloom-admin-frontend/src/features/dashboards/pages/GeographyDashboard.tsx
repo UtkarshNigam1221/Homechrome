@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { CircleMarker, MapContainer, TileLayer, Tooltip as LeafletTooltip } from 'react-leaflet';
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 
 import type { BucketRow, CityCentroid } from '@/shared/api/neonDataApi';
 import { fetchCityCentroids, fetchMultiMetricBuckets } from '@/shared/api/neonDataApi';
@@ -47,14 +47,18 @@ interface CityDot {
   r: number;
 }
 
+// geoLabelKey builds the canonical `${city}|${country}` key used everywhere geo
+// rows are grouped (map dots, leaderboards, centroid lookup). Normalising case
+// here keeps every consumer consistent so a city never splits into two rows or
+// fails to match its centroid because of casing drift.
+function geoLabelKey(labels: Record<string, string> | undefined): string {
+  return `${(labels?.city ?? 'unknown').toLowerCase()}|${(labels?.country ?? 'unknown').toUpperCase()}`;
+}
+
 function buildCityDots(rows: BucketRow[], centroids: Map<string, CityCentroid>): CityDot[] {
   // centroids keyed by `${city}|${country}` so we match unique pairs and
   // don't collide on same-named cities across countries (e.g. London UK vs CA).
-  const grouped = groupByKey(
-    rows,
-    (row) =>
-      `${(row.labels?.city ?? 'unknown').toLowerCase()}|${(row.labels?.country ?? 'unknown').toUpperCase()}`
-  );
+  const grouped = groupByKey(rows, (row) => geoLabelKey(row.labels));
 
   const dots: CityDot[] = [];
   for (const [key, cityRows] of grouped) {
@@ -132,10 +136,7 @@ export function GeographyDashboard() {
   // Top-20 leaderboard by visitors
   const topCitiesVisitors = useMemo(() => {
     const rows = byMetric.get('site_visitor') ?? [];
-    const keyed = groupByKey(
-      rows,
-      (r) => `${r.labels?.city ?? 'unknown'}|${r.labels?.country ?? 'unknown'}`
-    );
+    const keyed = groupByKey(rows, (r) => geoLabelKey(r.labels));
     return Array.from(keyed.entries())
       .map(([key, group]) => {
         const [city, country] = key.split('|');
@@ -148,10 +149,7 @@ export function GeographyDashboard() {
   // Top 20 cities by orders
   const topCities = useMemo(() => {
     const rows = byMetric.get('orders_placed') ?? [];
-    const keyed = groupByKey(
-      rows,
-      (r) => `${r.labels?.city ?? 'unknown'}|${r.labels?.country ?? 'unknown'}`
-    );
+    const keyed = groupByKey(rows, (r) => geoLabelKey(r.labels));
     return Array.from(keyed.entries())
       .map(([key, group]) => {
         const [city, country] = key.split('|');

@@ -67,7 +67,6 @@ type InventoryDeps struct {
 	AuthMiddleware *middleware.Auth
 }
 
-
 // NotificationDeps holds dependencies for the Notification Lambda
 type NotificationDeps struct {
 	Config         *config.Config
@@ -236,7 +235,6 @@ func InitializeInventoryDeps(ctx context.Context, cfg *config.Config) (*Inventor
 	)
 	return nil, nil
 }
-
 
 // InitializeNotificationDeps creates Notification Lambda dependencies
 func InitializeNotificationDeps(ctx context.Context, cfg *config.Config) (*NotificationDeps, error) {
@@ -606,8 +604,8 @@ type MonolithDeps struct {
 	NotificationHandler *handler.NotificationHandler
 	CouponHandler       *handler.CouponHandler
 
-	AssetHandler        *handler.AssetHandler
-	ReportHandler       *handler.ReportHandler
+	AssetHandler  *handler.AssetHandler
+	ReportHandler *handler.ReportHandler
 
 	// Store handlers
 	StoreAuthHandler     *store.AuthHandler

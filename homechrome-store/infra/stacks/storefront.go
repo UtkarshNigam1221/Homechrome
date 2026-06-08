@@ -134,14 +134,13 @@ func NewStorefrontStack(scope constructs.Construct, id string, props *Storefront
 		}
 	}
 
+	// AWS_IAM auth so the Function URL is NOT publicly invokable — only
+	// CloudFront, via the Origin Access Control wired below, can reach it.
+	// FunctionUrlOrigin_WithOriginAccessControl signs each origin request with
+	// SigV4 and grants CloudFront lambda:InvokeFunctionUrl automatically.
 	serverUrl := serverFn.AddFunctionUrl(&awslambda.FunctionUrlOptions{
-		AuthType:   awslambda.FunctionUrlAuthType_NONE,
+		AuthType:   awslambda.FunctionUrlAuthType_AWS_IAM,
 		InvokeMode: awslambda.InvokeMode_BUFFERED,
-	})
-	// Since Oct 2025, new Function URLs require lambda:InvokeFunction in addition to lambda:InvokeFunctionUrl
-	serverFn.AddPermission(jsii.String("PublicInvoke"), &awslambda.Permission{
-		Principal: awsiam.NewAnyPrincipal(),
-		Action:    jsii.String("lambda:InvokeFunction"),
 	})
 
 	// ─── CloudFront Origins ───
@@ -157,13 +156,14 @@ func NewStorefrontStack(scope constructs.Construct, id string, props *Storefront
 		OriginPath:          jsii.String("/_assets"),
 	})
 
-	// Server Lambda origin (via Function URL)
-	// Function URL format: https://xxxxx.lambda-url.region.on.aws/
-	// Split by "/" → ["https:", "", "xxxxx.lambda-url.region.on.aws"] → select index 2
-	serverDomain := awscdk.Fn_Select(jsii.Number(2), awscdk.Fn_Split(jsii.String("/"), serverUrl.Url(), nil))
-	serverOrigin := awscloudfrontorigins.NewHttpOrigin(serverDomain, &awscloudfrontorigins.HttpOriginProps{
-		ProtocolPolicy: awscloudfront.OriginProtocolPolicy_HTTPS_ONLY,
-	})
+	// Server Lambda origin via Function URL, fronted by OAC. The OAC signs
+	// every CloudFront→Lambda request with SigV4, so the AWS_IAM Function URL
+	// rejects any request that doesn't come through this distribution. This
+	// also auto-creates the OAC and the CloudFront invoke permission.
+	serverOrigin := awscloudfrontorigins.FunctionUrlOrigin_WithOriginAccessControl(
+		serverUrl,
+		&awscloudfrontorigins.FunctionUrlOriginWithOACProps{},
+	)
 
 	// ─── CloudFront Function (inject x-forwarded-host) ───
 	// CloudFront replaces the Host header when forwarding to origins.

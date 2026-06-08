@@ -137,6 +137,10 @@ func TestInventoryService_RemoveStock(t *testing.T) {
 		mockInventoryRepo.EXPECT().
 			RemoveStock(ctx, "prod_123", 20, req.Reason, "user_123").
 			Return(transaction, nil)
+		// RemoveStock now re-reads inventory to emit stock-level metrics.
+		mockInventoryRepo.EXPECT().
+			GetByProductID(ctx, "prod_123").
+			Return(&domain.Inventory{ProductID: "prod_123", AvailableQty: 80, LowStockThreshold: 10}, nil)
 
 		result, err := service.RemoveStock(ctx, "prod_123", req, "user_123")
 
@@ -337,6 +341,9 @@ func TestInventoryService_ResultFields(t *testing.T) {
 			Return(&domain.InventoryTransaction{
 				ID: "txn_def", PreviousQty: 100, NewQty: 70,
 			}, nil)
+		mockInventoryRepo.EXPECT().
+			GetByProductID(ctx, "prod_123").
+			Return(&domain.Inventory{ProductID: "prod_123", AvailableQty: 70, LowStockThreshold: 10}, nil)
 
 		result, err := svc.RemoveStock(ctx, "prod_123", domain.RemoveStockRequest{
 			Quantity: 30, Reason: "damaged",

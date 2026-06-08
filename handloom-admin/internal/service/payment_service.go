@@ -166,7 +166,10 @@ func (s *PaymentService) HandlePaymentSuccess(ctx context.Context, evt domain.Pa
 		if city == "" {
 			city = "unknown"
 		}
-		country := "unknown"
+		country := order.Country
+		if country == "" {
+			country = "unknown"
+		}
 		device := order.DeviceType
 		if device == "" {
 			device = "unknown"

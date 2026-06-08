@@ -146,6 +146,8 @@ func (s *StoreEventService) mapRUMPageView(ctx context.Context, evt domain.Store
 	if lat, lng, ok := middleware.GetLatLng(ctx); ok && city != "unknown" && country != "unknown" {
 		if err := s.centroids.Upsert(ctx, city, country, lat, lng); err != nil {
 			slog.WarnContext(ctx, "centroid upsert failed", "city", city, "country", country, "err", err)
+			// Observable failure signal — constant label keeps cardinality bounded.
+			metrics.Record(ctx, "centroid_upsert_error", metrics.L{"reason": "db_write"})
 		}
 	}
 }

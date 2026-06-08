@@ -216,6 +216,7 @@ func (s *CheckoutService) Initiate(ctx context.Context, customerID string, req d
 		Status:          domain.OrderStatusPending,
 		PaymentStatus:   domain.PaymentStatusPending,
 		ShippingAddress: &shippingAddr,
+		Country:         country,
 		City:            city,
 		DeviceType:      middleware.GetDeviceType(ctx),
 		UTMSource:       checkoutUTMSource(ctx),
