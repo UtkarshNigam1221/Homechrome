@@ -8,6 +8,9 @@
 .superpowers/
 docs/superpowers/
 
+# Playwright MCP session snapshots
+.playwright-mcp/
+
 # IDE
 .idea/
 .vscode/
