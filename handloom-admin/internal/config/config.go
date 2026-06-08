@@ -9,7 +9,6 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
-	"go.opentelemetry.io/contrib/instrumentation/github.com/aws/aws-sdk-go-v2/otelaws"
 
 	"github.com/handloom/admin/pkg/metrics/awsmiddleware"
 )
@@ -74,12 +73,9 @@ type EmbedderConfig struct {
 
 // TelemetryConfig holds OpenTelemetry-related runtime settings.
 type TelemetryConfig struct {
-	ServiceName    string  // OTEL_SERVICE_NAME — set per-Lambda by CDK
-	ServiceVersion string  // OTEL_SERVICE_VERSION — git short SHA at build time
-	Environment    string  // matches App.Environment
-	OTLPEndpoint   string  // OTEL_EXPORTER_OTLP_ENDPOINT — defaults to http://localhost:4318
-	SampleRate     float64 // OTEL_TRACE_SAMPLE_RATE — defaults to 1.0
-	LogLevel       string  // LOG_LEVEL — info/debug/warn/error
+	ServiceName    string // OTEL_SERVICE_NAME — set per-Lambda by CDK
+	ServiceVersion string // OTEL_SERVICE_VERSION — git short SHA at build time
+	Environment    string // matches App.Environment
 }
 
 // ServerConfig holds server configuration
@@ -198,9 +194,6 @@ func Load() *Config {
 		ServiceName:    getEnv("OTEL_SERVICE_NAME", "handloom-unknown"),
 		ServiceVersion: getEnv("OTEL_SERVICE_VERSION", "dev"),
 		Environment:    cfg.App.Environment,
-		OTLPEndpoint:   getEnv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4318"),
-		SampleRate:     getEnvFloat("OTEL_TRACE_SAMPLE_RATE", 1.0),
-		LogLevel:       getEnv("LOG_LEVEL", "info"),
 	}
 	return cfg
 }
@@ -264,18 +257,6 @@ func getDurationEnv(key string, defaultValue time.Duration) time.Duration {
 	return defaultValue
 }
 
-func getEnvFloat(key string, defaultValue float64) float64 {
-	v := os.Getenv(key)
-	if v == "" {
-		return defaultValue
-	}
-	f, err := strconv.ParseFloat(v, 64)
-	if err != nil {
-		return defaultValue
-	}
-	return f
-}
-
 // getJWTSecret gets the JWT secret from SSM Parameter Store or environment variable
 func getJWTSecret() string {
 	// First check if we have a direct secret key
@@ -298,12 +279,7 @@ func getJWTSecret() string {
 		return defaultJWTSecret
 	}
 
-	otelaws.AppendMiddlewares(&cfg.APIOptions)
-	svcName := os.Getenv("OTEL_SERVICE_NAME")
-	if svcName == "" {
-		svcName = "handloom-lambda"
-	}
-	cfg.APIOptions = append(cfg.APIOptions, awsmiddleware.With(svcName))
+	awsmiddleware.Instrument(&cfg)
 
 	ssmClient := ssm.NewFromConfig(cfg)
 	result, err := ssmClient.GetParameter(ctx, &ssm.GetParameterInput{

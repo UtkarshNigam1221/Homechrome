@@ -35,6 +35,22 @@ export function groupByLabel(rows: BucketRow[], labelKey: string): Map<string, B
 }
 
 /**
+ * Bucket rows by their `metric` field, pre-seeding every entry in `metrics`
+ * with an empty array so callers can rely on each key existing in the result.
+ */
+export function splitByMetric(
+  rows: BucketRow[],
+  metrics: readonly string[]
+): Map<string, BucketRow[]> {
+  const out = new Map<string, BucketRow[]>();
+  for (const m of metrics) out.set(m, []);
+  for (const r of rows) {
+    out.get(r.metric)?.push(r);
+  }
+  return out;
+}
+
+/**
  * Group rows by a derived composite key.
  */
 export function groupByKey<K extends string>(

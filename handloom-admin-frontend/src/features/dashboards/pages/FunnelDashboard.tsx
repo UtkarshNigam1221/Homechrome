@@ -1,4 +1,3 @@
-import { useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import {
   Bar,
@@ -16,10 +15,6 @@ import {
   YAxis,
 } from 'recharts';
 
-import type { BucketRow } from '@/shared/api/neonDataApi';
-import { fetchMultiMetricBuckets } from '@/shared/api/neonDataApi';
-import { useResolvedRange } from '@/shared/stores/dashboardFilters';
-
 import {
   Card,
   InlineBarCell,
@@ -27,7 +22,9 @@ import {
   PanelState,
   SectionTitle,
   StatTile,
+  tableHeadClass,
 } from '../components/primitives';
+import { useMetricBuckets } from '../hooks/useMetricBuckets';
 import { groupByLabel, totalCount } from '../lib/aggregate';
 
 // caveman funnel page. 5 KPIs + 4 ratios + timeseries + device + UTM table
@@ -42,6 +39,12 @@ const FUNNEL_METRICS = [
   'checkout_initiated',
   'payment_completed',
 ] as const;
+
+// session_started + customer_first_purchase fetched alongside the linear funnel
+// for the Authentication + Attribution sections — both are parallel signals
+// (OTP-verified users, channel-attributed new customers). Module-level so the
+// reference stays stable across renders for useMetricBuckets.
+const FETCH_METRICS = [...FUNNEL_METRICS, 'session_started', 'customer_first_purchase'];
 
 // distinct colors per funnel stage
 const STAGE_COLOR: Record<string, string> = {
@@ -78,72 +81,10 @@ function rateTone(value: number, target: number): 'good' | 'warn' {
 }
 
 export function FunnelDashboard() {
-  const { from, to } = useResolvedRange();
-
-  // session_started + customer_first_purchase fetched alongside the linear
-  // funnel for the Authentication + Attribution sections — both are parallel
-  // signals (OTP-verified users, channel-attributed new customers).
-  const FETCH_METRICS = [...FUNNEL_METRICS, 'session_started', 'customer_first_purchase'];
-
-  // Previous-period window of equal length, shifted backwards. Used to
-  // compute ↑↓X% deltas on each KPI card. Memoised on the bucket
-  // boundaries so we don't re-fetch on every render.
-  const prevFromMs = from.getTime() * 2 - to.getTime();
-  const prevToMs = from.getTime();
-  const prevFrom = useMemo(() => new Date(prevFromMs), [prevFromMs]);
-  const prevTo = useMemo(() => new Date(prevToMs), [prevToMs]);
-
-  const query = useQuery({
-    queryKey: ['dashboards', 'funnel', from.toISOString(), to.toISOString()],
-    queryFn: () =>
-      fetchMultiMetricBuckets({
-        metrics: FETCH_METRICS,
-        from,
-        to,
-      }),
-  });
-
-  const prevQuery = useQuery({
-    queryKey: ['dashboards', 'funnel:prev', prevFrom.toISOString(), prevTo.toISOString()],
-    queryFn: () =>
-      fetchMultiMetricBuckets({
-        metrics: FETCH_METRICS,
-        from: prevFrom,
-        to: prevTo,
-      }),
-  });
-
-  // memoize raw rows so dependent useMemos stay stable when query.data is undefined
-  const data: BucketRow[] = useMemo(() => query.data ?? [], [query.data]);
-  const prevData: BucketRow[] = useMemo(() => prevQuery.data ?? [], [prevQuery.data]);
-
-  // split rows per metric once. cheap, called per render but data small
-  const byMetric = useMemo(() => {
-    const m = new Map<string, BucketRow[]>();
-    for (const metric of FETCH_METRICS) m.set(metric, []);
-    for (const row of data) {
-      const arr = m.get(row.metric);
-      if (arr) arr.push(row);
-    }
-    return m;
-  }, [data]);
-
-  const prevByMetric = useMemo(() => {
-    const m = new Map<string, BucketRow[]>();
-    for (const metric of FETCH_METRICS) m.set(metric, []);
-    for (const row of prevData) {
-      const arr = m.get(row.metric);
-      if (arr) arr.push(row);
-    }
-    return m;
-  }, [prevData]);
-
-  const counts: Record<string, number> = {};
-  const prevCounts: Record<string, number> = {};
-  for (const metric of FETCH_METRICS) {
-    counts[metric] = totalCount(byMetric.get(metric) ?? []);
-    prevCounts[metric] = totalCount(prevByMetric.get(metric) ?? []);
-  }
+  const { byMetric, counts, prevCounts, isLoading, isError } = useMetricBuckets(
+    'funnel',
+    FETCH_METRICS
+  );
 
   // Authentication split — session_started carries is_new_user="true|false".
   // Sum once so the tiles + the new-customer ratio stay consistent.
@@ -249,18 +190,13 @@ export function FunnelDashboard() {
   const rateCheckoutPayInit = pct(counts.payment_completed, counts.checkout_initiated);
   const ratePayCompletion = pct(counts.payment_completed, counts.checkout_initiated);
 
-  const isLoading = query.isLoading;
-  const isError = query.isError;
-
   // Hero TL;DR — one-line answer to "is this period good or bad?".
   const heroVisitors = counts.site_visitor ?? 0;
   const heroOrders = counts.payment_completed ?? 0;
   const heroConversion = rateVisitorCart > 0 ? ratePayCompletion : 0; // shown only when there's traffic
   const heroPrevOrders = prevCounts.payment_completed ?? 0;
   const heroOrderDelta =
-    heroPrevOrders > 0
-      ? ((heroOrders - heroPrevOrders) / heroPrevOrders) * 100
-      : null;
+    heroPrevOrders > 0 ? ((heroOrders - heroPrevOrders) / heroPrevOrders) * 100 : null;
 
   return (
     <div className="space-y-6">
@@ -282,8 +218,7 @@ export function FunnelDashboard() {
             {heroOrderDelta !== null ? (
               <span
                 className={
-                  'ml-2 text-xs ' +
-                  (heroOrderDelta >= 0 ? 'text-emerald-600' : 'text-rose-600')
+                  'ml-2 text-xs ' + (heroOrderDelta >= 0 ? 'text-emerald-600' : 'text-rose-600')
                 }
                 title="orders vs previous period of equal length"
               >
@@ -390,8 +325,8 @@ export function FunnelDashboard() {
       <div>
         <h2 className="text-base font-semibold text-neutral-900">Authentication</h2>
         <p className="text-sm text-neutral-600">
-          session_started fires on OTP verify — separate from the visit funnel
-          since it captures the customer commit signal, not the visit signal.
+          session_started fires on OTP verify — separate from the visit funnel since it captures the
+          customer commit signal, not the visit signal.
         </p>
       </div>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -405,7 +340,7 @@ export function FunnelDashboard() {
           title="New Customers"
           value={authNewCount}
           data={(byMetric.get('session_started') ?? []).filter(
-            (r) => r.labels?.is_new_user === 'true',
+            (r) => r.labels?.is_new_user === 'true'
           )}
           color="#22c55e"
         />
@@ -413,7 +348,7 @@ export function FunnelDashboard() {
           title="Returning Sign-ins"
           value={authReturningCount}
           data={(byMetric.get('session_started') ?? []).filter(
-            (r) => r.labels?.is_new_user === 'false',
+            (r) => r.labels?.is_new_user === 'false'
           )}
           color="#9333ea"
         />
@@ -441,8 +376,8 @@ export function FunnelDashboard() {
       <div>
         <h2 className="text-base font-semibold text-neutral-900">Attribution</h2>
         <p className="text-sm text-neutral-600">
-          Which marketing source drives orders + new customers. Direct traffic
-          (no utm) is filtered out so paid channels stand on their own.
+          Which marketing source drives orders + new customers. Direct traffic (no utm) is filtered
+          out so paid channels stand on their own.
         </p>
       </div>
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -450,11 +385,7 @@ export function FunnelDashboard() {
           <SectionTitle subtitle="payment_completed grouped by utm_source, top 10">
             Payments by source
           </SectionTitle>
-          <PanelState
-            isLoading={isLoading}
-            isError={isError}
-            hasData={paymentsBySource.length > 0}
-          >
+          <PanelState isLoading={isLoading} isError={isError} hasData={paymentsBySource.length > 0}>
             <div className="h-64 w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={paymentsBySource} layout="vertical" margin={{ left: 60 }}>
@@ -511,7 +442,7 @@ export function FunnelDashboard() {
         <PanelState isLoading={isLoading} isError={isError} hasData={utmRows.length > 0}>
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
-              <thead className="border-b border-neutral-200 text-left text-xs uppercase tracking-wide text-neutral-500">
+              <thead className={tableHeadClass}>
                 <tr>
                   <th className="py-2 pr-4">utm_source</th>
                   <th className="py-2 pr-4">utm_medium</th>
@@ -584,10 +515,7 @@ function DeviceDonutCard({ title, subtitle, data, isLoading, isError }: DeviceDo
                 labelLine={false}
               >
                 {data.map((d) => (
-                  <Cell
-                    key={d.device}
-                    fill={DEVICE_COLOR[d.device] ?? DEVICE_COLOR.unknown}
-                  />
+                  <Cell key={d.device} fill={DEVICE_COLOR[d.device] ?? DEVICE_COLOR.unknown} />
                 ))}
               </Pie>
               <Tooltip

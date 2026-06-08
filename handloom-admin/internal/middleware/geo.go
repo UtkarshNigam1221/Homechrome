@@ -50,7 +50,7 @@ func GeoExtractor(next http.Handler) http.Handler {
 		lat, _ := strconv.ParseFloat(fields["lat"], 64)
 		lng, _ := strconv.ParseFloat(fields["lng"], 64)
 
-		device := normaliseDevice(fields["device"])
+		device := geo.NormalizeDevice(fields["device"])
 		utmSource := truncUTM(fields["utm_source"])
 		utmMedium := truncUTM(fields["utm_medium"])
 		utmCampaign := truncUTM(fields["utm_campaign"])
@@ -93,15 +93,6 @@ func parseVisitorHeader(raw string) map[string]string {
 		out[key] = val
 	}
 	return out
-}
-
-func normaliseDevice(input string) string {
-	switch strings.ToLower(strings.TrimSpace(input)) {
-	case "mobile", "tablet", "desktop":
-		return strings.ToLower(input)
-	default:
-		return "unknown"
-	}
 }
 
 func truncUTM(input string) string {

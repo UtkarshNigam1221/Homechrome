@@ -3,14 +3,12 @@ package s3client
 
 import (
 	"context"
-	"os"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
-	"go.opentelemetry.io/contrib/instrumentation/github.com/aws/aws-sdk-go-v2/otelaws"
 
 	"github.com/handloom/admin/pkg/metrics/awsmiddleware"
 )
@@ -43,12 +41,7 @@ func New(ctx context.Context, region string, endpoint string) (*S3Client, error)
 		return nil, err
 	}
 
-	otelaws.AppendMiddlewares(&cfg.APIOptions)
-	svcName := os.Getenv("OTEL_SERVICE_NAME")
-	if svcName == "" {
-		svcName = "handloom-lambda"
-	}
-	cfg.APIOptions = append(cfg.APIOptions, awsmiddleware.With(svcName))
+	awsmiddleware.Instrument(&cfg)
 
 	var client *s3.Client
 	if endpoint != "" {

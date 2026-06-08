@@ -10,12 +10,9 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"os"
 	"strings"
 	"sync"
 	"time"
-
-	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
 	metricsmw "github.com/handloom/admin/pkg/metrics/middleware"
 )
@@ -41,23 +38,9 @@ func NewClient(config Config) *Client {
 	if config.BaseURL == "" {
 		config.BaseURL = "https://api-preprod.phonepe.com/apis/pg-sandbox"
 	}
-	svcName := os.Getenv("OTEL_SERVICE_NAME")
-	if svcName == "" {
-		svcName = "handloom-lambda"
-	}
 	return &Client{
 		config:     config,
-		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
-			Transport: &metricsmw.HTTPClientTransport{
-				Service: svcName,
-				Base: otelhttp.NewTransport(http.DefaultTransport,
-					otelhttp.WithSpanNameFormatter(func(_ string, r *http.Request) string {
-						return "phonepe " + r.Method + " " + r.URL.Path
-					}),
-				),
-			},
-		},
+		httpClient: metricsmw.NewInstrumentedClient(30*time.Second, "phonepe"),
 	}
 }
 

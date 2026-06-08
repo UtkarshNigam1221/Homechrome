@@ -5,14 +5,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
-	"go.opentelemetry.io/contrib/instrumentation/github.com/aws/aws-sdk-go-v2/otelaws"
 
 	appconfig "github.com/handloom/admin/internal/config"
 	"github.com/handloom/admin/pkg/metrics/awsmiddleware"
@@ -56,12 +54,7 @@ func NewClient(ctx context.Context, cfg *appconfig.Config) (*Client, error) {
 		}
 	}
 
-	otelaws.AppendMiddlewares(&awsCfg.APIOptions)
-	svcName := os.Getenv("OTEL_SERVICE_NAME")
-	if svcName == "" {
-		svcName = "handloom-lambda"
-	}
-	awsCfg.APIOptions = append(awsCfg.APIOptions, awsmiddleware.With(svcName))
+	awsmiddleware.Instrument(&awsCfg)
 
 	var client *dynamodb.Client
 	if cfg.IsLocal() {

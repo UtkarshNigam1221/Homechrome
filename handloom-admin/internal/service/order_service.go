@@ -203,51 +203,14 @@ func (s *OrderService) Create(ctx context.Context, req domain.CreateOrderRequest
 		"bucket":  metrics.BucketForCartSize(len(order.Items)),
 	})
 
-	// ── Product-analytics signals ──────────────────────────────────────────
-	// Fire-and-forget; errors are logged and never block the caller.
-
-	// 1. Per-line product purchase counts. revenuePaise = line.TotalPrice.
-	for _, line := range order.Items {
-		catID := line.CategoryID
-		if catID == "" {
-			catID = "unknown"
-		}
-		metrics.RecordSum(ctx, "product_purchased", line.TotalPrice, metrics.L{
-			"product_id":  line.ProductID,
-			"category_id": catID,
-		})
-	}
-
-	// 2. Coupon redemption (admin orders carry CouponCode from CreateOrderRequest).
-	if order.CouponCode != nil && *order.CouponCode != "" {
-		code := strings.ToUpper(strings.TrimSpace(*order.CouponCode))
-		if code != "" {
-			metrics.RecordSum(ctx, "coupon_redeemed", order.DiscountAmount, metrics.L{
-				"coupon_code": code,
-			})
-		}
-	}
-
-	// 3. First-purchase detection — atomic increment returns the new count.
-	// Admin-placed orders have no geo context (no CloudFront headers), so use "unknown".
-	if newCount, incErr := s.customerRepo.IncrementOrderCount(ctx, order.CustomerID); incErr != nil {
-		slog.WarnContext(ctx, "increment order count failed", "customer_id", order.CustomerID, "error", incErr)
-	} else if newCount == 1 {
-		// Admin-placed order — no visitor context, all attribution unknown.
-		metrics.Record(ctx, "customer_first_purchase", metrics.L{
-			"country":     "unknown",
-			"city":        "unknown",
-			"device_type": "unknown",
-			"utm_source":  "unknown",
-		})
-	} else if newCount > 1 {
-		metrics.Record(ctx, "repeat_purchase", metrics.L{
-			"country":     "unknown",
-			"city":        "unknown",
-			"device_type": "unknown",
-		})
-	}
-	// ── End product-analytics signals ─────────────────────────────────────
+	// Product-analytics signals (fire-and-forget). Admin-placed orders have no
+	// visitor context (no CloudFront headers), so all attribution is "unknown".
+	recordPurchaseAnalytics(ctx, s.customerRepo, order, purchaseAttribution{
+		country:   "unknown",
+		city:      "unknown",
+		device:    "unknown",
+		utmSource: "unknown",
+	})
 
 	// Reserve inventory — track failures for visibility
 	var reservationFailures []string

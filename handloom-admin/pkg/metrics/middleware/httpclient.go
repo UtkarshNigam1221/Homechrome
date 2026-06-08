@@ -5,7 +5,10 @@ import (
 	"strconv"
 	"time"
 
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+
 	"github.com/handloom/admin/pkg/metrics"
+	"github.com/handloom/admin/pkg/metrics/awsmiddleware"
 )
 
 // HTTPClientTransport wraps http.RoundTripper to emit http_client_call{} +
@@ -13,6 +16,24 @@ import (
 type HTTPClientTransport struct {
 	Service string
 	Base    http.RoundTripper
+}
+
+// NewInstrumentedClient returns an *http.Client whose transport emits
+// http_client_call{}/http_client_duration{} metrics (via HTTPClientTransport)
+// and OpenTelemetry client spans named "<spanPrefix> <METHOD> <path>". Used by
+// outbound gateway clients so the instrumentation wiring lives in one place.
+func NewInstrumentedClient(timeout time.Duration, spanPrefix string) *http.Client {
+	return &http.Client{
+		Timeout: timeout,
+		Transport: &HTTPClientTransport{
+			Service: awsmiddleware.ServiceName(),
+			Base: otelhttp.NewTransport(http.DefaultTransport,
+				otelhttp.WithSpanNameFormatter(func(_ string, r *http.Request) string {
+					return spanPrefix + " " + r.Method + " " + r.URL.Path
+				}),
+			),
+		},
+	}
 }
 
 // RoundTrip implements http.RoundTripper.

@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/handloom/admin/pkg/metrics"
 )
 
@@ -17,20 +18,33 @@ func HTTPServer(service string) func(http.Handler) http.Handler {
 			ww := &statusWriter{ResponseWriter: w, status: 200}
 			next.ServeHTTP(ww, r)
 
+			route := routePattern(r)
 			statusClass := strconv.Itoa(ww.status/100) + "xx"
 			metrics.Record(r.Context(), "http_request", metrics.L{
 				"service":      service,
 				"method":       r.Method,
-				"route":        r.URL.Path,
+				"route":        route,
 				"status_class": statusClass,
 			})
 			metrics.RecordDuration(r.Context(), "http_request_duration", time.Since(start), metrics.L{
 				"service": service,
 				"method":  r.Method,
-				"route":   r.URL.Path,
+				"route":   route,
 			})
 		})
 	}
+}
+
+// routePattern returns the chi route pattern (e.g. /p/{slug}) so the route
+// label stays bounded. Falls back to the raw path only when no pattern
+// matched (e.g. 404s), which keeps unmatched-route cardinality self-limiting.
+func routePattern(r *http.Request) string {
+	if rc := chi.RouteContext(r.Context()); rc != nil {
+		if p := rc.RoutePattern(); p != "" {
+			return p
+		}
+	}
+	return r.URL.Path
 }
 
 type statusWriter struct {

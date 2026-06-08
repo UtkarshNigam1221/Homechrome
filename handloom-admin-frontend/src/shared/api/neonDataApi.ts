@@ -72,27 +72,6 @@ export interface BucketRow {
 }
 
 /**
- * Fetch raw bucket rows for a single metric over a time range.
- * Caller aggregates client-side in Recharts.
- */
-export function fetchMetricBuckets(opts: {
-  metric: string;
-  from: Date;
-  to: Date;
-  limit?: number;
-}): Promise<BucketRow[]> {
-  return fetchRows<BucketRow>('metric_counters', {
-    metric: `eq.${opts.metric}`,
-    bucket_start: `gte.${opts.from.toISOString()}`,
-    // PostgREST supports repeated column filters — second range bound via and=
-    and: `(bucket_start.lte.${opts.to.toISOString()})`,
-    select: 'metric,labels,bucket_start,count,sum_value',
-    order: 'bucket_start.asc',
-    limit: opts.limit ?? 5000,
-  });
-}
-
-/**
  * Fetch buckets for multiple metrics in one request (using in.).
  */
 export function fetchMultiMetricBuckets(opts: {

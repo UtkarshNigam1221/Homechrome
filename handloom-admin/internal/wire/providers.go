@@ -4,14 +4,12 @@ package wire
 import (
 	"context"
 	"fmt"
-	"os"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/lambda"
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
-	"go.opentelemetry.io/contrib/instrumentation/github.com/aws/aws-sdk-go-v2/otelaws"
 	"github.com/google/wire"
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -20,7 +18,6 @@ import (
 	"github.com/handloom/admin/internal/config"
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/internal/embedder"
-	metricsworker "github.com/handloom/admin/internal/worker/metrics"
 	"github.com/handloom/admin/internal/gateway/phonepe"
 	"github.com/handloom/admin/internal/gateway/shiprocket"
 	"github.com/handloom/admin/internal/gateway/sms"
@@ -33,6 +30,7 @@ import (
 	"github.com/handloom/admin/internal/s3client"
 	"github.com/handloom/admin/internal/service"
 	"github.com/handloom/admin/internal/validator"
+	metricsworker "github.com/handloom/admin/internal/worker/metrics"
 )
 
 // ============================================================================
@@ -79,12 +77,7 @@ func ProvideEmbedderClient(ctx context.Context, cfg *config.Config) (*embedder.C
 		return nil, fmt.Errorf("load aws config for embedder: %w", err)
 	}
 
-	otelaws.AppendMiddlewares(&awsCfg.APIOptions)
-	svcName := os.Getenv("OTEL_SERVICE_NAME")
-	if svcName == "" {
-		svcName = "handloom-lambda"
-	}
-	awsCfg.APIOptions = append(awsCfg.APIOptions, awsmiddleware.With(svcName))
+	awsmiddleware.Instrument(&awsCfg)
 
 	var authKey []byte
 	if cfg.Embedder.AuthKeyParam != "" {
@@ -428,7 +421,6 @@ func ProvidePricingHandler(
 	return handler.NewPricingHandler(pricingService, validation)
 }
 
-
 // ProvideNotificationHandler creates a new NotificationHandler
 func ProvideNotificationHandler(
 	notificationService *service.NotificationService,
@@ -719,12 +711,14 @@ func ProvideCentroidsRepository(pool *pgxpool.Pool) *postgres.CentroidsRepositor
 	return postgres.NewCentroidsRepository(pool)
 }
 
-// ProvideStoreEventsHandler creates a new store EventsHandler
+// ProvideStoreEventsHandler creates a new store EventsHandler, wiring the
+// StoreEventService (which owns the event->metric routing) from the centroids
+// repository it depends on.
 func ProvideStoreEventsHandler(
 	validation *middleware.Validation,
 	centroids *postgres.CentroidsRepository,
 ) *store.EventsHandler {
-	return store.NewEventsHandler(validation, centroids)
+	return store.NewEventsHandler(validation, service.NewStoreEventService(centroids))
 }
 
 // ============================================================================

@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -141,7 +140,8 @@ func (s *PaymentService) HandlePaymentSuccess(ctx context.Context, evt domain.Pa
 	}
 
 	// Update order to CONFIRMED + PAID
-	if err := s.updateOrderStatus(ctx, payment.OrderID, domain.OrderStatusConfirmed, domain.PaymentStatusPaid, payment.ID); err != nil {
+	order, err := s.updateOrderStatus(ctx, payment.OrderID, domain.OrderStatusConfirmed, domain.PaymentStatusPaid, payment.ID)
+	if err != nil {
 		slog.ErrorContext(ctx, "Failed to update order status after payment success", "order_id", payment.OrderID, "error", err)
 		span.EndWithError(err)
 		return err
@@ -157,10 +157,11 @@ func (s *PaymentService) HandlePaymentSuccess(ctx context.Context, evt domain.Pa
 	// orders to inflate KPIs. All four signals now fire here, after the order
 	// has been confirmed as paid. resolvePayment already returned
 	// errPaymentAlreadyProcessed for webhook replays, so we never double-count.
-	if order, err := s.orderRepo.GetByID(ctx, payment.OrderID); err == nil {
+	{
 		// Webhook ctx is server-to-server (no CloudFront / X-Geo / X-Utm
 		// headers). All visitor attribution flows through fields the order
-		// denormalised at checkout-initiate time.
+		// denormalised at checkout-initiate time. Reuse the order returned by
+		// updateOrderStatus above rather than re-reading it.
 		city := order.City
 		if city == "" {
 			city = "unknown"
@@ -175,51 +176,15 @@ func (s *PaymentService) HandlePaymentSuccess(ctx context.Context, evt domain.Pa
 			utmSource = "unknown"
 		}
 
-		// 1. Per-line product purchase counts. revenuePaise = line.TotalPrice.
-		for _, line := range order.Items {
-			catID := line.CategoryID
-			if catID == "" {
-				catID = "unknown"
-			}
-			metrics.RecordSum(ctx, "product_purchased", line.TotalPrice, metrics.L{
-				"product_id":  line.ProductID,
-				"category_id": catID,
-			})
-		}
-
-		// 2. Coupon redemption. DiscountAmount is the total order-level discount.
-		if order.CouponCode != nil && *order.CouponCode != "" {
-			code := strings.ToUpper(strings.TrimSpace(*order.CouponCode))
-			if code != "" {
-				metrics.RecordSum(ctx, "coupon_redeemed", order.DiscountAmount, metrics.L{
-					"coupon_code": code,
-				})
-			}
-		}
-
-		// 3. First-purchase detection — atomic increment returns the new count.
-		// Two concurrent successful payments for the same customer will get
-		// newCount==1 and newCount==2 respectively; only the first fires the
-		// metric. repeat_purchase fires when newCount > 1.
-		if newCount, incErr := s.customerRepo.IncrementOrderCount(ctx, order.CustomerID); incErr != nil {
-			slog.WarnContext(ctx, "increment order count failed", "customer_id", order.CustomerID, "error", incErr)
-		} else if newCount == 1 {
-			// First-touch attribution: utm_source captured at site_visitor
-			// emit time was denormalised onto the order; carry through so
-			// "new customers by acquisition channel" is queryable.
-			metrics.Record(ctx, "customer_first_purchase", metrics.L{
-				"country":     country,
-				"city":        city,
-				"device_type": device,
-				"utm_source":  utmSource,
-			})
-		} else if newCount > 1 {
-			metrics.Record(ctx, "repeat_purchase", metrics.L{
-				"country":     country,
-				"city":        city,
-				"device_type": device,
-			})
-		}
+		// Shared product-purchase signals (product_purchased, coupon_redeemed,
+		// first-vs-repeat). First-touch attribution flows through fields the
+		// order denormalised at checkout-initiate time.
+		recordPurchaseAnalytics(ctx, s.customerRepo, order, purchaseAttribution{
+			country:   country,
+			city:      city,
+			device:    device,
+			utmSource: utmSource,
+		})
 
 		// payment_completed carries utm_source (for ROAS) + device_type (per-
 		// device funnel completion). Both read from the order — webhook ctx
@@ -235,8 +200,6 @@ func (s *PaymentService) HandlePaymentSuccess(ctx context.Context, evt domain.Pa
 		if !order.CreatedAt.IsZero() {
 			metrics.RecordDuration(ctx, "cart_to_payment_duration", time.Since(order.CreatedAt), nil)
 		}
-	} else {
-		slog.WarnContext(ctx, "Failed to fetch order for payment telemetry", "order_id", payment.OrderID, "error", err)
 	}
 
 	metrics.Record(ctx, "payment_outcome", metrics.L{
@@ -304,7 +267,7 @@ func (s *PaymentService) HandlePaymentPending(ctx context.Context, evt domain.Pa
 	}
 
 	// Update order payment status to PENDING (order status stays PENDING)
-	if err := s.updateOrderStatus(ctx, payment.OrderID, domain.OrderStatusPending, domain.PaymentStatusPending, payment.ID); err != nil {
+	if _, err := s.updateOrderStatus(ctx, payment.OrderID, domain.OrderStatusPending, domain.PaymentStatusPending, payment.ID); err != nil {
 		slog.ErrorContext(ctx, "Failed to update order status for pending payment", "order_id", payment.OrderID, "error", err)
 		return err
 	}
@@ -350,10 +313,12 @@ func (s *PaymentService) updatePaymentStatus(ctx context.Context, paymentID stri
 }
 
 // updateOrderStatus fetches the order and updates its status fields.
-func (s *PaymentService) updateOrderStatus(ctx context.Context, orderID string, orderStatus domain.OrderStatus, paymentStatus domain.PaymentStatus, paymentID string) error {
+// updateOrderStatus fetches the order, applies the new status fields, persists
+// it, and returns the updated order so callers can reuse it without a second read.
+func (s *PaymentService) updateOrderStatus(ctx context.Context, orderID string, orderStatus domain.OrderStatus, paymentStatus domain.PaymentStatus, paymentID string) (*domain.Order, error) {
 	order, err := s.orderRepo.GetByID(ctx, orderID)
 	if err != nil {
-		return fmt.Errorf("failed to get order %s for status update: %w", orderID, err)
+		return nil, fmt.Errorf("failed to get order %s for status update: %w", orderID, err)
 	}
 
 	order.Status = orderStatus
@@ -361,9 +326,9 @@ func (s *PaymentService) updateOrderStatus(ctx context.Context, orderID string, 
 	order.PaymentID = paymentID
 
 	if err := s.orderRepo.Update(ctx, order); err != nil {
-		return fmt.Errorf("failed to update order %s status: %w", orderID, err)
+		return nil, fmt.Errorf("failed to update order %s status: %w", orderID, err)
 	}
-	return nil
+	return order, nil
 }
 
 // releaseOrderInventory releases reserved stock for each item in an order.

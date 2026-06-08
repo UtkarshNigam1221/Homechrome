@@ -3,11 +3,31 @@ package awsmiddleware
 
 import (
 	"context"
+	"os"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	smithymiddleware "github.com/aws/smithy-go/middleware"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/aws/aws-sdk-go-v2/otelaws"
 
 	pkgmetrics "github.com/handloom/admin/pkg/metrics"
 )
+
+// ServiceName resolves the caller's logical service name from
+// OTEL_SERVICE_NAME, falling back to "handloom-lambda" when unset.
+func ServiceName() string {
+	if s := os.Getenv("OTEL_SERVICE_NAME"); s != "" {
+		return s
+	}
+	return "handloom-lambda"
+}
+
+// Instrument appends both the OpenTelemetry tracing middleware (otelaws) and
+// the aws_sdk_call{} metric middleware to cfg, labelled with ServiceName().
+// Call once on every aws.Config built for a Lambda or local process.
+func Instrument(cfg *aws.Config) {
+	otelaws.AppendMiddlewares(&cfg.APIOptions)
+	cfg.APIOptions = append(cfg.APIOptions, With(ServiceName()))
+}
 
 // With returns an APIOptions function that appends a metric-emitting
 // middleware to the smithy stack. Usage example:

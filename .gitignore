@@ -29,16 +29,17 @@ Thumbs.db
 .env.*
 !.env.example
 !**/.env.example
-# Allow committed non-secret env files (only public URLs, never tokens/keys).
+# Committed env files must be PUBLIC ONLY (URLs/IDs, never tokens/keys/DSNs).
+# The whitelist is scoped to the frontends, whose .env.{dev,prod}/.env.local-*
+# carry only VITE_/NEXT_PUBLIC_ public config. Backend handloom-admin/.env.*
+# holds real secrets (POSTGRES_DSN, PhonePe/MSG91 keys) and stays IGNORED —
+# those are sourced at deploy time from the shell / CI secrets, never committed.
 # Local overrides go in .env.local (still ignored).
-!.env.dev
-!**/.env.dev
-!.env.prod
-!**/.env.prod
-!.env.local-backend
-!**/.env.local-backend
-!.env.local-lambda
-!**/.env.local-lambda
+!handloom-admin-frontend/.env.dev
+!handloom-admin-frontend/.env.prod
+!handloom-admin-frontend/.env.local-backend
+!handloom-admin-frontend/.env.local-lambda
+!homechrome-store/.env.local-lambda
 
 # Logs
 *.log

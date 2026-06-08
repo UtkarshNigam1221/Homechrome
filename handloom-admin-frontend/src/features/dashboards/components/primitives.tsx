@@ -8,6 +8,12 @@ import { aggregateByTime } from '../lib/aggregate';
 
 // caveman shared cards. no logic, just chrome.
 
+// Shared <thead> styling for dashboard data tables. stickyTableHeadClass pins
+// the header for scrollable panels (adds the same classes Tailwind-wise).
+export const tableHeadClass =
+  'border-b border-neutral-200 text-left text-xs uppercase tracking-wide text-neutral-500';
+export const stickyTableHeadClass = `sticky top-0 bg-white ${tableHeadClass}`;
+
 interface CardProps {
   children: ReactNode;
   className?: string;
@@ -47,10 +53,7 @@ export function SectionTitle({ children, subtitle, onRefresh, isRefreshing }: Se
           title="Refresh"
           className="inline-flex items-center justify-center rounded-md p-1.5 text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-900 disabled:opacity-50"
         >
-          <RefreshCw
-            size={14}
-            className={isRefreshing ? 'animate-spin' : undefined}
-          />
+          <RefreshCw size={14} className={isRefreshing ? 'animate-spin' : undefined} />
         </button>
       ) : null}
     </div>
@@ -104,8 +107,7 @@ export function KPICard({
         {deltaPct !== null ? (
           <div
             className={
-              'text-xs font-medium ' +
-              (deltaPct >= 0 ? 'text-emerald-600' : 'text-rose-600')
+              'text-xs font-medium ' + (deltaPct >= 0 ? 'text-emerald-600' : 'text-rose-600')
             }
             title="vs previous period of equal length"
           >
@@ -154,12 +156,7 @@ interface InlineBarCellProps {
  * compare ranked rows at a glance. width = (value/max) * 100%. Pass the
  * displayed number as `children` (formatted however caller wants).
  */
-export function InlineBarCell({
-  value,
-  max,
-  color = '#6366f1',
-  children,
-}: InlineBarCellProps) {
+export function InlineBarCell({ value, max, color = '#6366f1', children }: InlineBarCellProps) {
   const pct = max > 0 ? Math.min(100, (value / max) * 100) : 0;
   return (
     <td className="relative py-2 pr-4 text-right tabular-nums">

@@ -33,3 +33,14 @@ func NormalizeCountry(input string) string {
 	}
 	return s
 }
+
+// NormalizeDevice maps any client-supplied device type to a bounded label
+// set. Returns "unknown" for anything outside mobile/tablet/desktop.
+func NormalizeDevice(input string) string {
+	switch strings.ToLower(strings.TrimSpace(input)) {
+	case "mobile", "tablet", "desktop":
+		return strings.ToLower(strings.TrimSpace(input))
+	default:
+		return "unknown"
+	}
+}

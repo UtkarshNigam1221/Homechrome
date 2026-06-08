@@ -58,3 +58,16 @@ export function useResolvedRange(): { from: Date; to: Date } {
     return { from, to };
   }, [range, customFromMs, customToMs, minuteBucket]);
 }
+
+// usePreviousRange returns the equal-length window immediately preceding
+// [from, to], used to compute period-over-period (↑↓X%) deltas on KPI cards.
+// Memoised on the epoch boundaries so it stays referentially stable across
+// renders and doesn't trigger refetch loops.
+export function usePreviousRange(from: Date, to: Date): { prevFrom: Date; prevTo: Date } {
+  const prevFromMs = from.getTime() * 2 - to.getTime();
+  const prevToMs = from.getTime();
+  return useMemo(
+    () => ({ prevFrom: new Date(prevFromMs), prevTo: new Date(prevToMs) }),
+    [prevFromMs, prevToMs]
+  );
+}

@@ -1,26 +1,19 @@
 import { useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts';
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { CircleMarker, MapContainer, TileLayer, Tooltip as LeafletTooltip } from 'react-leaflet';
 
 import type { BucketRow, CityCentroid } from '@/shared/api/neonDataApi';
 import { fetchCityCentroids, fetchMultiMetricBuckets } from '@/shared/api/neonDataApi';
 import { useResolvedRange } from '@/shared/stores/dashboardFilters';
 
-import { Card, PanelState, SectionTitle } from '../components/primitives';
+import { Card, PanelState, SectionTitle, stickyTableHeadClass } from '../components/primitives';
 import {
   formatINR,
   groupByKey,
   groupByLabel,
   paiseToINR,
+  splitByMetric,
   totalCount,
   totalSum,
 } from '../lib/aggregate';
@@ -57,15 +50,11 @@ interface CityDot {
 function buildCityDots(rows: BucketRow[], centroids: Map<string, CityCentroid>): CityDot[] {
   // centroids keyed by `${city}|${country}` so we match unique pairs and
   // don't collide on same-named cities across countries (e.g. London UK vs CA).
-  const grouped = new Map<string, BucketRow[]>();
-  for (const row of rows) {
-    const c = (row.labels?.city ?? 'unknown').toLowerCase();
-    const co = (row.labels?.country ?? 'unknown').toUpperCase();
-    const key = `${c}|${co}`;
-    const arr = grouped.get(key);
-    if (arr) arr.push(row);
-    else grouped.set(key, [row]);
-  }
+  const grouped = groupByKey(
+    rows,
+    (row) =>
+      `${(row.labels?.city ?? 'unknown').toLowerCase()}|${(row.labels?.country ?? 'unknown').toUpperCase()}`
+  );
 
   const dots: CityDot[] = [];
   for (const [key, cityRows] of grouped) {
@@ -123,15 +112,7 @@ export function GeographyDashboard() {
     return m;
   }, [centroids]);
 
-  const byMetric = useMemo(() => {
-    const m = new Map<string, BucketRow[]>();
-    for (const metric of GEO_METRICS) m.set(metric, []);
-    for (const row of data) {
-      const arr = m.get(row.metric);
-      if (arr) arr.push(row);
-    }
-    return m;
-  }, [data]);
+  const byMetric = useMemo(() => splitByMetric(data, GEO_METRICS), [data]);
 
   const orderDots = useMemo(
     () => buildCityDots(byMetric.get('orders_placed') ?? [], centroidMap),
@@ -250,14 +231,10 @@ export function GeographyDashboard() {
         >
           Top 20 cities by visitors
         </SectionTitle>
-        <PanelState
-          isLoading={isLoading}
-          isError={isError}
-          hasData={topCitiesVisitors.length > 0}
-        >
+        <PanelState isLoading={isLoading} isError={isError} hasData={topCitiesVisitors.length > 0}>
           <div className="max-h-96 overflow-y-auto">
             <table className="min-w-full text-sm">
-              <thead className="sticky top-0 border-b border-neutral-200 bg-white text-left text-xs uppercase tracking-wide text-neutral-500">
+              <thead className={stickyTableHeadClass}>
                 <tr>
                   <th className="py-2 pr-4">#</th>
                   <th className="py-2 pr-4">city</th>
@@ -306,7 +283,7 @@ export function GeographyDashboard() {
           <PanelState isLoading={isLoading} isError={isError} hasData={topCities.length > 0}>
             <div className="max-h-96 overflow-y-auto">
               <table className="min-w-full text-sm">
-                <thead className="sticky top-0 border-b border-neutral-200 bg-white text-left text-xs uppercase tracking-wide text-neutral-500">
+                <thead className={stickyTableHeadClass}>
                   <tr>
                     <th className="py-2 pr-4">city</th>
                     <th className="py-2 pr-4">country</th>
@@ -340,7 +317,7 @@ export function GeographyDashboard() {
           <PanelState isLoading={isLoading} isError={isError} hasData={topCitiesRevenue.length > 0}>
             <div className="max-h-96 overflow-y-auto">
               <table className="min-w-full text-sm">
-                <thead className="sticky top-0 border-b border-neutral-200 bg-white text-left text-xs uppercase tracking-wide text-neutral-500">
+                <thead className={stickyTableHeadClass}>
                   <tr>
                     <th className="py-2 pr-4">city</th>
                     <th className="py-2 pr-4 text-right">orders</th>
@@ -380,7 +357,13 @@ export function GeographyDashboard() {
               <BarChart data={countryBars} layout="vertical" margin={{ left: 60 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                 <XAxis type="number" fontSize={11} stroke="#737373" />
-                <YAxis type="category" dataKey="country" fontSize={11} stroke="#737373" width={80} />
+                <YAxis
+                  type="category"
+                  dataKey="country"
+                  fontSize={11}
+                  stroke="#737373"
+                  width={80}
+                />
                 <Tooltip contentStyle={{ fontSize: 12 }} />
                 <Bar dataKey="count" fill="#f59e0b" radius={[0, 4, 4, 0]} />
               </BarChart>

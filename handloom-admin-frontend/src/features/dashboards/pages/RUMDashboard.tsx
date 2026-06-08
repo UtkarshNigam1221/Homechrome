@@ -17,12 +17,20 @@ import type { BucketRow } from '@/shared/api/neonDataApi';
 import { fetchMultiMetricBuckets } from '@/shared/api/neonDataApi';
 import { useResolvedRange } from '@/shared/stores/dashboardFilters';
 
-import { Card, PanelState, SectionTitle, StatTile } from '../components/primitives';
+import {
+  Card,
+  PanelState,
+  SectionTitle,
+  StatTile,
+  stickyTableHeadClass,
+  tableHeadClass,
+} from '../components/primitives';
 import {
   aggregateByTime,
   groupByKey,
   groupByLabel,
   shortTimeLabel,
+  splitByMetric,
   totalCount,
 } from '../lib/aggregate';
 
@@ -77,15 +85,7 @@ export function RUMDashboard() {
   // memoize raw rows so dependent useMemos stay stable when query.data is undefined
   const data: BucketRow[] = useMemo(() => query.data ?? [], [query.data]);
 
-  const byMetric = useMemo(() => {
-    const m = new Map<string, BucketRow[]>();
-    for (const metric of RUM_METRICS) m.set(metric, []);
-    for (const row of data) {
-      const arr = m.get(row.metric);
-      if (arr) arr.push(row);
-    }
-    return m;
-  }, [data]);
+  const byMetric = useMemo(() => splitByMetric(data, RUM_METRICS), [data]);
 
   const lcp = percentGood(byMetric.get('rum_lcp') ?? []);
   const inp = percentGood(byMetric.get('rum_inp') ?? []);
@@ -298,7 +298,7 @@ export function RUMDashboard() {
         <PanelState isLoading={isLoading} isError={isError} hasData={jsErrors.length > 0}>
           <div className="max-h-80 overflow-y-auto">
             <table className="min-w-full text-sm">
-              <thead className="sticky top-0 border-b border-neutral-200 bg-white text-left text-xs uppercase tracking-wide text-neutral-500">
+              <thead className={stickyTableHeadClass}>
                 <tr>
                   <th className="py-2 pr-4">page_type</th>
                   <th className="py-2 pr-4">error_type</th>
@@ -329,7 +329,7 @@ export function RUMDashboard() {
         <PanelState isLoading={isLoading} isError={isError} hasData={deviceConversion.length > 0}>
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
-              <thead className="border-b border-neutral-200 text-left text-xs uppercase tracking-wide text-neutral-500">
+              <thead className={tableHeadClass}>
                 <tr>
                   <th className="py-2 pr-4">device</th>
                   <th className="py-2 pr-4 text-right">sessions</th>
@@ -388,7 +388,7 @@ export function RUMDashboard() {
         <PanelState isLoading={isLoading} isError={isError} hasData={coldStartTable.length > 0}>
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
-              <thead className="border-b border-neutral-200 text-left text-xs uppercase tracking-wide text-neutral-500">
+              <thead className={tableHeadClass}>
                 <tr>
                   <th className="py-2 pr-4">service</th>
                   <th className="py-2 pr-4 text-right">cold starts</th>

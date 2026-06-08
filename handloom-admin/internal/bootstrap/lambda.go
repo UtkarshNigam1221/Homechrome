@@ -8,11 +8,7 @@ import (
 	"os"
 	"time"
 
-	awsconfig "github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/service/sqs"
-
 	"github.com/handloom/admin/internal/config"
-	pkgmetrics "github.com/handloom/admin/pkg/metrics"
 	"github.com/handloom/admin/pkg/metrics/awsmiddleware"
 	"github.com/handloom/admin/pkg/slogx"
 	"github.com/handloom/admin/pkg/telemetry"
@@ -46,21 +42,10 @@ func InitLambda(serviceName string) *LambdaContext {
 		cfg.Telemetry.Environment,
 	)
 
-	// Initialise the SQS-backed metrics publisher when METRICS_QUEUE_URL is set
-	// (CDK MetricsStack + api.go inject this for every service Lambda; consumer
-	// Lambda has it unset because it only reads SQS).
-	if qURL := os.Getenv("METRICS_QUEUE_URL"); qURL != "" {
-		initCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		awsCfg, err := awsconfig.LoadDefaultConfig(initCtx)
-		cancel()
-		if err != nil {
-			slog.Error("metrics: failed to load AWS config; staying on noop publisher", "error", err)
-		} else {
-			awsCfg.APIOptions = append(awsCfg.APIOptions, awsmiddleware.With(cfg.Telemetry.ServiceName))
-			pkgmetrics.SetDefault(pkgmetrics.NewSQSPublisher(sqs.NewFromConfig(awsCfg), qURL))
-			slog.Info("metrics: SQS publisher initialised", "queue_url", qURL)
-		}
-	}
+	// Initialise the SQS-backed metrics publisher (no-op when METRICS_QUEUE_URL
+	// is unset — e.g. the consumer Lambda, local dev). Shared with the embedder
+	// Lambda via awsmiddleware so the wiring lives in one place.
+	awsmiddleware.InitSQSMetricsPublisher(context.Background(), cfg.Telemetry.ServiceName)
 
 	// service attribute already attached globally by slogx.Setup; no need to repeat.
 	slog.Info("lambda bootstrap done")

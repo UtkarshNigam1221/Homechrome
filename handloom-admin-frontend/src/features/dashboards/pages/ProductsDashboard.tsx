@@ -1,4 +1,3 @@
-import { useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import {
   Bar,
@@ -13,10 +12,6 @@ import {
   YAxis,
 } from 'recharts';
 
-import type { BucketRow } from '@/shared/api/neonDataApi';
-import { fetchMultiMetricBuckets } from '@/shared/api/neonDataApi';
-import { useResolvedRange } from '@/shared/stores/dashboardFilters';
-
 import {
   Card,
   InlineBarCell,
@@ -24,14 +19,11 @@ import {
   PanelState,
   SectionTitle,
   StatTile,
+  stickyTableHeadClass,
+  tableHeadClass,
 } from '../components/primitives';
-import {
-  formatINR,
-  groupByLabel,
-  paiseToINR,
-  totalCount,
-  totalSum,
-} from '../lib/aggregate';
+import { useMetricBuckets } from '../hooks/useMetricBuckets';
+import { formatINR, groupByLabel, paiseToINR, totalCount, totalSum } from '../lib/aggregate';
 
 // Catalog engagement, conversion, search, coupons, filter usage. Five
 // UX-quality fixes mirrored from Funnel: hero TL;DR, ↑↓ deltas on KPIs,
@@ -72,64 +64,15 @@ function pieColor(outcome: string): string {
 }
 
 export function ProductsDashboard() {
-  const { from, to } = useResolvedRange();
-
-  // Previous window of equal length, immediately before `from` — used for
-  // ↑↓ deltas on the KPI cards. Same approach as Funnel dashboard.
-  const prevFromMs = from.getTime() * 2 - to.getTime();
-  const prevToMs = from.getTime();
-  const prevFrom = useMemo(() => new Date(prevFromMs), [prevFromMs]);
-  const prevTo = useMemo(() => new Date(prevToMs), [prevToMs]);
-
-  const query = useQuery({
-    queryKey: ['dashboards', 'products', from.toISOString(), to.toISOString()],
-    queryFn: () =>
-      fetchMultiMetricBuckets({
-        metrics: [...PRODUCT_METRICS],
-        from,
-        to,
-      }),
-  });
-
-  const prevQuery = useQuery({
-    queryKey: ['dashboards', 'products:prev', prevFrom.toISOString(), prevTo.toISOString()],
-    queryFn: () =>
-      fetchMultiMetricBuckets({
-        metrics: [...PRODUCT_METRICS],
-        from: prevFrom,
-        to: prevTo,
-      }),
-  });
-
-  const data: BucketRow[] = useMemo(() => query.data ?? [], [query.data]);
-  const prevData: BucketRow[] = useMemo(() => prevQuery.data ?? [], [prevQuery.data]);
-
-  const byMetric = useMemo(() => {
-    const m = new Map<string, BucketRow[]>();
-    for (const metric of PRODUCT_METRICS) m.set(metric, []);
-    for (const row of data) {
-      const arr = m.get(row.metric);
-      if (arr) arr.push(row);
-    }
-    return m;
-  }, [data]);
-
-  const prevByMetric = useMemo(() => {
-    const m = new Map<string, BucketRow[]>();
-    for (const metric of PRODUCT_METRICS) m.set(metric, []);
-    for (const row of prevData) {
-      const arr = m.get(row.metric);
-      if (arr) arr.push(row);
-    }
-    return m;
-  }, [prevData]);
-
-  const counts: Record<string, number> = {};
-  const prevCounts: Record<string, number> = {};
-  for (const metric of PRODUCT_METRICS) {
-    counts[metric] = totalCount(byMetric.get(metric) ?? []);
-    prevCounts[metric] = totalCount(prevByMetric.get(metric) ?? []);
-  }
+  const {
+    byMetric,
+    counts,
+    prevCounts,
+    isLoading,
+    isError,
+    refreshing,
+    refetch: refresh,
+  } = useMetricBuckets('products', PRODUCT_METRICS);
 
   // 1. Top 10 viewed products
   const topViewed = useMemo(() => {
@@ -258,25 +201,13 @@ export function ProductsDashboard() {
       ? Math.max(0, Math.round((1 - checkoutsStarted / cartsCreated) * 1000) / 10)
       : 0;
 
-  const isLoading = query.isLoading;
-  const isError = query.isError;
-
   // Hero TL;DR — three killer numbers at the top.
   const heroViews = counts.product_viewed ?? 0;
   const heroPurchases = counts.product_purchased ?? 0;
   const heroPrevPurchases = prevCounts.product_purchased ?? 0;
   const heroPurchaseDelta =
-    heroPrevPurchases > 0
-      ? ((heroPurchases - heroPrevPurchases) / heroPrevPurchases) * 100
-      : null;
+    heroPrevPurchases > 0 ? ((heroPurchases - heroPrevPurchases) / heroPrevPurchases) * 100 : null;
   const topSeller = topPurchased[0];
-
-  // Refresh handlers — single query backs everything so all panels share.
-  const refresh = () => {
-    void query.refetch();
-    void prevQuery.refetch();
-  };
-  const refreshing = query.isFetching || prevQuery.isFetching;
 
   return (
     <div className="space-y-6">
@@ -298,8 +229,7 @@ export function ProductsDashboard() {
             {heroPurchaseDelta !== null ? (
               <span
                 className={
-                  'ml-2 text-xs ' +
-                  (heroPurchaseDelta >= 0 ? 'text-emerald-600' : 'text-rose-600')
+                  'ml-2 text-xs ' + (heroPurchaseDelta >= 0 ? 'text-emerald-600' : 'text-rose-600')
                 }
                 title="units sold vs previous period of equal length"
               >
@@ -311,9 +241,7 @@ export function ProductsDashboard() {
             <span className="text-neutral-700">
               top seller:{' '}
               <span className="font-semibold text-neutral-900">{topSeller.product_id}</span>{' '}
-              <span className="text-xs text-neutral-500">
-                ({formatINR(topSeller.revenue)})
-              </span>
+              <span className="text-xs text-neutral-500">({formatINR(topSeller.revenue)})</span>
             </span>
           ) : null}
         </div>
@@ -443,14 +371,10 @@ export function ProductsDashboard() {
           >
             Top purchased products
           </SectionTitle>
-          <PanelState
-            isLoading={isLoading}
-            isError={isError}
-            hasData={topPurchased.length > 0}
-          >
+          <PanelState isLoading={isLoading} isError={isError} hasData={topPurchased.length > 0}>
             <div className="overflow-x-auto">
               <table className="min-w-full text-sm">
-                <thead className="border-b border-neutral-200 text-left text-xs uppercase tracking-wide text-neutral-500">
+                <thead className={tableHeadClass}>
                   <tr>
                     <th className="py-2 pr-4">product_id</th>
                     <th className="py-2 pr-4 text-right">units</th>
@@ -462,17 +386,11 @@ export function ProductsDashboard() {
                     const maxRevenue = topPurchased[0]?.revenue ?? 0;
                     return (
                       <tr key={r.product_id}>
-                        <td className="py-2 pr-4 font-medium text-neutral-900">
-                          {r.product_id}
-                        </td>
+                        <td className="py-2 pr-4 font-medium text-neutral-900">{r.product_id}</td>
                         <td className="py-2 pr-4 text-right tabular-nums">
                           {r.units.toLocaleString('en-IN')}
                         </td>
-                        <InlineBarCell
-                          value={r.revenue}
-                          max={maxRevenue}
-                          color="#10b981"
-                        >
+                        <InlineBarCell value={r.revenue} max={maxRevenue} color="#10b981">
                           <span className="text-emerald-700">{formatINR(r.revenue)}</span>
                         </InlineBarCell>
                       </tr>
@@ -492,11 +410,7 @@ export function ProductsDashboard() {
           >
             Views by device
           </SectionTitle>
-          <PanelState
-            isLoading={isLoading}
-            isError={isError}
-            hasData={viewsByDevice.length > 0}
-          >
+          <PanelState isLoading={isLoading} isError={isError} hasData={viewsByDevice.length > 0}>
             <div className="h-72 w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
@@ -515,10 +429,7 @@ export function ProductsDashboard() {
                     labelLine={false}
                   >
                     {viewsByDevice.map((d) => (
-                      <Cell
-                        key={d.device}
-                        fill={DEVICE_COLOR[d.device] ?? DEVICE_COLOR.unknown}
-                      />
+                      <Cell key={d.device} fill={DEVICE_COLOR[d.device] ?? DEVICE_COLOR.unknown} />
                     ))}
                   </Pie>
                   <Tooltip
@@ -618,11 +529,7 @@ export function ProductsDashboard() {
           >
             Coupon outcomes
           </SectionTitle>
-          <PanelState
-            isLoading={isLoading}
-            isError={isError}
-            hasData={couponOutcomePie.length > 0}
-          >
+          <PanelState isLoading={isLoading} isError={isError} hasData={couponOutcomePie.length > 0}>
             <div className="h-64 w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
@@ -667,7 +574,7 @@ export function ProductsDashboard() {
           >
             <div className="max-h-64 overflow-y-auto">
               <table className="min-w-full text-sm">
-                <thead className="sticky top-0 border-b border-neutral-200 bg-white text-left text-xs uppercase tracking-wide text-neutral-500">
+                <thead className={stickyTableHeadClass}>
                   <tr>
                     <th className="py-2 pr-4">code</th>
                     <th className="py-2 pr-4 text-right">uses</th>
@@ -683,11 +590,7 @@ export function ProductsDashboard() {
                         <td className="py-2 pr-4 text-right tabular-nums">
                           {r.uses.toLocaleString('en-IN')}
                         </td>
-                        <InlineBarCell
-                          value={r.discount}
-                          max={maxDiscount}
-                          color="#f59e0b"
-                        >
+                        <InlineBarCell value={r.discount} max={maxDiscount} color="#f59e0b">
                           <span className="text-amber-700">{formatINR(r.discount)}</span>
                         </InlineBarCell>
                       </tr>

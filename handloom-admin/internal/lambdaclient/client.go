@@ -8,14 +8,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/lambda"
 	"github.com/aws/aws-sdk-go-v2/service/lambda/types"
-	"go.opentelemetry.io/contrib/instrumentation/github.com/aws/aws-sdk-go-v2/otelaws"
 
 	"github.com/handloom/admin/pkg/metrics/awsmiddleware"
 )
@@ -46,12 +44,7 @@ func New(ctx context.Context, region string, endpoint string) (*LambdaClient, er
 		return nil, fmt.Errorf("load aws config: %w", err)
 	}
 
-	otelaws.AppendMiddlewares(&cfg.APIOptions)
-	svcName := os.Getenv("OTEL_SERVICE_NAME")
-	if svcName == "" {
-		svcName = "handloom-lambda"
-	}
-	cfg.APIOptions = append(cfg.APIOptions, awsmiddleware.With(svcName))
+	awsmiddleware.Instrument(&cfg)
 
 	var optFns []func(*lambda.Options)
 	if endpoint != "" {

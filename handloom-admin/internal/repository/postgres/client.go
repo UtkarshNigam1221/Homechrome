@@ -5,7 +5,6 @@ package postgres
 import (
 	"context"
 	"fmt"
-	"os"
 
 	"github.com/exaring/otelpgx"
 	"github.com/jackc/pgx/v5"
@@ -14,6 +13,7 @@ import (
 	pgvecpgx "github.com/pgvector/pgvector-go/pgx"
 
 	appconfig "github.com/handloom/admin/internal/config"
+	"github.com/handloom/admin/pkg/metrics/awsmiddleware"
 	"github.com/handloom/admin/pkg/metrics/dbtracer"
 )
 
@@ -34,13 +34,9 @@ func NewPool(ctx context.Context, pgCfg *appconfig.PostgresConfig) (*pgxpool.Poo
 
 	// otelpgx → traces (Tempo); dbtracer → metrics (PG). Multitracer fans
 	// each query callback to both.
-	svcName := os.Getenv("OTEL_SERVICE_NAME")
-	if svcName == "" {
-		svcName = "handloom-lambda"
-	}
 	cfg.ConnConfig.Tracer = multitracer.New(
 		otelpgx.NewTracer(otelpgx.WithIncludeQueryParameters()),
-		&dbtracer.Tracer{Service: svcName},
+		&dbtracer.Tracer{Service: awsmiddleware.ServiceName()},
 	)
 
 	cfg.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {

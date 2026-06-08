@@ -16,7 +16,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 
-const VISITOR_HEADER = "x-hc-visitor";
+import { VISITOR_HEADER } from "@/lib/visitor-context";
 
 export function middleware(req: NextRequest) {
   const country = (req.headers.get("cloudfront-viewer-country") ?? "")
@@ -29,12 +29,17 @@ export function middleware(req: NextRequest) {
   const lng = req.headers.get("cloudfront-viewer-longitude") ?? "";
 
   const incoming = req.headers.get(VISITOR_HEADER) ?? "";
-  const parts: string[] = incoming ? incoming.split(";").map(s => s.trim()).filter(Boolean) : [];
+  const parts: string[] = incoming
+    ? incoming
+        .split(";")
+        .map((s) => s.trim())
+        .filter(Boolean)
+    : [];
 
   const setField = (key: string, value: string) => {
     if (!value) return;
     // Drop any browser-set value for the same key — server-resolved geo wins.
-    const filtered = parts.filter(p => !p.startsWith(`${key}=`));
+    const filtered = parts.filter((p) => !p.startsWith(`${key}=`));
     parts.length = 0;
     parts.push(...filtered);
     parts.push(`${key}=${encodeURIComponent(value)}`);
