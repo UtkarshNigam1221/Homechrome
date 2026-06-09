@@ -50,10 +50,10 @@ func With(service string) func(*smithymiddleware.Stack) error {
 						status = "err"
 					}
 					pkgmetrics.Record(ctx, "aws_sdk_call", pkgmetrics.L{
-						"service":     service,
-						"sdk_service": smithymiddleware.GetServiceID(ctx),
-						"operation":   smithymiddleware.GetOperationName(ctx),
-						"status":      status,
+						pkgmetrics.LabelService:    service,
+						pkgmetrics.LabelSDKService: smithymiddleware.GetServiceID(ctx),
+						pkgmetrics.LabelOperation:  smithymiddleware.GetOperationName(ctx),
+						pkgmetrics.LabelStatus:     status,
 					})
 					return out, md, err
 				}),

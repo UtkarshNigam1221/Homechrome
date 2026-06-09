@@ -96,13 +96,13 @@ func (s *CustomerAuthService) SendOTP(ctx context.Context, phone string) error {
 
 	if err := s.smsGateway.SendOTP(ctx, phone, code); err != nil {
 		slog.ErrorContext(ctx, "Failed to send OTP SMS", "error", err)
-		metrics.Record(ctx, "otp_outcome", metrics.L{labelOutcome: "send_failed"})
+		metrics.Record(ctx, "otp_outcome", metrics.L{metrics.LabelOutcome: "send_failed"})
 		smsErr := errors.Internal("Failed to send OTP")
 		span.EndWithError(smsErr)
 		return smsErr
 	}
 
-	metrics.Record(ctx, "otp_outcome", metrics.L{labelOutcome: "sent"})
+	metrics.Record(ctx, "otp_outcome", metrics.L{metrics.LabelOutcome: "sent"})
 	slog.InfoContext(ctx, "OTP sent", "phone", phone)
 	span.End()
 	return nil
@@ -135,7 +135,7 @@ func (s *CustomerAuthService) VerifyOTP(ctx context.Context, phone, code string)
 	}
 
 	if hashSHA256(code) != otp.CodeHash {
-		metrics.Record(ctx, "otp_outcome", metrics.L{labelOutcome: "verify_failed"})
+		metrics.Record(ctx, "otp_outcome", metrics.L{metrics.LabelOutcome: "verify_failed"})
 		invalidErr := errors.New(errors.ErrCodeInvalidCredentials, "Invalid OTP code")
 		span.EndWithError(invalidErr)
 		return nil, nil, false, invalidErr
@@ -164,15 +164,15 @@ func (s *CustomerAuthService) VerifyOTP(ctx context.Context, phone, code string)
 
 	span.SetAttribute("entity.id", customer.ID)
 	span.SetAttribute("customer.is_new", isNew)
-	metrics.Record(ctx, "otp_outcome", metrics.L{labelOutcome: "verified"})
+	metrics.Record(ctx, "otp_outcome", metrics.L{metrics.LabelOutcome: "verified"})
 	// session_started fires on OTP verify — i.e. an already-on-site visitor
 	// completed authentication. Device + UTM attribution belong on
 	// visitor-level signals (site_visitor) and conversion events
 	// (payment_completed, customer_first_purchase), not here.
 	metrics.Record(ctx, "session_started", metrics.L{
-		labelCountry:  middleware.GetCountry(ctx),
-		labelCity:     middleware.GetCity(ctx),
-		"is_new_user": fmt.Sprintf("%t", isNew),
+		metrics.LabelCountry:   middleware.GetCountry(ctx),
+		metrics.LabelCity:      middleware.GetCity(ctx),
+		metrics.LabelIsNewUser: fmt.Sprintf("%t", isNew),
 	})
 	slog.InfoContext(ctx, "Customer authenticated", "customer_id", customer.ID, "is_new", isNew)
 	span.End()

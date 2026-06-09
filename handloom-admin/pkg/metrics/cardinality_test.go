@@ -68,7 +68,7 @@ var AllowedLabels = map[string]struct{}{
 
 // walkGoFiles invokes fn for every non-test .go file under root, skipping
 // vendored / generated / pkg-metrics paths (pkg/metrics keys aren't governed).
-func walkGoFiles(t *testing.T, root string, fn func(path string, file *ast.File, fset *token.FileSet)) {
+func walkGoFiles(t *testing.T, root string, skipMetrics bool, fn func(path string, file *ast.File, fset *token.FileSet)) {
 	t.Helper()
 	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -84,7 +84,7 @@ func walkGoFiles(t *testing.T, root string, fn func(path string, file *ast.File,
 		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
 			return nil
 		}
-		if strings.Contains(filepath.ToSlash(path), "/pkg/metrics/") {
+		if skipMetrics && strings.Contains(filepath.ToSlash(path), "/pkg/metrics/") {
 			return nil
 		}
 		fset := token.NewFileSet()
@@ -105,7 +105,9 @@ func walkGoFiles(t *testing.T, root string, fn func(path string, file *ast.File,
 // constant-identifier label keys back to their underlying string.
 func collectStringConsts(t *testing.T, root string) map[string]string {
 	consts := make(map[string]string)
-	walkGoFiles(t, root, func(_ string, file *ast.File, _ *token.FileSet) {
+	// skipMetrics=false: collect from pkg/metrics too, so the shared
+	// metrics.Label* vocabulary is resolvable when used elsewhere.
+	walkGoFiles(t, root, false, func(_ string, file *ast.File, _ *token.FileSet) {
 		for _, decl := range file.Decls {
 			gd, ok := decl.(*ast.GenDecl)
 			if !ok || gd.Tok != token.CONST {
@@ -155,7 +157,8 @@ func TestNoUnknownLabelsInMetricsRecord(t *testing.T) {
 	}
 
 	var violations []string
-	walkGoFiles(t, root, func(_ string, file *ast.File, fset *token.FileSet) {
+	// skipMetrics=true: pkg/metrics label keys aren't governed by the allowlist.
+	walkGoFiles(t, root, true, func(_ string, file *ast.File, fset *token.FileSet) {
 		ast.Inspect(file, func(n ast.Node) bool {
 			comp, ok := n.(*ast.CompositeLit)
 			if !ok {

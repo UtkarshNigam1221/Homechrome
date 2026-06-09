@@ -185,11 +185,11 @@ func (s *CheckoutService) Initiate(ctx context.Context, customerID string, req d
 	// shipping_cost_shown: emitted once the price is computed so we can
 	// dashboard shipping revenue/cost by country. Fires even when shippingAmount==0.
 	metrics.Record(ctx, "shipping_cost_shown", metrics.L{
-		labelCountry: country,
+		metrics.LabelCountry: country,
 	})
 	if shippingAmount > 0 {
 		metrics.RecordSum(ctx, "shipping_cost_shown", shippingAmount, metrics.L{
-			labelCountry: country,
+			metrics.LabelCountry: country,
 		})
 	}
 
@@ -237,13 +237,13 @@ func (s *CheckoutService) Initiate(ctx context.Context, customerID string, req d
 	}
 
 	// Order placed — record business KPI.
-	metrics.Record(ctx, "orders_placed", metrics.L{labelCountry: country, labelCity: city})
+	metrics.Record(ctx, "orders_placed", metrics.L{metrics.LabelCountry: country, metrics.LabelCity: city})
 	metrics.RecordSum(ctx, "orders_value", order.TotalAmount, metrics.L{
-		labelCountry: country, labelCity: city, labelGateway: gatewayPhonePe,
+		metrics.LabelCountry: country, metrics.LabelCity: city, metrics.LabelGateway: gatewayPhonePe,
 	})
 	metrics.Record(ctx, "cart_size", metrics.L{
-		labelCountry: country,
-		labelBucket:  metrics.BucketForCartSize(order.ItemCount),
+		metrics.LabelCountry: country,
+		metrics.LabelBucket:  metrics.BucketForCartSize(order.ItemCount),
 	})
 
 	// NOTE: Per-product purchase counts, coupon-redeemed, first-purchase, and
@@ -274,9 +274,9 @@ func (s *CheckoutService) Initiate(ctx context.Context, customerID string, req d
 	// were dropped per metrics-PG migration plan (covered by cart_to_payment
 	// + country/city labels on funnel metrics).
 	metrics.Record(ctx, "checkout_initiated", metrics.L{
-		labelCountry:    country,
-		labelCity:       city,
-		labelDeviceType: middleware.GetDeviceType(ctx),
+		metrics.LabelCountry:    country,
+		metrics.LabelCity:       city,
+		metrics.LabelDeviceType: middleware.GetDeviceType(ctx),
 	})
 
 	span.SetAttribute("entity.id", order.ID)

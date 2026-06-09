@@ -30,15 +30,15 @@ func HTTPServer(service string) func(http.Handler) http.Handler {
 			route := routePattern(r)
 			statusClass := strconv.Itoa(statusOrOK(ww.Status())/100) + "xx"
 			metrics.Record(r.Context(), "http_request", metrics.L{
-				"service":      service,
-				"method":       r.Method,
-				"route":        route,
-				"status_class": statusClass,
+				metrics.LabelService:     service,
+				metrics.LabelMethod:      r.Method,
+				metrics.LabelRoute:       route,
+				metrics.LabelStatusClass: statusClass,
 			})
 			metrics.RecordDuration(r.Context(), "http_request_duration", time.Since(start), metrics.L{
-				"service": service,
-				"method":  r.Method,
-				"route":   route,
+				metrics.LabelService: service,
+				metrics.LabelMethod:  r.Method,
+				metrics.LabelRoute:   route,
 			})
 		})
 	}

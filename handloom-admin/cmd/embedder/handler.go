@@ -137,9 +137,9 @@ func (d *deps) handleSearch(w http.ResponseWriter, r *http.Request) {
 			intent = d.classifier.Classify(qvec)
 		}
 		metrics.Record(r.Context(), "search_query", metrics.L{
-			"has_results": fmt.Sprintf("%t", hasResults),
-			"country":     middleware.GetCountry(r.Context()),
-			"intent":      intent,
+			metrics.LabelHasResults: fmt.Sprintf("%t", hasResults),
+			metrics.LabelCountry:    middleware.GetCountry(r.Context()),
+			metrics.LabelIntent:     intent,
 		})
 		slog.InfoContext(r.Context(), "store.search",
 			slog.String("query", req.Query),

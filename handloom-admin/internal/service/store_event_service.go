@@ -62,9 +62,9 @@ func (s *StoreEventService) mapProductViewed(ctx context.Context, evt domain.Sto
 	}
 	if productID != "" {
 		metrics.Record(ctx, "product_viewed", metrics.L{
-			keyProductID:    productID,
-			labelCategoryID: categoryID,
-			labelDeviceType: device,
+			keyProductID:            productID,
+			metrics.LabelCategoryID: categoryID,
+			metrics.LabelDeviceType: device,
 		})
 	}
 }
@@ -74,7 +74,7 @@ func (s *StoreEventService) mapCategoryViewed(ctx context.Context, evt domain.St
 	if categoryID == "" {
 		categoryID = labelUnknown
 	}
-	metrics.Record(ctx, "category_viewed", metrics.L{labelCategoryID: categoryID})
+	metrics.Record(ctx, "category_viewed", metrics.L{metrics.LabelCategoryID: categoryID})
 }
 
 func (s *StoreEventService) mapOutOfStockShown(ctx context.Context, evt domain.StoreEvent, _ string) {
@@ -98,7 +98,7 @@ func (s *StoreEventService) mapCatalogFilterApplied(ctx context.Context, evt dom
 	if filterKey == "" {
 		filterKey = labelUnknown
 	}
-	metrics.Record(ctx, "catalog_filter_applied", metrics.L{"filter_key": truncate(filterKey, 32)})
+	metrics.Record(ctx, "catalog_filter_applied", metrics.L{metrics.LabelFilterKey: truncate(filterKey, 32)})
 }
 
 func (s *StoreEventService) mapRUMJSError(ctx context.Context, evt domain.StoreEvent, _ string) {
@@ -111,8 +111,8 @@ func (s *StoreEventService) mapRUMJSError(ctx context.Context, evt domain.StoreE
 		errorType = "Error"
 	}
 	metrics.Record(ctx, "rum_js_error", metrics.L{
-		labelPageType: pageType,
-		"error_type":  truncate(errorType, 64),
+		metrics.LabelPageType:  pageType,
+		metrics.LabelErrorType: truncate(errorType, 64),
 	})
 }
 
@@ -122,8 +122,8 @@ func (s *StoreEventService) mapRUMPageView(ctx context.Context, evt domain.Store
 		pageType = labelOther
 	}
 	metrics.Record(ctx, "rum_page_view", metrics.L{
-		labelPageType:   pageType,
-		labelDeviceType: device,
+		metrics.LabelPageType:   pageType,
+		metrics.LabelDeviceType: device,
 	})
 	// site_visitor is the top-of-funnel signal — every page load, anonymous-
 	// friendly. Carries the full visitor-attribution tuple so the funnel
@@ -132,12 +132,12 @@ func (s *StoreEventService) mapRUMPageView(ctx context.Context, evt domain.Store
 	country := middleware.GetCountry(ctx)
 	utmSource, utmMedium, utmCampaign := middleware.GetUTM(ctx)
 	metrics.Record(ctx, "site_visitor", metrics.L{
-		labelCity:       city,
-		labelCountry:    country,
-		labelDeviceType: device,
-		labelUTMSource:  utmSource,
-		"utm_medium":    utmMedium,
-		"utm_campaign":  utmCampaign,
+		metrics.LabelCity:        city,
+		metrics.LabelCountry:     country,
+		metrics.LabelDeviceType:  device,
+		metrics.LabelUTMSource:   utmSource,
+		metrics.LabelUTMMedium:   utmMedium,
+		metrics.LabelUTMCampaign: utmCampaign,
 	})
 	// Lazy-upsert centroid on first sighting (per (city, country) pair).
 	// Skipped when city/country unknown or lat/lng absent — keeps the table
@@ -147,7 +147,7 @@ func (s *StoreEventService) mapRUMPageView(ctx context.Context, evt domain.Store
 		if err := s.centroids.Upsert(ctx, city, country, lat, lng); err != nil {
 			slog.WarnContext(ctx, "centroid upsert failed", "city", city, "country", country, "err", err)
 			// Observable failure signal — constant label keeps cardinality bounded.
-			metrics.Record(ctx, "centroid_upsert_error", metrics.L{labelReason: "db_write"})
+			metrics.Record(ctx, "centroid_upsert_error", metrics.L{metrics.LabelReason: "db_write"})
 		}
 	}
 }
@@ -167,9 +167,9 @@ func emitRUM(ctx context.Context, metricName string, evt domain.StoreEvent, devi
 	}
 	v := rumValue(evt.Properties["value"])
 	metrics.Record(ctx, metricName, metrics.L{
-		labelBucket:     bucketForRUM(metricName, v),
-		labelPageType:   pageType,
-		labelDeviceType: device,
+		metrics.LabelBucket:     bucketForRUM(metricName, v),
+		metrics.LabelPageType:   pageType,
+		metrics.LabelDeviceType: device,
 	})
 }
 

@@ -24,6 +24,10 @@ type utmCampaignKey struct{}
 // run very long if uncapped.
 const MaxUTMLen = 32
 
+// unknownLabel is the fallback returned by the geo/UTM getters when a field
+// is absent from the request context.
+const unknownLabel = "unknown"
+
 // VisitorHeader is the single request header carrying all visitor-attribution
 // fields (city, country, lat, lng, device, utm_*). Storefront axios assembles
 // it browser-side; Next.js middleware merges in CloudFront viewer geo bits
@@ -98,7 +102,7 @@ func parseVisitorHeader(raw string) map[string]string {
 func truncUTM(input string) string {
 	s := strings.ToLower(strings.TrimSpace(input))
 	if s == "" {
-		return "unknown"
+		return unknownLabel
 	}
 	if len(s) > MaxUTMLen {
 		s = s[:MaxUTMLen]
@@ -111,7 +115,7 @@ func GetCity(ctx context.Context) string {
 	if v, ok := ctx.Value(geoCityKey{}).(string); ok {
 		return v
 	}
-	return "unknown"
+	return unknownLabel
 }
 
 // GetCountry returns the ISO-2 country code from context, or "unknown".
@@ -119,7 +123,7 @@ func GetCountry(ctx context.Context) string {
 	if v, ok := ctx.Value(geoCountryKey{}).(string); ok {
 		return v
 	}
-	return "unknown"
+	return unknownLabel
 }
 
 // GetLatLng returns the viewer latitude / longitude pair from context.
@@ -136,7 +140,7 @@ func GetDeviceType(ctx context.Context) string {
 	if v, ok := ctx.Value(deviceTypeKey{}).(string); ok {
 		return v
 	}
-	return "unknown"
+	return unknownLabel
 }
 
 // GetUTM returns the (utm_source, utm_medium, utm_campaign) tuple from
@@ -146,13 +150,13 @@ func GetUTM(ctx context.Context) (source, medium, campaign string) {
 	m, _ := ctx.Value(utmMediumKey{}).(string)
 	c, _ := ctx.Value(utmCampaignKey{}).(string)
 	if s == "" {
-		s = "unknown"
+		s = unknownLabel
 	}
 	if m == "" {
-		m = "unknown"
+		m = unknownLabel
 	}
 	if c == "" {
-		c = "unknown"
+		c = unknownLabel
 	}
 	return s, m, c
 }

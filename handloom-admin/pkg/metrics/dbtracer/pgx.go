@@ -37,13 +37,13 @@ func (t *Tracer) TraceQueryEnd(ctx context.Context, _ *pgx.Conn, data pgx.TraceQ
 		status = "err"
 	}
 	metrics.Record(ctx, "db_query", metrics.L{
-		"service":   t.Service,
-		"operation": op,
-		"status":    status,
+		"service":              t.Service,
+		metrics.LabelOperation: op,
+		metrics.LabelStatus:    status,
 	})
 	metrics.RecordDuration(ctx, "db_query_duration", time.Since(start), metrics.L{
-		"service":   t.Service,
-		"operation": op,
+		"service":              t.Service,
+		metrics.LabelOperation: op,
 	})
 }
 

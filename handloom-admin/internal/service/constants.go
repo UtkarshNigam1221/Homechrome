@@ -1,20 +1,9 @@
 package service
 
-// Metric label keys (kept as constants so goconst is satisfied; the cardinality
-// guard in pkg/metrics resolves these identifiers back to their string value).
-const (
-	keyProductID    = "product_id"
-	labelCountry    = "country"
-	labelCity       = "city"
-	labelDeviceType = "device_type"
-	labelGateway    = "gateway"
-	labelBucket     = "bucket"
-	labelOutcome    = "outcome"
-	labelReason     = "reason"
-	labelCategoryID = "category_id"
-	labelUTMSource  = "utm_source"
-	labelPageType   = "page_type"
-)
+// keyProductID is the shared "product_id" key — used both as a slog field and
+// as a metric label. Metric label KEYS live in the central vocabulary
+// (metrics.Label*); this stays here because it doubles as a log key.
+const keyProductID = "product_id"
 
 // Common metric-label fallback / value strings, de-duplicated across the package.
 const (

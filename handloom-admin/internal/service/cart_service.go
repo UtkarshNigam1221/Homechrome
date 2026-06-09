@@ -92,16 +92,16 @@ func (s *CartService) AddItem(ctx context.Context, cartOwner string, isGuest boo
 
 	if wasEmpty {
 		metrics.Record(ctx, "cart_added", metrics.L{
-			labelCountry:    middleware.GetCountry(ctx),
-			labelDeviceType: middleware.GetDeviceType(ctx),
+			metrics.LabelCountry:    middleware.GetCountry(ctx),
+			metrics.LabelDeviceType: middleware.GetDeviceType(ctx),
 		})
 	}
 
 	// Every successful add (not just 0->1) fires item_added_to_cart.
 	metrics.Record(ctx, "item_added_to_cart", metrics.L{
-		keyProductID:    req.ProductID,
-		labelCountry:    middleware.GetCountry(ctx),
-		labelDeviceType: middleware.GetDeviceType(ctx),
+		keyProductID:            req.ProductID,
+		metrics.LabelCountry:    middleware.GetCountry(ctx),
+		metrics.LabelDeviceType: middleware.GetDeviceType(ctx),
 	})
 
 	slog.InfoContext(ctx, "Added item to cart", keyProductID, req.ProductID, "cart_owner", cartOwner)

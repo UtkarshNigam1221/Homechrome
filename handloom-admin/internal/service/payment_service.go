@@ -103,7 +103,7 @@ func (s *PaymentService) InitiatePayment(ctx context.Context, req domain.Initiat
 	// funnel event. Only PhonePe exists today; the gateway label is hardcoded
 	// to keep cardinality bounded.
 	metrics.Record(ctx, "payment_initiated", metrics.L{
-		labelGateway: gatewayPhonePe, labelCountry: middleware.GetCountry(ctx),
+		metrics.LabelGateway: gatewayPhonePe, metrics.LabelCountry: middleware.GetCountry(ctx),
 	})
 
 	span.SetAttribute("entity.id", payment.ID)
@@ -193,11 +193,11 @@ func (s *PaymentService) HandlePaymentSuccess(ctx context.Context, evt domain.Pa
 		// device funnel completion). Both read from the order — webhook ctx
 		// is server-to-server with no browser headers.
 		metrics.Record(ctx, "payment_completed", metrics.L{
-			labelGateway:    gatewayPhonePe,
-			labelCountry:    country,
-			labelCity:       city,
-			labelDeviceType: device,
-			labelUTMSource:  utmSource,
+			metrics.LabelGateway:    gatewayPhonePe,
+			metrics.LabelCountry:    country,
+			metrics.LabelCity:       city,
+			metrics.LabelDeviceType: device,
+			metrics.LabelUTMSource:  utmSource,
 		})
 
 		if !order.CreatedAt.IsZero() {
@@ -206,7 +206,7 @@ func (s *PaymentService) HandlePaymentSuccess(ctx context.Context, evt domain.Pa
 	}
 
 	metrics.Record(ctx, "payment_outcome", metrics.L{
-		labelGateway: gatewayPhonePe, labelOutcome: "success", labelCountry: middleware.GetCountry(ctx),
+		metrics.LabelGateway: gatewayPhonePe, metrics.LabelOutcome: "success", metrics.LabelCountry: middleware.GetCountry(ctx),
 	})
 
 	// RecordOrderPlaced moved to CheckoutService.Initiate (at order creation
@@ -244,7 +244,7 @@ func (s *PaymentService) HandlePaymentFailure(ctx context.Context, evt domain.Pa
 	span.SetAttribute("entity.id", payment.ID)
 	span.SetAttribute("order.id", payment.OrderID)
 	metrics.Record(ctx, "payment_outcome", metrics.L{
-		labelGateway: gatewayPhonePe, labelOutcome: "failed", labelCountry: middleware.GetCountry(ctx),
+		metrics.LabelGateway: gatewayPhonePe, metrics.LabelOutcome: "failed", metrics.LabelCountry: middleware.GetCountry(ctx),
 	})
 	s.releaseOrderInventory(ctx, payment.OrderID)
 
@@ -276,7 +276,7 @@ func (s *PaymentService) HandlePaymentPending(ctx context.Context, evt domain.Pa
 	}
 
 	metrics.Record(ctx, "payment_outcome", metrics.L{
-		labelGateway: gatewayPhonePe, labelOutcome: "pending", labelCountry: middleware.GetCountry(ctx),
+		metrics.LabelGateway: gatewayPhonePe, metrics.LabelOutcome: "pending", metrics.LabelCountry: middleware.GetCountry(ctx),
 	})
 	slog.InfoContext(ctx, "Payment pending", "payment_id", payment.ID, "order_id", payment.OrderID)
 	return nil

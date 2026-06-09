@@ -15,16 +15,31 @@ func BucketForDuration(d time.Duration, boundaries []float64, labels []string) s
 	return labels[len(labels)-1]
 }
 
+// Histogram bucket labels. Defined as constants so the shared boundary sets
+// below don't repeat string literals (goconst), and renames stay consistent.
+const (
+	leInf   = "le_inf"
+	le30s   = "le_30s"
+	le2m    = "le_2m"
+	le10m   = "le_10m"
+	le1h    = "le_1h"
+	le50ms  = "le_50ms"
+	le200ms = "le_200ms"
+	le1s    = "le_1s"
+	le5s    = "le_5s"
+	le10ms  = "le_10ms"
+)
+
 // Predefined boundary sets used across the codebase.
 var (
 	DurationCartToPaymentBoundaries = []float64{30, 120, 600, 3600}
-	DurationCartToPaymentLabels     = []string{"le_30s", "le_2m", "le_10m", "le_1h", "le_inf"}
+	DurationCartToPaymentLabels     = []string{le30s, le2m, le10m, le1h, leInf}
 
 	DurationHTTPServerBoundaries = []float64{0.05, 0.2, 1.0, 5.0}
-	DurationHTTPServerLabels     = []string{"le_50ms", "le_200ms", "le_1s", "le_5s", "le_inf"}
+	DurationHTTPServerLabels     = []string{le50ms, le200ms, le1s, le5s, leInf}
 
 	DurationDBQueryBoundaries = []float64{0.01, 0.05, 0.2, 1.0}
-	DurationDBQueryLabels     = []string{"le_10ms", "le_50ms", "le_200ms", "le_1s", "le_inf"}
+	DurationDBQueryLabels     = []string{le10ms, le50ms, le200ms, le1s, leInf}
 )
 
 // BucketForCartSize returns the matching bucket label for an integer item count.

@@ -51,13 +51,13 @@ func (t *HTTPClientTransport) RoundTrip(req *http.Request) (*http.Response, erro
 		statusClass = strconv.Itoa(resp.StatusCode/100) + "xx"
 	}
 	metrics.Record(req.Context(), "http_client_call", metrics.L{
-		"service":      t.Service,
-		"target_host":  req.URL.Host,
-		"status_class": statusClass,
+		metrics.LabelService:     t.Service,
+		metrics.LabelTargetHost:  req.URL.Host,
+		metrics.LabelStatusClass: statusClass,
 	})
 	metrics.RecordDuration(req.Context(), "http_client_duration", dur, metrics.L{
-		"service":     t.Service,
-		"target_host": req.URL.Host,
+		metrics.LabelService:    t.Service,
+		metrics.LabelTargetHost: req.URL.Host,
 	})
 	return resp, err
 }

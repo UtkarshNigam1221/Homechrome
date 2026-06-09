@@ -34,8 +34,8 @@ func recordPurchaseAnalytics(ctx context.Context, customerRepo domain.CustomerRe
 			catID = labelUnknown
 		}
 		metrics.RecordSum(ctx, "product_purchased", line.TotalPrice, metrics.L{
-			keyProductID:    line.ProductID,
-			labelCategoryID: catID,
+			keyProductID:            line.ProductID,
+			metrics.LabelCategoryID: catID,
 		})
 	}
 
@@ -44,7 +44,7 @@ func recordPurchaseAnalytics(ctx context.Context, customerRepo domain.CustomerRe
 		code := strings.ToUpper(strings.TrimSpace(*order.CouponCode))
 		if code != "" {
 			metrics.RecordSum(ctx, "coupon_redeemed", order.DiscountAmount, metrics.L{
-				"coupon_code": code,
+				metrics.LabelCouponCode: code,
 			})
 		}
 	}
@@ -60,16 +60,16 @@ func recordPurchaseAnalytics(ctx context.Context, customerRepo domain.CustomerRe
 	switch {
 	case newCount == 1:
 		metrics.Record(ctx, "customer_first_purchase", metrics.L{
-			labelCountry:    attr.country,
-			labelCity:       attr.city,
-			labelDeviceType: attr.device,
-			labelUTMSource:  attr.utmSource,
+			metrics.LabelCountry:    attr.country,
+			metrics.LabelCity:       attr.city,
+			metrics.LabelDeviceType: attr.device,
+			metrics.LabelUTMSource:  attr.utmSource,
 		})
 	case newCount > 1:
 		metrics.Record(ctx, "repeat_purchase", metrics.L{
-			labelCountry:    attr.country,
-			labelCity:       attr.city,
-			labelDeviceType: attr.device,
+			metrics.LabelCountry:    attr.country,
+			metrics.LabelCity:       attr.city,
+			metrics.LabelDeviceType: attr.device,
 		})
 	}
 }

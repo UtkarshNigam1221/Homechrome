@@ -194,13 +194,13 @@ func (s *OrderService) Create(ctx context.Context, req domain.CreateOrderRequest
 
 	// Emit KPI metrics for the placed order (admin channel — this is the admin-facing Create path).
 	// Admin orders have no geo context; use "unknown" for country/city.
-	metrics.Record(ctx, "orders_placed", metrics.L{labelCountry: labelUnknown, labelCity: labelUnknown})
+	metrics.Record(ctx, "orders_placed", metrics.L{metrics.LabelCountry: labelUnknown, metrics.LabelCity: labelUnknown})
 	metrics.RecordSum(ctx, "orders_value", order.TotalAmount, metrics.L{
-		labelCountry: labelUnknown, labelCity: labelUnknown, labelGateway: string(domain.PaymentMethodUPI),
+		metrics.LabelCountry: labelUnknown, metrics.LabelCity: labelUnknown, metrics.LabelGateway: string(domain.PaymentMethodUPI),
 	})
 	metrics.Record(ctx, "cart_size", metrics.L{
-		labelCountry: labelUnknown,
-		labelBucket:  metrics.BucketForCartSize(len(order.Items)),
+		metrics.LabelCountry: labelUnknown,
+		metrics.LabelBucket:  metrics.BucketForCartSize(len(order.Items)),
 	})
 
 	// Product-analytics signals (fire-and-forget). Admin-placed orders have no
@@ -338,8 +338,8 @@ func (s *OrderService) UpdateStatus(ctx context.Context, id string, status domai
 		}
 		// order_cancelled — status-transition path, no admin reason text.
 		metrics.Record(ctx, "order_cancelled", metrics.L{
-			labelReason:  "status_update",
-			labelGateway: gatewayPhonePe,
+			metrics.LabelReason:  "status_update",
+			metrics.LabelGateway: gatewayPhonePe,
 		})
 	}
 
@@ -423,8 +423,8 @@ func (s *OrderService) CancelOrder(ctx context.Context, id string, reason string
 	// truncated to a small prefix to keep cardinality under control).
 	reasonLabel := normaliseCancelReason(reason)
 	metrics.Record(ctx, "order_cancelled", metrics.L{
-		labelReason:  reasonLabel,
-		labelGateway: gatewayPhonePe,
+		metrics.LabelReason:  reasonLabel,
+		metrics.LabelGateway: gatewayPhonePe,
 	})
 
 	slog.InfoContext(ctx, "Canceled order", "order_id", id)
