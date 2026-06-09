@@ -15,6 +15,7 @@ import {
 
 import type { BucketRow } from '@/shared/api/neonDataApi';
 import { fetchMultiMetricBuckets } from '@/shared/api/neonDataApi';
+import { PageHeader } from '@/shared/components/ui';
 import { useResolvedRange } from '@/shared/stores/dashboardFilters';
 
 import {
@@ -234,12 +235,10 @@ export function RUMDashboard() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold text-neutral-900">RUM & Service Health</h1>
-        <p className="text-sm text-neutral-600">
-          Web vitals, JS errors, HTTP error rates, lambda cold starts, gateway calls, DB latency.
-        </p>
-      </div>
+      <PageHeader
+        title="RUM & Service Health"
+        subtitle="Web vitals, JS errors, HTTP error rates, lambda cold starts, gateway calls, DB latency."
+      />
 
       {/* 1. Web vitals stat row */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">

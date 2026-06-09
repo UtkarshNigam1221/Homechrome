@@ -13,6 +13,7 @@ import {
   Card,
   Input,
   Modal,
+  PageHeader,
   Pagination,
   Select,
   Table,
@@ -100,15 +101,15 @@ export function OrdersPage() {
   return (
     <div className="space-y-6">
       {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="page-title">Orders</h1>
-          <p className="page-subtitle">Manage customer orders and fulfillment</p>
-        </div>
-        <Button variant="secondary" leftIcon={<Download className="w-4 h-4" />}>
-          Export Orders
-        </Button>
-      </div>
+      <PageHeader
+        title="Orders"
+        subtitle="Manage customer orders and fulfillment"
+        action={
+          <Button variant="secondary" leftIcon={<Download className="w-4 h-4" />}>
+            Export Orders
+          </Button>
+        }
+      />
 
       {/* Filters */}
       <Card padding="sm">

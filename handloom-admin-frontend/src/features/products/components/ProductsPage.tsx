@@ -13,6 +13,7 @@ import {
   Card,
   ConfirmModal,
   Input,
+  PageHeader,
   Pagination,
   Select,
   Table,
@@ -153,32 +154,32 @@ export function ProductsPage() {
   return (
     <div className="space-y-6">
       {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="page-title">Products</h1>
-          <p className="page-subtitle">Manage your product catalog</p>
-        </div>
-        <div className="flex gap-2">
-          {categoryFilter && (
+      <PageHeader
+        title="Products"
+        subtitle="Manage your product catalog"
+        action={
+          <div className="flex gap-2">
+            {categoryFilter && (
+              <Button
+                variant="secondary"
+                leftIcon={<ArrowUpDown className="h-4 w-4" />}
+                onClick={() => setShowRankingModal(true)}
+              >
+                Manage Order
+              </Button>
+            )}
             <Button
-              variant="secondary"
-              leftIcon={<ArrowUpDown className="h-4 w-4" />}
-              onClick={() => setShowRankingModal(true)}
+              leftIcon={<Plus className="w-4 h-4" />}
+              onClick={() => {
+                setEditingProduct(null);
+                setShowFormModal(true);
+              }}
             >
-              Manage Order
+              Add Product
             </Button>
-          )}
-          <Button
-            leftIcon={<Plus className="w-4 h-4" />}
-            onClick={() => {
-              setEditingProduct(null);
-              setShowFormModal(true);
-            }}
-          >
-            Add Product
-          </Button>
-        </div>
-      </div>
+          </div>
+        }
+      />
 
       {/* Filters */}
       <Card padding="sm">

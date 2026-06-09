@@ -10,6 +10,8 @@ export type { InputProps } from './Input';
 export { Input } from './Input';
 export type { ConfirmModalProps, ModalProps } from './Modal';
 export { ConfirmModal, Modal } from './Modal';
+export type { PageHeaderProps } from './PageHeader';
+export { PageHeader } from './PageHeader';
 export type { PaginationProps } from './Pagination';
 export { Pagination } from './Pagination';
 export type { SelectOption, SelectProps } from './Select';

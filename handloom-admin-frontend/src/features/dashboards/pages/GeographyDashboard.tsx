@@ -5,6 +5,7 @@ import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxi
 
 import type { BucketRow, CityCentroid } from '@/shared/api/neonDataApi';
 import { fetchCityCentroids, fetchMultiMetricBuckets } from '@/shared/api/neonDataApi';
+import { PageHeader } from '@/shared/components/ui';
 import { useResolvedRange } from '@/shared/stores/dashboardFilters';
 
 import { Card, PanelState, SectionTitle, stickyTableHeadClass } from '../components/primitives';
@@ -201,13 +202,10 @@ export function GeographyDashboard() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold text-neutral-900">Geography</h1>
-        <p className="text-sm text-neutral-600">
-          Worldwide orders, revenue, new customers, and visitors. Markers placed from
-          CloudFront-resolved city centroids, auto-populated on first sighting.
-        </p>
-      </div>
+      <PageHeader
+        title="Geography"
+        subtitle="Worldwide orders, revenue, new customers, and visitors. Markers placed from CloudFront-resolved city centroids, auto-populated on first sighting."
+      />
 
       <WorldDotsCard
         title="Visitors by city"

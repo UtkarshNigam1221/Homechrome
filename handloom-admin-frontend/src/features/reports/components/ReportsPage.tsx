@@ -12,6 +12,7 @@ import {
   Card,
   Input,
   Modal,
+  PageHeader,
   Pagination,
   Select,
   Table,
@@ -91,15 +92,18 @@ export function ReportsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="page-title">Reports</h1>
-          <p className="page-subtitle">Generate and download business reports</p>
-        </div>
-        <Button leftIcon={<Plus className="w-4 h-4" />} onClick={() => setShowGenerateModal(true)}>
-          Generate Report
-        </Button>
-      </div>
+      <PageHeader
+        title="Reports"
+        subtitle="Generate and download business reports"
+        action={
+          <Button
+            leftIcon={<Plus className="w-4 h-4" />}
+            onClick={() => setShowGenerateModal(true)}
+          >
+            Generate Report
+          </Button>
+        }
+      />
 
       {/* Quick Report Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

@@ -10,6 +10,7 @@ import {
   Button,
   Card,
   Input,
+  PageHeader,
   Pagination,
   StatCard,
   Table,
@@ -72,12 +73,7 @@ export function InventoryPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="page-title">Inventory</h1>
-          <p className="page-subtitle">Track and manage product stock levels</p>
-        </div>
-      </div>
+      <PageHeader title="Inventory" subtitle="Track and manage product stock levels" />
 
       {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

@@ -9,6 +9,7 @@ import {
   Button,
   Card,
   Input,
+  PageHeader,
   Pagination,
   Table,
   TableBody,
@@ -74,15 +75,15 @@ export function CouponsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="page-title">Coupons</h1>
-          <p className="page-subtitle">Manage discount codes and promotions</p>
-        </div>
-        <Button leftIcon={<Plus className="w-4 h-4" />} onClick={handleOpenCreate}>
-          Create Coupon
-        </Button>
-      </div>
+      <PageHeader
+        title="Coupons"
+        subtitle="Manage discount codes and promotions"
+        action={
+          <Button leftIcon={<Plus className="w-4 h-4" />} onClick={handleOpenCreate}>
+            Create Coupon
+          </Button>
+        }
+      />
 
       <Card padding="sm">
         <Input

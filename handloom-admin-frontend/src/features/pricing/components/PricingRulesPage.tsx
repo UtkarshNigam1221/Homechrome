@@ -8,6 +8,7 @@ import {
   Button,
   Card,
   Input,
+  PageHeader,
   Pagination,
   Table,
   TableBody,
@@ -71,15 +72,15 @@ export function PricingRulesPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="page-title">Pricing Rules</h1>
-          <p className="page-subtitle">Configure dynamic pricing for products</p>
-        </div>
-        <Button leftIcon={<Plus className="w-4 h-4" />} onClick={handleOpenCreate}>
-          Add Rule
-        </Button>
-      </div>
+      <PageHeader
+        title="Pricing Rules"
+        subtitle="Configure dynamic pricing for products"
+        action={
+          <Button leftIcon={<Plus className="w-4 h-4" />} onClick={handleOpenCreate}>
+            Add Rule
+          </Button>
+        }
+      />
 
       <Card padding="sm">
         <Input
