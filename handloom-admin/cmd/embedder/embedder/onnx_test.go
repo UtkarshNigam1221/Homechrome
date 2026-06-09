@@ -12,9 +12,18 @@ import (
 func TestONNX_EmbedReturnsUnitVectors(t *testing.T) {
 	modelPath := filepath.Join("..", "assets", "model-int8.onnx")
 	tokPath := filepath.Join("..", "assets", "tokenizer.json")
-	libPath := os.Getenv("ONNXRUNTIME_SHARED_LIB_PATH")
 	if _, err := os.Stat(modelPath); os.IsNotExist(err) {
 		t.Skipf("model file missing: %s", modelPath)
+	}
+
+	// onnxruntime is dlopen'd at libPath, so it must be a runtime built for the
+	// HOST OS/arch. The bundled assets/libonnxruntime.so targets the Lambda
+	// (linux/arm64) and won't load on a dev mac, so this inference test is
+	// opt-in: set ONNXRUNTIME_SHARED_LIB_PATH to a host-native runtime to run
+	// it. Skip otherwise (also covers CI, which has no embedder assets).
+	libPath := os.Getenv("ONNXRUNTIME_SHARED_LIB_PATH")
+	if libPath == "" {
+		t.Skip("ONNXRUNTIME_SHARED_LIB_PATH unset; skipping ONNX inference test (needs a host-native runtime)")
 	}
 
 	sess, err := NewONNXSession(modelPath, libPath, tokPath, 128)
