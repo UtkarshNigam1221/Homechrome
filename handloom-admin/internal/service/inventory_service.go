@@ -79,9 +79,9 @@ func (s *InventoryService) emitStockLevelMetrics(ctx context.Context, productID 
 	}
 	switch {
 	case inv.AvailableQty <= 0:
-		metrics.Record(ctx, "inventory_out_of_stock", metrics.L{"product_id": productID})
+		metrics.Record(ctx, "inventory_out_of_stock", metrics.L{keyProductID: productID})
 	case inv.AvailableQty <= inv.LowStockThreshold:
-		metrics.Record(ctx, "inventory_low_stock", metrics.L{"product_id": productID})
+		metrics.Record(ctx, "inventory_low_stock", metrics.L{keyProductID: productID})
 	}
 }
 

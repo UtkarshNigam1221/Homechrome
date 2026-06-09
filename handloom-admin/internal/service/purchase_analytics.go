@@ -34,8 +34,8 @@ func recordPurchaseAnalytics(ctx context.Context, customerRepo domain.CustomerRe
 			catID = labelUnknown
 		}
 		metrics.RecordSum(ctx, "product_purchased", line.TotalPrice, metrics.L{
-			"product_id":  line.ProductID,
-			"category_id": catID,
+			keyProductID:    line.ProductID,
+			labelCategoryID: catID,
 		})
 	}
 
@@ -60,16 +60,16 @@ func recordPurchaseAnalytics(ctx context.Context, customerRepo domain.CustomerRe
 	switch {
 	case newCount == 1:
 		metrics.Record(ctx, "customer_first_purchase", metrics.L{
-			"country":     attr.country,
-			"city":        attr.city,
-			"device_type": attr.device,
-			"utm_source":  attr.utmSource,
+			labelCountry:    attr.country,
+			labelCity:       attr.city,
+			labelDeviceType: attr.device,
+			labelUTMSource:  attr.utmSource,
 		})
 	case newCount > 1:
 		metrics.Record(ctx, "repeat_purchase", metrics.L{
-			"country":     attr.country,
-			"city":        attr.city,
-			"device_type": attr.device,
+			labelCountry:    attr.country,
+			labelCity:       attr.city,
+			labelDeviceType: attr.device,
 		})
 	}
 }

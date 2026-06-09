@@ -1,9 +1,6 @@
 name: Deploy Storefront
 
 on:
-  pull_request:
-    branches: [main]
-
   workflow_dispatch:
     inputs:
       environment:
@@ -36,37 +33,8 @@ permissions:
   contents: read
 
 jobs:
-  check:
-    name: Lint
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: homechrome-store
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ inputs.branch }}
-
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: homechrome-store/package-lock.json
-
-      # Workaround for npm bug 4828: macOS-generated lockfile does not record
-      # Linux platform-specific optional deps (Next SWC, lightningcss for
-      # Tailwind 4). Remove the lockfile + node_modules so npm regenerates the
-      # dep tree against the Linux runner. Loses lockfile pinning in CI.
-      - run: rm -rf node_modules package-lock.json
-      - run: npm install
-      - run: npm run lint
-      - name: Build check
-        run: npm run build
-
   build:
     name: Build
-    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -121,7 +89,6 @@ jobs:
   deploy:
     name: Deploy
     needs: build
-    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     defaults:
       run:

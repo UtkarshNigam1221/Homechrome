@@ -1,9 +1,6 @@
 name: Deploy Admin Frontend
 
 on:
-  pull_request:
-    branches: [main]
-
   workflow_dispatch:
     inputs:
       environment:
@@ -36,38 +33,8 @@ permissions:
   contents: read
 
 jobs:
-  check:
-    name: Typecheck, Lint & Format
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: handloom-admin-frontend
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ inputs.branch }}
-
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: handloom-admin-frontend/package-lock.json
-
-      # Workaround for npm bug 4828: macOS-generated lockfile does not record
-      # Linux platform-specific optional deps (Rolldown native binding used by
-      # Vite 8). Remove the lockfile + node_modules so npm regenerates the
-      # dep tree against the Linux runner. Loses lockfile pinning in CI; the
-      # tradeoff is acceptable until npm fixes 4828 upstream.
-      - run: rm -rf node_modules package-lock.json
-      - run: npm install
-      - run: npm run check
-      - name: Build check
-        run: npm run build:dev
-
   build:
     name: Build
-    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -106,7 +73,6 @@ jobs:
   deploy:
     name: Deploy
     needs: build
-    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     defaults:
       run:

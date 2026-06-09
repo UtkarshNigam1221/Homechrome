@@ -92,16 +92,16 @@ func (s *CartService) AddItem(ctx context.Context, cartOwner string, isGuest boo
 
 	if wasEmpty {
 		metrics.Record(ctx, "cart_added", metrics.L{
-			"country":     middleware.GetCountry(ctx),
-			"device_type": middleware.GetDeviceType(ctx),
+			labelCountry:    middleware.GetCountry(ctx),
+			labelDeviceType: middleware.GetDeviceType(ctx),
 		})
 	}
 
 	// Every successful add (not just 0->1) fires item_added_to_cart.
 	metrics.Record(ctx, "item_added_to_cart", metrics.L{
-		"product_id":  req.ProductID,
-		"country":     middleware.GetCountry(ctx),
-		"device_type": middleware.GetDeviceType(ctx),
+		keyProductID:    req.ProductID,
+		labelCountry:    middleware.GetCountry(ctx),
+		labelDeviceType: middleware.GetDeviceType(ctx),
 	})
 
 	slog.InfoContext(ctx, "Added item to cart", keyProductID, req.ProductID, "cart_owner", cartOwner)
@@ -147,7 +147,7 @@ func (s *CartService) RemoveItem(ctx context.Context, cartOwner string, isGuest 
 	}
 
 	metrics.Record(ctx, "cart_item_removed", metrics.L{
-		"product_id": productID,
+		keyProductID: productID,
 	})
 
 	slog.InfoContext(ctx, "Removed item from cart", keyProductID, productID, "cart_owner", cartOwner)

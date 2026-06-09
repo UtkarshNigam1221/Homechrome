@@ -62,9 +62,9 @@ func (s *StoreEventService) mapProductViewed(ctx context.Context, evt domain.Sto
 	}
 	if productID != "" {
 		metrics.Record(ctx, "product_viewed", metrics.L{
-			"product_id":  productID,
-			"category_id": categoryID,
-			"device_type": device,
+			keyProductID:    productID,
+			labelCategoryID: categoryID,
+			labelDeviceType: device,
 		})
 	}
 }
@@ -74,7 +74,7 @@ func (s *StoreEventService) mapCategoryViewed(ctx context.Context, evt domain.St
 	if categoryID == "" {
 		categoryID = labelUnknown
 	}
-	metrics.Record(ctx, "category_viewed", metrics.L{"category_id": categoryID})
+	metrics.Record(ctx, "category_viewed", metrics.L{labelCategoryID: categoryID})
 }
 
 func (s *StoreEventService) mapOutOfStockShown(ctx context.Context, evt domain.StoreEvent, _ string) {
@@ -82,7 +82,7 @@ func (s *StoreEventService) mapOutOfStockShown(ctx context.Context, evt domain.S
 	if productID == "" {
 		productID = labelUnknown
 	}
-	metrics.Record(ctx, "out_of_stock_shown", metrics.L{"product_id": productID})
+	metrics.Record(ctx, "out_of_stock_shown", metrics.L{keyProductID: productID})
 }
 
 func (s *StoreEventService) mapBackInStockNotify(ctx context.Context, evt domain.StoreEvent, _ string) {
@@ -90,7 +90,7 @@ func (s *StoreEventService) mapBackInStockNotify(ctx context.Context, evt domain
 	if productID == "" {
 		productID = labelUnknown
 	}
-	metrics.Record(ctx, "back_in_stock_notify_requested", metrics.L{"product_id": productID})
+	metrics.Record(ctx, "back_in_stock_notify_requested", metrics.L{keyProductID: productID})
 }
 
 func (s *StoreEventService) mapCatalogFilterApplied(ctx context.Context, evt domain.StoreEvent, _ string) {
@@ -111,8 +111,8 @@ func (s *StoreEventService) mapRUMJSError(ctx context.Context, evt domain.StoreE
 		errorType = "Error"
 	}
 	metrics.Record(ctx, "rum_js_error", metrics.L{
-		"page_type":  pageType,
-		"error_type": truncate(errorType, 64),
+		labelPageType: pageType,
+		"error_type":  truncate(errorType, 64),
 	})
 }
 
@@ -122,8 +122,8 @@ func (s *StoreEventService) mapRUMPageView(ctx context.Context, evt domain.Store
 		pageType = labelOther
 	}
 	metrics.Record(ctx, "rum_page_view", metrics.L{
-		"page_type":   pageType,
-		"device_type": device,
+		labelPageType:   pageType,
+		labelDeviceType: device,
 	})
 	// site_visitor is the top-of-funnel signal — every page load, anonymous-
 	// friendly. Carries the full visitor-attribution tuple so the funnel
@@ -132,12 +132,12 @@ func (s *StoreEventService) mapRUMPageView(ctx context.Context, evt domain.Store
 	country := middleware.GetCountry(ctx)
 	utmSource, utmMedium, utmCampaign := middleware.GetUTM(ctx)
 	metrics.Record(ctx, "site_visitor", metrics.L{
-		"city":         city,
-		"country":      country,
-		"device_type":  device,
-		"utm_source":   utmSource,
-		"utm_medium":   utmMedium,
-		"utm_campaign": utmCampaign,
+		labelCity:       city,
+		labelCountry:    country,
+		labelDeviceType: device,
+		labelUTMSource:  utmSource,
+		"utm_medium":    utmMedium,
+		"utm_campaign":  utmCampaign,
 	})
 	// Lazy-upsert centroid on first sighting (per (city, country) pair).
 	// Skipped when city/country unknown or lat/lng absent — keeps the table
@@ -147,7 +147,7 @@ func (s *StoreEventService) mapRUMPageView(ctx context.Context, evt domain.Store
 		if err := s.centroids.Upsert(ctx, city, country, lat, lng); err != nil {
 			slog.WarnContext(ctx, "centroid upsert failed", "city", city, "country", country, "err", err)
 			// Observable failure signal — constant label keeps cardinality bounded.
-			metrics.Record(ctx, "centroid_upsert_error", metrics.L{"reason": "db_write"})
+			metrics.Record(ctx, "centroid_upsert_error", metrics.L{labelReason: "db_write"})
 		}
 	}
 }
@@ -167,9 +167,9 @@ func emitRUM(ctx context.Context, metricName string, evt domain.StoreEvent, devi
 	}
 	v := rumValue(evt.Properties["value"])
 	metrics.Record(ctx, metricName, metrics.L{
-		"bucket":      bucketForRUM(metricName, v),
-		"page_type":   pageType,
-		"device_type": device,
+		labelBucket:     bucketForRUM(metricName, v),
+		labelPageType:   pageType,
+		labelDeviceType: device,
 	})
 }
 

@@ -170,7 +170,7 @@ func (s *CouponService) Validate(ctx context.Context, code string, orderTotal in
 			label = "rejected"
 		}
 		metrics.Record(ctx, "coupon_applied", metrics.L{
-			"coupon_code": label, "outcome": outcome,
+			"coupon_code": label, labelOutcome: outcome,
 		})
 	}()
 
