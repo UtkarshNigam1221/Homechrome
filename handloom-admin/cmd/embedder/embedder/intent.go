@@ -30,15 +30,18 @@ var intentPrecedence = []string{
 }
 
 // categoryPrototypes describe the PRODUCT TYPE the visitor is browsing.
-// Hand-curated rather than auto-loaded from PG so cardinality of the
+// Hand-curated rather than autoloaded from PG so cardinality of the
 // combined label stays predictable across catalog changes.
 var categoryPrototypes = map[string]string{
-	"saree":    "saree silk-saree banarasi-saree kanjivaram-saree",
-	"dupatta":  "dupatta scarf chunni stole-dupatta",
-	"bedsheet": "bedsheet bedspread bedding bed-cover quilt",
-	"kurta":    "kurta kurti tunic mens-kurta womens-kurta",
-	"scarf":    "scarf stole wrap shawl",
-	"blouse":   "blouse choli top",
+	"bedsheet":     "bedsheet bedspread bedding bed-cover quilt",
+	"pillow-cover": "pillow-cover pillowcase cushion-cover pillow-sham bolster-cover",
+	"curtain":      "curtain drape window-curtain door-curtain sheer panel valance",
+	"dohar":        "dohar dohar-blanket summer-quilt light-blanket razai comforter throw",
+	"dhurrie":      "dhurrie rug floor-rug carpet kilim runner-rug durrie",
+	"table-linen":  "table-cloth table-runner placemat napkin table-mat dining-linen",
+	"towel":        "towel bath-towel hand-towel hamam gamcha kitchen-towel",
+	"blanket":      "blanket throw woolen-blanket ac-blanket fleece",
+	"diwan-set":    "diwan-set diwan-cover bolster-set divan single-bedcover",
 }
 
 // Classifier maps a query embedding to a combined "<intent>_<category>"
@@ -46,8 +49,7 @@ var categoryPrototypes = map[string]string{
 // query classification is then O(N) cosine products on float32 vectors
 // (microseconds for tens of prototypes).
 type Classifier struct {
-	intentNames   []string
-	intentVecs    [][]float32
+	intentVecs    map[string][]float32
 	categoryNames []string
 	categoryVecs  [][]float32
 	threshold     float32
@@ -59,15 +61,14 @@ type Classifier struct {
 // starting point for all-MiniLM-style embeddings; tune via the dashboard
 // as real queries arrive.
 func NewClassifier(onnx *ONNXSession, threshold float32) (*Classifier, error) {
-	c := &Classifier{threshold: threshold}
+	c := &Classifier{threshold: threshold, intentVecs: make(map[string][]float32, len(intentPrototypes))}
 
 	for name, proto := range intentPrototypes {
 		vec, err := embedOne(onnx, proto)
 		if err != nil {
 			return nil, fmt.Errorf("embed intent %q: %w", name, err)
 		}
-		c.intentNames = append(c.intentNames, name)
-		c.intentVecs = append(c.intentVecs, vec)
+		c.intentVecs[name] = vec
 	}
 	for name, proto := range categoryPrototypes {
 		vec, err := embedOne(onnx, proto)
@@ -125,17 +126,11 @@ func (c *Classifier) Classify(qvec []float32) string {
 // signal queries.
 func (c *Classifier) precedenceHit(qvec []float32) string {
 	for _, name := range intentPrecedence {
-		idx := -1
-		for i, n := range c.intentNames {
-			if n == name {
-				idx = i
-				break
-			}
-		}
-		if idx < 0 {
+		v, ok := c.intentVecs[name]
+		if !ok {
 			continue // prototype missing — shouldn't happen, but stay safe
 		}
-		if cosine(qvec, c.intentVecs[idx]) >= c.threshold {
+		if cosine(qvec, v) >= c.threshold {
 			return name
 		}
 	}

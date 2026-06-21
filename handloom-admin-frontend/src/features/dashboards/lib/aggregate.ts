@@ -35,6 +35,25 @@ export function groupByLabel(rows: BucketRow[], labelKey: string): Map<string, B
 }
 
 /**
+ * Group rows by a label, sum counts, return `{ key, count }` sorted desc.
+ * The common leaderboard shape used across every dashboard page.
+ * `excludeUnknown` drops the synthetic 'unknown' bucket; `limit` is top-N.
+ */
+export function rankByLabel(
+  rows: BucketRow[],
+  labelKey: string,
+  opts: { limit?: number; excludeUnknown?: boolean } = {}
+): Array<{ key: string; count: number }> {
+  let out = Array.from(groupByLabel(rows, labelKey).entries()).map(([key, rs]) => ({
+    key,
+    count: totalCount(rs),
+  }));
+  if (opts.excludeUnknown) out = out.filter((r) => r.key !== 'unknown');
+  out.sort((a, b) => b.count - a.count);
+  return opts.limit ? out.slice(0, opts.limit) : out;
+}
+
+/**
  * Bucket rows by their `metric` field, pre-seeding every entry in `metrics`
  * with an empty array so callers can rely on each key existing in the result.
  */

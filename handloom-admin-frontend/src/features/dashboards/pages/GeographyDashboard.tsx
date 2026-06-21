@@ -14,6 +14,7 @@ import {
   groupByKey,
   groupByLabel,
   paiseToINR,
+  rankByLabel,
   splitByMetric,
   totalCount,
   totalSum,
@@ -175,14 +176,10 @@ export function GeographyDashboard() {
   }, [byMetric]);
 
   // Orders by country (bar chart, top 15)
-  const countryBars = useMemo(() => {
-    const rows = byMetric.get('orders_placed') ?? [];
-    const grouped = groupByLabel(rows, 'country');
-    return Array.from(grouped.entries())
-      .map(([country, group]) => ({ country, count: totalCount(group) }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 15);
-  }, [byMetric]);
+  const countryBars = useMemo(
+    () => rankByLabel(byMetric.get('orders_placed') ?? [], 'country', { limit: 15 }),
+    [byMetric]
+  );
 
   const isLoading = metricQuery.isLoading || centroidQuery.isLoading;
   const isError = metricQuery.isError || centroidQuery.isError;
@@ -353,13 +350,7 @@ export function GeographyDashboard() {
               <BarChart data={countryBars} layout="vertical" margin={{ left: 60 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                 <XAxis type="number" fontSize={11} stroke="#737373" />
-                <YAxis
-                  type="category"
-                  dataKey="country"
-                  fontSize={11}
-                  stroke="#737373"
-                  width={80}
-                />
+                <YAxis type="category" dataKey="key" fontSize={11} stroke="#737373" width={80} />
                 <Tooltip contentStyle={{ fontSize: 12 }} />
                 <Bar dataKey="count" fill="#f59e0b" radius={[0, 4, 4, 0]} />
               </BarChart>

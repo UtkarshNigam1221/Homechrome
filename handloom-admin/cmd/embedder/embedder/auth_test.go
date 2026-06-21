@@ -5,12 +5,19 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func nowSecForTest() string        { return timeToSec(time.Now()) }
+func timeToSec(t time.Time) string { return strconv.FormatInt(t.Unix(), 10) }
+func signForTest(k []byte, ts, n string, body []byte) string {
+	return computeHMAC(k, ts, n, body)
+}
 
 func TestHMACAuth_AcceptsValidSignature(t *testing.T) {
 	key := []byte("test-key")

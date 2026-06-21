@@ -89,19 +89,10 @@ func (s *CheckoutService) Initiate(ctx context.Context, customerID string, req d
 	}
 
 	// 2. Find shipping address by ID
-	var shippingAddr domain.Address
-	addressFound := false
-	for _, addr := range customer.Addresses {
-		if addr.ID == req.ShippingAddressID {
-			shippingAddr = addr
-			addressFound = true
-			break
-		}
-	}
-	if !addressFound {
-		addrErr := errors.NotFound("Shipping address")
-		span.EndWithError(addrErr)
-		return nil, addrErr
+	shippingAddr, err := findShippingAddress(customer, req.ShippingAddressID)
+	if err != nil {
+		span.EndWithError(err)
+		return nil, err
 	}
 
 	// 3. Get cart
@@ -135,50 +126,13 @@ func (s *CheckoutService) Initiate(ctx context.Context, customerID string, req d
 	}
 
 	// 6. Build order items from cart items
-	orderItems := make([]domain.OrderItem, 0, len(cart.Items))
-	for _, item := range cart.Items {
-		orderItems = append(orderItems, domain.OrderItem{
-			ID:           uuid.New().String(),
-			ProductID:    item.ProductID,
-			ProductName:  item.ProductName,
-			ProductSKU:   item.ProductSKU,
-			ProductImage: item.ProductImage,
-			CategoryID:   item.CategoryID,
-			CategoryName: item.CategoryName,
-			IsCustomSize: item.IsCustomSize,
-			Dimensions:   item.Dimensions,
-			QuoteID:      item.QuoteID,
-			UnitPrice:    item.UnitPrice,
-			Quantity:     item.Quantity,
-			TotalPrice:   item.TotalPrice,
-		})
-	}
+	orderItems := cartItemsToOrderItems(cart.Items)
 
 	// 7. Calculate totals
 	subtotal := cart.Cart.Subtotal
 	var discountAmount int64
 	var taxAmount int64
-	var shippingAmount int64
-
-	// Check serviceability for shipping cost
-	serviceResult, err := s.shippingService.CheckServiceability(ctx, s.pickupPincode, shippingAddr.PostalCode, defaultWeightGrams)
-	if err != nil {
-		slog.ErrorContext(ctx, "Failed to check serviceability for shipping cost", "error", err)
-		// Proceed with zero shipping if serviceability check fails
-	} else if serviceResult.Serviceable && len(serviceResult.Couriers) > 0 {
-		// Use selected courier or default to first available
-		if req.CourierID != nil {
-			for _, c := range serviceResult.Couriers {
-				if c.ID == *req.CourierID {
-					shippingAmount = c.Rate
-					break
-				}
-			}
-		}
-		if shippingAmount == 0 {
-			shippingAmount = serviceResult.Couriers[0].Rate
-		}
-	}
+	shippingAmount := s.resolveShippingAmount(ctx, shippingAddr, req.CourierID)
 
 	totalAmount := subtotal - discountAmount + taxAmount + shippingAmount
 
@@ -321,6 +275,62 @@ func (s *CheckoutService) GetPaymentStatus(ctx context.Context, customerID, orde
 		PaymentStatus: payment.Status,
 		Order:         order,
 	}, nil
+}
+
+// findShippingAddress returns the customer address matching id, or NotFound.
+func findShippingAddress(customer *domain.Customer, id string) (domain.Address, error) {
+	for _, addr := range customer.Addresses {
+		if addr.ID == id {
+			return addr, nil
+		}
+	}
+	return domain.Address{}, errors.NotFound("Shipping address")
+}
+
+// cartItemsToOrderItems maps cart items to order items, assigning a fresh ID to each.
+func cartItemsToOrderItems(items []domain.CartItem) []domain.OrderItem {
+	orderItems := make([]domain.OrderItem, 0, len(items))
+	for _, item := range items {
+		orderItems = append(orderItems, domain.OrderItem{
+			ID:           uuid.New().String(),
+			ProductID:    item.ProductID,
+			ProductName:  item.ProductName,
+			ProductSKU:   item.ProductSKU,
+			ProductImage: item.ProductImage,
+			CategoryID:   item.CategoryID,
+			CategoryName: item.CategoryName,
+			IsCustomSize: item.IsCustomSize,
+			Dimensions:   item.Dimensions,
+			QuoteID:      item.QuoteID,
+			UnitPrice:    item.UnitPrice,
+			Quantity:     item.Quantity,
+			TotalPrice:   item.TotalPrice,
+		})
+	}
+	return orderItems
+}
+
+// resolveShippingAmount returns the shipping cost for the destination, selecting
+// the requested courier or defaulting to the first available. Returns 0 when the
+// serviceability check fails or the pincode isn't serviceable — checkout proceeds
+// with free shipping rather than blocking the order.
+func (s *CheckoutService) resolveShippingAmount(ctx context.Context, addr domain.Address, courierID *int) int64 {
+	serviceResult, err := s.shippingService.CheckServiceability(ctx, s.pickupPincode, addr.PostalCode, defaultWeightGrams)
+	if err != nil {
+		slog.ErrorContext(ctx, "Failed to check serviceability for shipping cost", "error", err)
+		return 0
+	}
+	if !serviceResult.Serviceable || len(serviceResult.Couriers) == 0 {
+		return 0
+	}
+	if courierID != nil {
+		for _, c := range serviceResult.Couriers {
+			if c.ID == *courierID {
+				return c.Rate
+			}
+		}
+	}
+	return serviceResult.Couriers[0].Rate
 }
 
 // releaseReservedItems releases inventory for items that were previously reserved

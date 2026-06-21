@@ -94,8 +94,8 @@ func createRouter(d *wire.MonolithDeps) *chi.Mux {
 	r.Use(telemetry.TraceIDMiddleware)
 
 	r.Use(middleware.RequestID)
-	r.Use(middleware.Logger())
-	r.Use(middleware.Recoverer())
+	r.Use(middleware.Logger)
+	r.Use(middleware.Recoverer)
 	r.Use(chimiddleware.RealIP)
 	r.Use(chimiddleware.Compress(5))
 

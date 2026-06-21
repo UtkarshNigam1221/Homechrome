@@ -8,22 +8,34 @@ interface Props {
 
 type GateState = 'loading' | 'authed' | 'unauthed' | 'forbidden';
 
-// Email-domain allowlist for dashboard access. Neon Auth lets ANY Google
-// account complete sign-in, so without this check any Google user who reaches
-// the app could view business-sensitive analytics. Configure via
-// VITE_DASHBOARD_ALLOWED_EMAIL_DOMAINS (comma-separated); defaults to the brand
-// domain. Fails closed: an email outside the list is rejected.
-const ALLOWED_EMAIL_DOMAINS = (
-  import.meta.env.VITE_DASHBOARD_ALLOWED_EMAIL_DOMAINS ?? 'homechrome.in'
-)
-  .split(',')
-  .map((d) => d.trim().toLowerCase())
-  .filter(Boolean);
+// Allowlist for dashboard access. Neon Auth lets ANY Google account complete
+// sign-in, so without this check any Google user who reaches the app could view
+// business-sensitive analytics. Fails closed: an email matching neither list is
+// rejected. Configure via (comma-separated):
+//   VITE_DASHBOARD_ALLOWED_EMAILS         exact addresses (use for personal gmail)
+//   VITE_DASHBOARD_ALLOWED_EMAIL_DOMAINS  whole domains  (defaults to brand domain)
+// Use the per-email list for public-domain accounts — allowing gmail.com as a
+// domain would admit every Google user.
+const toSet = (raw: string | undefined, fallback = '') =>
+  new Set(
+    (raw ?? fallback)
+      .split(',')
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean)
+  );
+
+const ALLOWED_EMAILS = toSet(import.meta.env.VITE_DASHBOARD_ALLOWED_EMAILS);
+const ALLOWED_EMAIL_DOMAINS = toSet(
+  import.meta.env.VITE_DASHBOARD_ALLOWED_EMAIL_DOMAINS,
+  'homechrome.in'
+);
 
 function isEmailAllowed(email: string | null | undefined): boolean {
   if (!email) return false;
-  const domain = email.split('@')[1]?.toLowerCase();
-  return !!domain && ALLOWED_EMAIL_DOMAINS.includes(domain);
+  const normalized = email.toLowerCase();
+  if (ALLOWED_EMAILS.has(normalized)) return true;
+  const domain = normalized.split('@')[1];
+  return !!domain && ALLOWED_EMAIL_DOMAINS.has(domain);
 }
 
 // Path A dual-auth: dashboards check for an active Neon Auth session before

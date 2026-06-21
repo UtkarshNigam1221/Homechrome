@@ -11,22 +11,6 @@ import (
 // and stop all telemetry providers.
 type Shutdown func(context.Context)
 
-// Package-level provider so middleware can invoke ForceFlush per-request
-// without threading it through every dependency. Metrics meter provider was
-// removed in M30 — only the tracer remains.
-var (
-	globalTracerProvider *TracerProvider
-)
-
-// ForceFlush drains buffered traces to the collector. Safe to call from any
-// goroutine. No-op if MustInit hasn't run yet. Lambda paths use
-// SimpleSpanProcessor — spans are already sync, this call is cheap.
-func ForceFlush(ctx context.Context) {
-	if globalTracerProvider != nil && globalTracerProvider.provider != nil {
-		_ = globalTracerProvider.provider.ForceFlush(ctx)
-	}
-}
-
 // MustInit boots the tracer provider from env config and returns a shutdown
 // closure. Panics on construction failure — telemetry init must be
 // deterministic. Honors OTEL_SDK_DISABLED=true as an emergency kill switch.
@@ -53,7 +37,6 @@ func MustInit(serviceName, serviceVersion, environment string) Shutdown {
 	if err != nil {
 		panic("telemetry: tracer provider: " + err.Error())
 	}
-	globalTracerProvider = tp
 
 	// All attrs are operator-supplied build/env config, not user input.
 	slog.Info("telemetry initialized", //nolint:gosec // G706: operator env/build config, not user input

@@ -1,35 +1,6 @@
 import { Link } from 'react-router-dom';
 
-// Landing tab: quick-link cards to each sub-dashboard.
-
-const CARDS = [
-  {
-    to: '/dashboards/funnel',
-    title: 'Funnel',
-    description: 'Session-to-payment conversion, stage KPIs, device split, UTM acquisition.',
-    accent: 'from-indigo-50 to-white',
-  },
-  {
-    to: '/dashboards/products',
-    title: 'Product analytics',
-    description:
-      'Top viewed/purchased products, search behavior, coupon performance, filter usage.',
-    accent: 'from-emerald-50 to-white',
-  },
-  {
-    to: '/dashboards/geography',
-    title: 'Geography',
-    description: 'India geomap of orders + revenue by city, state distribution.',
-    accent: 'from-amber-50 to-white',
-  },
-  {
-    to: '/dashboards/rum',
-    title: 'RUM & service health',
-    description:
-      'Web vitals, JS errors, HTTP errors, lambda cold starts, gateway calls, DB latency.',
-    accent: 'from-rose-50 to-white',
-  },
-];
+import { DASHBOARD_CARDS } from '../constants';
 
 export function DashboardsIndex() {
   return (
@@ -41,7 +12,7 @@ export function DashboardsIndex() {
         </p>
       </div>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        {CARDS.map((card) => (
+        {DASHBOARD_CARDS.map((card) => (
           <Link
             key={card.to}
             to={card.to}

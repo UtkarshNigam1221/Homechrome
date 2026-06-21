@@ -14,8 +14,8 @@ import (
 
 	emb "github.com/handloom/admin/cmd/embedder/embedder"
 	"github.com/handloom/admin/internal/middleware"
+	"github.com/handloom/admin/internal/router"
 	"github.com/handloom/admin/pkg/metrics"
-	metricsmw "github.com/handloom/admin/pkg/metrics/middleware"
 )
 
 type deps struct {
@@ -31,6 +31,12 @@ type deps struct {
 func newRouter(d *deps) http.Handler {
 	r := chi.NewRouter()
 
+	// Shared observability stack: server tracing, request ID, metrics buffer
+	// (the metrics.Record() calls in handleSearch silently drop without it),
+	// geo extraction, request logs, panic recovery, real-IP. Same stack the
+	// other Lambdas get via router.NewBaseRouter.
+	router.ApplyObservability(r)
+
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins: []string{d.allowOrigin},
 		AllowedMethods: []string{"GET", "POST", "OPTIONS"},
@@ -41,12 +47,6 @@ func newRouter(d *deps) http.Handler {
 		AllowCredentials: false,
 		MaxAge:           300,
 	}))
-	// Metrics buffer must come BEFORE GeoExtractor so emit calls downstream
-	// see both the buffer in ctx + the geo labels. Without Buffer the
-	// metrics.Record() calls in handleSearch silently drop — the search_query
-	// rows never reach Postgres.
-	r.Use(metricsmw.Buffer)
-	r.Use(middleware.GeoExtractor) // reads X-Geo-City/Country/Lat/Lng into ctx for search metrics
 
 	// Public endpoints — mounted at the absolute paths that API Gateway forwards
 	// (REST API proxy integration does not strip the prefix). /search is GET so

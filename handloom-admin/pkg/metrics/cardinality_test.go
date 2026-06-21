@@ -64,6 +64,10 @@ var AllowedLabels = map[string]struct{}{
 
 	// Generic
 	"reason": {}, "bucket": {},
+
+	// Drift guard: event_type on unmapped_store_event. Bounded by the
+	// store-event allow-list, so cardinality is safe.
+	"event_type": {},
 }
 
 // walkGoFiles invokes fn for every non-test .go file under root, skipping

@@ -321,7 +321,7 @@ func (s *PaymentService) updatePaymentStatus(ctx context.Context, paymentID stri
 func (s *PaymentService) updateOrderStatus(ctx context.Context, orderID string, orderStatus domain.OrderStatus, paymentStatus domain.PaymentStatus, paymentID string) (*domain.Order, error) {
 	order, err := s.orderRepo.GetByID(ctx, orderID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get order %s for status update: %w", orderID, err)
+		return nil, errors.Wrap(err, "Failed to get order for status update")
 	}
 
 	order.Status = orderStatus
@@ -329,7 +329,7 @@ func (s *PaymentService) updateOrderStatus(ctx context.Context, orderID string, 
 	order.PaymentID = paymentID
 
 	if err := s.orderRepo.Update(ctx, order); err != nil {
-		return nil, fmt.Errorf("failed to update order %s status: %w", orderID, err)
+		return nil, errors.Wrap(err, "Failed to update order status")
 	}
 	return order, nil
 }

@@ -4,8 +4,6 @@
 import { ROUTES } from '@/lib/routes';
 import { Product } from '@/types';
 
-export type { Product as SearchProduct };
-
 export type SearchResponse = {
   success: boolean;
   data: Product[];

@@ -33,25 +33,35 @@ func NewStoreEventService(centroids centroidUpserter) *StoreEventService {
 // ignored (the handler already filters them; this is defensive).
 func (s *StoreEventService) Record(ctx context.Context, evt domain.StoreEvent) {
 	device := geo.NormalizeDevice(evt.DeviceType)
-	if m, ok := storeEventMappers[evt.EventType]; ok {
-		m(s, ctx, evt, device)
+	m, ok := storeEventMappers[evt.EventType]
+	if !ok {
+		// Event passed the handler allow-list but has no mapper — surface the
+		// drift instead of silently dropping. event_type is bounded by the
+		// allow-list, so its cardinality is safe as a label.
+		slog.WarnContext(ctx, "no mapper for store event", "event_type", evt.EventType)
+		metrics.Record(ctx, "unmapped_store_event", metrics.L{metrics.LabelEventType: evt.EventType})
+		return
 	}
+	m(s, ctx, evt, device)
 }
 
 // storeEventMappers is the event-type -> mapper registry. Add a new event by
 // adding one entry here — there is no switch to extend.
 var storeEventMappers = map[string]func(*StoreEventService, context.Context, domain.StoreEvent, string){
-	"product_viewed":                 (*StoreEventService).mapProductViewed,
-	"category_viewed":                (*StoreEventService).mapCategoryViewed,
-	"out_of_stock_shown":             (*StoreEventService).mapOutOfStockShown,
-	"back_in_stock_notify_requested": (*StoreEventService).mapBackInStockNotify,
-	"catalog_filter_applied":         (*StoreEventService).mapCatalogFilterApplied,
-	"rum_lcp":                        rumMapper("rum_lcp"),
-	"rum_inp":                        rumMapper("rum_inp"),
-	"rum_cls":                        rumMapper("rum_cls"),
-	"rum_ttfb":                       rumMapper("rum_ttfb"),
-	"rum_js_error":                   (*StoreEventService).mapRUMJSError,
-	"rum_page_view":                  (*StoreEventService).mapRUMPageView,
+	"page_view":              (*StoreEventService).mapPageView,
+	"product_viewed":         (*StoreEventService).mapProductViewed,
+	"add_to_cart":            (*StoreEventService).mapAddToCart,
+	"checkout_started":       (*StoreEventService).mapCheckoutStarted,
+	"scroll_depth":           (*StoreEventService).mapScrollDepth,
+	"category_viewed":        (*StoreEventService).mapCategoryViewed,
+	"out_of_stock_shown":     (*StoreEventService).mapOutOfStockShown,
+	"catalog_filter_applied": (*StoreEventService).mapCatalogFilterApplied,
+	"rum_lcp":                rumMapper("rum_lcp"),
+	"rum_inp":                rumMapper("rum_inp"),
+	"rum_cls":                rumMapper("rum_cls"),
+	"rum_ttfb":               rumMapper("rum_ttfb"),
+	"rum_js_error":           (*StoreEventService).mapRUMJSError,
+	"rum_page_view":          (*StoreEventService).mapRUMPageView,
 }
 
 func (s *StoreEventService) mapProductViewed(ctx context.Context, evt domain.StoreEvent, device string) {
@@ -85,12 +95,68 @@ func (s *StoreEventService) mapOutOfStockShown(ctx context.Context, evt domain.S
 	metrics.Record(ctx, "out_of_stock_shown", metrics.L{keyProductID: productID})
 }
 
-func (s *StoreEventService) mapBackInStockNotify(ctx context.Context, evt domain.StoreEvent, _ string) {
+func (s *StoreEventService) mapPageView(ctx context.Context, evt domain.StoreEvent, device string) {
+	pageType, _ := evt.Properties["page_type"].(string)
+	if pageType == "" {
+		pageType = labelOther
+	}
+	metrics.Record(ctx, "page_view", metrics.L{
+		metrics.LabelPageType:   pageType,
+		metrics.LabelDeviceType: device,
+	})
+}
+
+func (s *StoreEventService) mapAddToCart(ctx context.Context, evt domain.StoreEvent, device string) {
 	productID, _ := evt.Properties["product_id"].(string)
+	categoryID, _ := evt.Properties["category_id"].(string)
 	if productID == "" {
 		productID = labelUnknown
 	}
-	metrics.Record(ctx, "back_in_stock_notify_requested", metrics.L{keyProductID: productID})
+	if categoryID == "" {
+		categoryID = labelUnknown
+	}
+	metrics.Record(ctx, "add_to_cart", metrics.L{
+		keyProductID:            productID,
+		metrics.LabelCategoryID: categoryID,
+		metrics.LabelDeviceType: device,
+	})
+}
+
+func (s *StoreEventService) mapCheckoutStarted(ctx context.Context, _ domain.StoreEvent, device string) {
+	metrics.Record(ctx, "checkout_started", metrics.L{
+		metrics.LabelCountry:    middleware.GetCountry(ctx),
+		metrics.LabelCity:       middleware.GetCity(ctx),
+		metrics.LabelDeviceType: device,
+	})
+}
+
+func (s *StoreEventService) mapScrollDepth(ctx context.Context, evt domain.StoreEvent, device string) {
+	pageType, _ := evt.Properties["page_type"].(string)
+	if pageType == "" {
+		pageType = labelOther
+	}
+	metrics.Record(ctx, "scroll_depth", metrics.L{
+		metrics.LabelPageType:   pageType,
+		metrics.LabelBucket:     scrollDepthBucket(rumValue(evt.Properties["max_depth_percent"])),
+		metrics.LabelDeviceType: device,
+	})
+}
+
+// scrollDepthBucket buckets a 0-100 scroll percentage into coarse bands so the
+// bucket label stays low-cardinality.
+func scrollDepthBucket(pct float64) string {
+	switch {
+	case pct >= 100:
+		return "100"
+	case pct >= 75:
+		return "75"
+	case pct >= 50:
+		return "50"
+	case pct >= 25:
+		return "25"
+	default:
+		return "0"
+	}
 }
 
 func (s *StoreEventService) mapCatalogFilterApplied(ctx context.Context, evt domain.StoreEvent, _ string) {

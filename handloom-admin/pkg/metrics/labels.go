@@ -52,6 +52,7 @@ const (
 	LabelFilterKey = "filter_key"
 
 	// Generic
-	LabelReason = "reason"
-	LabelBucket = "bucket"
+	LabelReason    = "reason"
+	LabelBucket    = "bucket"
+	LabelEventType = "event_type"
 )

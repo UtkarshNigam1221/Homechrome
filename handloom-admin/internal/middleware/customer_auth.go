@@ -44,19 +44,20 @@ func (a *CustomerAuth) Authenticate(next http.Handler) http.Handler {
 			return
 		}
 
-		// Set customer ID in context
-		ctx := context.WithValue(r.Context(), CustomerIDKey, claims.CustomerID)
-		ctx = slogx.SetUserID(ctx, claims.CustomerID)
+		next.ServeHTTP(w, r.WithContext(setCustomerContext(r.Context(), claims)))
+	})
+}
 
-		// Create a minimal customer object from claims
-		customer := &domain.Customer{
-			ID:    claims.CustomerID,
-			Phone: claims.Phone,
-			Email: claims.Email,
-		}
-		ctx = context.WithValue(ctx, CustomerKey, customer)
-
-		next.ServeHTTP(w, r.WithContext(ctx))
+// setCustomerContext sets the customer ID, slog correlation ID, and a minimal
+// customer object on the context from validated token claims. Shared by
+// CustomerAuth.Authenticate and OptionalCartAuth.Resolve.
+func setCustomerContext(ctx context.Context, claims *domain.CustomerTokenClaims) context.Context {
+	ctx = context.WithValue(ctx, CustomerIDKey, claims.CustomerID)
+	ctx = slogx.SetUserID(ctx, claims.CustomerID)
+	return context.WithValue(ctx, CustomerKey, &domain.Customer{
+		ID:    claims.CustomerID,
+		Phone: claims.Phone,
+		Email: claims.Email,
 	})
 }
 

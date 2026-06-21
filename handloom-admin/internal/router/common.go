@@ -21,11 +21,13 @@ type Config struct {
 	Debug          bool
 }
 
-// NewBaseRouter creates a base router with common middleware
-// Set addHealthCheck to true to add the /health endpoint (for unauthenticated routers)
-func NewBaseRouter(cfg Config, addHealthCheck bool) *chi.Mux {
-	r := chi.NewRouter()
-
+// ApplyObservability installs the provider-agnostic middleware stack every
+// HTTP entry point should have: server tracing, request ID, metrics, geo, logs,
+// panic recovery, real-IP. CORS and auth are intentionally left out — those are
+// per-router concerns (admin JWT, store JWT, embedder HMAC). Call this from any
+// chi router (NewBaseRouter, or a hand-rolled one like the embedder's) so the
+// observability stack can't drift between services.
+func ApplyObservability(r chi.Router) {
 	// OTel HTTP server middleware — creates a SERVER span per request.
 	// Without this, Lambda invocations show no traces in Tempo.
 	// Service name comes from OTEL_SERVICE_NAME injected by CDK applyTelemetry.
@@ -36,14 +38,21 @@ func NewBaseRouter(cfg Config, addHealthCheck bool) *chi.Mux {
 	r.Use(telemetry.HTTPMiddleware(otelServiceName))
 	r.Use(telemetry.TraceIDMiddleware)
 
-	// Global middleware
 	r.Use(middleware.RequestID)
 	r.Use(metricsmw.Buffer)                      // injects metrics buffer + defers flush
 	r.Use(metricsmw.HTTPServer(otelServiceName)) // emits http_request{} + duration
 	r.Use(middleware.GeoExtractor)               // reads the X-Hc-Visitor header into ctx
-	r.Use(middleware.Logger())
-	r.Use(middleware.Recoverer())
+	r.Use(middleware.Logger)
+	r.Use(middleware.Recoverer)
 	r.Use(chimiddleware.RealIP)
+}
+
+// NewBaseRouter creates a base router with common middleware
+// Set addHealthCheck to true to add the /health endpoint (for unauthenticated routers)
+func NewBaseRouter(cfg Config, addHealthCheck bool) *chi.Mux {
+	r := chi.NewRouter()
+
+	ApplyObservability(r)
 
 	// Skip compression in Lambda — the gzipped body corrupts in the
 	// APIGatewayProxyResponse string field. API Gateway handles compression.

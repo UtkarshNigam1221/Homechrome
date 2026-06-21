@@ -25,14 +25,14 @@ type HMACVerifier struct {
 	key       []byte
 	mu        sync.Mutex
 	seenOrder []string
-	seen      map[string]time.Time
+	seen      map[string]struct{}
 }
 
 // NewHMACVerifier creates an HMACVerifier with the given shared secret.
 func NewHMACVerifier(key []byte) *HMACVerifier {
 	return &HMACVerifier{
 		key:  key,
-		seen: make(map[string]time.Time, nonceCacheN),
+		seen: make(map[string]struct{}, nonceCacheN),
 	}
 }
 
@@ -91,16 +91,16 @@ func computeHMAC(key []byte, ts, nonce string, body []byte) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
-// acceptNonce returns true if the nonce hasn't been seen within the skew window.
-// Maintains an LRU cache of recent nonces; old entries are gc'd opportunistically.
+// acceptNonce returns true if the nonce hasn't been seen recently. Memory is
+// bounded by an LRU cap of nonceCacheN; a replay beyond the skew window is
+// already rejected by the timestamp check before this runs.
 func (v *HMACVerifier) acceptNonce(nonce string) bool {
 	v.mu.Lock()
 	defer v.mu.Unlock()
-	v.gcLocked()
 	if _, dup := v.seen[nonce]; dup {
 		return false
 	}
-	v.seen[nonce] = time.Now()
+	v.seen[nonce] = struct{}{}
 	v.seenOrder = append(v.seenOrder, nonce)
 	if len(v.seenOrder) > nonceCacheN {
 		old := v.seenOrder[0]
@@ -110,26 +110,9 @@ func (v *HMACVerifier) acceptNonce(nonce string) bool {
 	return true
 }
 
-func (v *HMACVerifier) gcLocked() {
-	cutoff := time.Now().Add(-maxClockSkew)
-	for nonce, ts := range v.seen {
-		if ts.Before(cutoff) {
-			delete(v.seen, nonce)
-		}
-	}
-}
-
 func abs64(x int64) int64 {
 	if x < 0 {
 		return -x
 	}
 	return x
-}
-
-// --- test helpers (kept in same package to share unexported funcs) ---
-
-func nowSecForTest() string        { return timeToSec(time.Now()) }
-func timeToSec(t time.Time) string { return strconv.FormatInt(t.Unix(), 10) }
-func signForTest(k []byte, ts, n string, body []byte) string {
-	return computeHMAC(k, ts, n, body)
 }

@@ -2,7 +2,6 @@ package dynamodb
 
 import (
 	"context"
-	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -569,11 +568,11 @@ func (r *CustomerRepository) IncrementOrderCount(ctx context.Context, customerID
 	}
 	raw, ok := out.Attributes["order_count"].(*types.AttributeValueMemberN)
 	if !ok {
-		return 0, fmt.Errorf("order_count missing from UpdateItem response")
+		return 0, errors.Internal("order_count missing from UpdateItem response")
 	}
 	n, err := strconv.ParseInt(raw.Value, 10, 64)
 	if err != nil {
-		return 0, fmt.Errorf("parse order_count: %w", err)
+		return 0, errors.Wrap(err, "Failed to parse order_count")
 	}
 	return n, nil
 }

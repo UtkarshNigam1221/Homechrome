@@ -47,23 +47,46 @@ const Inventory = withSuspense(
   lazy(() => import('@/features/inventory').then((m) => ({ default: m.InventoryPage })))
 );
 
+// Per-page imports (not the barrel) so each dashboard tab is its own chunk.
 const DashboardsLayoutLazy = withSuspense(
-  lazy(() => import('@/features/dashboards').then((m) => ({ default: m.DashboardLayout })))
+  lazy(() =>
+    import('@/features/dashboards/components/DashboardLayout').then((m) => ({
+      default: m.DashboardLayout,
+    }))
+  )
 );
 const DashboardsIndexLazy = withSuspense(
-  lazy(() => import('@/features/dashboards').then((m) => ({ default: m.DashboardsIndex })))
+  lazy(() =>
+    import('@/features/dashboards/components/DashboardsIndex').then((m) => ({
+      default: m.DashboardsIndex,
+    }))
+  )
 );
 const FunnelDashboardLazy = withSuspense(
-  lazy(() => import('@/features/dashboards').then((m) => ({ default: m.FunnelDashboard })))
+  lazy(() =>
+    import('@/features/dashboards/pages/FunnelDashboard').then((m) => ({
+      default: m.FunnelDashboard,
+    }))
+  )
 );
 const ProductsDashboardLazy = withSuspense(
-  lazy(() => import('@/features/dashboards').then((m) => ({ default: m.ProductsDashboard })))
+  lazy(() =>
+    import('@/features/dashboards/pages/ProductsDashboard').then((m) => ({
+      default: m.ProductsDashboard,
+    }))
+  )
 );
 const GeographyDashboardLazy = withSuspense(
-  lazy(() => import('@/features/dashboards').then((m) => ({ default: m.GeographyDashboard })))
+  lazy(() =>
+    import('@/features/dashboards/pages/GeographyDashboard').then((m) => ({
+      default: m.GeographyDashboard,
+    }))
+  )
 );
 const RUMDashboardLazy = withSuspense(
-  lazy(() => import('@/features/dashboards').then((m) => ({ default: m.RUMDashboard })))
+  lazy(() =>
+    import('@/features/dashboards/pages/RUMDashboard').then((m) => ({ default: m.RUMDashboard }))
+  )
 );
 const Reports = withSuspense(
   lazy(() => import('@/features/reports').then((m) => ({ default: m.ReportsPage })))

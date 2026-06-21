@@ -14,6 +14,8 @@ import {
 
 import {
   Card,
+  HeroBanner,
+  HeroStat,
   InlineBarCell,
   KPICard,
   PanelState,
@@ -22,8 +24,16 @@ import {
   stickyTableHeadClass,
   tableHeadClass,
 } from '../components/primitives';
+import { DEVICE_COLORS } from '../constants';
 import { useMetricBuckets } from '../hooks/useMetricBuckets';
-import { formatINR, groupByLabel, paiseToINR, totalCount, totalSum } from '../lib/aggregate';
+import {
+  formatINR,
+  groupByLabel,
+  paiseToINR,
+  rankByLabel,
+  totalCount,
+  totalSum,
+} from '../lib/aggregate';
 
 // Catalog engagement, conversion, search, coupons, filter usage. Five
 // UX-quality fixes mirrored from Funnel: hero TL;DR, ↑↓ deltas on KPIs,
@@ -52,13 +62,6 @@ const OUTCOME_COLORS: Record<string, string> = {
   unknown: '#9ca3af',
 };
 
-const DEVICE_COLOR: Record<string, string> = {
-  mobile: '#6366f1',
-  desktop: '#06b6d4',
-  tablet: '#f59e0b',
-  unknown: '#a3a3a3',
-};
-
 function pieColor(outcome: string): string {
   return OUTCOME_COLORS[outcome] ?? '#6366f1';
 }
@@ -75,13 +78,10 @@ export function ProductsDashboard() {
   } = useMetricBuckets('products', PRODUCT_METRICS);
 
   // 1. Top 10 viewed products
-  const topViewed = useMemo(() => {
-    const grouped = groupByLabel(byMetric.get('product_viewed') ?? [], 'product_id');
-    return Array.from(grouped.entries())
-      .map(([pid, rows]) => ({ product_id: pid, count: totalCount(rows) }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 10);
-  }, [byMetric]);
+  const topViewed = useMemo(
+    () => rankByLabel(byMetric.get('product_viewed') ?? [], 'product_id', { limit: 10 }),
+    [byMetric]
+  );
 
   // 2. Top 10 purchased + revenue
   const topPurchased = useMemo(() => {
@@ -116,22 +116,20 @@ export function ProductsDashboard() {
   }, [byMetric]);
 
   // 4. Top categories viewed (NEW)
-  const topCategories = useMemo(() => {
-    const grouped = groupByLabel(byMetric.get('product_viewed') ?? [], 'category_id');
-    return Array.from(grouped.entries())
-      .filter(([cat]) => cat !== 'unknown')
-      .map(([cat, rows]) => ({ category_id: cat, count: totalCount(rows) }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 10);
-  }, [byMetric]);
+  const topCategories = useMemo(
+    () =>
+      rankByLabel(byMetric.get('product_viewed') ?? [], 'category_id', {
+        excludeUnknown: true,
+        limit: 10,
+      }),
+    [byMetric]
+  );
 
   // 5. Product views by device (NEW)
-  const viewsByDevice = useMemo(() => {
-    const grouped = groupByLabel(byMetric.get('product_viewed') ?? [], 'device_type');
-    return Array.from(grouped.entries())
-      .map(([device, rows]) => ({ device, count: totalCount(rows) }))
-      .sort((a, b) => b.count - a.count);
-  }, [byMetric]);
+  const viewsByDevice = useMemo(
+    () => rankByLabel(byMetric.get('product_viewed') ?? [], 'device_type'),
+    [byMetric]
+  );
 
   // 6. Search behaviour — total volume + zero-result rate (no time chart,
   // it was noisy at low traffic. Replaced with the intent breakdown below).
@@ -146,14 +144,10 @@ export function ProductsDashboard() {
   // Top search intents — combined "<sorted-intents>_<category>" labels,
   // top 20 by count. Tells you what visitors are actually shopping for
   // without persisting any raw query strings (cardinality stays bounded).
-  const searchIntents = useMemo(() => {
-    const grouped = groupByLabel(searchRows, 'intent');
-    return Array.from(grouped.entries())
-      .filter(([intent]) => intent !== 'unknown')
-      .map(([intent, rows]) => ({ intent, count: totalCount(rows) }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 20);
-  }, [searchRows]);
+  const searchIntents = useMemo(
+    () => rankByLabel(searchRows, 'intent', { excludeUnknown: true, limit: 20 }),
+    [searchRows]
+  );
 
   // 7. Coupon performance
   const couponOutcomePie = useMemo(() => {
@@ -178,18 +172,10 @@ export function ProductsDashboard() {
 
   // 8. Filter usage — backend only emits filter_key (truncated 32 chars).
   // filter_value isn't emitted yet so we just show filter keys.
-  const filterUsage = useMemo(() => {
-    const rows = byMetric.get('catalog_filter_applied') ?? [];
-    const keyed = new Map<string, number>();
-    for (const r of rows) {
-      const key = r.labels?.filter_key ?? 'unknown';
-      keyed.set(key, (keyed.get(key) ?? 0) + r.count);
-    }
-    return Array.from(keyed.entries())
-      .map(([k, v]) => ({ filter: k, count: v }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 20);
-  }, [byMetric]);
+  const filterUsage = useMemo(
+    () => rankByLabel(byMetric.get('catalog_filter_applied') ?? [], 'filter_key', { limit: 20 }),
+    [byMetric]
+  );
 
   // 9. Cart funnel stats
   const itemsAdded = counts.item_added_to_cart ?? 0;
@@ -212,40 +198,23 @@ export function ProductsDashboard() {
   return (
     <div className="space-y-6">
       {/* Hero TL;DR */}
-      <div className="rounded-lg border border-neutral-200 bg-gradient-to-r from-violet-50 to-emerald-50 p-4">
-        <h1 className="text-xl font-semibold text-neutral-900">Products</h1>
-        <div className="mt-2 flex flex-wrap items-baseline gap-x-6 gap-y-1 text-sm">
+      <HeroBanner title="Products" gradient="from-violet-50 to-emerald-50">
+        <HeroStat value={heroViews} label="product views" color="text-violet-700" />
+        <HeroStat
+          value={heroPurchases}
+          label="units purchased"
+          color="text-emerald-700"
+          delta={heroPurchaseDelta}
+          deltaTitle="units sold vs previous period of equal length"
+        />
+        {topSeller ? (
           <span className="text-neutral-700">
-            <span className="text-2xl font-bold text-violet-700">
-              {heroViews.toLocaleString('en-IN')}
-            </span>{' '}
-            product views
+            top seller:{' '}
+            <span className="font-semibold text-neutral-900">{topSeller.product_id}</span>{' '}
+            <span className="text-xs text-neutral-500">({formatINR(topSeller.revenue)})</span>
           </span>
-          <span className="text-neutral-700">
-            <span className="text-2xl font-bold text-emerald-700">
-              {heroPurchases.toLocaleString('en-IN')}
-            </span>{' '}
-            units purchased
-            {heroPurchaseDelta !== null ? (
-              <span
-                className={
-                  'ml-2 text-xs ' + (heroPurchaseDelta >= 0 ? 'text-emerald-600' : 'text-rose-600')
-                }
-                title="units sold vs previous period of equal length"
-              >
-                {heroPurchaseDelta >= 0 ? '↑' : '↓'} {Math.abs(heroPurchaseDelta).toFixed(0)}%
-              </span>
-            ) : null}
-          </span>
-          {topSeller ? (
-            <span className="text-neutral-700">
-              top seller:{' '}
-              <span className="font-semibold text-neutral-900">{topSeller.product_id}</span>{' '}
-              <span className="text-xs text-neutral-500">({formatINR(topSeller.revenue)})</span>
-            </span>
-          ) : null}
-        </div>
-      </div>
+        ) : null}
+      </HeroBanner>
 
       {/* KPI cards with ↑↓ deltas */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -316,13 +285,7 @@ export function ProductsDashboard() {
                 <BarChart data={topViewed} layout="vertical" margin={{ left: 60 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                   <XAxis type="number" fontSize={11} stroke="#737373" />
-                  <YAxis
-                    type="category"
-                    dataKey="product_id"
-                    fontSize={11}
-                    stroke="#737373"
-                    width={120}
-                  />
+                  <YAxis type="category" dataKey="key" fontSize={11} stroke="#737373" width={120} />
                   <Tooltip contentStyle={{ fontSize: 12 }} />
                   <Bar dataKey="count" fill="#8b5cf6" radius={[0, 4, 4, 0]} />
                 </BarChart>
@@ -345,13 +308,7 @@ export function ProductsDashboard() {
                 <BarChart data={topCategories} layout="vertical" margin={{ left: 60 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                   <XAxis type="number" fontSize={11} stroke="#737373" />
-                  <YAxis
-                    type="category"
-                    dataKey="category_id"
-                    fontSize={11}
-                    stroke="#737373"
-                    width={120}
-                  />
+                  <YAxis type="category" dataKey="key" fontSize={11} stroke="#737373" width={120} />
                   <Tooltip contentStyle={{ fontSize: 12 }} />
                   <Bar dataKey="count" fill="#06b6d4" radius={[0, 4, 4, 0]} />
                 </BarChart>
@@ -417,19 +374,20 @@ export function ProductsDashboard() {
                   <Pie
                     data={viewsByDevice}
                     dataKey="count"
-                    nameKey="device"
+                    nameKey="key"
                     innerRadius={55}
                     outerRadius={95}
                     paddingAngle={2}
                     isAnimationActive={false}
-                    label={(entry: { device?: string; percent?: number }) => {
-                      const pct = ((entry.percent ?? 0) * 100).toFixed(0);
-                      return `${entry.device ?? ''} ${pct}%`;
+                    label={(entry) => {
+                      const e = entry as { name?: string | number; percent?: number };
+                      const pct = ((e.percent ?? 0) * 100).toFixed(0);
+                      return `${e.name ?? ''} ${pct}%`;
                     }}
                     labelLine={false}
                   >
                     {viewsByDevice.map((d) => (
-                      <Cell key={d.device} fill={DEVICE_COLOR[d.device] ?? DEVICE_COLOR.unknown} />
+                      <Cell key={d.key} fill={DEVICE_COLORS[d.key] ?? DEVICE_COLORS.unknown} />
                     ))}
                   </Pie>
                   <Tooltip
@@ -504,13 +462,7 @@ export function ProductsDashboard() {
               <BarChart data={searchIntents} layout="vertical" margin={{ left: 160 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                 <XAxis type="number" fontSize={11} stroke="#737373" />
-                <YAxis
-                  type="category"
-                  dataKey="intent"
-                  fontSize={11}
-                  stroke="#737373"
-                  width={220}
-                />
+                <YAxis type="category" dataKey="key" fontSize={11} stroke="#737373" width={220} />
                 <Tooltip contentStyle={{ fontSize: 12 }} />
                 <Bar dataKey="count" fill="#06b6d4" radius={[0, 4, 4, 0]} />
               </BarChart>
@@ -618,13 +570,7 @@ export function ProductsDashboard() {
               <BarChart data={filterUsage} layout="vertical" margin={{ left: 120 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                 <XAxis type="number" fontSize={11} stroke="#737373" />
-                <YAxis
-                  type="category"
-                  dataKey="filter"
-                  fontSize={11}
-                  stroke="#737373"
-                  width={180}
-                />
+                <YAxis type="category" dataKey="key" fontSize={11} stroke="#737373" width={180} />
                 <Tooltip contentStyle={{ fontSize: 12 }} />
                 <Bar dataKey="count" fill="#8b5cf6" radius={[0, 4, 4, 0]} />
               </BarChart>

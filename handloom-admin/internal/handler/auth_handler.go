@@ -3,7 +3,6 @@ package handler
 
 import (
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -53,7 +52,7 @@ func (h *AuthHandler) Routes(authenticate func(http.Handler) http.Handler) chi.R
 }
 
 func (h *AuthHandler) setAuthCookies(w http.ResponseWriter, tokens *domain.TokenPair) {
-	secure, sameSite, domain := cookieSettings()
+	secure, sameSite, domain := middleware.AuthCookieSettings()
 
 	//nolint:gosec // G124: Secure flag is environment-conditional, not omitted.
 	http.SetCookie(w, &http.Cookie{
@@ -81,7 +80,7 @@ func (h *AuthHandler) setAuthCookies(w http.ResponseWriter, tokens *domain.Token
 }
 
 func (h *AuthHandler) clearAuthCookies(w http.ResponseWriter) {
-	secure, sameSite, domain := cookieSettings()
+	secure, sameSite, domain := middleware.AuthCookieSettings()
 
 	//nolint:gosec // G124: Secure flag is environment-conditional, not omitted.
 	http.SetCookie(w, &http.Cookie{
@@ -106,20 +105,6 @@ func (h *AuthHandler) clearAuthCookies(w http.ResponseWriter) {
 		SameSite: sameSite,
 		MaxAge:   -1,
 	})
-}
-
-// cookieSettings returns Secure, SameSite, and Domain values for auth cookies.
-//   - COOKIE_DOMAIN set (custom domain, same-site): Secure + Lax + Domain
-//   - Lambda without custom domain (cross-origin): Secure + None (third-party cookies)
-//   - Local dev: insecure + Lax (Vite proxy, same-origin)
-func cookieSettings() (secure bool, sameSite http.SameSite, domain string) {
-	if d := os.Getenv("COOKIE_DOMAIN"); d != "" {
-		return true, http.SameSiteLaxMode, d
-	}
-	if os.Getenv("AWS_LAMBDA_FUNCTION_NAME") != "" {
-		return true, http.SameSiteNoneMode, ""
-	}
-	return false, http.SameSiteLaxMode, ""
 }
 
 // Login handles user login

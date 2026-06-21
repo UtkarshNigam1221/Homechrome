@@ -21,7 +21,7 @@ export const useDashboardFilters = create<DashboardFiltersState>((set) => ({
 function rangeToMs(range: Range): number {
   switch (range) {
     case '1h':
-      return 1 * 60 * 60 * 1000;
+      return 60 * 60 * 1000;
     case '6h':
       return 6 * 60 * 60 * 1000;
     case '24h':
@@ -40,7 +40,7 @@ function currentMinuteBucket(): number {
   return Math.floor(Date.now() / 60_000) * 60_000;
 }
 
-// useResolvedRange returns memoised {from, to} for the current range.
+// useResolvedRange returns memoized {from, to} for the current range.
 // `from` and `to` align to a bucket at the START of the current minute, so
 // calling this hook every render does NOT produce a new Date object each tick
 // (which would cause infinite useQuery refetches). The bucket lives in state
@@ -69,7 +69,7 @@ export function useResolvedRange(): { from: Date; to: Date } {
 
 // usePreviousRange returns the equal-length window immediately preceding
 // [from, to], used to compute period-over-period (↑↓X%) deltas on KPI cards.
-// Memoised on the epoch boundaries so it stays referentially stable across
+// Memoized on the epoch boundaries so it stays referentially stable across
 // renders and doesn't trigger refetch loops.
 export function usePreviousRange(from: Date, to: Date): { prevFrom: Date; prevTo: Date } {
   const prevFromMs = from.getTime() * 2 - to.getTime();

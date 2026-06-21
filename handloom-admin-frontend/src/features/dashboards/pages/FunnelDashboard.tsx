@@ -17,6 +17,8 @@ import {
 
 import {
   Card,
+  HeroBanner,
+  HeroStat,
   InlineBarCell,
   KPICard,
   PanelState,
@@ -24,8 +26,9 @@ import {
   StatTile,
   tableHeadClass,
 } from '../components/primitives';
+import { DEVICE_COLORS } from '../constants';
 import { useMetricBuckets } from '../hooks/useMetricBuckets';
-import { groupByLabel, totalCount } from '../lib/aggregate';
+import { rankByLabel } from '../lib/aggregate';
 
 // Funnel page: 5 KPIs + 4 ratios + timeseries + device + UTM table.
 
@@ -122,47 +125,36 @@ export function FunnelDashboard() {
   );
 
   // device split for site_visitor (top of funnel — every page load)
-  const visitorDeviceSeries = useMemo(() => {
-    const grouped = groupByLabel(byMetric.get('site_visitor') ?? [], 'device_type');
-    return Array.from(grouped.entries())
-      .map(([device, rows]) => ({
-        device,
-        count: totalCount(rows),
-      }))
-      .sort((a, b) => b.count - a.count);
-  }, [byMetric]);
+  const visitorDeviceSeries = useMemo(
+    () => rankByLabel(byMetric.get('site_visitor') ?? [], 'device_type'),
+    [byMetric]
+  );
 
   // device split for payment_completed (funnel-bottom conversion)
-  const deviceSeries = useMemo(() => {
-    const grouped = groupByLabel(byMetric.get('payment_completed') ?? [], 'device_type');
-    return Array.from(grouped.entries())
-      .map(([device, rows]) => ({
-        device,
-        count: totalCount(rows),
-      }))
-      .sort((a, b) => b.count - a.count);
-  }, [byMetric]);
+  const deviceSeries = useMemo(
+    () => rankByLabel(byMetric.get('payment_completed') ?? [], 'device_type'),
+    [byMetric]
+  );
 
   // Attribution — utm_source breakdown for the two conversion events.
-  // Builds (source, count) rows for each, drops the "unknown" bucket
-  // since direct/no-utm traffic would otherwise dominate.
-  const paymentsBySource = useMemo(() => {
-    const grouped = groupByLabel(byMetric.get('payment_completed') ?? [], 'utm_source');
-    return Array.from(grouped.entries())
-      .filter(([source]) => source !== 'unknown')
-      .map(([source, rows]) => ({ source, count: totalCount(rows) }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 10);
-  }, [byMetric]);
+  // Drops the "unknown" bucket since direct/no-utm traffic would dominate.
+  const paymentsBySource = useMemo(
+    () =>
+      rankByLabel(byMetric.get('payment_completed') ?? [], 'utm_source', {
+        excludeUnknown: true,
+        limit: 10,
+      }),
+    [byMetric]
+  );
 
-  const newCustomersBySource = useMemo(() => {
-    const grouped = groupByLabel(byMetric.get('customer_first_purchase') ?? [], 'utm_source');
-    return Array.from(grouped.entries())
-      .filter(([source]) => source !== 'unknown')
-      .map(([source, rows]) => ({ source, count: totalCount(rows) }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 10);
-  }, [byMetric]);
+  const newCustomersBySource = useMemo(
+    () =>
+      rankByLabel(byMetric.get('customer_first_purchase') ?? [], 'utm_source', {
+        excludeUnknown: true,
+        limit: 10,
+      }),
+    [byMetric]
+  );
 
   // UTM source breakdown for site_visitor — top-of-funnel attribution.
   // Filters out the synthetic "unknown" row so direct/no-utm traffic
@@ -213,37 +205,17 @@ export function FunnelDashboard() {
   return (
     <div className="space-y-6">
       {/* Hero — TL;DR for the selected window */}
-      <div className="rounded-lg border border-neutral-200 bg-gradient-to-r from-indigo-50 to-emerald-50 p-4">
-        <h1 className="text-xl font-semibold text-neutral-900">Funnel</h1>
-        <div className="mt-2 flex flex-wrap items-baseline gap-x-6 gap-y-1 text-sm">
-          <span className="text-neutral-700">
-            <span className="text-2xl font-bold text-indigo-700">
-              {heroVisitors.toLocaleString('en-IN')}
-            </span>{' '}
-            visitors
-          </span>
-          <span className="text-neutral-700">
-            <span className="text-2xl font-bold text-cyan-700">
-              {heroOrders.toLocaleString('en-IN')}
-            </span>{' '}
-            orders
-            {heroOrderDelta !== null ? (
-              <span
-                className={
-                  'ml-2 text-xs ' + (heroOrderDelta >= 0 ? 'text-emerald-600' : 'text-rose-600')
-                }
-                title="orders vs previous period of equal length"
-              >
-                {heroOrderDelta >= 0 ? '↑' : '↓'} {Math.abs(heroOrderDelta).toFixed(0)}%
-              </span>
-            ) : null}
-          </span>
-          <span className="text-neutral-700">
-            <span className="text-2xl font-bold text-emerald-700">{heroConversion}%</span>{' '}
-            conversion
-          </span>
-        </div>
-      </div>
+      <HeroBanner title="Funnel" gradient="from-indigo-50 to-emerald-50">
+        <HeroStat value={heroVisitors} label="visitors" color="text-indigo-700" />
+        <HeroStat
+          value={heroOrders}
+          label="orders"
+          color="text-cyan-700"
+          delta={heroOrderDelta}
+          deltaTitle="orders vs previous period of equal length"
+        />
+        <HeroStat value={`${heroConversion}%`} label="conversion" color="text-emerald-700" />
+      </HeroBanner>
 
       {/* Row 1 - KPI cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
@@ -403,13 +375,7 @@ export function FunnelDashboard() {
                 <BarChart data={paymentsBySource} layout="vertical" margin={{ left: 60 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                   <XAxis type="number" fontSize={11} stroke="#737373" />
-                  <YAxis
-                    type="category"
-                    dataKey="source"
-                    fontSize={11}
-                    stroke="#737373"
-                    width={100}
-                  />
+                  <YAxis type="category" dataKey="key" fontSize={11} stroke="#737373" width={100} />
                   <Tooltip contentStyle={{ fontSize: 12 }} />
                   <Bar dataKey="count" fill="#06b6d4" radius={[0, 4, 4, 0]} />
                 </BarChart>
@@ -432,13 +398,7 @@ export function FunnelDashboard() {
                 <BarChart data={newCustomersBySource} layout="vertical" margin={{ left: 60 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                   <XAxis type="number" fontSize={11} stroke="#737373" />
-                  <YAxis
-                    type="category"
-                    dataKey="source"
-                    fontSize={11}
-                    stroke="#737373"
-                    width={100}
-                  />
+                  <YAxis type="category" dataKey="key" fontSize={11} stroke="#737373" width={100} />
                   <Tooltip contentStyle={{ fontSize: 12 }} />
                   <Bar dataKey="count" fill="#22c55e" radius={[0, 4, 4, 0]} />
                 </BarChart>
@@ -483,17 +443,10 @@ export function FunnelDashboard() {
   );
 }
 
-const DEVICE_COLOR: Record<string, string> = {
-  mobile: '#6366f1', // indigo
-  desktop: '#06b6d4', // cyan
-  tablet: '#f59e0b', // amber
-  unknown: '#a3a3a3', // neutral
-};
-
 interface DeviceDonutCardProps {
   title: string;
   subtitle: string;
-  data: { device: string; count: number }[];
+  data: { key: string; count: number }[];
   isLoading: boolean;
   isError: boolean;
 }
@@ -503,7 +456,13 @@ interface DeviceDonutCardProps {
  * proportions readable at a glance — far less work than reading bars at
  * different heights for the same low-cardinality data.
  */
-function DeviceDonutCard({ title, subtitle, data, isLoading, isError }: DeviceDonutCardProps) {
+function DeviceDonutCard({
+  title,
+  subtitle,
+  data,
+  isLoading,
+  isError,
+}: Readonly<DeviceDonutCardProps>) {
   const total = data.reduce((acc, d) => acc + d.count, 0);
   return (
     <Card>
@@ -515,19 +474,20 @@ function DeviceDonutCard({ title, subtitle, data, isLoading, isError }: DeviceDo
               <Pie
                 data={data}
                 dataKey="count"
-                nameKey="device"
+                nameKey="key"
                 innerRadius={50}
                 outerRadius={85}
                 paddingAngle={2}
                 isAnimationActive={false}
-                label={(entry: { device?: string; percent?: number }) => {
-                  const pct = ((entry.percent ?? 0) * 100).toFixed(0);
-                  return `${entry.device ?? ''} ${pct}%`;
+                label={(entry) => {
+                  const e = entry as { name?: string | number; percent?: number };
+                  const pct = ((e.percent ?? 0) * 100).toFixed(0);
+                  return `${e.name ?? ''} ${pct}%`;
                 }}
                 labelLine={false}
               >
                 {data.map((d) => (
-                  <Cell key={d.device} fill={DEVICE_COLOR[d.device] ?? DEVICE_COLOR.unknown} />
+                  <Cell key={d.key} fill={DEVICE_COLORS[d.key] ?? DEVICE_COLORS.unknown} />
                 ))}
               </Pie>
               <Tooltip

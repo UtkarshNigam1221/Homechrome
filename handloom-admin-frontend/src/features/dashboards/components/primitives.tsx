@@ -22,7 +22,7 @@ interface CardProps {
 /**
  * Tailwind card wrapper used by every dashboard panel.
  */
-export function Card({ children, className = '' }: CardProps) {
+export function Card({ children, className = '' }: Readonly<CardProps>) {
   return (
     <div className={`rounded-lg border border-neutral-200 bg-white p-4 shadow-sm ${className}`}>
       {children}
@@ -37,7 +37,12 @@ interface SectionTitleProps {
   isRefreshing?: boolean;
 }
 
-export function SectionTitle({ children, subtitle, onRefresh, isRefreshing }: SectionTitleProps) {
+export function SectionTitle({
+  children,
+  subtitle,
+  onRefresh,
+  isRefreshing,
+}: Readonly<SectionTitleProps>) {
   return (
     <div className="mb-3 flex items-start justify-between gap-3">
       <div>
@@ -57,6 +62,56 @@ export function SectionTitle({ children, subtitle, onRefresh, isRefreshing }: Se
         </button>
       ) : null}
     </div>
+  );
+}
+
+interface HeroBannerProps {
+  title: string;
+  /** tailwind gradient stops, e.g. 'from-indigo-50 to-emerald-50' */
+  gradient: string;
+  children: ReactNode;
+}
+
+/**
+ * Gradient TL;DR banner at the top of a dashboard page. Pass HeroStat
+ * children (or arbitrary spans) for the headline numbers.
+ */
+export function HeroBanner({ title, gradient, children }: Readonly<HeroBannerProps>) {
+  return (
+    <div className={`rounded-lg border border-neutral-200 bg-gradient-to-r ${gradient} p-4`}>
+      <h1 className="text-xl font-semibold text-neutral-900">{title}</h1>
+      <div className="mt-2 flex flex-wrap items-baseline gap-x-6 gap-y-1 text-sm">{children}</div>
+    </div>
+  );
+}
+
+interface HeroStatProps {
+  /** big number (formatted with en-IN grouping) or pre-formatted string like "12%" */
+  value: number | string;
+  label: string;
+  /** tailwind text color class for the number, e.g. 'text-indigo-700' */
+  color: string;
+  /** ↑↓X% delta vs previous period; null/undefined hides it */
+  delta?: number | null;
+  deltaTitle?: string;
+}
+
+export function HeroStat({ value, label, color, delta, deltaTitle }: Readonly<HeroStatProps>) {
+  return (
+    <span className="text-neutral-700">
+      <span className={`text-2xl font-bold ${color}`}>
+        {typeof value === 'number' ? value.toLocaleString('en-IN') : value}
+      </span>{' '}
+      {label}
+      {delta === null || delta === undefined ? null : (
+        <span
+          className={'ml-2 text-xs ' + (delta >= 0 ? 'text-emerald-600' : 'text-rose-600')}
+          title={deltaTitle}
+        >
+          {delta >= 0 ? '↑' : '↓'} {Math.abs(delta).toFixed(0)}%
+        </span>
+      )}
+    </span>
   );
 }
 
@@ -81,7 +136,7 @@ export function KPICard({
   color = '#6366f1',
   format,
   previousValue,
-}: KPICardProps) {
+}: Readonly<KPICardProps>) {
   // 60-min bins for sparkline so a 24h window stays readable
   const series = aggregateByTime(data, 60, () => 'v');
   const display = format ? format(value) : value.toLocaleString('en-IN');
@@ -104,7 +159,7 @@ export function KPICard({
       <div className="text-xs font-medium uppercase tracking-wide text-neutral-500">{title}</div>
       <div className="flex items-baseline gap-2">
         <div className="text-2xl font-semibold text-neutral-900">{display}</div>
-        {deltaPct !== null ? (
+        {deltaPct === null ? null : (
           <div
             className={
               'text-xs font-medium ' + (deltaPct >= 0 ? 'text-emerald-600' : 'text-rose-600')
@@ -113,7 +168,7 @@ export function KPICard({
           >
             {deltaPct >= 0 ? '↑' : '↓'} {Math.abs(deltaPct).toFixed(0)}%
           </div>
-        ) : null}
+        )}
       </div>
       <div className="h-12 w-full">
         {series.length > 1 ? (
@@ -156,7 +211,12 @@ interface InlineBarCellProps {
  * compare ranked rows at a glance. width = (value/max) * 100%. Pass the
  * displayed number as `children` (formatted however caller wants).
  */
-export function InlineBarCell({ value, max, color = '#6366f1', children }: InlineBarCellProps) {
+export function InlineBarCell({
+  value,
+  max,
+  color = '#6366f1',
+  children,
+}: Readonly<InlineBarCellProps>) {
   const pct = max > 0 ? Math.min(100, (value / max) * 100) : 0;
   return (
     <td className="relative py-2 pr-4 text-right tabular-nums">
@@ -179,7 +239,7 @@ interface StatTileProps {
 /**
  * Single big-number tile with tone color (green/amber/red/neutral).
  */
-export function StatTile({ label, value, tone = 'neutral', hint }: StatTileProps) {
+export function StatTile({ label, value, tone = 'neutral', hint }: Readonly<StatTileProps>) {
   const toneClass =
     tone === 'good'
       ? 'text-emerald-600'
@@ -207,7 +267,7 @@ interface PanelStateProps {
 /**
  * Common loading / error / empty wrapper for chart panels.
  */
-export function PanelState({ isLoading, isError, hasData, children }: PanelStateProps) {
+export function PanelState({ isLoading, isError, hasData, children }: Readonly<PanelStateProps>) {
   if (isLoading) {
     return (
       <div className="flex h-48 items-center justify-center text-sm text-neutral-500">

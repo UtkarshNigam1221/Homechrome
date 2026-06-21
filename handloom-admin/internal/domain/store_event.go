@@ -11,7 +11,6 @@ var ValidStoreEventTypes = map[string]struct{}{
 	"scroll_depth":                   {},
 	"category_viewed":                {},
 	"out_of_stock_shown":             {},
-	"back_in_stock_notify_requested": {},
 	"catalog_filter_applied":         {},
 	"rum_lcp":                        {},
 	"rum_inp":                        {},

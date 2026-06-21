@@ -1,24 +1,15 @@
 import { NavLink, Outlet } from 'react-router-dom';
 
+import { DASHBOARD_TABS } from '../constants';
 import { NeonAuthGate } from './NeonAuthGate';
 import { TimeRangePicker } from './TimeRangePicker';
-
-// Tab strip across the top of every dashboard sub-page. Child routes
-// render in <Outlet/>. All tabs share the same time range via Zustand.
-const TABS = [
-  { to: '/dashboards', label: 'Overview', end: true },
-  { to: '/dashboards/funnel', label: 'Funnel' },
-  { to: '/dashboards/products', label: 'Products' },
-  { to: '/dashboards/geography', label: 'Geography' },
-  { to: '/dashboards/rum', label: 'RUM & Service Health' },
-];
 
 export function DashboardLayout() {
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between border-b border-neutral-200 bg-white px-6 py-3">
         <nav className="flex gap-1">
-          {TABS.map((tab) => (
+          {DASHBOARD_TABS.map((tab) => (
             <NavLink
               key={tab.to}
               to={tab.to}

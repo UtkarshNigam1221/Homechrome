@@ -82,19 +82,19 @@ func loadConfig(ctx context.Context) appConfig {
 	awsCfg.APIOptions = append(awsCfg.APIOptions, awsmiddleware.With(embedderServiceName()))
 	ssmc := ssm.NewFromConfig(awsCfg)
 
-	authKey := ssmGetSecure(ctx, ssmc, getEnv("EMBEDDER_AUTH_KEY_PARAM"))
+	authKey := ssmGetSecure(ctx, ssmc, os.Getenv("EMBEDDER_AUTH_KEY_PARAM"))
 
 	// POSTGRES_DSN is passed as a plain env var by CDK (sourced from
 	// .env.{env} locally or secrets.BACKEND_ENV_{ENV} in GH Actions). Only
 	// the HMAC auth key lives in SSM SecureString.
-	pgDSN := getEnv("POSTGRES_DSN")
+	pgDSN := os.Getenv("POSTGRES_DSN")
 
 	return appConfig{
 		PostgresDSN:   pgDSN,
-		ModelPath:     getEnv("MODEL_PATH"),
-		TokenizerPath: getEnv("TOKENIZER_PATH"),
-		ORTLibPath:    getEnv("ONNXRUNTIME_SHARED_LIB_PATH"),
-		AllowedOrigin: getEnv("ALLOWED_ORIGIN"),
+		ModelPath:     os.Getenv("MODEL_PATH"),
+		TokenizerPath: os.Getenv("TOKENIZER_PATH"),
+		ORTLibPath:    os.Getenv("ONNXRUNTIME_SHARED_LIB_PATH"),
+		AllowedOrigin: os.Getenv("ALLOWED_ORIGIN"),
 		AuthKey:       authKey,
 		RatePerMin:    parseIntEnv("RATE_LIMIT_PER_IP_PER_MIN", 60),
 		Weights: emb.Weights{
@@ -126,10 +126,8 @@ func embedderServiceName() string {
 	return "handloom-embedder"
 }
 
-func getEnv(k string) string { return os.Getenv(k) }
-
 func parseFloatEnv(key string, def float64) float64 {
-	if v := getEnv(key); v != "" {
+	if v := os.Getenv(key); v != "" {
 		if f, err := strconv.ParseFloat(v, 64); err == nil {
 			return f
 		}
@@ -139,7 +137,7 @@ func parseFloatEnv(key string, def float64) float64 {
 
 // parseIntEnv reads an integer env var with a fallback.
 func parseIntEnv(key string, def int) int {
-	if v := getEnv(key); v != "" {
+	if v := os.Getenv(key); v != "" {
 		if n, err := strconv.Atoi(v); err == nil {
 			return n
 		}
