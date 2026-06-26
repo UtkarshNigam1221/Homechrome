@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
-	"fmt"
 	"log/slog"
 	"sort"
 	"strings"
@@ -25,7 +24,7 @@ type metricsRepoIface interface {
 // aggregateKey uniquely identifies one (metric, labelHash, bucketStart, retentionClass) cell.
 type aggregateKey struct {
 	metric         string
-	labelHash      string // hex of sha256 bytes
+	labelHash      string // sha256 bytes as a string, used only as a map key
 	bucketStart    time.Time
 	retentionClass string
 }
@@ -57,6 +56,8 @@ func NewHandler(repo *postgres.MetricsRepository, cache *IdempotencyCache) *Hand
 func (h *Handler) HandleSQSEvent(ctx context.Context, sqsEvent events.SQSEvent) (events.SQSEventResponse, error) {
 	agg := make(map[aggregateKey]*aggregateCell)
 	var parseFailures []events.SQSBatchItemFailure
+	seen := make(map[string]struct{}) // dedup within this invocation
+	var committedKeys []string        // promoted to the shared LRU only after a successful upsert
 
 	for _, record := range sqsEvent.Records {
 		// Each SQS message body is a JSON array of events (one per emit site
@@ -72,20 +73,27 @@ func (h *Handler) HandleSQSEvent(ctx context.Context, sqsEvent events.SQSEvent) 
 		}
 
 		for _, evt := range batch {
-			// Dedup by idempotency key.
+			// Dedup by idempotency key. A key is promoted to the shared LRU
+			// only after the batch is durably written (see below), so a failed
+			// upsert + SQS redelivery to a warm container reprocesses correctly
+			// instead of silently dropping the batch.
 			if evt.IdempotencyKey != "" {
 				if h.cache.Has(evt.IdempotencyKey) {
 					slog.DebugContext(ctx, "metrics consumer: dedup skip",
 						"idempotency_key", evt.IdempotencyKey)
 					continue
 				}
-				h.cache.Add(evt.IdempotencyKey)
+				if _, dup := seen[evt.IdempotencyKey]; dup {
+					continue // same key earlier in this batch — already aggregated
+				}
+				seen[evt.IdempotencyKey] = struct{}{}
+				committedKeys = append(committedKeys, evt.IdempotencyKey)
 			}
 
 			labelHashBytes := computeLabelHash(evt.Labels)
 			key := aggregateKey{
 				metric:         evt.Metric,
-				labelHash:      fmt.Sprintf("%x", labelHashBytes),
+				labelHash:      string(labelHashBytes),
 				bucketStart:    alignTo5Min(evt.EmittedAt),
 				retentionClass: string(evt.RetentionClass),
 			}
@@ -132,6 +140,13 @@ func (h *Handler) HandleSQSEvent(ctx context.Context, sqsEvent events.SQSEvent) 
 			allFailures = append(allFailures, events.SQSBatchItemFailure{ItemIdentifier: r.MessageId})
 		}
 		return events.SQSEventResponse{BatchItemFailures: allFailures}, nil
+	}
+
+	// Durable write succeeded — only now mark keys as processed so a later
+	// redelivery is deduped. Doing this before the upsert would lose the batch
+	// on a retry that lands on this same warm container.
+	for _, k := range committedKeys {
+		h.cache.Add(k)
 	}
 
 	return events.SQSEventResponse{BatchItemFailures: parseFailures}, nil

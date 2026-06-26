@@ -3,6 +3,7 @@ package metrics
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
@@ -13,6 +14,20 @@ import (
 	"github.com/handloom/admin/internal/repository/postgres"
 	pkgmetrics "github.com/handloom/admin/pkg/metrics"
 )
+
+// flakyRepo fails the first failFirstN UpsertCounters calls, then succeeds.
+type flakyRepo struct {
+	calls      [][]postgres.CounterRow
+	failFirstN int
+}
+
+func (s *flakyRepo) UpsertCounters(_ context.Context, rows []postgres.CounterRow) error {
+	s.calls = append(s.calls, rows)
+	if len(s.calls) <= s.failFirstN {
+		return errors.New("transient pg error")
+	}
+	return nil
+}
 
 // stubMetricsRepo captures calls to UpsertCounters.
 type stubMetricsRepo struct {
@@ -84,6 +99,37 @@ func TestConsumer_DedupsByIdempotencyKey(t *testing.T) {
 	require.Len(t, stub.calls, 1)
 	// Only the first observation should be counted.
 	assert.Equal(t, int64(5), stub.calls[0][0].Count)
+}
+
+// Regression: a failed upsert must NOT cache the idempotency keys, so an SQS
+// redelivery to the same warm container reprocesses the batch instead of
+// dedup-skipping it and silently losing the metrics.
+func TestConsumer_FailedUpsertLeavesKeysUncached_RetryReprocesses(t *testing.T) {
+	repo := &flakyRepo{failFirstN: 1}
+	cache := NewIdempotencyCache(1000)
+	h := &Handler{repo: repo, cache: cache}
+
+	now := time.Now().UTC()
+	batch := events.SQSEvent{
+		Records: []events.SQSMessage{
+			{MessageId: "1", Body: makeEvent("req.count", pkgmetrics.L{"svc": "auth"}, 4, "ikey-A", now)},
+		},
+	}
+
+	// First delivery: upsert fails → whole batch reported for retry, key NOT cached.
+	resp, err := h.HandleSQSEvent(context.Background(), batch)
+	require.NoError(t, err)
+	require.Len(t, resp.BatchItemFailures, 1, "failed upsert must report the message for retry")
+	require.False(t, cache.Has("ikey-A"), "key must not be cached before a durable write")
+
+	// SQS redelivers to the same warm container (same cache); upsert now succeeds.
+	resp, err = h.HandleSQSEvent(context.Background(), batch)
+	require.NoError(t, err)
+	assert.Empty(t, resp.BatchItemFailures)
+	require.Len(t, repo.calls, 2, "retry must reprocess, not dedup-skip")
+	require.Len(t, repo.calls[1], 1)
+	assert.Equal(t, int64(4), repo.calls[1][0].Count, "metric must be written on retry, not lost")
+	assert.True(t, cache.Has("ikey-A"), "key cached only after the successful write")
 }
 
 func TestConsumer_MalformedJSON_ReportsItemFailure(t *testing.T) {

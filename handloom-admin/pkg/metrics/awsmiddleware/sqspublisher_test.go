@@ -1,4 +1,4 @@
-package metrics
+package awsmiddleware
 
 import (
 	"context"
@@ -11,6 +11,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	pkgmetrics "github.com/handloom/admin/pkg/metrics"
 )
 
 type fakeSQS struct {
@@ -39,7 +41,7 @@ func TestSQSPublisher_successFirstTry(t *testing.T) {
 
 	fake := &fakeSQS{}
 	p := NewSQSPublisher(fake, "https://sqs.test/queue")
-	err := p.Publish(context.Background(), []Event{{Metric: "x", Value: 1}})
+	err := p.Publish(context.Background(), []pkgmetrics.Event{{Metric: "x", Value: 1}})
 	require.NoError(t, err)
 	assert.Equal(t, 1, fake.calls)
 }
@@ -49,7 +51,7 @@ func TestSQSPublisher_successAfterTwoRetries(t *testing.T) {
 
 	fake := &fakeSQS{failUntil: 2, err: errors.New("throttle")}
 	p := NewSQSPublisher(fake, "https://sqs.test/queue")
-	err := p.Publish(context.Background(), []Event{{Metric: "x"}})
+	err := p.Publish(context.Background(), []pkgmetrics.Event{{Metric: "x"}})
 	require.NoError(t, err)
 	assert.Equal(t, 3, fake.calls)
 }
@@ -59,7 +61,7 @@ func TestSQSPublisher_failAfterThreeAttempts(t *testing.T) {
 
 	fake := &fakeSQS{failUntil: 99, err: errors.New("permanent")}
 	p := NewSQSPublisher(fake, "https://sqs.test/queue")
-	err := p.Publish(context.Background(), []Event{{Metric: "x"}})
+	err := p.Publish(context.Background(), []pkgmetrics.Event{{Metric: "x"}})
 	require.Error(t, err)
 	assert.Equal(t, 3, fake.calls)
 }
@@ -78,9 +80,9 @@ func TestSQSPublisher_chunksOversizedBatch(t *testing.T) {
 	// 20 events of ~30 KB each ≈ 600 KB total — must split into several
 	// messages, each under maxSQSBodyBytes (240 KB).
 	big := strings.Repeat("x", 30*1024)
-	events := make([]Event, 20)
+	events := make([]pkgmetrics.Event, 20)
 	for i := range events {
-		events[i] = Event{Metric: "m", Labels: L{"reason": big}, Value: 1}
+		events[i] = pkgmetrics.Event{Metric: "m", Labels: pkgmetrics.L{"reason": big}, Value: 1}
 	}
 
 	fake := &fakeSQS{}
@@ -91,9 +93,9 @@ func TestSQSPublisher_chunksOversizedBatch(t *testing.T) {
 
 func TestChunkEvents_keepsChunksUnderLimit(t *testing.T) {
 	big := strings.Repeat("y", 50*1024)
-	events := make([]Event, 12)
+	events := make([]pkgmetrics.Event, 12)
 	for i := range events {
-		events[i] = Event{Metric: "m", Labels: L{"reason": big}}
+		events[i] = pkgmetrics.Event{Metric: "m", Labels: pkgmetrics.L{"reason": big}}
 	}
 	chunks, err := chunkEvents(events)
 	require.NoError(t, err)
