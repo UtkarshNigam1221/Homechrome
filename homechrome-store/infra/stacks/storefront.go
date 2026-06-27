@@ -143,13 +143,17 @@ func NewStorefrontStack(scope constructs.Construct, id string, props *Storefront
 		}
 	}
 
-	// AWS_IAM auth so the Function URL is NOT publicly invokable — only
-	// CloudFront, via the Origin Access Control wired below, can reach it.
-	// FunctionUrlOrigin_WithOriginAccessControl signs each origin request with
-	// SigV4 and grants CloudFront lambda:InvokeFunctionUrl automatically.
+	// Public Function URL fronted by CloudFront (the working pre-#141 setup).
+	// The AWS_IAM + OAC variant returned 403 AccessDeniedException on every
+	// CloudFront→Lambda request, so revert to the OpenNext-default public URL.
 	serverUrl := serverFn.AddFunctionUrl(&awslambda.FunctionUrlOptions{
-		AuthType:   awslambda.FunctionUrlAuthType_AWS_IAM,
+		AuthType:   awslambda.FunctionUrlAuthType_NONE,
 		InvokeMode: awslambda.InvokeMode_BUFFERED,
+	})
+	// Since Oct 2025, new Function URLs require lambda:InvokeFunction in addition to lambda:InvokeFunctionUrl
+	serverFn.AddPermission(jsii.String("PublicInvoke"), &awslambda.Permission{
+		Principal: awsiam.NewAnyPrincipal(),
+		Action:    jsii.String("lambda:InvokeFunction"),
 	})
 
 	// ─── CloudFront Origins ───
@@ -165,14 +169,13 @@ func NewStorefrontStack(scope constructs.Construct, id string, props *Storefront
 		OriginPath:          jsii.String("/_assets"),
 	})
 
-	// Server Lambda origin via Function URL, fronted by OAC. The OAC signs
-	// every CloudFront→Lambda request with SigV4, so the AWS_IAM Function URL
-	// rejects any request that doesn't come through this distribution. This
-	// also auto-creates the OAC and the CloudFront invoke permission.
-	serverOrigin := awscloudfrontorigins.FunctionUrlOrigin_WithOriginAccessControl(
-		serverUrl,
-		&awscloudfrontorigins.FunctionUrlOriginWithOACProps{},
-	)
+	// Server Lambda origin via the Function URL as a plain HTTPS origin (no OAC).
+	// Function URL format: https://xxxxx.lambda-url.region.on.aws/ — split on "/"
+	// → ["https:", "", "xxxxx.lambda-url..."] → index 2 is the host.
+	serverDomain := awscdk.Fn_Select(jsii.Number(2), awscdk.Fn_Split(jsii.String("/"), serverUrl.Url(), nil))
+	serverOrigin := awscloudfrontorigins.NewHttpOrigin(serverDomain, &awscloudfrontorigins.HttpOriginProps{
+		ProtocolPolicy: awscloudfront.OriginProtocolPolicy_HTTPS_ONLY,
+	})
 
 	// ─── CloudFront Function (inject x-forwarded-host) ───
 	// CloudFront replaces the Host header when forwarding to origins.
