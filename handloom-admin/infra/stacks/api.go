@@ -34,6 +34,17 @@ type APIStackProps struct {
 	FrontendOrigin string         // Optional: frontend origin for CORS (e.g. https://dev-admin.homechrome.in)
 	CertArn        string         // Optional: ACM certificate ARN (us-east-1) for custom domain
 
+	// Non-secret gateway config, baked per-env in infra/cmd/config.go and
+	// injected into Lambda env. Secrets still come from the deploy shell.
+	PhonePeBaseURL          string
+	PhonePeCallbackURL      string
+	PhonePeRedirectURL      string
+	PhonePeClientVersion    string
+	MSG91BaseURL            string
+	MSG91OTPTemplateID      string
+	ShiprocketBaseURL       string
+	ShiprocketPickupPincode string
+
 	// Telemetry — community-published OTel Collector layer ARN + SSM parameter
 	// names for Grafana Cloud credentials. All three must be set together; if
 	// CollectorLayerArn is empty the applyTelemetry helper is a no-op.
@@ -154,20 +165,34 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 		commonEnv["COOKIE_DOMAIN"] = jsii.String("." + props.BaseDomain)
 	}
 
-	// Propagate gateway credentials from the deploy shell environment.
-	// Empty values fall through to each gateway's DevClient.
-	gatewayEnvKeys := []string{
-		// PhonePe
-		"PHONEPE_CLIENT_ID", "PHONEPE_CLIENT_SECRET", "PHONEPE_CLIENT_VERSION",
-		"PHONEPE_BASE_URL", "PHONEPE_CALLBACK_URL", "PHONEPE_REDIRECT_URL",
-		"PHONEPE_WEBHOOK_USERNAME", "PHONEPE_WEBHOOK_PASSWORD",
-		// MSG91 (SMS / OTP)
-		"MSG91_AUTH_KEY", "MSG91_OTP_TEMPLATE_ID", "MSG91_BASE_URL",
-		// Shiprocket
-		"SHIPROCKET_EMAIL", "SHIPROCKET_PASSWORD", "SHIPROCKET_BASE_URL",
-		"SHIPROCKET_PICKUP_PINCODE",
+	// Non-secret gateway config — baked per-env in infra/cmd/config.go, no
+	// deploy-time env var needed. Empty values fall through to each gateway's
+	// DevClient at runtime.
+	gatewayConfig := map[string]string{
+		"PHONEPE_BASE_URL":          props.PhonePeBaseURL,
+		"PHONEPE_CALLBACK_URL":      props.PhonePeCallbackURL,
+		"PHONEPE_REDIRECT_URL":      props.PhonePeRedirectURL,
+		"PHONEPE_CLIENT_VERSION":    props.PhonePeClientVersion,
+		"MSG91_BASE_URL":            props.MSG91BaseURL,
+		"MSG91_OTP_TEMPLATE_ID":     props.MSG91OTPTemplateID,
+		"SHIPROCKET_BASE_URL":       props.ShiprocketBaseURL,
+		"SHIPROCKET_PICKUP_PINCODE": props.ShiprocketPickupPincode,
 	}
-	for _, key := range gatewayEnvKeys {
+	for k, v := range gatewayConfig {
+		if v != "" {
+			commonEnv[k] = jsii.String(v)
+		}
+	}
+
+	// Gateway SECRETS — still propagated from the deploy shell (BACKEND_ENV_*
+	// secret + the MSG91_AUTH_KEY step secret). Empty → gateway DevClient.
+	gatewaySecretKeys := []string{
+		"PHONEPE_CLIENT_ID", "PHONEPE_CLIENT_SECRET",
+		"PHONEPE_WEBHOOK_USERNAME", "PHONEPE_WEBHOOK_PASSWORD",
+		"MSG91_AUTH_KEY",
+		"SHIPROCKET_EMAIL", "SHIPROCKET_PASSWORD",
+	}
+	for _, key := range gatewaySecretKeys {
 		if v := os.Getenv(key); v != "" {
 			commonEnv[key] = jsii.String(v)
 		}

@@ -22,6 +22,9 @@ func main() {
 	if !ok {
 		panic(fmt.Sprintf("unknown environment: %s (valid: dev, prod)", environment))
 	}
+	if err := cfg.validate(environment); err != nil {
+		panic(err)
+	}
 
 	postgresDSN := getPostgresDSN(app)
 
@@ -121,6 +124,14 @@ func main() {
 		DomainName:              cfg.DomainName,
 		FrontendOrigin:          cfg.FrontendOrigin,
 		CertArn:                 cfg.CertArn,
+		PhonePeBaseURL:          cfg.PhonePeBaseURL,
+		PhonePeCallbackURL:      cfg.PhonePeCallbackURL,
+		PhonePeRedirectURL:      cfg.PhonePeRedirectURL,
+		PhonePeClientVersion:    cfg.PhonePeClientVersion,
+		MSG91BaseURL:            cfg.MSG91BaseURL,
+		MSG91OTPTemplateID:      cfg.MSG91OTPTemplateID,
+		ShiprocketBaseURL:       cfg.ShiprocketBaseURL,
+		ShiprocketPickupPincode: cfg.ShiprocketPickupPincode,
 		CollectorLayerArn:       collectorArn,
 		GrafanaAuthSSMParam:     "/handloom/" + environment + "/grafana-otlp-auth",
 		GrafanaEndpointSSMParam: "/handloom/" + environment + "/grafana-otlp-endpoint",

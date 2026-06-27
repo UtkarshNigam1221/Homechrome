@@ -21,6 +21,9 @@ func main() {
 	if !ok {
 		panic(fmt.Sprintf("unknown environment: %s (valid: dev, prod)", environment))
 	}
+	if err := cfg.validate(environment); err != nil {
+		panic(err)
+	}
 
 	commonTags := &map[string]*string{
 		"Environment": jsii.String(environment),
@@ -39,23 +42,8 @@ func main() {
 		Environment: environment,
 	})
 
-	// Telemetry — layer ARN and SSM param names are passed at deploy time via env vars.
-	// The layer is the community-published OpenTelemetry Collector (account 184161586896).
-	// Compute the ARN using stacks.OtelCollectorLayerArn in handloom-admin/infra/stacks/telemetry.go,
-	// then pass it here at deploy time:
-	//   OTEL_COLLECTOR_LAYER_ARN=arn:aws:lambda:ap-south-1:184161586896:layer:opentelemetry-collector-arm64-0_22_0:1 npm run cdk:deploy:dev
-	// Leave unset to skip telemetry (no-op path in StorefrontStack).
-	collectorLayerArn := os.Getenv("OTEL_COLLECTOR_LAYER_ARN")
-	nodeAutoInstrLayerArn := os.Getenv("NODE_AUTO_INSTR_LAYER_ARN")
-	grafanaEndpointSSMParam := os.Getenv("GRAFANA_ENDPOINT_SSM_PARAM")
-	if grafanaEndpointSSMParam == "" {
-		grafanaEndpointSSMParam = "/handloom/" + environment + "/grafana-otlp-endpoint"
-	}
-	grafanaAuthSSMParam := os.Getenv("GRAFANA_AUTH_SSM_PARAM")
-	if grafanaAuthSSMParam == "" {
-		grafanaAuthSSMParam = "/handloom/" + environment + "/grafana-otlp-auth"
-	}
-
+	// Telemetry config is baked per-env in config.go (no deploy-time env vars).
+	// Empty CollectorLayerArn → StorefrontStack skips OTel (no-op path).
 	stacks.NewStorefrontStack(app, "HomechromeStoreStack-"+environment, &stacks.StorefrontStackProps{
 		StackProps: awscdk.StackProps{
 			Env:         env,
@@ -67,10 +55,10 @@ func main() {
 		CertArn:                 cfg.CertArn,
 		BackendApiUrl:           cfg.BackendApiUrl,
 		LogsStack:               logsStack,
-		CollectorLayerArn:       collectorLayerArn,
-		NodeAutoInstrLayerArn:   nodeAutoInstrLayerArn,
-		GrafanaEndpointSSMParam: grafanaEndpointSSMParam,
-		GrafanaAuthSSMParam:     grafanaAuthSSMParam,
+		CollectorLayerArn:       cfg.CollectorLayerArn,
+		NodeAutoInstrLayerArn:   cfg.NodeAutoInstrLayerArn,
+		GrafanaEndpointSSMParam: cfg.GrafanaEndpointSSMParam,
+		GrafanaAuthSSMParam:     cfg.GrafanaAuthSSMParam,
 	})
 
 	app.Synth(nil)

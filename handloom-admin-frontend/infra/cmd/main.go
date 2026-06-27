@@ -21,6 +21,9 @@ func main() {
 	if !ok {
 		panic(fmt.Sprintf("unknown environment: %s (valid: dev, prod)", environment))
 	}
+	if err := cfg.validate(environment); err != nil {
+		panic(err)
+	}
 
 	stacks.NewFrontendStack(app, "HandloomFrontendStack-"+environment, &stacks.FrontendStackProps{
 		StackProps: awscdk.StackProps{

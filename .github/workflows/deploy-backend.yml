@@ -135,25 +135,55 @@ jobs:
             echo "::error::.env.deploy is empty — BACKEND_ENV_${{ inputs.environment }} secret is unset or blank." >&2
             exit 1
           fi
-          if ! grep -q '^POSTGRES_DSN=.\+' .env.deploy; then
-            echo "::error::POSTGRES_DSN is missing or empty in BACKEND_ENV_${{ inputs.environment }}." >&2
+
+      - name: Validate required secrets
+        env:
+          MSG91_AUTH_KEY: ${{ secrets.MSG91_AUTH_KEY }}
+        run: |
+          # Fail the deploy now if a required secret is missing, instead of
+          # shipping a Lambda that silently falls back to a gateway DevClient
+          # (fake payments/OTP) and only breaks at runtime.
+
+          # Required in every environment.
+          required="POSTGRES_DSN"
+
+          # Required in prod: PhonePe + OTP must be real, never DevClient.
+          if [ "${{ inputs.environment }}" = "prod" ]; then
+            required="$required PHONEPE_CLIENT_ID PHONEPE_CLIENT_SECRET PHONEPE_WEBHOOK_USERNAME PHONEPE_WEBHOOK_PASSWORD"
+          fi
+
+          missing=""
+          for key in $required; do
+            # Match `KEY=<non-empty>` (ignoring surrounding quotes/space) in the blob.
+            if ! grep -qE "^${key}=['\"]?[^'\"[:space:]]" .env.deploy; then
+              missing="$missing $key"
+            fi
+          done
+
+          # MSG91_AUTH_KEY arrives as a step secret, not via the blob.
+          if [ "${{ inputs.environment }}" = "prod" ] && [ -z "$MSG91_AUTH_KEY" ]; then
+            missing="$missing MSG91_AUTH_KEY"
+          fi
+
+          if [ -n "$missing" ]; then
+            echo "::error::Missing required secret(s) for ${{ inputs.environment }}:$missing. Set them in BACKEND_ENV_${{ inputs.environment }} (or the MSG91_AUTH_KEY secret) before deploying." >&2
             exit 1
           fi
+          echo "All required secrets present for ${{ inputs.environment }}."
 
       - name: CDK Deploy
         env:
-          # Gateway credentials propagated to Lambda env via infra/stacks/api.go.
-          # AUTH_KEY = secret (sensitive). TEMPLATE_ID = vars (non-sensitive identifier).
+          # Only true SECRETS come from the workflow now. Non-secret gateway
+          # config (URLs, versions, template id, pincode) is baked per-env in
+          # infra/cmd/config.go. MSG91_AUTH_KEY is the one gateway secret kept
+          # as its own GH secret; the rest live in the BACKEND_ENV_* blob.
           MSG91_AUTH_KEY: ${{ secrets.MSG91_AUTH_KEY }}
-          MSG91_OTP_TEMPLATE_ID: ${{ vars.MSG91_OTP_TEMPLATE_ID }}
         run: |
-          # Stash step-env MSG91 values before sourcing .env.deploy, then
-          # restore so step env wins over any blanks in the env file.
+          # Stash the step-env secret before sourcing .env.deploy, then restore
+          # so it wins over any blank in the env file.
           _msg91_key="$MSG91_AUTH_KEY"
-          _msg91_tid="$MSG91_OTP_TEMPLATE_ID"
           set -a && . ./.env.deploy && set +a
           export MSG91_AUTH_KEY="$_msg91_key"
-          export MSG91_OTP_TEMPLATE_ID="$_msg91_tid"
           # Deploy every stack EXCEPT the embedder, which has its own workflow
           # (deploy-embedder.yml) because its container image needs a heavy
           # model-asset bootstrap. --exclusively stops CDK from pulling the

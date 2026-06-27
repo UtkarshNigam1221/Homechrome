@@ -1,5 +1,11 @@
 package main
 
+import (
+	"fmt"
+	"sort"
+	"strings"
+)
+
 // EnvConfig holds all environment-specific configuration.
 // Add new environments here.
 type EnvConfig struct {
@@ -22,4 +28,24 @@ var envConfigs = map[string]EnvConfig{
 		APIURL:     "https://api.homechrome.in",
 		UseCDN:     true,
 	},
+}
+
+// validate fails the CDK synth if a required config field is empty.
+func (c EnvConfig) validate(env string) error {
+	required := map[string]string{
+		"CertArn":    c.CertArn,
+		"DomainName": c.DomainName,
+		"APIURL":     c.APIURL,
+	}
+	var missing []string
+	for name, val := range required {
+		if strings.TrimSpace(val) == "" {
+			missing = append(missing, name)
+		}
+	}
+	if len(missing) > 0 {
+		sort.Strings(missing)
+		return fmt.Errorf("env %q config has empty required field(s): %s", env, strings.Join(missing, ", "))
+	}
+	return nil
 }
