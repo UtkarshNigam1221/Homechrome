@@ -154,5 +154,17 @@ jobs:
           set -a && . ./.env.deploy && set +a
           export MSG91_AUTH_KEY="$_msg91_key"
           export MSG91_OTP_TEMPLATE_ID="$_msg91_tid"
-          cd infra && cdk deploy --all --require-approval never \
+          # Deploy every stack EXCEPT the embedder, which has its own workflow
+          # (deploy-embedder.yml) because its container image needs a heavy
+          # model-asset bootstrap. --exclusively stops CDK from pulling the
+          # embedder in as APIStack's dependency: the API stack imports the
+          # embedder's function ARN, which stays stable across embedder code
+          # changes, so the import resolves against the already-deployed stack.
+          cd infra && cdk deploy --exclusively \
+            HandloomLogsStack-${{ inputs.environment }} \
+            HandloomDatabaseStack-${{ inputs.environment }} \
+            HandloomStorageStack-${{ inputs.environment }} \
+            HandloomMetricsStack-${{ inputs.environment }} \
+            HandloomAPIStack-${{ inputs.environment }} \
+            --require-approval never \
             -c environment=${{ inputs.environment }}
