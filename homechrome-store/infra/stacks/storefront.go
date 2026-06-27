@@ -124,13 +124,13 @@ func NewStorefrontStack(scope constructs.Construct, id string, props *Storefront
 		// Disable OTel metrics export — backend collector dropped the metrics pipeline
 		// (M30) and Grafana Cloud returns 404 on /v1/metrics. Traces + logs continue.
 		serverFn.AddEnvironment(jsii.String("OTEL_METRICS_EXPORTER"), jsii.String("none"), nil)
-		// Mirror the admin lambdas exactly: collector layer + this exec wrapper +
-		// manual app instrumentation (src/instrumentation.ts), and NO Node
-		// auto-instrumentation layer. The "Operation attempted on ended Span"
-		// crash came from that layer's /opt/wrapper.js double-managing Next's
-		// spans; with the layer removed, the collector layer's /opt/otel-handler
-		// is a benign launcher (same as the Go lambdas).
-		serverFn.AddEnvironment(jsii.String("AWS_LAMBDA_EXEC_WRAPPER"), jsii.String("/opt/otel-handler"), nil)
+		// NO AWS_LAMBDA_EXEC_WRAPPER. /opt/otel-handler is shipped by the Node
+		// auto-instrumentation layer (removed — it caused the "ended Span" crash),
+		// NOT by the collector layer. Pointing the wrapper at it without that layer
+		// → "/opt/otel-handler: does not exist" → Runtime.ExitError on init.
+		// We don't need it: the collector runs as a Lambda extension (auto-starts,
+		// reads the config URI below), and the app instruments itself via
+		// src/instrumentation.ts (@vercel/otel) → OTLP to the collector on :4318.
 		serverFn.AddEnvironment(jsii.String("OPENTELEMETRY_COLLECTOR_CONFIG_URI"),
 			jsii.String("/var/task/otel.yaml"), nil) // yaml bundled into Lambda zip, not baked into layer
 		if props.GrafanaEndpointSSMParam != "" {
