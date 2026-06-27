@@ -1,11 +1,17 @@
 name: Deploy All
 
 # One-click build + deploy of all three projects (backend API, admin frontend,
-# storefront) to a single environment. Backend deploys first so the API is up
-# before the two frontends; admin + store then run in parallel.
+# storefront) to a single environment.
 #
-# Each project's workflow owns its own build→deploy split (separate jobs with
-# artifact handoff); this orchestrator only sequences them via `workflow_call`.
+# IMPORTANT — fresh env: HandloomAPIStack imports the embedder Lambda BY NAME, so
+# the embedder must already exist before the backend deploys. For a brand-new
+# account/region, set `deploy_embedder: true` once so the embedder runs FIRST.
+# For normal incremental deploys leave it false (embedder already exists) — its
+# heavy model-asset/image build is then skipped.
+#
+# Order: [embedder?] -> backend -> (admin + store in parallel).
+# Each project's workflow owns its own build->deploy split; this orchestrator
+# only sequences them via `workflow_call`.
 
 on:
   workflow_dispatch:
@@ -21,13 +27,30 @@ on:
         required: false
         type: string
         default: main
+      deploy_embedder:
+        description: 'Deploy the embedder FIRST (required on a fresh env; skip for normal incremental deploys)'
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   id-token: write
   contents: read
 
 jobs:
+  embedder:
+    if: ${{ inputs.deploy_embedder }}
+    uses: ./.github/workflows/deploy-embedder.yml
+    with:
+      environment: ${{ inputs.environment }}
+      branch: ${{ inputs.branch }}
+    secrets: inherit
+
   backend:
+    needs: embedder
+    # Run after embedder when it ran (success), or straight away when it was
+    # skipped (incremental). Never run if embedder was requested but failed.
+    if: ${{ always() && (needs.embedder.result == 'success' || needs.embedder.result == 'skipped') }}
     uses: ./.github/workflows/deploy-backend.yml
     with:
       environment: ${{ inputs.environment }}
@@ -36,6 +59,7 @@ jobs:
 
   admin-frontend:
     needs: backend
+    if: ${{ always() && needs.backend.result == 'success' }}
     uses: ./.github/workflows/deploy-admin-frontend.yml
     with:
       environment: ${{ inputs.environment }}
@@ -44,6 +68,7 @@ jobs:
 
   store:
     needs: backend
+    if: ${{ always() && needs.backend.result == 'success' }}
     uses: ./.github/workflows/deploy-store.yml
     with:
       environment: ${{ inputs.environment }}

@@ -26,9 +26,9 @@ type APIStackProps struct {
 	Environment    string
 	DatabaseStack  *DatabaseStack
 	StorageStack   *StorageStack
-	LogsStack      *LogsStack     // Shared CloudWatch log groups (ApiLogGroup, WorkerLogGroup)
-	EmbedderStack  *EmbedderStack // Optional: embedder Lambda for hybrid semantic search
-	MetricsQueue   awssqs.Queue   // Optional: PostgreSQL metrics pipeline SQS queue (publishers only)
+	LogsStack      *LogsStack   // Shared CloudWatch log groups (ApiLogGroup, WorkerLogGroup)
+	EmbedderFnName string       // Embedder Lambda name (cfg.EmbedderFnName); imported by name — no cross-stack ref to the embedder app
+	MetricsQueue   awssqs.Queue // Optional: PostgreSQL metrics pipeline SQS queue (publishers only)
 	BaseDomain     string         // Base domain (e.g. homechrome.in) — used for cookie domain
 	DomainName     string         // Optional: custom domain for API Gateway (e.g. dev-api.homechrome.in)
 	FrontendOrigin string         // Optional: frontend origin for CORS (e.g. https://dev-admin.homechrome.in)
@@ -283,13 +283,18 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 	}
 
 	// Embedder integration — grant catalog Lambda invoke + SSM read for embedder auth key.
-	// Only wired when EmbedderStack is provided (always the case in practice).
-	if props.EmbedderStack != nil {
+	// The embedder is a standalone stack; import it BY NAME so APIStack carries no
+	// CloudFormation cross-stack reference to the embedder app — it must merely
+	// pre-exist (deploy embedder before backend on a fresh env). Import by name →
+	// GrantInvoke/CfnPermission resolve a locally-formatted ARN, no Fn::ImportValue.
+	var embedderFn awslambda.IFunction
+	if props.EmbedderFnName != "" {
+		embedderFn = awslambda.Function_FromFunctionName(stack, jsii.String("ImportedEmbedder"), jsii.String(props.EmbedderFnName))
 		catalogFn := lambdas["catalog"].Function
 
 		// Inject embedder config into catalog Lambda
 		catalogFn.AddEnvironment(jsii.String("EMBEDDER_FN_NAME"),
-			props.EmbedderStack.Function.FunctionName(), nil)
+			embedderFn.FunctionName(), nil)
 		catalogFn.AddEnvironment(jsii.String("EMBEDDER_AUTH_KEY_PARAM"),
 			jsii.String(fmt.Sprintf("/handloom/%s/embedder-auth-key", props.Environment)), nil)
 		catalogFn.AddEnvironment(jsii.String("EMBEDDER_TIMEOUT_MS"),
@@ -298,7 +303,7 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 			jsii.String("l3cube-indic-sbert-nli-v1"), nil)
 
 		// Allow catalog Lambda to invoke the embedder
-		props.EmbedderStack.Function.GrantInvoke(catalogFn)
+		embedderFn.GrantInvoke(catalogFn)
 
 		// Allow catalog Lambda to read the embedder auth key from SSM
 		catalogFn.AddToRolePolicy(awsiam.NewPolicyStatement(&awsiam.PolicyStatementProps{
@@ -322,14 +327,14 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 			LogGroup:     workerLogGroup,
 			Environment: &map[string]*string{
 				"POSTGRES_DSN":            props.DatabaseStack.PostgresDSN,
-				"EMBEDDER_FN_NAME":        props.EmbedderStack.Function.FunctionName(),
+				"EMBEDDER_FN_NAME":        embedderFn.FunctionName(),
 				"EMBEDDER_AUTH_KEY_PARAM": jsii.String(fmt.Sprintf("/handloom/%s/embedder-auth-key", props.Environment)),
 				"EMBEDDING_MODEL_VERSION": jsii.String("l3cube-indic-sbert-nli-v1"),
 			},
 		})
 
 		// Allow backfill Lambda to invoke the embedder
-		props.EmbedderStack.Function.GrantInvoke(backfillFn)
+		embedderFn.GrantInvoke(backfillFn)
 
 		// Allow backfill Lambda to read both the embedder auth key and Postgres DSN from SSM
 		backfillFn.AddToRolePolicy(awsiam.NewPolicyStatement(&awsiam.PolicyStatementProps{
@@ -370,7 +375,7 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 	})
 
 	// Create integrations and routes
-	setupAPIRoutes(api, lambdas, props.EmbedderStack)
+	setupAPIRoutes(api, lambdas, embedderFn)
 
 	// Custom domain for API Gateway (regional — lowest latency for ap-south-1 origin)
 	if props.CertArn != "" && props.DomainName != "" {
@@ -476,7 +481,7 @@ func createServiceLambda(
 	})
 }
 
-func setupAPIRoutes(api awsapigateway.RestApi, lambdas map[string]*ServiceLambda, embedderStack *EmbedderStack) {
+func setupAPIRoutes(api awsapigateway.RestApi, lambdas map[string]*ServiceLambda, embedderFn awslambda.IFunction) {
 	// Health check - use proxy integration to pass full path
 	health := api.Root().AddResource(jsii.String("health"), nil)
 	health.AddMethod(jsii.String("ANY"), awsapigateway.NewLambdaIntegration(lambdas["auth"].Function, &awsapigateway.LambdaIntegrationOptions{
@@ -672,13 +677,13 @@ func setupAPIRoutes(api awsapigateway.RestApi, lambdas map[string]*ServiceLambda
 			// Mount embedder Lambda under /api/v1/store/catalog/{search,embedder-ping}.
 			// API Gateway matches exact static paths before the {proxy+} fallback,
 			// so these override the store-catalog Lambda for those two routes.
-			if path == "catalog" && embedderStack != nil {
-				embFn := embedderStack.Function
+			if path == "catalog" && embedderFn != nil {
+				embFn := embedderFn
 				// Create the invoke permission in APIStack (not the embedder
 				// Lambda's stack) to avoid a cross-stack dependency cycle:
-				// APIStack already depends on EmbedderStack for the Function
-				// ARN; if AddPermission ran on the Lambda it would also make
-				// EmbedderStack depend on APIStack (for the API's RestApiId).
+				// APIStack imports the embedder Function by name; creating the
+				// permission here (by name) keeps APIStack free of any reverse
+				// edge to the embedder app (which would need the API's RestApiId).
 				awslambda.NewCfnPermission(awscdk.Stack_Of(api), jsii.String("EmbedderApiInvoke"), &awslambda.CfnPermissionProps{
 					Action:       jsii.String("lambda:InvokeFunction"),
 					FunctionName: embFn.FunctionArn(),

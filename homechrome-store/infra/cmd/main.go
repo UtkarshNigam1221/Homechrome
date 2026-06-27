@@ -24,6 +24,19 @@ func main() {
 	if err := cfg.validate(environment); err != nil {
 		panic(err)
 	}
+	// CERT_ARN override lets a fresh account inject its own us-east-1 ACM cert
+	// without a code change (the baked ARN belongs to one account and passes
+	// validate() but fails at CloudFront on any other account).
+	if v := os.Getenv("CERT_ARN"); v != "" {
+		cfg.CertArn = v
+	}
+	// DISABLE_OTEL=1 drops the OTel collector layer so a FRESH env can deploy
+	// before the grafana-otlp SSM params exist — otherwise the {{resolve:ssm}}
+	// env refs in StorefrontStack fail the very first deploy. Telemetry is on by
+	// default (the params are shared with, and already provisioned by, the backend).
+	if os.Getenv("DISABLE_OTEL") == "1" {
+		cfg.CollectorLayerArn = ""
+	}
 
 	commonTags := &map[string]*string{
 		"Environment": jsii.String(environment),

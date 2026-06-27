@@ -18,6 +18,11 @@ type MetricsStackProps struct {
 	awscdk.StackProps
 	Environment string
 
+	// QueueName is the stable SQS queue name (cfg.MetricsQueueName). Single source
+	// of truth shared with the standalone embedder app, which imports this queue
+	// by the same name. Empty falls back to the env-derived default.
+	QueueName string
+
 	// DatabaseStack provides the Neon Postgres DSN that the consumer Lambda
 	// uses to UPSERT aggregated metric counters.
 	DatabaseStack *DatabaseStack
@@ -56,6 +61,12 @@ func NewMetricsStack(scope constructs.Construct, id string, props *MetricsStackP
 	stack := awscdk.NewStack(scope, &id, &sprops)
 	isProd := props.Environment == "prod"
 
+	// Stable queue name from config (single source shared with the embedder app).
+	queueName := props.QueueName
+	if queueName == "" {
+		queueName = fmt.Sprintf("handloom-metrics-events-%s", props.Environment)
+	}
+
 	// Memory matches the worker pattern used in events.go for free-tier friendliness.
 	memorySize := float64(128)
 	if isProd {
@@ -80,7 +91,7 @@ func NewMetricsStack(scope constructs.Construct, id string, props *MetricsStackP
 	// retries don't pick up still-running work. Long-poll (20s) reduces
 	// empty-receive costs while still letting EventSourceMapping batch.
 	queue := awssqs.NewQueue(stack, jsii.String("MetricsEventsQueue"), &awssqs.QueueProps{
-		QueueName:              jsii.String(fmt.Sprintf("handloom-metrics-events-%s", props.Environment)),
+		QueueName:              jsii.String(queueName),
 		RetentionPeriod:        awscdk.Duration_Days(jsii.Number(14)),
 		VisibilityTimeout:      awscdk.Duration_Seconds(jsii.Number(60)),
 		ReceiveMessageWaitTime: awscdk.Duration_Seconds(jsii.Number(20)),

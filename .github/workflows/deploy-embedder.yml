@@ -7,11 +7,13 @@ name: Deploy Embedder
 # toolchain the rest of the backend doesn't need. Keeping it here means backend
 # deploys stay fast and the embedder only rebuilds when its code/assets change.
 #
-# Deploys NON-exclusively: `cdk deploy HandloomEmbedderStack-<env>` also brings
-# up the stacks it depends on (Database, Logs, Metrics), so a fresh environment
-# can be stood up entirely from CI by running THIS workflow first, then Deploy
-# Backend (the API stack imports the embedder's function ARN, so the embedder
-# must exist before the API deploys).
+# The embedder is a STANDALONE CDK app (-c app=embedder): it instantiates ONLY
+# HandloomEmbedderStack (own log group; metrics queue + Postgres referenced by
+# name/string), with zero cross-stack imports. It deploys independently of the
+# backend stacks. On a FRESH env run THIS workflow BEFORE Deploy Backend, because
+# APIStack imports the embedder's function ARN by name (the embedder must exist
+# before the API deploys). Backend owns Logs/Database/Metrics — they are no longer
+# pulled in here, so backend + embedder no longer share-own those stacks.
 #
 # One-time prerequisites per AWS account/region (not done here):
 #   - `cdk bootstrap` (creates the asset bucket + image-asset ECR repo)
@@ -71,10 +73,9 @@ jobs:
         with:
           ref: ${{ inputs.branch }}
 
-      # CDK synth bundles the whole app: the embedder container image + the API's
-      # NodejsFunction (image resizer) both docker-build here, on top of the heavy
-      # HF/ONNX embedder assets. That overflows the runner's ~14GB default free
-      # space. Drop preinstalled toolchains we don't use to reclaim ~20GB+.
+      # The embedder app (-c app=embedder) builds only the embedder container
+      # image (HF/ONNX model, large) at deploy. Reclaim ~20GB of preinstalled
+      # toolchains so the image build has headroom on the runner.
       - name: Free disk space
         run: |
           sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /opt/hostedtoolcache/CodeQL
@@ -108,11 +109,9 @@ jobs:
       - name: Bootstrap embedder assets
         run: make prepare-embedder-assets
 
-      # CDK synth instantiates the whole app (APIStack + DatabaseStack), so every
-      # active lambda asset must exist on disk even though we only deploy the
-      # embedder stack here — notably bin/lambda/migrator for DatabaseStack.
-      - name: Build active Lambdas
-        run: make build-lambdas-active
+      # No `make build-lambdas-active` needed: the embedder app (-c app=embedder)
+      # instantiates ONLY EmbedderStack (container image), not Database/Metrics/API,
+      # so there are no Go-binary Lambda assets to stage.
 
       - uses: aws-actions/configure-aws-credentials@v6
         with:
@@ -149,4 +148,5 @@ jobs:
           set -a && . ./.env.deploy && set +a
           cd infra && cdk deploy HandloomEmbedderStack-${{ inputs.environment }} \
             --require-approval never \
-            -c environment=${{ inputs.environment }}
+            -c environment=${{ inputs.environment }} \
+            -c app=embedder

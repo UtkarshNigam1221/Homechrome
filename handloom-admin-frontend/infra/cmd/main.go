@@ -24,6 +24,12 @@ func main() {
 	if err := cfg.validate(environment); err != nil {
 		panic(err)
 	}
+	// CERT_ARN override lets a fresh account inject its own us-east-1 ACM cert
+	// without a code change (the baked ARN belongs to one account and passes
+	// validate() but fails at CloudFront on any other account).
+	if v := os.Getenv("CERT_ARN"); v != "" {
+		cfg.CertArn = v
+	}
 
 	stacks.NewFrontendStack(app, "HandloomFrontendStack-"+environment, &stacks.FrontendStackProps{
 		StackProps: awscdk.StackProps{

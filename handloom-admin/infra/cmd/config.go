@@ -15,6 +15,13 @@ type EnvConfig struct {
 	FrontendOrigin string // Frontend origin for CORS (e.g. https://dev-admin.homechrome.in)
 	StoreFrontHost string // B2C storefront origin for embedder CORS (e.g. https://store-dev.homechrome.in)
 
+	// Stable cross-stack resource names. Single source of truth so the backend
+	// app (which imports the embedder by name + the metrics queue by name) and
+	// the standalone embedder app agree byte-for-byte. Drift here breaks invoke
+	// at runtime with NO synth error.
+	MetricsQueueName string // SQS metrics queue (MetricsStack owns; Embedder + API import)
+	EmbedderFnName   string // Embedder Lambda (Embedder app owns; API imports for invoke + route)
+
 	// Non-secret gateway config — baked per-env here so it never needs a
 	// deploy-time env var. SECRETS (client secret, passwords, auth keys,
 	// POSTGRES_DSN, JWT secrets) stay in the BACKEND_ENV_* deploy secret and are
@@ -37,6 +44,9 @@ var envConfigs = map[string]EnvConfig{
 		FrontendOrigin: "https://dev-admin.homechrome.in",
 		StoreFrontHost: "https://store-dev.homechrome.in",
 
+		MetricsQueueName: "handloom-metrics-events-dev",
+		EmbedderFnName:   "handloom-embedder-dev",
+
 		PhonePeBaseURL:          "https://api-preprod.phonepe.com/apis/pg-sandbox",
 		PhonePeCallbackURL:      "https://dev-api.homechrome.in/api/v1/store/webhooks/phonepe",
 		PhonePeRedirectURL:      "https://dev-store.homechrome.in/checkout/confirmation",
@@ -52,6 +62,9 @@ var envConfigs = map[string]EnvConfig{
 		DomainName:     "api.homechrome.in",
 		FrontendOrigin: "https://admin.homechrome.in",
 		StoreFrontHost: "https://www.homechrome.in",
+
+		MetricsQueueName: "handloom-metrics-events-prod",
+		EmbedderFnName:   "handloom-embedder-prod",
 
 		// when this was filled — confirm against BACKEND_ENV_PROD before the next
 		// prod deploy. The URLs below follow the prod domain pattern.
@@ -82,6 +95,8 @@ func (c EnvConfig) validate(env string) error {
 		"PhonePeClientVersion": c.PhonePeClientVersion,
 		"MSG91BaseURL":         c.MSG91BaseURL,
 		"MSG91OTPTemplateID":   c.MSG91OTPTemplateID,
+		"MetricsQueueName":     c.MetricsQueueName,
+		"EmbedderFnName":       c.EmbedderFnName,
 	}
 	var missing []string
 	for name, val := range required {

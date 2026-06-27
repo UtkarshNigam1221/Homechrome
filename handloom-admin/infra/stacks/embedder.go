@@ -20,18 +20,30 @@ import (
 	"github.com/aws/aws-cdk-go/awscdk/v2/awsecrassets"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awsiam"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awslambda"
+	"github.com/aws/aws-cdk-go/awscdk/v2/awslogs"
+	"github.com/aws/aws-cdk-go/awscdk/v2/awssqs"
 	"github.com/aws/constructs-go/constructs/v10"
 	"github.com/aws/jsii-runtime-go"
 )
 
 // EmbedderStackProps configures the embedder Lambda stack.
+//
+// The embedder is a STANDALONE stack: it owns its own log group and references
+// the (backend-owned) metrics queue and Postgres BY NAME/STRING, not by stack
+// object. So it carries ZERO CloudFormation cross-stack imports and can be
+// synthesized + deployed with no other stack present. See infra/cmd/main.go's
+// buildEmbedderApp.
 type EmbedderStackProps struct {
 	awscdk.StackProps
 	Environment    string
-	StoreFrontHost string         // e.g. https://store-dev.homechrome.in — single allowed CORS origin
-	DatabaseStack  *DatabaseStack // for POSTGRES_DSN passed as plain env var (sourced from .env.{env} / GH secrets at deploy time)
-	LogsStack      *LogsStack     // shared CloudWatch log groups (embedder writes to ApiLogGroup)
-	MetricsStack   *MetricsStack  // for METRICS_QUEUE_URL env injection + SendMessage grant
+	FnName         string // stable function name (cfg.EmbedderFnName); APIStack imports by this exact name
+	StoreFrontHost string // e.g. https://store-dev.homechrome.in — single allowed CORS origin
+	PostgresDSN    string // plain env var, sourced from .env.{env} / GH secrets at deploy time
+	// MetricsQueueName imports the (backend MetricsStack-owned) SQS queue by name
+	// for METRICS_QUEUE_URL + SendMessage grant. Imported by ARN → identity-only
+	// IAM grant, no foreign QueuePolicy, no cross-stack export. The queue must
+	// merely EXIST at runtime; its absence does not block embedder deploy.
+	MetricsQueueName string
 }
 
 // EmbedderStack publishes:
@@ -62,8 +74,28 @@ func NewEmbedderStack(scope constructs.Construct, id string, props *EmbedderStac
 
 	stack := awscdk.NewStack(scope, &id, &sprops)
 
+	// Own log group — keeps the embedder a standalone stack with no dependency
+	// on the backend LogsStack. Matches the Lambda's implicit name so AWS does
+	// not auto-create a duplicate. 1-day retention + DESTROY mirrors LogsStack.
+	logGroup := awslogs.NewLogGroup(stack, jsii.String("EmbedderLogGroup"), &awslogs.LogGroupProps{
+		LogGroupName:  jsii.String("/aws/lambda/" + props.FnName),
+		Retention:     awslogs.RetentionDays_ONE_DAY,
+		RemovalPolicy: awscdk.RemovalPolicy_DESTROY,
+	})
+
+	// Import the metrics queue by ARN (built from this stack's own account/region
+	// tokens + the stable name). fromQueueAttributes sets autoCreatePolicy=false,
+	// so GrantSendMessages adds only an identity statement to the embedder role —
+	// no foreign QueuePolicy, no Fn::ImportValue.
+	var metricsQueue awssqs.IQueue
+	if props.MetricsQueueName != "" {
+		metricsQueue = awssqs.Queue_FromQueueArn(stack, jsii.String("ImportedMetricsQueue"),
+			jsii.String(fmt.Sprintf("arn:aws:sqs:%s:%s:%s",
+				*stack.Region(), *stack.Account(), props.MetricsQueueName)))
+	}
+
 	fn := awslambda.NewFunction(stack, jsii.String("Embedder"), &awslambda.FunctionProps{
-		FunctionName: jsii.String("handloom-embedder-" + props.Environment),
+		FunctionName: jsii.String(props.FnName),
 		Code: awslambda.Code_FromAssetImage(jsii.String(".."), &awslambda.AssetImageCodeProps{
 			File:     jsii.String("cmd/embedder/Dockerfile"),
 			Platform: awsecrassets.Platform_LINUX_ARM64(),
@@ -73,9 +105,7 @@ func NewEmbedderStack(scope constructs.Construct, id string, props *EmbedderStac
 		Architecture: awslambda.Architecture_ARM_64(),
 		MemorySize:   jsii.Number(1769),
 		Timeout:      awscdk.Duration_Seconds(jsii.Number(60)),
-		// Shared API log group — embedder serves storefront /search and
-		// /embedder-ping, so logs alongside the rest of the request handlers.
-		LogGroup: props.LogsStack.ApiLogGroup,
+		LogGroup:     logGroup,
 		// Cap concurrency to prevent burst abuse via the public Function URL.
 		// At 1769MB (1 vCPU) each cold-start costs ~6s × 1.769GB-sec; without
 		// this cap the account-default ~1000 concurrent containers can be
@@ -85,7 +115,7 @@ func NewEmbedderStack(scope constructs.Construct, id string, props *EmbedderStac
 		Environment: func() *map[string]*string {
 			envMap := map[string]*string{
 				"EMBEDDER_AUTH_KEY_PARAM":   jsii.String(fmt.Sprintf("/handloom/%s/embedder-auth-key", props.Environment)),
-				"POSTGRES_DSN":              props.DatabaseStack.PostgresDSN,
+				"POSTGRES_DSN":              jsii.String(props.PostgresDSN),
 				"ALLOWED_ORIGIN":            jsii.String(props.StoreFrontHost),
 				"SEARCH_WEIGHT_SEMANTIC":    jsii.String("0.60"),
 				"SEARCH_WEIGHT_KEYWORD":     jsii.String("0.30"),
@@ -95,18 +125,17 @@ func NewEmbedderStack(scope constructs.Construct, id string, props *EmbedderStac
 			}
 			// METRICS_QUEUE_URL triggers SQSPublisher init in main.go; without
 			// it search_query metrics fall through to the noop publisher.
-			if props.MetricsStack != nil {
-				envMap["METRICS_QUEUE_URL"] = props.MetricsStack.Queue.QueueUrl()
+			if metricsQueue != nil {
+				envMap["METRICS_QUEUE_URL"] = metricsQueue.QueueUrl()
 			}
 			return &envMap
 		}(),
 	})
 
 	// SendMessage on the metrics queue so search_query events actually leave
-	// this Lambda. Grant only when the queue is wired; otherwise the env var
-	// is absent and the publisher stays noop, so the IAM grant would be dead.
-	if props.MetricsStack != nil {
-		props.MetricsStack.Queue.GrantSendMessages(fn)
+	// this Lambda. Identity-only grant on an imported queue (no foreign policy).
+	if metricsQueue != nil {
+		metricsQueue.GrantSendMessages(fn)
 	}
 
 	// SSM read perm for the embedder-auth-key SecureString only. POSTGRES_DSN

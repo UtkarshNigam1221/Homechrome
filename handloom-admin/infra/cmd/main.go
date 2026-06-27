@@ -25,6 +25,12 @@ func main() {
 	if err := cfg.validate(environment); err != nil {
 		panic(err)
 	}
+	// CERT_ARN override lets a fresh account inject its own ACM cert without a
+	// code change (the baked ARNs belong to one account and pass validate() but
+	// fail at deploy on any other account).
+	if v := os.Getenv("CERT_ARN"); v != "" {
+		cfg.CertArn = v
+	}
 
 	postgresDSN := getPostgresDSN(app)
 
@@ -34,54 +40,85 @@ func main() {
 		"ManagedBy":   jsii.String("cdk"),
 	}
 
-	// Logs stack — owns ApiLogGroup + WorkerLogGroup. Created first so every
-	// downstream stack can reference the same log groups via props.LogsStack.
+	// Two independent app targets selected by `-c app=` (or CDK_APP_TARGET):
+	//   app=embedder → ONLY the standalone EmbedderStack (own log group; metrics
+	//     queue + Postgres referenced by name/string). Zero cross-stack refs, so
+	//     it synthesizes + deploys with no other stack present and no wasted
+	//     ImageResizer/active-lambda asset builds.
+	//   default (backend) → Logs/Database/Storage/Metrics/API. APIStack imports
+	//     the embedder BY NAME, so the embedder must already be deployed on a
+	//     fresh env (embedder-first ordering; no CDK construct edge enforces it).
+	switch appTarget(app) {
+	case "embedder":
+		buildEmbedderApp(app, env, environment, cfg, postgresDSN, commonTags)
+	default:
+		buildBackendApp(app, env, environment, cfg, postgresDSN, commonTags)
+	}
+
+	app.Synth(nil)
+}
+
+// buildEmbedderApp instantiates only the standalone embedder stack.
+func buildEmbedderApp(app awscdk.App, env *awscdk.Environment, environment string, cfg EnvConfig, postgresDSN string, tags *map[string]*string) {
+	// Image built inline from cmd/embedder/Dockerfile via Code_FromAssetImage;
+	// cmd/embedder/assets/ must be populated (make prepare-embedder-assets) first.
+	stacks.NewEmbedderStack(app, "HandloomEmbedderStack-"+environment, &stacks.EmbedderStackProps{
+		StackProps: awscdk.StackProps{
+			Env:         env,
+			Description: jsii.String("Handloom Admin - Embedder Lambda for hybrid semantic search (" + environment + ")"),
+			Tags:        tags,
+		},
+		Environment:      environment,
+		FnName:           cfg.EmbedderFnName,
+		StoreFrontHost:   cfg.StoreFrontHost,
+		PostgresDSN:      postgresDSN,
+		MetricsQueueName: cfg.MetricsQueueName,
+	})
+}
+
+// buildBackendApp instantiates the backend stacks (no embedder; API imports it by name).
+func buildBackendApp(app awscdk.App, env *awscdk.Environment, environment string, cfg EnvConfig, postgresDSN string, tags *map[string]*string) {
+	// Logs stack — owns ApiLogGroup + WorkerLogGroup.
 	logsStack := stacks.NewLogsStack(app, "HandloomLogsStack-"+environment, &stacks.LogsStackProps{
 		StackProps: awscdk.StackProps{
 			Env:         env,
 			Description: jsii.String("Handloom Admin - Shared CloudWatch log groups (" + environment + ")"),
-			Tags:        commonTags,
+			Tags:        tags,
 		},
 		Environment: environment,
 	})
 
-	// Database stack
 	databaseStack := stacks.NewDatabaseStack(app, "HandloomDatabaseStack-"+environment, &stacks.DatabaseStackProps{
 		StackProps: awscdk.StackProps{
 			Env:         env,
 			Description: jsii.String("Handloom Admin - Database resources (" + environment + ")"),
-			Tags:        commonTags,
+			Tags:        tags,
 		},
 		Environment: environment,
 		PostgresDSN: postgresDSN,
 		LogsStack:   logsStack,
 	})
 
-	// Storage stack
 	storageStack := stacks.NewStorageStack(app, "HandloomStorageStack-"+environment, &stacks.StorageStackProps{
 		StackProps: awscdk.StackProps{
 			Env:         env,
 			Description: jsii.String("Handloom Admin - Storage resources (" + environment + ")"),
-			Tags:        commonTags,
+			Tags:        tags,
 		},
 		Environment: environment,
 	})
 
-	// Resolve the community-published OTel Collector layer ARN for ap-south-1 / arm64.
-	// No separate TelemetryStack needed — the layer is maintained by the OpenTelemetry
-	// community and imported directly. See stacks.OtelCollectorLayerArn for version notes.
+	// Community-published OTel Collector layer ARN for ap-south-1 / arm64.
 	collectorArn := stacks.OtelCollectorLayerArn("ap-south-1", "arm64")
 
-	// Metrics stack first so its queue handle can be wired into both the
-	// embedder Lambda and the per-service Lambdas behind APIStack for
-	// SendMessage + METRICS_QUEUE_URL env injection.
 	metricsStack := stacks.NewMetricsStack(app, "HandloomMetricsStack-"+environment, &stacks.MetricsStackProps{
 		StackProps: awscdk.StackProps{
 			Env:         env,
 			Description: jsii.String("Handloom Admin - Metrics SQS + consumer Lambda (" + environment + ")"),
-			Tags:        commonTags,
+			Tags:        tags,
 		},
 		Environment:             environment,
+		QueueName:               cfg.MetricsQueueName,
 		DatabaseStack:           databaseStack,
 		LogsStack:               logsStack,
 		CollectorLayerArn:       collectorArn,
@@ -89,36 +126,17 @@ func main() {
 		GrafanaEndpointSSMParam: "/handloom/" + environment + "/grafana-otlp-endpoint",
 	})
 
-	// Embedder Lambda stack — image built inline from cmd/embedder/Dockerfile
-	// via CDK's Code_FromAssetImage. CDK pushes the resulting image to its
-	// bootstrap ECR repo automatically. No custom-managed ECR repo. The
-	// download-embedder-assets Make target must have populated
-	// cmd/embedder/assets/ before this stack synthesizes.
-	embStack := stacks.NewEmbedderStack(app, "HandloomEmbedderStack-"+environment, &stacks.EmbedderStackProps{
-		StackProps: awscdk.StackProps{
-			Env:         env,
-			Description: jsii.String("Handloom Admin - Embedder Lambda for hybrid semantic search (" + environment + ")"),
-			Tags:        commonTags,
-		},
-		Environment:    environment,
-		StoreFrontHost: cfg.StoreFrontHost,
-		DatabaseStack:  databaseStack,
-		LogsStack:      logsStack,
-		MetricsStack:   metricsStack,
-	})
-
-	// API stack (depends on database, storage, metrics, and telemetry)
 	stacks.NewAPIStack(app, "HandloomAPIStack-"+environment, &stacks.APIStackProps{
 		StackProps: awscdk.StackProps{
 			Env:         env,
 			Description: jsii.String("Handloom Admin - API and Lambda functions (" + environment + ")"),
-			Tags:        commonTags,
+			Tags:        tags,
 		},
 		Environment:             environment,
 		DatabaseStack:           databaseStack,
 		StorageStack:            storageStack,
 		LogsStack:               logsStack,
-		EmbedderStack:           embStack,           // Embedder for hybrid semantic search
+		EmbedderFnName:          cfg.EmbedderFnName, // imported by name — no cross-stack ref to the embedder app
 		MetricsQueue:            metricsStack.Queue, // PG-backed metrics pipeline
 		BaseDomain:              cfg.BaseDomain,
 		DomainName:              cfg.DomainName,
@@ -136,8 +154,17 @@ func main() {
 		GrafanaAuthSSMParam:     "/handloom/" + environment + "/grafana-otlp-auth",
 		GrafanaEndpointSSMParam: "/handloom/" + environment + "/grafana-otlp-endpoint",
 	})
+}
 
-	app.Synth(nil)
+// appTarget selects which CDK app to build: "embedder" or "backend" (default).
+func appTarget(app constructs.Construct) string {
+	if t := app.Node().TryGetContext(jsii.String("app")); t != nil {
+		return t.(string)
+	}
+	if t := os.Getenv("CDK_APP_TARGET"); t != "" {
+		return t
+	}
+	return "backend"
 }
 
 func getEnvironment(app constructs.Construct) string {
