@@ -4,7 +4,6 @@ package store
 import (
 	"log/slog"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -51,23 +50,8 @@ func (h *AuthHandler) Routes(authenticate func(http.Handler) http.Handler) chi.R
 	return r
 }
 
-// cookieSettings returns Secure, SameSite, and Domain values for store auth cookies.
-// IMPORTANT: Must stay in sync with guestCookieSettings() in middleware/optional_cart_auth.go.
-//   - COOKIE_DOMAIN set (custom domain, same-site): Secure + Lax + Domain
-//   - Lambda without custom domain (cross-origin): Secure + None (third-party cookies)
-//   - Local dev: insecure + Lax (Vite proxy, same-origin)
-func cookieSettings() (secure bool, sameSite http.SameSite, domain string) {
-	if d := os.Getenv("COOKIE_DOMAIN"); d != "" {
-		return true, http.SameSiteLaxMode, d
-	}
-	if os.Getenv("AWS_LAMBDA_FUNCTION_NAME") != "" {
-		return true, http.SameSiteNoneMode, ""
-	}
-	return false, http.SameSiteLaxMode, ""
-}
-
 func (h *AuthHandler) setStoreCookies(w http.ResponseWriter, tokens *domain.TokenPair) {
-	secure, sameSite, domain := cookieSettings()
+	secure, sameSite, domain := middleware.AuthCookieSettings()
 
 	// Secure is dynamic by design: false on plain-HTTP local dev, true behind
 	// the custom domain / Lambda URL. HttpOnly + SameSite are always set.
@@ -97,7 +81,7 @@ func (h *AuthHandler) setStoreCookies(w http.ResponseWriter, tokens *domain.Toke
 }
 
 func (h *AuthHandler) clearStoreCookies(w http.ResponseWriter) {
-	secure, sameSite, domain := cookieSettings()
+	secure, sameSite, domain := middleware.AuthCookieSettings()
 
 	//nolint:gosec // G124: Secure flag is environment-conditional, not omitted.
 	http.SetCookie(w, &http.Cookie{
@@ -160,7 +144,7 @@ func (h *AuthHandler) VerifyOTP(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		// Clear the guest_session cookie regardless of validity
-		secure, sameSite, domain := cookieSettings()
+		secure, sameSite, domain := middleware.AuthCookieSettings()
 		//nolint:gosec // G124: Secure flag is environment-conditional, not omitted.
 		http.SetCookie(w, &http.Cookie{
 			Name:     "guest_session",

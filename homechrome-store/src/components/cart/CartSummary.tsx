@@ -20,10 +20,13 @@ interface CartSummaryProps {
   isAuthenticated: boolean;
 }
 
+// Pre-checkout estimates only (paise). Actual shipping is computed at checkout
+// from courier serviceability; these just preview the cart.
 const FREE_SHIPPING_THRESHOLD = 99900;
+const SHIPPING_ESTIMATE_PAISE = 7900;
 
 export default function CartSummary({ subtotal, itemCount, isAuthenticated }: CartSummaryProps) {
-  const shippingEstimate = subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : 7900;
+  const shippingEstimate = subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_ESTIMATE_PAISE;
   const total = subtotal + shippingEstimate;
   const amountToFreeShipping = FREE_SHIPPING_THRESHOLD - subtotal;
 

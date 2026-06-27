@@ -9,7 +9,6 @@ import (
 	"go.uber.org/mock/gomock"
 
 	"github.com/handloom/admin/internal/domain"
-	"github.com/handloom/admin/internal/event"
 	"github.com/handloom/admin/internal/mocks"
 	"github.com/handloom/admin/pkg/errors"
 )
@@ -19,7 +18,7 @@ func TestInventoryService_GetByProductID(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockInventoryRepo := mocks.NewMockInventoryRepository(ctrl)
-	service := NewInventoryService(mockInventoryRepo, event.NewNoopPublisher())
+	service := NewInventoryService(mockInventoryRepo)
 	ctx := context.Background()
 
 	t.Run("successful get inventory", func(t *testing.T) {
@@ -61,7 +60,7 @@ func TestInventoryService_AddStock(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockInventoryRepo := mocks.NewMockInventoryRepository(ctrl)
-	service := NewInventoryService(mockInventoryRepo, event.NewNoopPublisher())
+	service := NewInventoryService(mockInventoryRepo)
 	ctx := context.Background()
 
 	t.Run("successful add stock", func(t *testing.T) {
@@ -116,7 +115,7 @@ func TestInventoryService_RemoveStock(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockInventoryRepo := mocks.NewMockInventoryRepository(ctrl)
-	service := NewInventoryService(mockInventoryRepo, event.NewNoopPublisher())
+	service := NewInventoryService(mockInventoryRepo)
 	ctx := context.Background()
 
 	t.Run("successful remove stock", func(t *testing.T) {
@@ -135,20 +134,13 @@ func TestInventoryService_RemoveStock(t *testing.T) {
 			Reason:      req.Reason,
 		}
 
-		updatedInventory := &domain.Inventory{
-			ProductID:    "prod_123",
-			Quantity:     80,
-			ReservedQty:  10,
-			AvailableQty: 70,
-		}
-
 		mockInventoryRepo.EXPECT().
 			RemoveStock(ctx, "prod_123", 20, req.Reason, "user_123").
 			Return(transaction, nil)
-
+		// RemoveStock now re-reads inventory to emit stock-level metrics.
 		mockInventoryRepo.EXPECT().
 			GetByProductID(ctx, "prod_123").
-			Return(updatedInventory, nil)
+			Return(&domain.Inventory{ProductID: "prod_123", AvailableQty: 80, LowStockThreshold: 10}, nil)
 
 		result, err := service.RemoveStock(ctx, "prod_123", req, "user_123")
 
@@ -183,7 +175,7 @@ func TestInventoryService_AdjustStock(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockInventoryRepo := mocks.NewMockInventoryRepository(ctrl)
-	service := NewInventoryService(mockInventoryRepo, event.NewNoopPublisher())
+	service := NewInventoryService(mockInventoryRepo)
 	ctx := context.Background()
 
 	t.Run("successful adjust stock up", func(t *testing.T) {
@@ -248,7 +240,7 @@ func TestInventoryService_GetTransactions(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockInventoryRepo := mocks.NewMockInventoryRepository(ctrl)
-	service := NewInventoryService(mockInventoryRepo, event.NewNoopPublisher())
+	service := NewInventoryService(mockInventoryRepo)
 	ctx := context.Background()
 
 	t.Run("successful get transactions", func(t *testing.T) {
@@ -284,7 +276,7 @@ func TestInventoryService_GetLowStockProducts(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockInventoryRepo := mocks.NewMockInventoryRepository(ctrl)
-	service := NewInventoryService(mockInventoryRepo, event.NewNoopPublisher())
+	service := NewInventoryService(mockInventoryRepo)
 	ctx := context.Background()
 
 	t.Run("successful get low stock products", func(t *testing.T) {
@@ -315,176 +307,12 @@ func TestInventoryService_GetLowStockProducts(t *testing.T) {
 	})
 }
 
-func TestInventoryService_AddStock_EventPublishing(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	mockInventoryRepo := mocks.NewMockInventoryRepository(ctrl)
-	ctx := context.Background()
-
-	t.Run("publishes RESTOCKED event", func(t *testing.T) {
-		spy := newSpyPublisher()
-		svc := NewInventoryService(mockInventoryRepo, spy)
-
-		transaction := &domain.InventoryTransaction{
-			ID: "txn_1", ProductID: "prod_123",
-			PreviousQty: 10, NewQty: 60,
-		}
-
-		mockInventoryRepo.EXPECT().
-			AddStock(ctx, "prod_123", 50, "restock", "user_1").
-			Return(transaction, nil)
-
-		_, err := svc.AddStock(ctx, "prod_123", domain.AddStockRequest{
-			Quantity: 50, Reason: "restock",
-		}, "user_1")
-
-		require.NoError(t, err)
-		assert.True(t, spy.hasEvent(event.InventoryRestocked))
-		assert.Equal(t, 1, spy.eventCount())
-	})
-
-	t.Run("event publish failure is non-fatal", func(t *testing.T) {
-		spy := newFailingPublisher(errors.Internal("SNS down"))
-		svc := NewInventoryService(mockInventoryRepo, spy)
-
-		transaction := &domain.InventoryTransaction{
-			ID: "txn_1", PreviousQty: 10, NewQty: 60,
-		}
-
-		mockInventoryRepo.EXPECT().
-			AddStock(ctx, "prod_123", 50, "restock", "user_1").
-			Return(transaction, nil)
-
-		result, err := svc.AddStock(ctx, "prod_123", domain.AddStockRequest{
-			Quantity: 50, Reason: "restock",
-		}, "user_1")
-
-		require.NoError(t, err) // publish failure is non-fatal
-		assert.NotNil(t, result)
-	})
-}
-
-func TestInventoryService_RemoveStock_EventPublishing(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	mockInventoryRepo := mocks.NewMockInventoryRepository(ctrl)
-	ctx := context.Background()
-
-	t.Run("publishes OUT_OF_STOCK event when available qty is zero", func(t *testing.T) {
-		spy := newSpyPublisher()
-		svc := NewInventoryService(mockInventoryRepo, spy)
-
-		transaction := &domain.InventoryTransaction{
-			ID: "txn_1", PreviousQty: 5, NewQty: 0,
-		}
-
-		mockInventoryRepo.EXPECT().
-			RemoveStock(ctx, "prod_123", 5, "sold out", "user_1").
-			Return(transaction, nil)
-
-		mockInventoryRepo.EXPECT().
-			GetByProductID(ctx, "prod_123").
-			Return(&domain.Inventory{
-				ProductID: "prod_123", AvailableQty: 0, LowStockThreshold: 10,
-			}, nil)
-
-		_, err := svc.RemoveStock(ctx, "prod_123", domain.RemoveStockRequest{
-			Quantity: 5, Reason: "sold out",
-		}, "user_1")
-
-		require.NoError(t, err)
-		assert.True(t, spy.hasEvent(event.InventoryOutOfStock))
-		assert.False(t, spy.hasEvent(event.InventoryLowStock)) // mutually exclusive
-	})
-
-	t.Run("publishes LOW_STOCK event when below threshold but not zero", func(t *testing.T) {
-		spy := newSpyPublisher()
-		svc := NewInventoryService(mockInventoryRepo, spy)
-
-		transaction := &domain.InventoryTransaction{
-			ID: "txn_1", PreviousQty: 15, NewQty: 8,
-		}
-
-		mockInventoryRepo.EXPECT().
-			RemoveStock(ctx, "prod_123", 7, "sale", "user_1").
-			Return(transaction, nil)
-
-		mockInventoryRepo.EXPECT().
-			GetByProductID(ctx, "prod_123").
-			Return(&domain.Inventory{
-				ProductID: "prod_123", AvailableQty: 8, LowStockThreshold: 10,
-			}, nil)
-
-		_, err := svc.RemoveStock(ctx, "prod_123", domain.RemoveStockRequest{
-			Quantity: 7, Reason: "sale",
-		}, "user_1")
-
-		require.NoError(t, err)
-		assert.True(t, spy.hasEvent(event.InventoryLowStock))
-		assert.False(t, spy.hasEvent(event.InventoryOutOfStock))
-	})
-
-	t.Run("no stock event when above threshold", func(t *testing.T) {
-		spy := newSpyPublisher()
-		svc := NewInventoryService(mockInventoryRepo, spy)
-
-		transaction := &domain.InventoryTransaction{
-			ID: "txn_1", PreviousQty: 100, NewQty: 80,
-		}
-
-		mockInventoryRepo.EXPECT().
-			RemoveStock(ctx, "prod_123", 20, "sale", "user_1").
-			Return(transaction, nil)
-
-		mockInventoryRepo.EXPECT().
-			GetByProductID(ctx, "prod_123").
-			Return(&domain.Inventory{
-				ProductID: "prod_123", AvailableQty: 80, LowStockThreshold: 10,
-			}, nil)
-
-		_, err := svc.RemoveStock(ctx, "prod_123", domain.RemoveStockRequest{
-			Quantity: 20, Reason: "sale",
-		}, "user_1")
-
-		require.NoError(t, err)
-		assert.Equal(t, 0, spy.eventCount()) // no events
-	})
-
-	t.Run("event publish failure is non-fatal", func(t *testing.T) {
-		spy := newFailingPublisher(errors.Internal("SNS down"))
-		svc := NewInventoryService(mockInventoryRepo, spy)
-
-		transaction := &domain.InventoryTransaction{
-			ID: "txn_1", PreviousQty: 5, NewQty: 0,
-		}
-
-		mockInventoryRepo.EXPECT().
-			RemoveStock(ctx, "prod_123", 5, "sold", "user_1").
-			Return(transaction, nil)
-
-		mockInventoryRepo.EXPECT().
-			GetByProductID(ctx, "prod_123").
-			Return(&domain.Inventory{
-				ProductID: "prod_123", AvailableQty: 0, LowStockThreshold: 10,
-			}, nil)
-
-		result, err := svc.RemoveStock(ctx, "prod_123", domain.RemoveStockRequest{
-			Quantity: 5, Reason: "sold",
-		}, "user_1")
-
-		require.NoError(t, err) // non-fatal
-		assert.NotNil(t, result)
-	})
-}
-
 func TestInventoryService_ResultFields(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
 	mockInventoryRepo := mocks.NewMockInventoryRepository(ctrl)
-	svc := NewInventoryService(mockInventoryRepo, event.NewNoopPublisher())
+	svc := NewInventoryService(mockInventoryRepo)
 	ctx := context.Background()
 
 	t.Run("AddStock result fields match transaction", func(t *testing.T) {
@@ -513,17 +341,16 @@ func TestInventoryService_ResultFields(t *testing.T) {
 			Return(&domain.InventoryTransaction{
 				ID: "txn_def", PreviousQty: 100, NewQty: 70,
 			}, nil)
-
 		mockInventoryRepo.EXPECT().
 			GetByProductID(ctx, "prod_123").
-			Return(&domain.Inventory{AvailableQty: 70, LowStockThreshold: 5}, nil)
+			Return(&domain.Inventory{ProductID: "prod_123", AvailableQty: 70, LowStockThreshold: 10}, nil)
 
 		result, err := svc.RemoveStock(ctx, "prod_123", domain.RemoveStockRequest{
 			Quantity: 30, Reason: "damaged",
 		}, "user_1")
 
 		require.NoError(t, err)
-		assert.Equal(t, -30, result.ChangeQuantity) // negative for removal
+		assert.Equal(t, -30, result.ChangeQuantity)
 		assert.Equal(t, 100, result.PreviousQuantity)
 		assert.Equal(t, 70, result.NewQuantity)
 	})

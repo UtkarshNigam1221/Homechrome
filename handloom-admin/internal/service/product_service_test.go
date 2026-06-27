@@ -10,7 +10,6 @@ import (
 	"go.uber.org/mock/gomock"
 
 	"github.com/handloom/admin/internal/domain"
-	"github.com/handloom/admin/internal/event"
 	"github.com/handloom/admin/internal/mocks"
 	"github.com/handloom/admin/pkg/errors"
 )
@@ -63,33 +62,8 @@ func setupProductTest(t *testing.T) (
 	// SyncImageVariants is best-effort side effect, allow any invocation pattern.
 	mockFinalizer.EXPECT().SyncImageVariants(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 
-	publisher := event.NewNoopPublisher()
-	svc := NewProductService(mockProdRepo, mockCatRepo, mockInvRepo, mockFinalizer, publisher, nil)
+	svc := NewProductService(mockProdRepo, mockCatRepo, mockInvRepo, mockFinalizer, nil)
 	return svc, mockProdRepo, mockCatRepo, mockInvRepo, mockFinalizer, context.Background()
-}
-
-func setupProductTestWithSpy(t *testing.T) (
-	*ProductService,
-	*mocks.MockProductRepository,
-	*mocks.MockCategoryRepository,
-	*mocks.MockInventoryRepository,
-	*mocks.MockAssetFinalizer,
-	*spyPublisher,
-	context.Context,
-) {
-	ctrl := gomock.NewController(t)
-	t.Cleanup(func() { ctrl.Finish() })
-
-	mockProdRepo := mocks.NewMockProductRepository(ctrl)
-	mockCatRepo := mocks.NewMockCategoryRepository(ctrl)
-	mockInvRepo := mocks.NewMockInventoryRepository(ctrl)
-	mockFinalizer := mocks.NewMockAssetFinalizer(ctrl)
-	// SyncImageVariants is best-effort side effect, allow any invocation pattern.
-	mockFinalizer.EXPECT().SyncImageVariants(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
-
-	spy := newSpyPublisher()
-	svc := NewProductService(mockProdRepo, mockCatRepo, mockInvRepo, mockFinalizer, spy, nil)
-	return svc, mockProdRepo, mockCatRepo, mockInvRepo, mockFinalizer, spy, context.Background()
 }
 
 func TestProductService_Create(t *testing.T) {
@@ -784,88 +758,6 @@ func TestValidateRequiredAttributes(t *testing.T) {
 	})
 }
 
-func TestProductService_Create_EventPublishing(t *testing.T) {
-	t.Run("publishes PRODUCT_CREATED event", func(t *testing.T) {
-		svc, mockProdRepo, mockCatRepo, _, _, spy, ctx := setupProductTestWithSpy(t)
-
-		category := &domain.Category{ID: "cat_123"}
-
-		mockCatRepo.EXPECT().GetByID(ctx, "cat_123").Return(category, nil)
-		mockProdRepo.EXPECT().UpsertProductWithEmbedding(ctx, gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-		mockCatRepo.EXPECT().IncrementProductCount(ctx, "cat_123", 1).Return(nil)
-
-		_, err := svc.Create(ctx, domain.CreateProductRequest{
-			Name: "Test", SKU: "TST-001", CategoryID: "cat_123",
-		}, "admin_1")
-
-		require.NoError(t, err)
-		assert.True(t, spy.hasEvent(event.ProductCreated))
-	})
-
-	t.Run("event failure is non-fatal", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		t.Cleanup(func() { ctrl.Finish() })
-
-		mockProdRepo := mocks.NewMockProductRepository(ctrl)
-		mockCatRepo := mocks.NewMockCategoryRepository(ctrl)
-		mockInvRepo := mocks.NewMockInventoryRepository(ctrl)
-		mockFinalizer := mocks.NewMockAssetFinalizer(ctrl)
-		mockFinalizer.EXPECT().SyncImageVariants(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
-		failPub := newFailingPublisher(errors.Internal("SNS down"))
-		svc := NewProductService(mockProdRepo, mockCatRepo, mockInvRepo, mockFinalizer, failPub, nil)
-		ctx := context.Background()
-
-		mockCatRepo.EXPECT().GetByID(ctx, "cat_123").Return(&domain.Category{ID: "cat_123"}, nil)
-		mockProdRepo.EXPECT().UpsertProductWithEmbedding(ctx, gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-		mockCatRepo.EXPECT().IncrementProductCount(ctx, "cat_123", 1).Return(nil)
-
-		product, err := svc.Create(ctx, domain.CreateProductRequest{
-			Name: "Test", SKU: "TST-001", CategoryID: "cat_123",
-		}, "admin_1")
-
-		require.NoError(t, err) // non-fatal
-		assert.NotNil(t, product)
-	})
-}
-
-func TestProductService_Update_EventPublishing(t *testing.T) {
-	t.Run("publishes PRODUCT_UPDATED event", func(t *testing.T) {
-		svc, mockProdRepo, mockCatRepo, _, _, spy, ctx := setupProductTestWithSpy(t)
-
-		existing := &domain.Product{ID: "prod_123", CategoryID: "cat_123", Material: "silk"}
-		category := &domain.Category{ID: "cat_123"}
-		newName := "Updated Name"
-
-		mockProdRepo.EXPECT().GetByID(ctx, "prod_123").Return(existing, nil)
-		mockCatRepo.EXPECT().GetByID(ctx, "cat_123").Return(category, nil)
-		mockProdRepo.EXPECT().UpdateProductWithOptionalEmbedding(ctx, gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-
-		_, err := svc.Update(ctx, "prod_123", domain.UpdateProductRequest{
-			Name: &newName,
-		}, "admin_1")
-
-		require.NoError(t, err)
-		assert.True(t, spy.hasEvent(event.ProductUpdated))
-	})
-}
-
-func TestProductService_Delete_EventPublishing(t *testing.T) {
-	t.Run("publishes PRODUCT_DELETED event", func(t *testing.T) {
-		svc, mockProdRepo, mockCatRepo, _, _, spy, ctx := setupProductTestWithSpy(t)
-
-		mockProdRepo.EXPECT().GetByID(ctx, "prod_123").Return(&domain.Product{
-			ID: "prod_123", CategoryID: "cat_123",
-		}, nil)
-		mockProdRepo.EXPECT().Delete(ctx, "prod_123").Return(nil)
-		mockCatRepo.EXPECT().IncrementProductCount(ctx, "cat_123", -1).Return(nil)
-
-		err := svc.Delete(ctx, "prod_123")
-
-		require.NoError(t, err)
-		assert.True(t, spy.hasEvent(event.ProductDeleted))
-	})
-}
-
 func TestProductService_Create_ErrorCodes(t *testing.T) {
 	t.Run("missing category returns NOT_FOUND error code", func(t *testing.T) {
 		svc, _, mockCatRepo, _, _, ctx := setupProductTest(t)
@@ -1249,8 +1141,7 @@ func TestProductService_Update_ReplacesVideoAndDeletesOld(t *testing.T) {
 	mockFinalizer := mocks.NewMockAssetFinalizer(ctrl)
 	// SyncImageVariants is best-effort side effect, allow any invocation pattern.
 	mockFinalizer.EXPECT().SyncImageVariants(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
-	publisher := event.NewNoopPublisher()
-	svc := NewProductService(mockProdRepo, mockCatRepo, mockInvRepo, mockFinalizer, publisher, nil)
+	svc := NewProductService(mockProdRepo, mockCatRepo, mockInvRepo, mockFinalizer, nil)
 	ctx := context.Background()
 
 	existing := &domain.Product{
@@ -1293,8 +1184,7 @@ func TestProductService_Update_NoDeleteAssetIfUpdateFails(t *testing.T) {
 	mockFinalizer := mocks.NewMockAssetFinalizer(ctrl)
 	// SyncImageVariants is best-effort side effect, allow any invocation pattern.
 	mockFinalizer.EXPECT().SyncImageVariants(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
-	publisher := event.NewNoopPublisher()
-	svc := NewProductService(mockProdRepo, mockCatRepo, mockInvRepo, mockFinalizer, publisher, nil)
+	svc := NewProductService(mockProdRepo, mockCatRepo, mockInvRepo, mockFinalizer, nil)
 	ctx := context.Background()
 
 	existing := &domain.Product{
@@ -1320,7 +1210,7 @@ func TestProductService_Update_NoDeleteAssetIfUpdateFails(t *testing.T) {
 
 // newServiceWithEmbedder builds a ProductService backed by fresh mocks and the
 // supplied Embedder stub. UpsertProductWithEmbedding is registered as
-// AnyTimes so callers only need to assert the embedder behaviour.
+// AnyTimes so callers only need to assert the embedder behavior.
 func newServiceWithEmbedder(t *testing.T, emb Embedder) (
 	*ProductService,
 	*mocks.MockProductRepository,
@@ -1361,8 +1251,7 @@ func newServiceWithEmbedder(t *testing.T, emb Embedder) (
 		Return(nil).
 		AnyTimes()
 
-	publisher := event.NewNoopPublisher()
-	svc := NewProductService(mockProdRepo, mockCatRepo, mockInvRepo, mockFinalizer, publisher, emb)
+	svc := NewProductService(mockProdRepo, mockCatRepo, mockInvRepo, mockFinalizer, emb)
 	return svc, mockProdRepo, mockCatRepo, context.Background()
 }
 

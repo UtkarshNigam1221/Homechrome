@@ -14,6 +14,7 @@ import {
   Card,
   ConfirmModal,
   Input,
+  PageHeader,
   Pagination,
   Select,
   Table,
@@ -175,15 +176,15 @@ export function UsersPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="page-title">Users</h1>
-          <p className="page-subtitle">Manage admin users and permissions</p>
-        </div>
-        <Button leftIcon={<Plus className="w-4 h-4" />} onClick={handleOpenCreate}>
-          Add User
-        </Button>
-      </div>
+      <PageHeader
+        title="Users"
+        subtitle="Manage admin users and permissions"
+        action={
+          <Button leftIcon={<Plus className="w-4 h-4" />} onClick={handleOpenCreate}>
+            Add User
+          </Button>
+        }
+      />
 
       {/* Filters */}
       <Card padding="sm">

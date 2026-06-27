@@ -1,0 +1,136 @@
+name: Deploy Embedder
+
+# Separate from Deploy Backend because the embedder is a container-image Lambda
+# whose image CDK builds from cmd/embedder/Dockerfile, which COPYs a model +
+# tokenizer + onnxruntime .so. Those assets (cmd/embedder/assets/, gitignored)
+# are produced by scripts/bootstrap-embedder-assets.sh — a heavy Python/HF/ONNX
+# toolchain the rest of the backend doesn't need. Keeping it here means backend
+# deploys stay fast and the embedder only rebuilds when its code/assets change.
+#
+# Deploys NON-exclusively: `cdk deploy HandloomEmbedderStack-<env>` also brings
+# up the stacks it depends on (Database, Logs, Metrics), so a fresh environment
+# can be stood up entirely from CI by running THIS workflow first, then Deploy
+# Backend (the API stack imports the embedder's function ARN, so the embedder
+# must exist before the API deploys).
+#
+# One-time prerequisites per AWS account/region (not done here):
+#   - `cdk bootstrap` (creates the asset bucket + image-asset ECR repo)
+#   - SSM SecureString /handloom/<env>/embedder-auth-key (HMAC shared secret)
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy'
+        required: true
+        type: choice
+        options: [dev, prod]
+        default: dev
+      branch:
+        description: 'Branch/ref to build & deploy (prod requires main)'
+        required: false
+        type: string
+        default: main
+
+  # Allows an orchestrator to invoke this workflow.
+  workflow_call:
+    inputs:
+      environment:
+        description: 'Environment to deploy'
+        required: true
+        type: string
+      branch:
+        description: 'Branch/ref to build & deploy'
+        required: false
+        type: string
+        default: main
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: deploy-embedder-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy Embedder
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: handloom-admin
+    steps:
+      - name: Guard prod deploy from non-main branches
+        if: inputs.environment == 'prod' && inputs.branch != 'main'
+        run: |
+          echo "::error::Prod deploy must target main. Chosen branch: ${{ inputs.branch }}"
+          exit 1
+
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.branch }}
+
+      # CDK app is `go run ./cmd/` — Go is required to synth/deploy.
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.25'
+          cache-dependency-path: handloom-admin/go.sum
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      # Python is needed by scripts/bootstrap-embedder-assets.sh (optimum/onnx).
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # Cache the model export + venv + onnxruntime .so. The script pins all
+      # versions, so hashing it invalidates the cache on any version bump.
+      # Cold build ≈ 10 min; cache hit ≈ seconds.
+      - name: Cache embedder assets
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/handloom-embedder
+          key: embedder-assets-${{ hashFiles('scripts/bootstrap-embedder-assets.sh') }}
+
+      - name: Bootstrap embedder assets
+        run: make prepare-embedder-assets
+
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      # Register binfmt_misc so plain `docker build` of the arm64 embedder image
+      # works on the amd64 runner (CDK builds the image during deploy).
+      - name: Register arm64 binfmt handlers
+        run: docker run --privileged --rm tonistiigi/binfmt --install arm64
+
+      - name: Install CDK
+        run: npm install -g aws-cdk
+
+      - name: Write .env file
+        run: |
+          if [ "${{ inputs.environment }}" = "prod" ]; then
+            echo "${{ secrets.BACKEND_ENV_PROD }}" > .env.deploy
+          else
+            echo "${{ secrets.BACKEND_ENV_DEV }}" > .env.deploy
+          fi
+          # The embedder Lambda gets POSTGRES_DSN from this file via CDK.
+          if [ ! -s .env.deploy ]; then
+            echo "::error::.env.deploy is empty — BACKEND_ENV_${{ inputs.environment }} secret is unset or blank." >&2
+            exit 1
+          fi
+          if ! grep -q '^POSTGRES_DSN=.\+' .env.deploy; then
+            echo "::error::POSTGRES_DSN is missing or empty in BACKEND_ENV_${{ inputs.environment }}." >&2
+            exit 1
+          fi
+
+      - name: CDK Deploy (embedder + its dependency stacks)
+        run: |
+          set -a && . ./.env.deploy && set +a
+          cd infra && cdk deploy HandloomEmbedderStack-${{ inputs.environment }} \
+            --require-approval never \
+            -c environment=${{ inputs.environment }}

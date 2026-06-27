@@ -1,0 +1,119 @@
+# handloom-admin/infra/configs/otel-collector.yaml
+#
+# OTel Collector config for AWS Lambda extension layer (community-published,
+# account 184161586896).
+#
+# Pipeline design follows the OTel Lambda authors' guidance
+# (https://github.com/open-telemetry/opentelemetry-lambda):
+#
+#   1. memory_limiter FIRST — protect against OOM in the small Lambda env.
+#   2. resource — stamp cloud.region / faas.name / faas.version from env vars
+#      (the lite layer build does not ship `resourcedetection`).
+#   3. attributes/redact — PII Layer 2 scrub before export.
+#   4. coldstart (traces only) — tag spans that cross the cold-start boundary.
+#   5. decouple LAST — keeps the Lambda runtime awake until exporter completes.
+#
+# NO `batch` processor. The official docs note that batch + decouple delays
+# data "up to 5 minutes" on sparse-traffic Lambdas because the batch timer
+# can't tick while the runtime is frozen. For dev we trade per-record
+# network cost for sub-second latency. Re-add batch in prod once volume
+# justifies it.
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+  telemetryapi:
+    types: [function, platform, extension]
+
+processors:
+  # memory_limiter intentionally omitted: 128MB Lambdas leave too little
+  # headroom for the collector + Go runtime + app binary; the limiter
+  # would cap us below the actual working set and start dropping data.
+  # Bump Lambda memory and re-add if OOM ever surfaces.
+  resource:
+    attributes:
+      - key: cloud.region
+        value: ${env:AWS_REGION}
+        action: insert
+      - key: faas.name
+        value: ${env:AWS_LAMBDA_FUNCTION_NAME}
+        action: insert
+      - key: faas.version
+        value: ${env:AWS_LAMBDA_FUNCTION_VERSION}
+        action: insert
+  coldstart: {}
+  attributes/redact:
+    actions:
+      - key: password
+        action: delete
+      - key: passwd
+        action: delete
+      - key: secret
+        action: delete
+      - key: token
+        action: delete
+      - key: jwt
+        action: delete
+      - key: cookie
+        action: delete
+      - key: authorization
+        action: delete
+      - key: auth_key
+        action: delete
+      - key: api_key
+        action: delete
+      - key: otp
+        action: delete
+      - key: otp_code
+        action: delete
+      - key: verification_code
+        action: delete
+      - key: card_number
+        action: delete
+      - key: pan
+        action: delete
+      - key: cvv
+        action: delete
+  decouple:
+    max_queue_size: 200
+
+exporters:
+  otlp_http/grafana:
+    endpoint: ${env:GRAFANA_OTLP_ENDPOINT}
+    headers:
+      Authorization: ${env:GRAFANA_OTLP_AUTH}
+    compression: gzip
+    sending_queue:
+      enabled: true
+      num_consumers: 1
+      queue_size: 1000
+    retry_on_failure:
+      enabled: true
+      initial_interval: 1s
+      max_interval: 30s
+      max_elapsed_time: 60s
+
+# No metrics pipeline — metrics flow via SQS → consumer Lambda → Postgres
+# (M30 removed Grafana metrics export). The community OTel Lambda layer
+# build does not ship a `nop` exporter, so any metrics pipeline must use
+# a real exporter. If the OTLP receiver gets metric data with no pipeline
+# wired for that signal it returns 404 — harmless, no Lambda log spam in
+# the current setup because nothing in this fleet uses the OTel Metrics SDK.
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp, telemetryapi]
+      processors: [resource, coldstart, attributes/redact, decouple]
+      exporters: [otlp_http/grafana]
+    logs:
+      receivers: [otlp, telemetryapi]
+      processors: [resource, attributes/redact, decouple]
+      exporters: [otlp_http/grafana]
+  telemetry:
+    logs:
+      level: warn

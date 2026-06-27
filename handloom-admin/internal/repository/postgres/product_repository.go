@@ -479,7 +479,7 @@ func (r *ProductRepository) List(ctx context.Context, req domain.ListProductsReq
 	searching := req.Search != ""
 
 	// Always LEFT JOIN inventory so product rows include live stock data.
-	selectCols := append(prefixColumns("p", productColumns),
+	selectCols := append(prefixColumns("p", productListColumns),
 		"COALESCE(i.quantity, 0) AS inv_quantity",
 		"COALESCE(i.reserved_qty, 0) AS inv_reserved_qty",
 		"COALESCE(i.available_qty, 0) AS inv_available_qty",
@@ -551,7 +551,7 @@ func (r *ProductRepository) BatchGetByIDs(ctx context.Context, ids []string) ([]
 		return []*domain.Product{}, nil
 	}
 
-	selectCols := append(prefixColumns("p", productColumns),
+	selectCols := append(prefixColumns("p", productListColumns),
 		"COALESCE(i.quantity, 0) AS inv_quantity",
 		"COALESCE(i.reserved_qty, 0) AS inv_reserved_qty",
 		"COALESCE(i.available_qty, 0) AS inv_available_qty",
@@ -613,7 +613,7 @@ func (r *ProductRepository) BatchUpdateSortOrder(ctx context.Context, products [
 
 // GetByCategoryAll retrieves every product in a category ordered by sort_order.
 func (r *ProductRepository) GetByCategoryAll(ctx context.Context, categoryID string) ([]*domain.Product, error) {
-	selectCols := append(prefixColumns("p", productColumns),
+	selectCols := append(prefixColumns("p", productListColumns),
 		"COALESCE(i.quantity, 0) AS inv_quantity",
 		"COALESCE(i.reserved_qty, 0) AS inv_reserved_qty",
 		"COALESCE(i.available_qty, 0) AS inv_available_qty",

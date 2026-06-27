@@ -6,27 +6,25 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/handloom/admin/internal/config"
+	"github.com/handloom/admin/internal/bootstrap"
 	"github.com/handloom/admin/internal/router"
 	"github.com/handloom/admin/internal/wire"
-	"github.com/handloom/admin/pkg/slogx"
 )
 
 func main() {
-	cfg := config.Load()
-	slogx.Setup(cfg.App.Debug)
-	slog.Info("Starting Report Lambda")
+	bc := bootstrap.InitLambda("handloom-report")
+	defer bc.Shutdown()
 
 	ctx := context.Background()
 
-	deps, err := wire.InitializeReportDeps(ctx, cfg)
+	deps, err := wire.InitializeReportDeps(ctx, bc.Cfg)
 	if err != nil {
 		slog.Error("Failed to initialize dependencies", "error", err)
 		os.Exit(1)
 	}
 
 	r := router.NewAuthenticatedRouter(
-		router.Config{AllowedOrigins: getAllowedOrigins(), Debug: cfg.App.Debug},
+		router.Config{AllowedOrigins: getAllowedOrigins(), Debug: bc.Cfg.App.Debug},
 		deps.AuthMiddleware,
 	)
 	router.NewReportRouter(r, deps.Handler)

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/handloom/admin/internal/domain"
+	metricsmw "github.com/handloom/admin/pkg/metrics/middleware"
 )
 
 // Client implements the MSG91 SMS gateway
@@ -21,7 +22,7 @@ type Client struct {
 func NewClient(config Config) *Client {
 	return &Client{
 		config:     config,
-		httpClient: &http.Client{Timeout: 10 * time.Second},
+		httpClient: metricsmw.NewInstrumentedClient(10*time.Second, "msg91"),
 	}
 }
 

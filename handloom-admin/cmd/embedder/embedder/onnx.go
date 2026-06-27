@@ -11,19 +11,12 @@ import (
 // ortOnce ensures the ORT environment is initialized exactly once per process.
 var (
 	ortOnce    sync.Once
-	ortInitErr error
+	errOrtInit error
 )
 
 // ONNXSession wraps a loaded ONNX model session plus the tokenizer.
-// It is safe to call Embed from multiple goroutines (mutex-protected).
-//
-// Lambda concurrency note (C4): Lambda's runtime API is strictly
-// request/response — each container processes one request at a time, so
-// mu cannot actually contend in Lambda.  The mutex is defense-in-depth for
-// local-dev paths (make run-embedder-local) where multiple goroutines may
-// share a single ONNXSession concurrently.  No concurrency cap is needed at
-// the Lambda level; AWS naturally isolates concurrent requests into separate
-// containers, each with its own session.
+// mu guards concurrent Embed calls on the local-dev path; in Lambda each
+// container serves one request at a time so it never contends.
 type ONNXSession struct {
 	sess   *ort.DynamicAdvancedSession
 	tok    *Tokenizer
@@ -49,10 +42,10 @@ func NewONNXSession(modelPath, libPath, tokenizerPath string, maxLen int) (*ONNX
 		if libPath != "" {
 			ort.SetSharedLibraryPath(libPath)
 		}
-		ortInitErr = ort.InitializeEnvironment()
+		errOrtInit = ort.InitializeEnvironment()
 	})
-	if ortInitErr != nil {
-		return nil, fmt.Errorf("onnxruntime init: %w", ortInitErr)
+	if errOrtInit != nil {
+		return nil, fmt.Errorf("onnxruntime init: %w", errOrtInit)
 	}
 
 	tok, err := NewTokenizer(tokenizerPath, maxLen)

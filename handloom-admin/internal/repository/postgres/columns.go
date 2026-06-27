@@ -83,7 +83,7 @@ const (
 // Column lists for SELECT queries. Each slice matches the db struct tag order
 // used by pgxscan so that queries and struct scanning stay in sync.
 
-// productColumns lists the 28 columns selected for a product row.
+// productColumns lists the 28 columns selected for a single product row.
 var productColumns = []string{
 	ColID, ColName, ColSlug, ColSKU, ColDescription, ColCategoryID,
 	ColBasePrice, ColSellingPrice, ColCostPrice, ColCurrency,
@@ -94,6 +94,21 @@ var productColumns = []string{
 	ColEmbedding, ColEmbeddingUpdatedAt,
 	ColCreatedAt, ColUpdatedAt, ColCreatedBy, ColUpdatedBy,
 }
+
+// productListColumns is productColumns without the pgvector embedding columns.
+// The 768-float embedding (~3 KB/row) is never read back on the response path
+// (Product.Embedding is json:"-"), so list/batch queries skip it to cut PG
+// egress and scan cost. pgxscan leaves the unselected struct fields zero-valued.
+var productListColumns = func() []string {
+	out := make([]string, 0, len(productColumns)-2)
+	for _, c := range productColumns {
+		if c == ColEmbedding || c == ColEmbeddingUpdatedAt {
+			continue
+		}
+		out = append(out, c)
+	}
+	return out
+}()
 
 // categoryColumns lists the 11 columns selected for a category row.
 var categoryColumns = []string{

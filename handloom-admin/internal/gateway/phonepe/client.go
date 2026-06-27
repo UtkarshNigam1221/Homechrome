@@ -13,6 +13,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	metricsmw "github.com/handloom/admin/pkg/metrics/middleware"
 )
 
 const (
@@ -38,7 +40,7 @@ func NewClient(config Config) *Client {
 	}
 	return &Client{
 		config:     config,
-		httpClient: &http.Client{Timeout: 30 * time.Second},
+		httpClient: metricsmw.NewInstrumentedClient(30*time.Second, "phonepe"),
 	}
 }
 

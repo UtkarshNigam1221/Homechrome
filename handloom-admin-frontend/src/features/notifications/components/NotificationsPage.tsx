@@ -8,7 +8,7 @@ import toast from 'react-hot-toast';
 import { notificationsApi } from '@/features/notifications/api';
 import { getErrorMessage } from '@/shared/api/client';
 import { PageLoading } from '@/shared/components/loading';
-import { Badge, Button, Card } from '@/shared/components/ui';
+import { Badge, Button, Card, PageHeader } from '@/shared/components/ui';
 
 import type { NotificationType } from '../types';
 
@@ -83,24 +83,24 @@ export function NotificationsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="page-title">Notifications</h1>
-          <p className="page-subtitle">
-            {unreadCount > 0 ? `You have ${unreadCount} unread notifications` : 'All caught up!'}
-          </p>
-        </div>
-        {unreadCount > 0 && (
-          <Button
-            variant="secondary"
-            leftIcon={<CheckCheck className="w-4 h-4" />}
-            onClick={() => markAllAsReadMutation.mutate()}
-            loading={markAllAsReadMutation.isPending}
-          >
-            Mark all as read
-          </Button>
-        )}
-      </div>
+      <PageHeader
+        title="Notifications"
+        subtitle={
+          unreadCount > 0 ? `You have ${unreadCount} unread notifications` : 'All caught up!'
+        }
+        action={
+          unreadCount > 0 && (
+            <Button
+              variant="secondary"
+              leftIcon={<CheckCheck className="w-4 h-4" />}
+              onClick={() => markAllAsReadMutation.mutate()}
+              loading={markAllAsReadMutation.isPending}
+            >
+              Mark all as read
+            </Button>
+          )
+        }
+      />
 
       {/* Filter Tabs */}
       <div className="flex gap-2">

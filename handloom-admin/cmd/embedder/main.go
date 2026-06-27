@@ -13,14 +13,21 @@ import (
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
 	"github.com/awslabs/aws-lambda-go-api-proxy/httpadapter"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/aws/aws-sdk-go-v2/otelaws"
 
 	emb "github.com/handloom/admin/cmd/embedder/embedder"
 	"github.com/handloom/admin/internal/repository/postgres"
+	"github.com/handloom/admin/pkg/metrics/awsmiddleware"
 )
 
 func main() {
 	ctx := context.Background()
 	cfg := loadConfig(ctx)
+
+	// SQS metrics publisher (shared wiring with bootstrap.InitLambda). No-op
+	// when METRICS_QUEUE_URL is unset — metrics.Record() then falls through to
+	// the global Noop publisher.
+	awsmiddleware.InitSQSMetricsPublisher(ctx, embedderServiceName())
 
 	pool, err := emb.NewPGPool(ctx, cfg.PostgresDSN, 10)
 	must(err, "pg pool")
@@ -30,11 +37,19 @@ func main() {
 	// Warmup pass — first inference is slow due to lazy graph init.
 	_, _ = onnx.Embed([]string{"warmup"})
 
+	// Intent classifier — embeds prototype strings once at cold start. The
+	// 0.45 threshold is the minimum cosine similarity below which a
+	// prototype isn't considered a hit; tune from the Products dashboard
+	// once real queries surface the distribution.
+	classifier, err := emb.NewClassifier(onnx, 0.45)
+	must(err, "intent classifier")
+
 	productRepo := postgres.NewProductRepository(pool)
 
 	d := &deps{
 		onnx:        onnx,
 		searcher:    emb.NewSearcher(pool, productRepo, cfg.Weights),
+		classifier:  classifier,
 		hmac:        emb.NewHMACVerifier([]byte(cfg.AuthKey)),
 		rl:          emb.NewIPRateLimiter(cfg.RatePerMin),
 		allowOrigin: cfg.AllowedOrigin,
@@ -63,21 +78,23 @@ type appConfig struct {
 func loadConfig(ctx context.Context) appConfig {
 	awsCfg, err := awsconfig.LoadDefaultConfig(ctx)
 	must(err, "load aws config")
+	otelaws.AppendMiddlewares(&awsCfg.APIOptions)
+	awsCfg.APIOptions = append(awsCfg.APIOptions, awsmiddleware.With(embedderServiceName()))
 	ssmc := ssm.NewFromConfig(awsCfg)
 
-	authKey := ssmGetSecure(ctx, ssmc, getEnv("EMBEDDER_AUTH_KEY_PARAM"))
+	authKey := ssmGetSecure(ctx, ssmc, os.Getenv("EMBEDDER_AUTH_KEY_PARAM"))
 
 	// POSTGRES_DSN is passed as a plain env var by CDK (sourced from
 	// .env.{env} locally or secrets.BACKEND_ENV_{ENV} in GH Actions). Only
 	// the HMAC auth key lives in SSM SecureString.
-	pgDSN := getEnv("POSTGRES_DSN")
+	pgDSN := os.Getenv("POSTGRES_DSN")
 
 	return appConfig{
 		PostgresDSN:   pgDSN,
-		ModelPath:     getEnv("MODEL_PATH"),
-		TokenizerPath: getEnv("TOKENIZER_PATH"),
-		ORTLibPath:    getEnv("ONNXRUNTIME_SHARED_LIB_PATH"),
-		AllowedOrigin: getEnv("ALLOWED_ORIGIN"),
+		ModelPath:     os.Getenv("MODEL_PATH"),
+		TokenizerPath: os.Getenv("TOKENIZER_PATH"),
+		ORTLibPath:    os.Getenv("ONNXRUNTIME_SHARED_LIB_PATH"),
+		AllowedOrigin: os.Getenv("ALLOWED_ORIGIN"),
 		AuthKey:       authKey,
 		RatePerMin:    parseIntEnv("RATE_LIMIT_PER_IP_PER_MIN", 60),
 		Weights: emb.Weights{
@@ -100,10 +117,17 @@ func ssmGetSecure(ctx context.Context, c *ssm.Client, name string) string {
 	return aws.ToString(out.Parameter.Value)
 }
 
-func getEnv(k string) string { return os.Getenv(k) }
+// embedderServiceName resolves the embedder's OTEL service name, used to label
+// both the SSM/SQS aws_sdk_call metrics and the metrics publisher.
+func embedderServiceName() string {
+	if s := os.Getenv("OTEL_SERVICE_NAME"); s != "" {
+		return s
+	}
+	return "handloom-embedder"
+}
 
 func parseFloatEnv(key string, def float64) float64 {
-	if v := getEnv(key); v != "" {
+	if v := os.Getenv(key); v != "" {
 		if f, err := strconv.ParseFloat(v, 64); err == nil {
 			return f
 		}
@@ -113,7 +137,7 @@ func parseFloatEnv(key string, def float64) float64 {
 
 // parseIntEnv reads an integer env var with a fallback.
 func parseIntEnv(key string, def int) int {
-	if v := getEnv(key); v != "" {
+	if v := os.Getenv(key); v != "" {
 		if n, err := strconv.Atoi(v); err == nil {
 			return n
 		}

@@ -5,7 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"strings"
 	"testing"
+
+	"go.opentelemetry.io/otel"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
 
 func TestContextHandler_AddsRequestID(t *testing.T) {
@@ -58,5 +62,22 @@ func TestContextHandler_NoContextValues(t *testing.T) {
 	}
 	if _, exists := record["request_id"]; exists {
 		t.Error("request_id should not be present when not in context")
+	}
+}
+
+func TestContextHandler_AddsTraceIDsWhenSpanInCtx(t *testing.T) {
+	tp := sdktrace.NewTracerProvider()
+	defer func() { _ = tp.Shutdown(context.Background()) }()
+	otel.SetTracerProvider(tp)
+
+	ctx, span := tp.Tracer("test").Start(context.Background(), "test-span")
+	defer span.End()
+
+	var buf bytes.Buffer
+	h := NewContextHandler(slog.NewJSONHandler(&buf, nil))
+	slog.New(h).InfoContext(ctx, "hello")
+
+	if !strings.Contains(buf.String(), `"trace_id"`) {
+		t.Errorf("expected trace_id in log: %s", buf.String())
 	}
 }

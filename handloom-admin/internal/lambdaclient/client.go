@@ -14,6 +14,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/lambda"
 	"github.com/aws/aws-sdk-go-v2/service/lambda/types"
+
+	"github.com/handloom/admin/pkg/metrics/awsmiddleware"
 )
 
 // LambdaClient wraps the AWS Lambda client.
@@ -41,6 +43,8 @@ func New(ctx context.Context, region string, endpoint string) (*LambdaClient, er
 	if err != nil {
 		return nil, fmt.Errorf("load aws config: %w", err)
 	}
+
+	awsmiddleware.Instrument(&cfg)
 
 	var optFns []func(*lambda.Options)
 	if endpoint != "" {

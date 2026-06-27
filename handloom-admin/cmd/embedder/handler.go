@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -12,11 +13,15 @@ import (
 	"github.com/go-chi/cors"
 
 	emb "github.com/handloom/admin/cmd/embedder/embedder"
+	"github.com/handloom/admin/internal/middleware"
+	"github.com/handloom/admin/internal/router"
+	"github.com/handloom/admin/pkg/metrics"
 )
 
 type deps struct {
 	onnx        *emb.ONNXSession
 	searcher    *emb.Searcher
+	classifier  *emb.Classifier
 	hmac        *emb.HMACVerifier
 	rl          *emb.IPRateLimiter
 	allowOrigin string
@@ -25,6 +30,12 @@ type deps struct {
 
 func newRouter(d *deps) http.Handler {
 	r := chi.NewRouter()
+
+	// Shared observability stack: server tracing, request ID, metrics buffer
+	// (the metrics.Record() calls in handleSearch silently drop without it),
+	// geo extraction, request logs, panic recovery, real-IP. Same stack the
+	// other Lambdas get via router.NewBaseRouter.
+	router.ApplyObservability(r)
 
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins: []string{d.allowOrigin},
@@ -114,12 +125,38 @@ func (d *deps) handleSearch(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "search failed", http.StatusInternalServerError)
 		return
 	}
+
+	if strings.TrimSpace(req.Query) != "" {
+		hasResults := len(resp.Data) > 0
+		// Zero-shot intent classification reuses the embedding we just
+		// computed for semantic search — no extra ONNX invocation. Empty
+		// label space stays bounded: ~7 intents × ~6 categories + a few
+		// "*_other" / "direct_*" + "unknown" → ~50 distinct values total.
+		intent := "unknown"
+		if qvec != nil {
+			intent = d.classifier.Classify(qvec)
+		}
+		metrics.Record(r.Context(), "search_query", metrics.L{
+			metrics.LabelHasResults: fmt.Sprintf("%t", hasResults),
+			metrics.LabelCountry:    middleware.GetCountry(r.Context()),
+			metrics.LabelIntent:     intent,
+		})
+		slog.InfoContext(r.Context(), "store.search",
+			slog.String("query", req.Query),
+			slog.Bool("has_results", hasResults),
+			slog.Int("result_count", len(resp.Data)),
+			slog.String("country", middleware.GetCountry(r.Context())),
+			slog.String("city", middleware.GetCity(r.Context())),
+		)
+	}
+
 	writeJSON(w, http.StatusOK, resp)
 }
 
 // parseSearchRequest builds a SearchRequest from query-string params:
-//   q, limit, cursor, category_id, min_price, max_price, in_stock,
-//   material, color, af_<name>=val1,val2
+//
+//	q, limit, cursor, category_id, min_price, max_price, in_stock,
+//	material, color, af_<name>=val1,val2
 func parseSearchRequest(r *http.Request) emb.SearchRequest {
 	q := r.URL.Query()
 	req := emb.SearchRequest{

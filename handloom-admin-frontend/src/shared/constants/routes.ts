@@ -8,15 +8,6 @@ export const ROUTES = {
     PASSWORD_RESET: '/admin/auth/password/reset',
   },
 
-  ANALYTICS: {
-    DASHBOARD: '/admin/analytics/dashboard',
-    SALES: '/admin/analytics/sales',
-    TOP_PRODUCTS: '/admin/analytics/top-products',
-    TOP_CATEGORIES: '/admin/analytics/top-categories',
-    CUSTOMERS: '/admin/analytics/customers',
-    INVENTORY: '/admin/analytics/inventory',
-  },
-
   CATEGORIES: {
     LIST: '/admin/categories',
     DETAIL: (id: string) => `/admin/categories/${id}`,

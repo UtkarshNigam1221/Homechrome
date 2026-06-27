@@ -6,23 +6,20 @@ import (
 	"log/slog"
 
 	"github.com/handloom/admin/internal/domain"
-	"github.com/handloom/admin/internal/event"
+	"github.com/handloom/admin/pkg/metrics"
 )
 
 // InventoryService implements domain.InventoryService
 type InventoryService struct {
 	inventoryRepo domain.InventoryRepository
-	publisher     event.EventPublisher
 }
 
 // NewInventoryService creates a new InventoryService
 func NewInventoryService(
 	inventoryRepo domain.InventoryRepository,
-	publisher event.EventPublisher,
 ) *InventoryService {
 	return &InventoryService{
 		inventoryRepo: inventoryRepo,
-		publisher:     publisher,
 	}
 }
 
@@ -36,14 +33,6 @@ func (s *InventoryService) AddStock(ctx context.Context, productID string, req d
 	txn, err := s.inventoryRepo.AddStock(ctx, productID, req.Quantity, req.Reason, userID)
 	if err != nil {
 		return nil, err
-	}
-
-	if pubErr := s.publisher.Publish(ctx, event.New(event.InventoryRestocked, map[string]interface{}{
-		keyProductID:   productID,
-		"quantity":     req.Quantity,
-		"new_quantity": txn.NewQty,
-	})); pubErr != nil {
-		slog.ErrorContext(ctx, "Failed to publish inventory.restocked event", "error", pubErr)
 	}
 
 	slog.InfoContext(ctx, "Added stock", keyProductID, productID, "quantity", req.Quantity)
@@ -65,34 +54,9 @@ func (s *InventoryService) RemoveStock(ctx context.Context, productID string, re
 		return nil, err
 	}
 
-	// Check stock levels and emit appropriate events
-	inventory, invErr := s.inventoryRepo.GetByProductID(ctx, productID)
-	if invErr != nil {
-		slog.ErrorContext(ctx, "Failed to fetch inventory for stock event check",
-			keyProductID, productID,
-			"error", invErr,
-		)
-	}
-	if inventory != nil {
-		if inventory.AvailableQty <= 0 {
-			if pubErr := s.publisher.Publish(ctx, event.New(event.InventoryOutOfStock, map[string]interface{}{
-				keyProductID:    productID,
-				"available_qty": inventory.AvailableQty,
-			})); pubErr != nil {
-				slog.ErrorContext(ctx, "Failed to publish inventory.out_of_stock event", "error", pubErr)
-			}
-		} else if inventory.AvailableQty <= inventory.LowStockThreshold {
-			if pubErr := s.publisher.Publish(ctx, event.New(event.InventoryLowStock, map[string]interface{}{
-				keyProductID:          productID,
-				"available_qty":       inventory.AvailableQty,
-				"low_stock_threshold": inventory.LowStockThreshold,
-			})); pubErr != nil {
-				slog.ErrorContext(ctx, "Failed to publish inventory.low_stock event", "error", pubErr)
-			}
-		}
-	}
-
 	slog.InfoContext(ctx, "Removed stock", keyProductID, productID, "quantity", req.Quantity)
+
+	s.emitStockLevelMetrics(ctx, productID)
 
 	return &domain.InventoryTransactionResult{
 		ProductID:        productID,
@@ -102,6 +66,23 @@ func (s *InventoryService) RemoveStock(ctx context.Context, productID string, re
 		AvailableQty:     txn.NewQty,
 		TransactionID:    txn.ID,
 	}, nil
+}
+
+// emitStockLevelMetrics records out-of-stock / low-stock signals after a stock
+// removal. Replaces the InventoryOutOfStock / InventoryLowStock events the old
+// event system emitted. Best-effort: a failed read is logged, never returned.
+func (s *InventoryService) emitStockLevelMetrics(ctx context.Context, productID string) {
+	inv, err := s.inventoryRepo.GetByProductID(ctx, productID)
+	if err != nil {
+		slog.WarnContext(ctx, "Failed to read inventory for stock-level metrics", keyProductID, productID, "error", err)
+		return
+	}
+	switch {
+	case inv.AvailableQty <= 0:
+		metrics.Record(ctx, "inventory_out_of_stock", metrics.L{keyProductID: productID})
+	case inv.AvailableQty <= inv.LowStockThreshold:
+		metrics.Record(ctx, "inventory_low_stock", metrics.L{keyProductID: productID})
+	}
 }
 
 // AdjustStock adjusts stock to a specific quantity

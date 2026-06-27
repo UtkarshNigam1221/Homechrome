@@ -3,10 +3,18 @@
 
 # Claude Code
 .claude/worktrees/
+.claude/skills/
+
+# AI agent tooling (local only — not part of the repo)
+.agents/
+skills-lock.json
 
 # Superpowers
 .superpowers/
 docs/superpowers/
+
+# Playwright MCP session snapshots
+.playwright-mcp/
 
 # IDE
 .idea/
@@ -29,6 +37,17 @@ Thumbs.db
 .env.*
 !.env.example
 !**/.env.example
+# Committed env files must be PUBLIC ONLY (URLs/IDs, never tokens/keys/DSNs).
+# The whitelist is scoped to the frontends, whose .env.{dev,prod}/.env.local-*
+# carry only VITE_/NEXT_PUBLIC_ public config. Backend handloom-admin/.env.*
+# holds real secrets (POSTGRES_DSN, PhonePe/MSG91 keys) and stays IGNORED —
+# those are sourced at deploy time from the shell / CI secrets, never committed.
+# Local overrides go in .env.local (still ignored).
+!handloom-admin-frontend/.env.dev
+!handloom-admin-frontend/.env.prod
+!handloom-admin-frontend/.env.local-backend
+!handloom-admin-frontend/.env.local-lambda
+!homechrome-store/.env.local-lambda
 
 # Logs
 *.log

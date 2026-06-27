@@ -8,7 +8,9 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/handloom/admin/internal/domain"
+	"github.com/handloom/admin/internal/middleware"
 	"github.com/handloom/admin/pkg/errors"
+	"github.com/handloom/admin/pkg/metrics"
 )
 
 const cartTTLDays = 30
@@ -53,8 +55,8 @@ func (s *CartService) AddItem(ctx context.Context, cartOwner string, isGuest boo
 		return nil, errors.BadRequest("Product is not available")
 	}
 
-	if err := s.validateStock(ctx, req.ProductID, req.Quantity); err != nil {
-		return nil, err
+	if stockErr := s.validateStock(ctx, req.ProductID, req.Quantity); stockErr != nil {
+		return nil, stockErr
 	}
 
 	pk := cartPK(cartOwner)
@@ -76,9 +78,31 @@ func (s *CartService) AddItem(ctx context.Context, cartOwner string, isGuest boo
 	}
 	item.SetKeys(pk)
 
+	// Snapshot the item count BEFORE adding — a 0→1 transition means this is
+	// the first item, which is the "cart created" top-of-funnel event.
+	existingCart, err := s.cartRepo.GetCart(ctx, pk)
+	if err != nil {
+		return nil, err
+	}
+	wasEmpty := len(existingCart.Items) == 0
+
 	if err := s.cartRepo.PutCartItem(ctx, item); err != nil {
 		return nil, err
 	}
+
+	if wasEmpty {
+		metrics.Record(ctx, "cart_added", metrics.L{
+			metrics.LabelCountry:    middleware.GetCountry(ctx),
+			metrics.LabelDeviceType: middleware.GetDeviceType(ctx),
+		})
+	}
+
+	// Every successful add (not just 0->1) fires item_added_to_cart.
+	metrics.Record(ctx, "item_added_to_cart", metrics.L{
+		keyProductID:            req.ProductID,
+		metrics.LabelCountry:    middleware.GetCountry(ctx),
+		metrics.LabelDeviceType: middleware.GetDeviceType(ctx),
+	})
 
 	slog.InfoContext(ctx, "Added item to cart", keyProductID, req.ProductID, "cart_owner", cartOwner)
 
@@ -121,6 +145,10 @@ func (s *CartService) RemoveItem(ctx context.Context, cartOwner string, isGuest 
 	if err := s.cartRepo.DeleteCartItem(ctx, pk, productID); err != nil {
 		return nil, err
 	}
+
+	metrics.Record(ctx, "cart_item_removed", metrics.L{
+		keyProductID: productID,
+	})
 
 	slog.InfoContext(ctx, "Removed item from cart", keyProductID, productID, "cart_owner", cartOwner)
 

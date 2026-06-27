@@ -149,33 +149,6 @@ aws dynamodb create-table \
 
 echo "Created handloom-audit table"
 
-# Analytics Table (Analytics data)
-aws dynamodb create-table \
-    --endpoint-url $ENDPOINT \
-    --region $REGION \
-    --table-name handloom-analytics \
-    --attribute-definitions \
-        AttributeName=PK,AttributeType=S \
-        AttributeName=SK,AttributeType=S \
-        AttributeName=GSI1PK,AttributeType=S \
-        AttributeName=GSI1SK,AttributeType=S \
-    --key-schema \
-        AttributeName=PK,KeyType=HASH \
-        AttributeName=SK,KeyType=RANGE \
-    --global-secondary-indexes \
-        "[
-            {
-                \"IndexName\": \"GSI1\",
-                \"KeySchema\": [{\"AttributeName\":\"GSI1PK\",\"KeyType\":\"HASH\"},{\"AttributeName\":\"GSI1SK\",\"KeyType\":\"RANGE\"}],
-                \"Projection\": {\"ProjectionType\":\"ALL\"},
-                \"ProvisionedThroughput\": {\"ReadCapacityUnits\": 5, \"WriteCapacityUnits\": 5}
-            }
-        ]" \
-    --provisioned-throughput ReadCapacityUnits=5,WriteCapacityUnits=5 \
-    2>/dev/null || echo "Table handloom-analytics already exists"
-
-echo "Created handloom-analytics table"
-
 # Sessions Table (OTP, admin refresh tokens, customer refresh tokens)
 aws dynamodb create-table \
     --endpoint-url $ENDPOINT \
@@ -191,23 +164,6 @@ aws dynamodb create-table \
     2>/dev/null || echo "Table handloom-sessions already exists"
 
 echo "Created handloom-sessions table"
-
-# Events table (raw event store)
-echo "Creating events table..."
-aws dynamodb create-table \
-    --endpoint-url $ENDPOINT \
-    --region $REGION \
-    --table-name handloom-events \
-    --attribute-definitions \
-        AttributeName=PK,AttributeType=S \
-        AttributeName=SK,AttributeType=S \
-    --key-schema \
-        AttributeName=PK,KeyType=HASH \
-        AttributeName=SK,KeyType=RANGE \
-    --provisioned-throughput ReadCapacityUnits=5,WriteCapacityUnits=5 \
-    2>/dev/null || echo "Table handloom-events already exists"
-
-echo "Created handloom-events table"
 
 # Enable TTL on sessions table (for OTP and refresh token expiry)
 aws dynamodb update-time-to-live \
@@ -248,16 +204,6 @@ aws dynamodb update-time-to-live \
     2>/dev/null || echo "TTL already enabled on handloom-orders"
 
 echo "Enabled TTL on handloom-orders table"
-
-# Enable TTL on events table (for raw event expiry)
-aws dynamodb update-time-to-live \
-    --table-name handloom-events \
-    --time-to-live-specification "Enabled=true, AttributeName=ttl" \
-    --endpoint-url $ENDPOINT \
-    --region $REGION \
-    2>/dev/null || echo "TTL already enabled on handloom-events"
-
-echo "Enabled TTL on handloom-events table"
 
 echo ""
 echo "All DynamoDB tables created successfully!"

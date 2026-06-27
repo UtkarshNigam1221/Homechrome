@@ -9,6 +9,8 @@ import (
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+
+	"github.com/handloom/admin/pkg/metrics/awsmiddleware"
 )
 
 // S3Client wraps the AWS S3 client with presigned URL support
@@ -38,6 +40,8 @@ func New(ctx context.Context, region string, endpoint string) (*S3Client, error)
 	if err != nil {
 		return nil, err
 	}
+
+	awsmiddleware.Instrument(&cfg)
 
 	var client *s3.Client
 	if endpoint != "" {

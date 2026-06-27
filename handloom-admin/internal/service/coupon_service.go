@@ -11,7 +11,11 @@ import (
 
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/pkg/errors"
+	"github.com/handloom/admin/pkg/metrics"
 )
+
+// coupon validation outcome label (repeated across validation branches).
+const outcomeInvalid = "invalid"
 
 // CouponService implements domain.CouponService
 type CouponService struct {
@@ -153,13 +157,32 @@ func (s *CouponService) List(ctx context.Context, req domain.ListCouponsRequest)
 
 // Validate validates a coupon for an order
 func (s *CouponService) Validate(ctx context.Context, code string, orderTotal int64, customerID string, productIDs []string) (*domain.CouponValidationResult, error) {
+	// Normalise the code label to keep metric cardinality bounded to real codes.
+	codeLabel := strings.ToUpper(strings.TrimSpace(code))
+	if codeLabel == "" {
+		codeLabel = "empty"
+	}
+
+	outcome := "valid"
+	defer func() {
+		label := codeLabel
+		if outcome != "valid" {
+			label = "rejected"
+		}
+		metrics.Record(ctx, "coupon_applied", metrics.L{
+			metrics.LabelCouponCode: label, metrics.LabelOutcome: outcome,
+		})
+	}()
+
 	coupon, _ := s.couponRepo.GetByCode(ctx, strings.ToUpper(code))
 	if coupon == nil {
+		outcome = outcomeInvalid
 		return s.invalidCouponResult(code, "Coupon not found"), nil
 	}
 
 	// Check status
 	if coupon.Status != domain.CouponStatusActive {
+		outcome = outcomeInvalid
 		return &domain.CouponValidationResult{
 			Valid:        false,
 			Code:         code,
@@ -170,6 +193,7 @@ func (s *CouponService) Validate(ctx context.Context, code string, orderTotal in
 	// Check validity dates
 	now := time.Now()
 	if now.Before(coupon.ValidFrom) {
+		outcome = outcomeInvalid
 		return &domain.CouponValidationResult{
 			Valid:        false,
 			Code:         code,
@@ -177,6 +201,7 @@ func (s *CouponService) Validate(ctx context.Context, code string, orderTotal in
 		}, nil
 	}
 	if now.After(coupon.ValidUntil) {
+		outcome = "expired"
 		return &domain.CouponValidationResult{
 			Valid:        false,
 			Code:         code,
@@ -186,6 +211,7 @@ func (s *CouponService) Validate(ctx context.Context, code string, orderTotal in
 
 	// Check minimum order value
 	if orderTotal < coupon.MinOrderValue {
+		outcome = outcomeInvalid
 		return &domain.CouponValidationResult{
 			Valid:        false,
 			Code:         code,
@@ -195,6 +221,7 @@ func (s *CouponService) Validate(ctx context.Context, code string, orderTotal in
 
 	// Check usage limits
 	if coupon.UsageLimit > 0 && coupon.UsageCount >= coupon.UsageLimit {
+		outcome = "limit_reached"
 		return &domain.CouponValidationResult{
 			Valid:        false,
 			Code:         code,
@@ -206,6 +233,7 @@ func (s *CouponService) Validate(ctx context.Context, code string, orderTotal in
 	if coupon.UsagePerUser > 0 && customerID != "" {
 		userUsageCount, err := s.couponRepo.GetUserUsageCount(ctx, coupon.ID, customerID)
 		if err == nil && userUsageCount >= coupon.UsagePerUser {
+			outcome = "limit_reached"
 			return &domain.CouponValidationResult{
 				Valid:        false,
 				Code:         code,

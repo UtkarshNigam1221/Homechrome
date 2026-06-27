@@ -6,7 +6,15 @@ import toast from 'react-hot-toast';
 import { categoriesApi } from '@/features/categories/api';
 import { getErrorMessage } from '@/shared/api/client';
 import { PageLoading } from '@/shared/components/loading';
-import { Badge, Button, Card, ConfirmModal, Input, Pagination } from '@/shared/components/ui';
+import {
+  Badge,
+  Button,
+  Card,
+  ConfirmModal,
+  Input,
+  PageHeader,
+  Pagination,
+} from '@/shared/components/ui';
 import { useCursorPagination, useDebounce } from '@/shared/hooks';
 import { getStatusBadgeVariant } from '@/shared/utils/badge';
 
@@ -75,15 +83,15 @@ export function CategoriesPage() {
   return (
     <div className="space-y-6">
       {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="page-title">Categories</h1>
-          <p className="page-subtitle">Manage your product categories</p>
-        </div>
-        <Button leftIcon={<Plus className="w-4 h-4" />} onClick={handleCreateNew}>
-          Add Category
-        </Button>
-      </div>
+      <PageHeader
+        title="Categories"
+        subtitle="Manage your product categories"
+        action={
+          <Button leftIcon={<Plus className="w-4 h-4" />} onClick={handleCreateNew}>
+            Add Category
+          </Button>
+        }
+      />
 
       {/* Search */}
       <Card padding="sm">

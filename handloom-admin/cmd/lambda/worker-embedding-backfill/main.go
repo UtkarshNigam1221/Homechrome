@@ -15,10 +15,9 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	pgvector "github.com/pgvector/pgvector-go"
 
-	"github.com/handloom/admin/internal/config"
+	"github.com/handloom/admin/internal/bootstrap"
 	"github.com/handloom/admin/internal/embedder"
 	"github.com/handloom/admin/internal/wire"
-	"github.com/handloom/admin/pkg/slogx"
 )
 
 // Request is the JSON payload posted by the GitHub Actions workflow.
@@ -45,12 +44,11 @@ const (
 )
 
 func main() {
-	cfg := config.Load()
-	slogx.Setup(cfg.App.Debug)
-	slog.Info("Starting worker-embedding-backfill Lambda")
+	bc := bootstrap.InitLambda("handloom-worker-embedding-backfill")
+	defer bc.Shutdown()
 
 	ctx := context.Background()
-	deps, err := wire.InitializeBackfillDeps(ctx, cfg)
+	deps, err := wire.InitializeBackfillDeps(ctx, bc.Cfg)
 	if err != nil {
 		slog.Error("init backfill deps", "err", err)
 		os.Exit(1)

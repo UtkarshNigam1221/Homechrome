@@ -2,7 +2,6 @@ package embedder
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"testing"
 
@@ -36,10 +35,10 @@ func TestSearcher_Hybrid_ReturnsKnownProduct(t *testing.T) {
 	_, err = pool.Exec(ctx, `DELETE FROM products WHERE id = $1`, id)
 	require.NoError(t, err)
 
-	_, err = pool.Exec(ctx, fmt.Sprintf(`
+	_, err = pool.Exec(ctx, `
 		INSERT INTO products (id, name, slug, sku, category_id, status, base_price, selling_price, embedding, embedding_updated_at, created_by, created_at, updated_at)
 		VALUES ($1, $2, $3, $4, $5, 'active', 10000, 10000, $6, now(), 'tester', now(), now())
-	`), id, "Silk Saree Test", "silk-saree-test-"+id, "TEST-SKU-"+id, catID, pgvector.NewVector(knownVec))
+	`, id, "Silk Saree Test", "silk-saree-test-"+id, "TEST-SKU-"+id, catID, pgvector.NewVector(knownVec))
 	require.NoError(t, err)
 	t.Cleanup(func() { _, _ = pool.Exec(ctx, `DELETE FROM products WHERE id = $1`, id) })
 

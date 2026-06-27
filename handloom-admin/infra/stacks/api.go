@@ -14,6 +14,7 @@ import (
 	"github.com/aws/aws-cdk-go/awscdk/v2/awslambdanodejs"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awslogs"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awss3assets"
+	"github.com/aws/aws-cdk-go/awscdk/v2/awssqs"
 	"github.com/aws/aws-cdk-go/awscdk/v2/awsssm"
 	"github.com/aws/constructs-go/constructs/v10"
 	"github.com/aws/jsii-runtime-go"
@@ -26,12 +27,33 @@ type APIStackProps struct {
 	DatabaseStack  *DatabaseStack
 	StorageStack   *StorageStack
 	LogsStack      *LogsStack     // Shared CloudWatch log groups (ApiLogGroup, WorkerLogGroup)
-	EventStack     *EventStack    // Optional: event-driven async infrastructure
 	EmbedderStack  *EmbedderStack // Optional: embedder Lambda for hybrid semantic search
+	MetricsQueue   awssqs.Queue   // Optional: PostgreSQL metrics pipeline SQS queue (publishers only)
 	BaseDomain     string         // Base domain (e.g. homechrome.in) — used for cookie domain
 	DomainName     string         // Optional: custom domain for API Gateway (e.g. dev-api.homechrome.in)
 	FrontendOrigin string         // Optional: frontend origin for CORS (e.g. https://dev-admin.homechrome.in)
 	CertArn        string         // Optional: ACM certificate ARN (us-east-1) for custom domain
+
+	// Non-secret gateway config, baked per-env in infra/cmd/config.go and
+	// injected into Lambda env. Secrets still come from the deploy shell.
+	PhonePeBaseURL          string
+	PhonePeCallbackURL      string
+	PhonePeRedirectURL      string
+	PhonePeClientVersion    string
+	MSG91BaseURL            string
+	MSG91OTPTemplateID      string
+	ShiprocketBaseURL       string
+	ShiprocketPickupPincode string
+
+	// Telemetry — community-published OTel Collector layer ARN + SSM parameter
+	// names for Grafana Cloud credentials. All three must be set together; if
+	// CollectorLayerArn is empty the applyTelemetry helper is a no-op.
+	// Use stacks.OtelCollectorLayerArn(region, "arm64") to compute the ARN.
+	CollectorLayerArn       string // Community OTel Collector layer ARN (account 184161586896)
+	GrafanaAuthSSMParam     string // Plain SSM String, e.g. /handloom/dev/grafana-otlp-auth
+	GrafanaEndpointSSMParam string // Plain SSM String, e.g. /handloom/dev/grafana-otlp-endpoint
+	// Both params are plain `String` type (not SecureString) because CFN
+	// forbids {{resolve:ssm-secure:...}} in Lambda env vars.
 }
 
 // ServiceLambda represents a Lambda function for a service
@@ -43,8 +65,10 @@ type ServiceLambda struct {
 // APIStack contains the API Gateway and Lambda functions
 type APIStack struct {
 	awscdk.Stack
-	API     awsapigateway.RestApi
-	Lambdas map[string]*ServiceLambda
+	API            awsapigateway.RestApi
+	Lambdas        map[string]*ServiceLambda
+	props          *APIStackProps
+	collectorLayer awslambda.ILayerVersion // imported once; nil when CollectorLayerArn is empty
 }
 
 // NewAPIStack creates a new API stack
@@ -56,6 +80,20 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 
 	stack := awscdk.NewStack(scope, &id, &sprops)
 	isProd := props.Environment == "prod"
+
+	// Initialise the receiver early so applyTelemetry can be called during
+	// construction (before API and Lambdas are fully populated).
+	apiStackRef := &APIStack{Stack: stack, props: props}
+
+	// Import the community OTel Collector layer once per stack. The otel.yaml
+	// is bundled into each Lambda's zip (see Makefile build-lambdas targets) and
+	// is read from /var/task/otel.yaml at runtime.
+	if props.CollectorLayerArn != "" {
+		apiStackRef.collectorLayer = awslambda.LayerVersion_FromLayerVersionArn(
+			stack, jsii.String("OtelCollectorLayer"),
+			jsii.String(props.CollectorLayerArn),
+		)
+	}
 
 	// Shared log groups come from LogsStack — single source of truth for
 	// retention + lifecycle.
@@ -104,9 +142,7 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 		"DYNAMODB_ORDERS_TABLE":        props.DatabaseStack.OrdersTable.TableName(),
 		"DYNAMODB_SESSIONS_TABLE":      props.DatabaseStack.SessionsTable.TableName(),
 		"DYNAMODB_AUDIT_TABLE":         props.DatabaseStack.AuditTable.TableName(),
-		"DYNAMODB_ANALYTICS_TABLE":     props.DatabaseStack.AnalyticsTable.TableName(),
 		"DYNAMODB_NOTIFICATIONS_TABLE": props.DatabaseStack.NotificationsTable.TableName(),
-		"DYNAMODB_EVENTS_TABLE":        props.DatabaseStack.EventsTable.TableName(),
 		"POSTGRES_DSN":                 props.DatabaseStack.PostgresDSN,
 		"S3_ASSETS_BUCKET":             assetsBucket.BucketName(),
 		"CDN_DOMAIN":                   jsii.String(props.StorageStack.CDNDomain),
@@ -129,29 +165,45 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 		commonEnv["COOKIE_DOMAIN"] = jsii.String("." + props.BaseDomain)
 	}
 
-	// Propagate gateway credentials from the deploy shell environment.
-	// Empty values fall through to each gateway's DevClient.
-	gatewayEnvKeys := []string{
-		// PhonePe
-		"PHONEPE_CLIENT_ID", "PHONEPE_CLIENT_SECRET", "PHONEPE_CLIENT_VERSION",
-		"PHONEPE_BASE_URL", "PHONEPE_CALLBACK_URL", "PHONEPE_REDIRECT_URL",
-		"PHONEPE_WEBHOOK_USERNAME", "PHONEPE_WEBHOOK_PASSWORD",
-		// MSG91 (SMS / OTP)
-		"MSG91_AUTH_KEY", "MSG91_OTP_TEMPLATE_ID", "MSG91_BASE_URL",
-		// Shiprocket
-		"SHIPROCKET_EMAIL", "SHIPROCKET_PASSWORD", "SHIPROCKET_BASE_URL",
-		"SHIPROCKET_PICKUP_PINCODE",
+	// Non-secret gateway config — baked per-env in infra/cmd/config.go, no
+	// deploy-time env var needed. Empty values fall through to each gateway's
+	// DevClient at runtime.
+	gatewayConfig := map[string]string{
+		"PHONEPE_BASE_URL":          props.PhonePeBaseURL,
+		"PHONEPE_CALLBACK_URL":      props.PhonePeCallbackURL,
+		"PHONEPE_REDIRECT_URL":      props.PhonePeRedirectURL,
+		"PHONEPE_CLIENT_VERSION":    props.PhonePeClientVersion,
+		"MSG91_BASE_URL":            props.MSG91BaseURL,
+		"MSG91_OTP_TEMPLATE_ID":     props.MSG91OTPTemplateID,
+		"SHIPROCKET_BASE_URL":       props.ShiprocketBaseURL,
+		"SHIPROCKET_PICKUP_PINCODE": props.ShiprocketPickupPincode,
 	}
-	for _, key := range gatewayEnvKeys {
+	for k, v := range gatewayConfig {
+		if v != "" {
+			commonEnv[k] = jsii.String(v)
+		}
+	}
+
+	// Gateway SECRETS — still propagated from the deploy shell (BACKEND_ENV_*
+	// secret + the MSG91_AUTH_KEY step secret). Empty → gateway DevClient.
+	gatewaySecretKeys := []string{
+		"PHONEPE_CLIENT_ID", "PHONEPE_CLIENT_SECRET",
+		"PHONEPE_WEBHOOK_USERNAME", "PHONEPE_WEBHOOK_PASSWORD",
+		"MSG91_AUTH_KEY",
+		"SHIPROCKET_EMAIL", "SHIPROCKET_PASSWORD",
+	}
+	for _, key := range gatewaySecretKeys {
 		if v := os.Getenv(key); v != "" {
 			commonEnv[key] = jsii.String(v)
 		}
 	}
 
-	// Add event publishing env vars when EventStack is available
-	if props.EventStack != nil {
-		commonEnv["SNS_TOPIC_ARN"] = props.EventStack.TopicARN
-		commonEnv["EVENT_PUBLISHING_ENABLED"] = jsii.String("true")
+	// Metrics pipeline (PostgreSQL-backed). When the MetricsStack is wired in,
+	// every Lambda gets the queue URL as env + IAM SendMessage permission
+	// (granted below in the per-service loop). bootstrap.InitLambda flips the
+	// default metrics publisher to SQSPublisher when METRICS_QUEUE_URL is set.
+	if props.MetricsQueue != nil {
+		commonEnv["METRICS_QUEUE_URL"] = props.MetricsQueue.QueueUrl()
 	}
 
 	// Memory sizes - optimized for AWS Free Tier
@@ -206,23 +258,27 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 			Name:     svc,
 		}
 
+		// Attach OTel Collector layer + telemetry env vars. The service name
+		// matches the cmd/lambda/<svc> directory so traces group correctly in
+		// Grafana. No-op when CollectorLayer is nil.
+		apiStackRef.applyTelemetry(lambdaFn, "handloom-"+svc)
+
 		// Grant permissions
 		props.DatabaseStack.CoreTable.GrantReadWriteData(lambdaFn)
 		props.DatabaseStack.OrdersTable.GrantReadWriteData(lambdaFn)
 		props.DatabaseStack.SessionsTable.GrantReadWriteData(lambdaFn)
 		props.DatabaseStack.AuditTable.GrantReadWriteData(lambdaFn)
-		props.DatabaseStack.AnalyticsTable.GrantReadWriteData(lambdaFn)
 		props.DatabaseStack.NotificationsTable.GrantReadWriteData(lambdaFn)
-		props.DatabaseStack.EventsTable.GrantReadWriteData(lambdaFn)
 		assetsBucket.GrantReadWrite(lambdaFn, nil)
 		// Every service Lambda may end up invoking the ImageResizer because
 		// AssetService is wired into product/category services (catalog Lambda)
 		// as well as the asset Lambda itself. Grant invoke to all.
 		imageResizer.GrantInvoke(lambdaFn)
 		// SSM JWT secrets resolved at deploy time via env vars above — no runtime read needed.
-		// Grant SNS publish permission when EventStack is available
-		if props.EventStack != nil {
-			props.EventStack.Topic.GrantPublish(lambdaFn)
+		// Grant SQS SendMessage to metrics queue when MetricsStack is wired in.
+		// Consumer Lambda lives in MetricsStack and owns ConsumeMessages there.
+		if props.MetricsQueue != nil {
+			props.MetricsQueue.GrantSendMessages(lambdaFn)
 		}
 	}
 
@@ -283,6 +339,9 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 				fmt.Sprintf("arn:aws:ssm:*:*:parameter/handloom/%s/postgres-dsn", props.Environment),
 			),
 		}))
+
+		// Attach OTel Collector layer + telemetry env to the backfill worker.
+		apiStackRef.applyTelemetry(backfillFn, "handloom-worker-embedding-backfill")
 
 		lambdas["embedding-backfill"] = &ServiceLambda{
 			Function: backfillFn,
@@ -350,11 +409,38 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 		ExportName:  jsii.String("handloom-api-id-" + props.Environment),
 	})
 
-	return &APIStack{
-		Stack:   stack,
-		API:     api,
-		Lambdas: lambdas,
+	apiStackRef.API = api
+	apiStackRef.Lambdas = lambdas
+	return apiStackRef
+}
+
+// applyTelemetry attaches the community OTel Collector layer + environment
+// variables to a Lambda function. serviceName is used as both the OTel
+// service.name attribute and the collector's service identification.
+// This is a no-op when CollectorLayerArn is empty so the stack degrades
+// gracefully when telemetry has not been configured.
+//
+// otel.yaml is expected to be bundled into each Lambda zip at /var/task/otel.yaml
+// (copied by the Makefile build-lambdas targets from infra/configs/otel-collector.yaml).
+func (s *APIStack) applyTelemetry(fn awslambda.Function, serviceName string) {
+	if s.props.CollectorLayerArn == "" {
+		return
 	}
+	fn.AddLayers(s.collectorLayer)
+	fn.AddEnvironment(jsii.String("OTEL_SERVICE_NAME"), jsii.String(serviceName), nil)
+	fn.AddEnvironment(jsii.String("OTEL_RESOURCE_ATTRIBUTES"),
+		jsii.String("deployment.environment="+s.props.Environment+",service.namespace=handloom"), nil)
+	fn.AddEnvironment(jsii.String("OTEL_EXPORTER_OTLP_PROTOCOL"), jsii.String("grpc"), nil)
+	// OTel gRPC exporter wants bare host:port, NOT a URL with scheme.
+	// "http://localhost:4317" gets parsed as host="http", port="//localhost:4317:443".
+	fn.AddEnvironment(jsii.String("OTEL_EXPORTER_OTLP_ENDPOINT"), jsii.String("localhost:4317"), nil)
+	fn.AddEnvironment(jsii.String("AWS_LAMBDA_EXEC_WRAPPER"), jsii.String("/opt/otel-handler"), nil)
+	fn.AddEnvironment(jsii.String("OPENTELEMETRY_COLLECTOR_CONFIG_URI"),
+		jsii.String("/var/task/otel.yaml"), nil) // yaml bundled into Lambda zip, not baked into layer
+	fn.AddEnvironment(jsii.String("GRAFANA_OTLP_ENDPOINT"),
+		jsii.String("{{resolve:ssm:"+s.props.GrafanaEndpointSSMParam+"}}"), nil)
+	fn.AddEnvironment(jsii.String("GRAFANA_OTLP_AUTH"),
+		jsii.String("{{resolve:ssm:"+s.props.GrafanaAuthSSMParam+"}}"), nil)
 }
 
 func createServiceLambda(

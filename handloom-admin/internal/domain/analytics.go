@@ -1,7 +1,6 @@
 package domain
 
 import (
-	"context"
 	"time"
 )
 
@@ -160,100 +159,9 @@ type EngagementAnalytics struct {
 	TopPages           []PageStats        `json:"top_pages"`
 }
 
-// ==================== ANALYTICS REPOSITORY ====================
-
-// AnalyticsRepository defines the interface for analytics data access
-type AnalyticsRepository interface {
-	// GetDashboardStats retrieves overall dashboard statistics
-	GetDashboardStats(ctx context.Context) (*DashboardStats, error)
-
-	// GetSalesAnalytics retrieves sales analytics for a period
-	GetSalesAnalytics(ctx context.Context, period string, startDate, endDate time.Time) (*SalesAnalytics, error)
-
-	// GetTopProducts retrieves top selling products
-	GetTopProducts(ctx context.Context, limit int, startDate, endDate time.Time) ([]TopProduct, error)
-
-	// GetTopCategories retrieves top performing categories
-	GetTopCategories(ctx context.Context, limit int, startDate, endDate time.Time) ([]TopCategory, error)
-
-	// GetCustomerAnalytics retrieves customer analytics
-	GetCustomerAnalytics(ctx context.Context, startDate, endDate time.Time) (*CustomerAnalytics, error)
-
-	// GetInventoryAnalytics retrieves inventory analytics
-	GetInventoryAnalytics(ctx context.Context) (*InventoryAnalytics, error)
-
-	// RecordPageView records a page view for analytics
-	RecordPageView(ctx context.Context, page string, userID string) error
-
-	// RecordEvent records a custom event
-	RecordEvent(ctx context.Context, eventType string, data map[string]interface{}) error
-
-	// IncrementDashboardCounter atomically increments a counter field on the DASHBOARD#CURRENT item
-	IncrementDashboardCounter(ctx context.Context, field string, amount int64) error
-
-	// PutDailyAggregate writes a pre-computed daily aggregate record to the analytics table
-	PutDailyAggregate(ctx context.Context, pk string, sk string, data interface{}) error
-
-	// PutDailyStats archives the current dashboard counters as a historical record for the given date
-	PutDailyStats(ctx context.Context, date string, stats *DashboardStats) error
-
-	// ResetDashboardCurrent resets all dashboard counters by deleting the DASHBOARD#CURRENT item
-	ResetDashboardCurrent(ctx context.Context) error
-
-	// GetDailyAggregates retrieves pre-computed daily aggregate records for a prefix and date range
-	GetDailyAggregates(ctx context.Context, prefix string, startDate string, endDate string) ([]map[string]interface{}, error)
-}
-
-// ==================== ANALYTICS SERVICE ====================
-
-// AnalyticsService defines the interface for analytics operations
-type AnalyticsService interface {
-	// GetDashboardStats retrieves overall dashboard statistics
-	GetDashboardStats(ctx context.Context) (*DashboardStats, error)
-
-	// GetSalesAnalytics retrieves sales analytics for a period
-	GetSalesAnalytics(ctx context.Context, req SalesAnalyticsRequest) (*SalesAnalytics, error)
-
-	// GetTopProducts retrieves top selling products
-	GetTopProducts(ctx context.Context, limit int, startDate, endDate time.Time) ([]TopProduct, error)
-
-	// GetTopCategories retrieves top performing categories
-	GetTopCategories(ctx context.Context, limit int, startDate, endDate time.Time) ([]TopCategory, error)
-
-	// GetCustomerAnalytics retrieves customer analytics
-	GetCustomerAnalytics(ctx context.Context, startDate, endDate time.Time) (*CustomerAnalytics, error)
-
-	// GetInventoryAnalytics retrieves inventory analytics
-	GetInventoryAnalytics(ctx context.Context) (*InventoryAnalytics, error)
-
-	// GetFunnelAnalytics retrieves conversion funnel analytics for a date range
-	GetFunnelAnalytics(ctx context.Context, startDate, endDate string) (*FunnelAnalytics, error)
-
-	// GetEngagementAnalytics retrieves user engagement analytics for a date range
-	GetEngagementAnalytics(ctx context.Context, startDate, endDate string) (*EngagementAnalytics, error)
-}
-
-// SalesAnalyticsRequest contains parameters for sales analytics
-type SalesAnalyticsRequest struct {
-	Period    string    `json:"period"` // daily, weekly, monthly
-	StartDate time.Time `json:"start_date"`
-	EndDate   time.Time `json:"end_date"`
-}
-
 // DailySales represents daily sales data
 type DailySales struct {
 	Date   string `json:"date"`
 	Sales  int64  `json:"sales"`
 	Orders int    `json:"orders"`
-}
-
-// DailyStats represents daily statistics snapshot
-type DailyStats struct {
-	ID        string    `json:"id"`
-	Date      string    `json:"date"`
-	Orders    int       `json:"orders"`
-	Revenue   int64     `json:"revenue"`
-	Customers int       `json:"customers"`
-	Products  int       `json:"products"`
-	CreatedAt time.Time `json:"created_at"`
 }

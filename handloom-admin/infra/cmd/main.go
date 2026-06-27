@@ -22,6 +22,9 @@ func main() {
 	if !ok {
 		panic(fmt.Sprintf("unknown environment: %s (valid: dev, prod)", environment))
 	}
+	if err := cfg.validate(environment); err != nil {
+		panic(err)
+	}
 
 	postgresDSN := getPostgresDSN(app)
 
@@ -64,21 +67,27 @@ func main() {
 		Environment: environment,
 	})
 
-	// DISABLED: Event stack (SNS + SQS + 4 worker Lambdas + EventBridge rule)
-	// Uncomment below to re-enable event-driven workers.
-	// eventStack := stacks.NewEventStack(app, "HandloomEventStack-"+environment, &stacks.EventStackProps{
-	// 	StackProps: awscdk.StackProps{
-	// 		Env:         env,
-	// 		Description: jsii.String("Handloom Admin - Event-driven async infrastructure (" + environment + ")"),
-	// 		Tags: &map[string]*string{
-	// 			"Environment": jsii.String(environment),
-	// 			"Project":     jsii.String("handloom-admin"),
-	// 			"ManagedBy":   jsii.String("cdk"),
-	// 		},
-	// 	},
-	// 	Environment:   environment,
-	// 	DatabaseStack: databaseStack,
-	// })
+	// Resolve the community-published OTel Collector layer ARN for ap-south-1 / arm64.
+	// No separate TelemetryStack needed — the layer is maintained by the OpenTelemetry
+	// community and imported directly. See stacks.OtelCollectorLayerArn for version notes.
+	collectorArn := stacks.OtelCollectorLayerArn("ap-south-1", "arm64")
+
+	// Metrics stack first so its queue handle can be wired into both the
+	// embedder Lambda and the per-service Lambdas behind APIStack for
+	// SendMessage + METRICS_QUEUE_URL env injection.
+	metricsStack := stacks.NewMetricsStack(app, "HandloomMetricsStack-"+environment, &stacks.MetricsStackProps{
+		StackProps: awscdk.StackProps{
+			Env:         env,
+			Description: jsii.String("Handloom Admin - Metrics SQS + consumer Lambda (" + environment + ")"),
+			Tags:        commonTags,
+		},
+		Environment:             environment,
+		DatabaseStack:           databaseStack,
+		LogsStack:               logsStack,
+		CollectorLayerArn:       collectorArn,
+		GrafanaAuthSSMParam:     "/handloom/" + environment + "/grafana-otlp-auth",
+		GrafanaEndpointSSMParam: "/handloom/" + environment + "/grafana-otlp-endpoint",
+	})
 
 	// Embedder Lambda stack — image built inline from cmd/embedder/Dockerfile
 	// via CDK's Code_FromAssetImage. CDK pushes the resulting image to its
@@ -95,24 +104,37 @@ func main() {
 		StoreFrontHost: cfg.StoreFrontHost,
 		DatabaseStack:  databaseStack,
 		LogsStack:      logsStack,
+		MetricsStack:   metricsStack,
 	})
-	// API stack (depends on database, storage, and events)
+
+	// API stack (depends on database, storage, metrics, and telemetry)
 	stacks.NewAPIStack(app, "HandloomAPIStack-"+environment, &stacks.APIStackProps{
 		StackProps: awscdk.StackProps{
 			Env:         env,
 			Description: jsii.String("Handloom Admin - API and Lambda functions (" + environment + ")"),
 			Tags:        commonTags,
 		},
-		Environment:    environment,
-		DatabaseStack:  databaseStack,
-		StorageStack:   storageStack,
-		LogsStack:      logsStack,
-		EventStack:     nil,      // DISABLED: pass eventStack here when re-enabling
-		EmbedderStack:  embStack, // Embedder for hybrid semantic search
-		BaseDomain:     cfg.BaseDomain,
-		DomainName:     cfg.DomainName,
-		FrontendOrigin: cfg.FrontendOrigin,
-		CertArn:        cfg.CertArn,
+		Environment:             environment,
+		DatabaseStack:           databaseStack,
+		StorageStack:            storageStack,
+		LogsStack:               logsStack,
+		EmbedderStack:           embStack,           // Embedder for hybrid semantic search
+		MetricsQueue:            metricsStack.Queue, // PG-backed metrics pipeline
+		BaseDomain:              cfg.BaseDomain,
+		DomainName:              cfg.DomainName,
+		FrontendOrigin:          cfg.FrontendOrigin,
+		CertArn:                 cfg.CertArn,
+		PhonePeBaseURL:          cfg.PhonePeBaseURL,
+		PhonePeCallbackURL:      cfg.PhonePeCallbackURL,
+		PhonePeRedirectURL:      cfg.PhonePeRedirectURL,
+		PhonePeClientVersion:    cfg.PhonePeClientVersion,
+		MSG91BaseURL:            cfg.MSG91BaseURL,
+		MSG91OTPTemplateID:      cfg.MSG91OTPTemplateID,
+		ShiprocketBaseURL:       cfg.ShiprocketBaseURL,
+		ShiprocketPickupPincode: cfg.ShiprocketPickupPincode,
+		CollectorLayerArn:       collectorArn,
+		GrafanaAuthSSMParam:     "/handloom/" + environment + "/grafana-otlp-auth",
+		GrafanaEndpointSSMParam: "/handloom/" + environment + "/grafana-otlp-endpoint",
 	})
 
 	app.Synth(nil)

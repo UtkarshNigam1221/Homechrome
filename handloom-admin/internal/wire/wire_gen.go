@@ -13,6 +13,7 @@ import (
 	"github.com/handloom/admin/internal/handler"
 	"github.com/handloom/admin/internal/handler/store"
 	"github.com/handloom/admin/internal/middleware"
+	"github.com/handloom/admin/internal/worker/metrics"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -84,16 +85,12 @@ func InitializeCatalogDeps(ctx context.Context, cfg *config.Config) (*CatalogDep
 	validation := ProvideValidation(service)
 	categoryHandler := ProvideCategoryHandler(categoryService, validation)
 	inventoryRepository := ProvideInventoryRepository(pool)
-	eventPublisher, err := ProvideEventPublisher(ctx, cfg)
-	if err != nil {
-		return nil, err
-	}
 	client, err := ProvideEmbedderClient(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}
-	productService := ProvideProductService(productRepository, categoryRepository, inventoryRepository, assetService, eventPublisher, client)
-	inventoryService := ProvideInventoryService(inventoryRepository, eventPublisher)
+	productService := ProvideProductService(productRepository, categoryRepository, inventoryRepository, assetService, client)
+	inventoryService := ProvideInventoryService(inventoryRepository)
 	productHandler := ProvideProductHandler(productService, inventoryService, validation)
 	dynamodbClient, err := ProvideDynamoDBClient(ctx, cfg)
 	if err != nil {
@@ -136,11 +133,7 @@ func InitializeOrderDeps(ctx context.Context, cfg *config.Config) (*OrderDeps, e
 	cartRepository := ProvideCartRepository(client)
 	cartService := ProvideCartService(cartRepository, productRepository, inventoryRepository)
 	gateway := ProvidePhonePeGateway(cfg)
-	eventPublisher, err := ProvideEventPublisher(ctx, cfg)
-	if err != nil {
-		return nil, err
-	}
-	paymentService := ProvidePaymentService(paymentRepository, orderRepository, inventoryRepository, cartService, gateway, eventPublisher)
+	paymentService := ProvidePaymentService(paymentRepository, orderRepository, inventoryRepository, cartService, customerRepository, gateway)
 	service := ProvideValidator()
 	validation := ProvideValidation(service)
 	orderHandler := ProvideOrderHandler(orderService, paymentService, validation)
@@ -196,11 +189,7 @@ func InitializeInventoryDeps(ctx context.Context, cfg *config.Config) (*Inventor
 		return nil, err
 	}
 	inventoryRepository := ProvideInventoryRepository(pool)
-	eventPublisher, err := ProvideEventPublisher(ctx, cfg)
-	if err != nil {
-		return nil, err
-	}
-	inventoryService := ProvideInventoryService(inventoryRepository, eventPublisher)
+	inventoryService := ProvideInventoryService(inventoryRepository)
 	inventoryHandler := ProvideInventoryHandler(inventoryService)
 	client, err := ProvideDynamoDBClient(ctx, cfg)
 	if err != nil {
@@ -216,34 +205,6 @@ func InitializeInventoryDeps(ctx context.Context, cfg *config.Config) (*Inventor
 		AuthMiddleware: auth,
 	}
 	return inventoryDeps, nil
-}
-
-// InitializeAnalyticsDeps creates Analytics Lambda dependencies
-func InitializeAnalyticsDeps(ctx context.Context, cfg *config.Config) (*AnalyticsDeps, error) {
-	client, err := ProvideDynamoDBClient(ctx, cfg)
-	if err != nil {
-		return nil, err
-	}
-	analyticsRepository := ProvideAnalyticsRepository(client)
-	orderRepository := ProvideOrderRepository(client)
-	pool, err := ProvidePostgresPool(ctx, cfg)
-	if err != nil {
-		return nil, err
-	}
-	productRepository := ProvideProductRepository(pool)
-	inventoryRepository := ProvideInventoryRepository(pool)
-	analyticsService := ProvideAnalyticsService(analyticsRepository, orderRepository, productRepository, inventoryRepository)
-	analyticsHandler := ProvideAnalyticsHandler(analyticsService)
-	userRepository := ProvideUserRepository(client)
-	tokenStore := ProvideTokenStore(client)
-	authService := ProvideAuthService(userRepository, tokenStore, cfg)
-	auth := ProvideAuthMiddleware(authService)
-	analyticsDeps := &AnalyticsDeps{
-		Config:         cfg,
-		Handler:        analyticsHandler,
-		AuthMiddleware: auth,
-	}
-	return analyticsDeps, nil
 }
 
 // InitializeNotificationDeps creates Notification Lambda dependencies
@@ -351,20 +312,14 @@ func InitializeReportDeps(ctx context.Context, cfg *config.Config) (*ReportDeps,
 		return nil, err
 	}
 	assetService := ProvideAssetService(s3Client, lambdaClient, cfg)
-	eventPublisher, err := ProvideEventPublisher(ctx, cfg)
-	if err != nil {
-		return nil, err
-	}
 	embedderClient, err := ProvideEmbedderClient(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}
-	productService := ProvideProductService(productRepository, categoryRepository, inventoryRepository, assetService, eventPublisher, embedderClient)
+	productService := ProvideProductService(productRepository, categoryRepository, inventoryRepository, assetService, embedderClient)
 	customerService := ProvideCustomerService(customerRepository, orderRepository)
-	inventoryService := ProvideInventoryService(inventoryRepository, eventPublisher)
-	analyticsRepository := ProvideAnalyticsRepository(client)
-	analyticsService := ProvideAnalyticsService(analyticsRepository, orderRepository, productRepository, inventoryRepository)
-	reportService := ProvideReportService(reportRepository, orderService, productService, customerService, inventoryService, analyticsService)
+	inventoryService := ProvideInventoryService(inventoryRepository)
+	reportService := ProvideReportService(reportRepository, orderService, productService, customerService, inventoryService)
 	service := ProvideValidator()
 	validation := ProvideValidation(service)
 	reportHandler := ProvideReportHandler(reportService, validation)
@@ -410,11 +365,7 @@ func InitializeStoreAuthDeps(ctx context.Context, cfg *config.Config) (*StoreAut
 	otpRepository := ProvideOTPRepository(client)
 	customerRepository := ProvideCustomerRepository(client)
 	customerTokenStore := ProvideCustomerTokenStore(client)
-	eventPublisher, err := ProvideEventPublisher(ctx, cfg)
-	if err != nil {
-		return nil, err
-	}
-	customerAuthService := ProvideCustomerAuthService(otpRepository, customerRepository, customerTokenStore, eventPublisher, cfg)
+	customerAuthService := ProvideCustomerAuthService(otpRepository, customerRepository, customerTokenStore, cfg)
 	cartRepository := ProvideCartRepository(client)
 	pool, err := ProvidePostgresPool(ctx, cfg)
 	if err != nil {
@@ -453,17 +404,13 @@ func InitializeStoreCatalogDeps(ctx context.Context, cfg *config.Config) (*Store
 		return nil, err
 	}
 	assetService := ProvideAssetService(s3Client, lambdaClient, cfg)
-	eventPublisher, err := ProvideEventPublisher(ctx, cfg)
-	if err != nil {
-		return nil, err
-	}
 	client, err := ProvideEmbedderClient(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}
-	productService := ProvideProductService(productRepository, categoryRepository, inventoryRepository, assetService, eventPublisher, client)
+	productService := ProvideProductService(productRepository, categoryRepository, inventoryRepository, assetService, client)
 	categoryService := ProvideCategoryService(categoryRepository, productRepository, assetService)
-	inventoryService := ProvideInventoryService(inventoryRepository, eventPublisher)
+	inventoryService := ProvideInventoryService(inventoryRepository)
 	catalogHandler := ProvideStoreCatalogHandler(productService, categoryService, inventoryService)
 	storeCatalogDeps := &StoreCatalogDeps{
 		Config:  cfg,
@@ -492,11 +439,7 @@ func InitializeStoreCartDeps(ctx context.Context, cfg *config.Config) (*StoreCar
 	otpRepository := ProvideOTPRepository(client)
 	customerRepository := ProvideCustomerRepository(client)
 	customerTokenStore := ProvideCustomerTokenStore(client)
-	eventPublisher, err := ProvideEventPublisher(ctx, cfg)
-	if err != nil {
-		return nil, err
-	}
-	customerAuthService := ProvideCustomerAuthService(otpRepository, customerRepository, customerTokenStore, eventPublisher, cfg)
+	customerAuthService := ProvideCustomerAuthService(otpRepository, customerRepository, customerTokenStore, cfg)
 	optionalCartAuth := ProvideOptionalCartAuth(customerAuthService)
 	storeCartDeps := &StoreCartDeps{
 		Config:           cfg,
@@ -522,22 +465,18 @@ func InitializeStoreCheckoutDeps(ctx context.Context, cfg *config.Config) (*Stor
 	cartService := ProvideCartService(cartRepository, productRepository, inventoryRepository)
 	orderRepository := ProvideOrderRepository(client)
 	paymentRepository := ProvidePaymentRepository(client)
+	customerRepository := ProvideCustomerRepository(client)
 	gateway := ProvidePhonePeGateway(cfg)
-	eventPublisher, err := ProvideEventPublisher(ctx, cfg)
-	if err != nil {
-		return nil, err
-	}
-	paymentService := ProvidePaymentService(paymentRepository, orderRepository, inventoryRepository, cartService, gateway, eventPublisher)
+	paymentService := ProvidePaymentService(paymentRepository, orderRepository, inventoryRepository, cartService, customerRepository, gateway)
 	shipmentRepository := ProvideShipmentRepository(client)
 	shippingService := ProvideShippingService(shipmentRepository, orderRepository, cfg)
-	customerRepository := ProvideCustomerRepository(client)
-	checkoutService := ProvideCheckoutService(cartService, orderRepository, paymentService, shippingService, inventoryRepository, customerRepository, eventPublisher)
+	checkoutService := ProvideCheckoutService(cartService, orderRepository, paymentService, shippingService, inventoryRepository, customerRepository)
 	service := ProvideValidator()
 	validation := ProvideValidation(service)
 	checkoutHandler := ProvideStoreCheckoutHandler(checkoutService, validation)
 	otpRepository := ProvideOTPRepository(client)
 	customerTokenStore := ProvideCustomerTokenStore(client)
-	customerAuthService := ProvideCustomerAuthService(otpRepository, customerRepository, customerTokenStore, eventPublisher, cfg)
+	customerAuthService := ProvideCustomerAuthService(otpRepository, customerRepository, customerTokenStore, cfg)
 	customerAuth := ProvideCustomerAuthMiddleware(customerAuthService)
 	storeCheckoutDeps := &StoreCheckoutDeps{
 		Config:                 cfg,
@@ -569,11 +508,7 @@ func InitializeStoreOrdersDeps(ctx context.Context, cfg *config.Config) (*StoreO
 	orderHandler := ProvideStoreOrderHandler(orderService, orderRepository)
 	otpRepository := ProvideOTPRepository(client)
 	customerTokenStore := ProvideCustomerTokenStore(client)
-	eventPublisher, err := ProvideEventPublisher(ctx, cfg)
-	if err != nil {
-		return nil, err
-	}
-	customerAuthService := ProvideCustomerAuthService(otpRepository, customerRepository, customerTokenStore, eventPublisher, cfg)
+	customerAuthService := ProvideCustomerAuthService(otpRepository, customerRepository, customerTokenStore, cfg)
 	customerAuth := ProvideCustomerAuthMiddleware(customerAuthService)
 	storeOrdersDeps := &StoreOrdersDeps{
 		Config:                 cfg,
@@ -611,11 +546,7 @@ func InitializeStoreProfileDeps(ctx context.Context, cfg *config.Config) (*Store
 	profileHandler := ProvideStoreProfileHandler(customerRepository, validation)
 	otpRepository := ProvideOTPRepository(client)
 	customerTokenStore := ProvideCustomerTokenStore(client)
-	eventPublisher, err := ProvideEventPublisher(ctx, cfg)
-	if err != nil {
-		return nil, err
-	}
-	customerAuthService := ProvideCustomerAuthService(otpRepository, customerRepository, customerTokenStore, eventPublisher, cfg)
+	customerAuthService := ProvideCustomerAuthService(otpRepository, customerRepository, customerTokenStore, cfg)
 	customerAuth := ProvideCustomerAuthMiddleware(customerAuthService)
 	storeProfileDeps := &StoreProfileDeps{
 		Config:                 cfg,
@@ -641,12 +572,9 @@ func InitializeStoreWebhooksDeps(ctx context.Context, cfg *config.Config) (*Stor
 	cartRepository := ProvideCartRepository(client)
 	productRepository := ProvideProductRepository(pool)
 	cartService := ProvideCartService(cartRepository, productRepository, inventoryRepository)
+	customerRepository := ProvideCustomerRepository(client)
 	gateway := ProvidePhonePeGateway(cfg)
-	eventPublisher, err := ProvideEventPublisher(ctx, cfg)
-	if err != nil {
-		return nil, err
-	}
-	paymentService := ProvidePaymentService(paymentRepository, orderRepository, inventoryRepository, cartService, gateway, eventPublisher)
+	paymentService := ProvidePaymentService(paymentRepository, orderRepository, inventoryRepository, cartService, customerRepository, gateway)
 	webhookHandler := ProvideStoreWebhookHandler(paymentService, gateway, cfg)
 	storeWebhooksDeps := &StoreWebhooksDeps{
 		Config:  cfg,
@@ -655,17 +583,19 @@ func InitializeStoreWebhooksDeps(ctx context.Context, cfg *config.Config) (*Stor
 	return storeWebhooksDeps, nil
 }
 
-// InitializeStoreEventsDeps creates Store Events Lambda dependencies
+// InitializeStoreEventsDeps creates Store Events Lambda dependencies.
+// Needs PG for lazy-upsert into city_centroids on first sighting of a
+// (city, country) pair. Metric counters themselves still flow via the
+// SQS publisher initialised in bootstrap.
 func InitializeStoreEventsDeps(ctx context.Context, cfg *config.Config) (*StoreEventsDeps, error) {
-	client, err := ProvideDynamoDBClient(ctx, cfg)
+	service := ProvideValidator()
+	validation := ProvideValidation(service)
+	pool, err := ProvidePostgresPool(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}
-	eventsRepository := ProvideEventsRepository(client)
-	analyticsRepository := ProvideAnalyticsRepository(client)
-	service := ProvideValidator()
-	validation := ProvideValidation(service)
-	eventsHandler := ProvideStoreEventsHandler(eventsRepository, analyticsRepository, validation)
+	centroidsRepository := ProvideCentroidsRepository(pool)
+	eventsHandler := ProvideStoreEventsHandler(validation, centroidsRepository)
 	storeEventsDeps := &StoreEventsDeps{
 		Config:  cfg,
 		Handler: eventsHandler,
@@ -674,7 +604,6 @@ func InitializeStoreEventsDeps(ctx context.Context, cfg *config.Config) (*StoreE
 }
 
 // InitializeMonolithDeps wires the full monolith dependency graph.
-// Uses MonolithPublisherSet so events dispatch in-process via LocalPublisher.
 func InitializeMonolithDeps(ctx context.Context, cfg *config.Config) (*MonolithDeps, error) {
 	pool, err := ProvidePostgresPool(ctx, cfg)
 	if err != nil {
@@ -706,20 +635,12 @@ func InitializeMonolithDeps(ctx context.Context, cfg *config.Config) (*MonolithD
 	categoryService := ProvideCategoryService(categoryRepository, productRepository, assetService)
 	categoryHandler := ProvideCategoryHandler(categoryService, validation)
 	inventoryRepository := ProvideInventoryRepository(pool)
-	notificationHandler := ProvideNotificationEventHandler()
-	reportHandler := ProvideReportEventHandler()
-	eventsRepository := ProvideEventsRepository(client)
-	analyticsRepository := ProvideAnalyticsRepository(client)
-	analyticsAggregator := ProvideAnalyticsAggregator(eventsRepository, analyticsRepository)
-	analyticsHandler := ProvideAnalyticsEventHandler(eventsRepository, analyticsRepository, analyticsAggregator)
-	auditHandler := ProvideAuditEventHandler()
-	eventPublisher := ProvideLocalEventPublisher(notificationHandler, reportHandler, analyticsHandler, auditHandler)
 	embedderClient, err := ProvideEmbedderClient(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}
-	productService := ProvideProductService(productRepository, categoryRepository, inventoryRepository, assetService, eventPublisher, embedderClient)
-	inventoryService := ProvideInventoryService(inventoryRepository, eventPublisher)
+	productService := ProvideProductService(productRepository, categoryRepository, inventoryRepository, assetService, embedderClient)
+	inventoryService := ProvideInventoryService(inventoryRepository)
 	productHandler := ProvideProductHandler(productService, inventoryService, validation)
 	inventoryHandler := ProvideInventoryHandler(inventoryService)
 	pricingRuleRepository := ProvidePricingRuleRepository(client)
@@ -733,40 +654,39 @@ func InitializeMonolithDeps(ctx context.Context, cfg *config.Config) (*MonolithD
 	cartRepository := ProvideCartRepository(client)
 	cartService := ProvideCartService(cartRepository, productRepository, inventoryRepository)
 	gateway := ProvidePhonePeGateway(cfg)
-	paymentService := ProvidePaymentService(paymentRepository, orderRepository, inventoryRepository, cartService, gateway, eventPublisher)
+	paymentService := ProvidePaymentService(paymentRepository, orderRepository, inventoryRepository, cartService, customerRepository, gateway)
 	orderHandler := ProvideOrderHandler(orderService, paymentService, validation)
 	customerService := ProvideCustomerService(customerRepository, orderRepository)
 	customerHandler := ProvideCustomerHandler(customerService, validation)
 	auditRepository := ProvideAuditRepository(client)
 	auditService := ProvideAuditService(auditRepository)
-	handlerAuditHandler := ProvideAuditHandler(auditService)
+	auditHandler := ProvideAuditHandler(auditService)
 	notificationRepository := ProvideNotificationRepository(client)
 	notificationService := ProvideNotificationService(notificationRepository, userRepository)
-	handlerNotificationHandler := ProvideNotificationHandler(notificationService, validation)
+	notificationHandler := ProvideNotificationHandler(notificationService, validation)
 	couponRepository := ProvideCouponRepository(client)
 	couponService := ProvideCouponService(couponRepository)
 	couponHandler := ProvideCouponHandler(couponService, validation)
-	analyticsService := ProvideAnalyticsService(analyticsRepository, orderRepository, productRepository, inventoryRepository)
-	handlerAnalyticsHandler := ProvideAnalyticsHandler(analyticsService)
 	assetHandler := ProvideAssetHandler(assetService, validation)
 	reportRepository := ProvideReportRepository(client)
-	reportService := ProvideReportService(reportRepository, orderService, productService, customerService, inventoryService, analyticsService)
-	handlerReportHandler := ProvideReportHandler(reportService, validation)
+	reportService := ProvideReportService(reportRepository, orderService, productService, customerService, inventoryService)
+	reportHandler := ProvideReportHandler(reportService, validation)
 	otpRepository := ProvideOTPRepository(client)
 	customerTokenStore := ProvideCustomerTokenStore(client)
-	customerAuthService := ProvideCustomerAuthService(otpRepository, customerRepository, customerTokenStore, eventPublisher, cfg)
+	customerAuthService := ProvideCustomerAuthService(otpRepository, customerRepository, customerTokenStore, cfg)
 	storeAuthHandler := ProvideStoreAuthHandler(customerAuthService, cartService, validation)
 	catalogHandler := ProvideStoreCatalogHandler(productService, categoryService, inventoryService)
 	cartHandler := ProvideStoreCartHandler(cartService, validation)
 	shipmentRepository := ProvideShipmentRepository(client)
 	shippingService := ProvideShippingService(shipmentRepository, orderRepository, cfg)
-	checkoutService := ProvideCheckoutService(cartService, orderRepository, paymentService, shippingService, inventoryRepository, customerRepository, eventPublisher)
+	checkoutService := ProvideCheckoutService(cartService, orderRepository, paymentService, shippingService, inventoryRepository, customerRepository)
 	checkoutHandler := ProvideStoreCheckoutHandler(checkoutService, validation)
 	storeOrderHandler := ProvideStoreOrderHandler(orderService, orderRepository)
 	trackingHandler := ProvideStoreTrackingHandler(orderRepository, shipmentRepository)
 	profileHandler := ProvideStoreProfileHandler(customerRepository, validation)
 	webhookHandler := ProvideStoreWebhookHandler(paymentService, gateway, cfg)
-	eventsHandler := ProvideStoreEventsHandler(eventsRepository, analyticsRepository, validation)
+	centroidsRepository := ProvideCentroidsRepository(pool)
+	eventsHandler := ProvideStoreEventsHandler(validation, centroidsRepository)
 	auth := ProvideAuthMiddleware(authService)
 	customerAuth := ProvideCustomerAuthMiddleware(customerAuthService)
 	optionalCartAuth := ProvideOptionalCartAuth(customerAuthService)
@@ -780,12 +700,11 @@ func InitializeMonolithDeps(ctx context.Context, cfg *config.Config) (*MonolithD
 		PricingHandler:         pricingHandler,
 		OrderHandler:           orderHandler,
 		CustomerHandler:        customerHandler,
-		AuditHandler:           handlerAuditHandler,
-		NotificationHandler:    handlerNotificationHandler,
+		AuditHandler:           auditHandler,
+		NotificationHandler:    notificationHandler,
 		CouponHandler:          couponHandler,
-		AnalyticsHandler:       handlerAnalyticsHandler,
 		AssetHandler:           assetHandler,
-		ReportHandler:          handlerReportHandler,
+		ReportHandler:          reportHandler,
 		StoreAuthHandler:       storeAuthHandler,
 		StoreCatalogHandler:    catalogHandler,
 		StoreCartHandler:       cartHandler,
@@ -818,6 +737,21 @@ func InitializeBackfillDeps(ctx context.Context, cfg *config.Config) (*BackfillD
 		EmbedderClient: client,
 	}
 	return backfillDeps, nil
+}
+
+// InitializeMetricsConsumerDeps creates the metrics consumer Lambda dependencies.
+func InitializeMetricsConsumerDeps(ctx context.Context, cfg *config.Config) (*MetricsConsumerDeps, error) {
+	pool, err := ProvidePostgresPool(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+	metricsRepository := ProvideMetricsRepository(pool)
+	idempotencyCache := ProvideIdempotencyCache()
+	handler := ProvideMetricsConsumerHandler(metricsRepository, idempotencyCache)
+	metricsConsumerDeps := &MetricsConsumerDeps{
+		Handler: handler,
+	}
+	return metricsConsumerDeps, nil
 }
 
 // wire.go:
@@ -864,13 +798,6 @@ type PricingDeps struct {
 type InventoryDeps struct {
 	Config         *config.Config
 	Handler        *handler.InventoryHandler
-	AuthMiddleware *middleware.Auth
-}
-
-// AnalyticsDeps holds dependencies for the Analytics Lambda
-type AnalyticsDeps struct {
-	Config         *config.Config
-	Handler        *handler.AnalyticsHandler
 	AuthMiddleware *middleware.Auth
 }
 
@@ -985,9 +912,9 @@ type MonolithDeps struct {
 	AuditHandler        *handler.AuditHandler
 	NotificationHandler *handler.NotificationHandler
 	CouponHandler       *handler.CouponHandler
-	AnalyticsHandler    *handler.AnalyticsHandler
-	AssetHandler        *handler.AssetHandler
-	ReportHandler       *handler.ReportHandler
+
+	AssetHandler  *handler.AssetHandler
+	ReportHandler *handler.ReportHandler
 
 	// Store handlers
 	StoreAuthHandler     *store.AuthHandler
@@ -1012,4 +939,9 @@ type BackfillDeps struct {
 	Config         *config.Config
 	Pool           *pgxpool.Pool
 	EmbedderClient *embedder.Client
+}
+
+// MetricsConsumerDeps holds dependencies for the metrics consumer Lambda.
+type MetricsConsumerDeps struct {
+	Handler *metrics.Handler
 }

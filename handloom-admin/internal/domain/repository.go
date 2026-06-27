@@ -277,14 +277,3 @@ type ListInventoryResponse struct {
 	Inventories []*Inventory       `json:"inventories"`
 	Pagination  PaginationResponse `json:"pagination"`
 }
-
-// ==================== EVENTS REPOSITORY ====================
-
-// EventsRepository stores and queries raw tracking events
-type EventsRepository interface {
-	// BatchWriteEvents writes a batch of tracking events to storage
-	BatchWriteEvents(ctx context.Context, events []StoreEvent) error
-
-	// QueryByDate retrieves all events for a given date (YYYY-MM-DD)
-	QueryByDate(ctx context.Context, date string) ([]StoreEvent, error)
-}

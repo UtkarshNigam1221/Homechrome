@@ -1,9 +1,6 @@
 name: Deploy Backend
 
 on:
-  pull_request:
-    branches: [main]
-
   workflow_dispatch:
     inputs:
       environment:
@@ -12,65 +9,101 @@ on:
         type: choice
         options: [dev, prod]
         default: dev
+      branch:
+        description: 'Branch/ref to build & deploy (prod requires main)'
+        required: false
+        type: string
+        default: main
+
+  # Allows the deploy-all orchestrator to invoke this workflow.
+  workflow_call:
+    inputs:
+      environment:
+        description: 'Environment to deploy'
+        required: true
+        type: string
+      branch:
+        description: 'Branch/ref to build & deploy'
+        required: false
+        type: string
+        default: main
 
 permissions:
   id-token: write
   contents: read
 
 jobs:
-  check:
-    name: Lint & Test
-    if: github.event_name == 'pull_request'
+  build:
+    name: Build Lambdas
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: handloom-admin
     steps:
+      - name: Guard prod deploy from non-main branches
+        if: inputs.environment == 'prod' && inputs.branch != 'main'
+        run: |
+          echo "::error::Prod deploy must target main. Chosen branch: ${{ inputs.branch }}"
+          exit 1
+
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.branch }}
 
       - uses: actions/setup-go@v6
         with:
           go-version: '1.25'
           cache-dependency-path: handloom-admin/go.sum
 
-      - name: Generate mocks
-        run: |
-          go install go.uber.org/mock/mockgen@latest
-          make generate-mocks
-
-      - name: Lint
-        uses: golangci/golangci-lint-action@v9
-        with:
-          version: latest
-          working-directory: handloom-admin
-
-      - name: Test
-        run: make test
-
-      - name: Build check
+      - name: Build active Lambdas
+        working-directory: handloom-admin
         run: make build-lambdas-active
+
+      # tar before upload: actions/upload-artifact does not preserve the Unix
+      # executable bit, and provided.al2023 requires an executable `bootstrap`.
+      - name: Package binaries
+        working-directory: handloom-admin
+        run: tar czf lambda-bin.tar.gz bin/lambda
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: backend-lambdas-${{ inputs.environment }}
+          path: handloom-admin/lambda-bin.tar.gz
+          retention-days: 1
+          if-no-files-found: error
 
   deploy:
     name: Deploy
-    if: github.event_name == 'workflow_dispatch'
+    needs: build
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: handloom-admin
     steps:
       - name: Guard prod deploy from non-main branches
-        if: inputs.environment == 'prod' && github.ref != 'refs/heads/main'
+        if: inputs.environment == 'prod' && inputs.branch != 'main'
         run: |
-          echo "::error::Prod deploy must be triggered from main. Current ref: ${{ github.ref }}"
+          echo "::error::Prod deploy must target main. Chosen branch: ${{ inputs.branch }}"
           exit 1
 
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.branch }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: backend-lambdas-${{ inputs.environment }}
+          path: handloom-admin
+
+      - name: Unpack binaries
+        run: |
+          tar xzf lambda-bin.tar.gz
+          # restore exec bit the artifact round-trip may have dropped
+          chmod +x bin/lambda/*/bootstrap
 
       - uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
 
+      # CDK app is `go run ./cmd/` — Go is required to synth/deploy.
       - uses: actions/setup-go@v6
         with:
           go-version: '1.25'
@@ -96,23 +129,72 @@ jobs:
           else
             echo "${{ secrets.BACKEND_ENV_DEV }}" > .env.deploy
           fi
+          # Fail fast: an unset/empty BACKEND_ENV_* secret would otherwise deploy
+          # Lambdas with no POSTGRES_DSN and only surface as runtime failures.
+          if [ ! -s .env.deploy ]; then
+            echo "::error::.env.deploy is empty — BACKEND_ENV_${{ inputs.environment }} secret is unset or blank." >&2
+            exit 1
+          fi
 
-      - name: Build Lambdas
-        run: make build-lambdas-active
+      - name: Validate required secrets
+        env:
+          MSG91_AUTH_KEY: ${{ secrets.MSG91_AUTH_KEY }}
+        run: |
+          # Fail the deploy now if a required secret is missing, instead of
+          # shipping a Lambda that silently falls back to a gateway DevClient
+          # (fake payments/OTP) and only breaks at runtime.
+
+          # Required in every environment.
+          required="POSTGRES_DSN"
+
+          # Required in prod: PhonePe + OTP must be real, never DevClient.
+          if [ "${{ inputs.environment }}" = "prod" ]; then
+            required="$required PHONEPE_CLIENT_ID PHONEPE_CLIENT_SECRET PHONEPE_WEBHOOK_USERNAME PHONEPE_WEBHOOK_PASSWORD"
+          fi
+
+          missing=""
+          for key in $required; do
+            # Match `KEY=<non-empty>` (ignoring surrounding quotes/space) in the blob.
+            if ! grep -qE "^${key}=['\"]?[^'\"[:space:]]" .env.deploy; then
+              missing="$missing $key"
+            fi
+          done
+
+          # MSG91_AUTH_KEY arrives as a step secret, not via the blob.
+          if [ "${{ inputs.environment }}" = "prod" ] && [ -z "$MSG91_AUTH_KEY" ]; then
+            missing="$missing MSG91_AUTH_KEY"
+          fi
+
+          if [ -n "$missing" ]; then
+            echo "::error::Missing required secret(s) for ${{ inputs.environment }}:$missing. Set them in BACKEND_ENV_${{ inputs.environment }} (or the MSG91_AUTH_KEY secret) before deploying." >&2
+            exit 1
+          fi
+          echo "All required secrets present for ${{ inputs.environment }}."
 
       - name: CDK Deploy
         env:
-          # Gateway credentials propagated to Lambda env via infra/stacks/api.go.
-          # AUTH_KEY = secret (sensitive). TEMPLATE_ID = vars (non-sensitive identifier).
+          # Only true SECRETS come from the workflow now. Non-secret gateway
+          # config (URLs, versions, template id, pincode) is baked per-env in
+          # infra/cmd/config.go. MSG91_AUTH_KEY is the one gateway secret kept
+          # as its own GH secret; the rest live in the BACKEND_ENV_* blob.
           MSG91_AUTH_KEY: ${{ secrets.MSG91_AUTH_KEY }}
-          MSG91_OTP_TEMPLATE_ID: ${{ vars.MSG91_OTP_TEMPLATE_ID }}
         run: |
-          # Stash step-env MSG91 values before sourcing .env.deploy, then
-          # restore so step env wins over any blanks in the env file.
+          # Stash the step-env secret before sourcing .env.deploy, then restore
+          # so it wins over any blank in the env file.
           _msg91_key="$MSG91_AUTH_KEY"
-          _msg91_tid="$MSG91_OTP_TEMPLATE_ID"
           set -a && . ./.env.deploy && set +a
           export MSG91_AUTH_KEY="$_msg91_key"
-          export MSG91_OTP_TEMPLATE_ID="$_msg91_tid"
-          cd infra && cdk deploy --all --require-approval never \
+          # Deploy every stack EXCEPT the embedder, which has its own workflow
+          # (deploy-embedder.yml) because its container image needs a heavy
+          # model-asset bootstrap. --exclusively stops CDK from pulling the
+          # embedder in as APIStack's dependency: the API stack imports the
+          # embedder's function ARN, which stays stable across embedder code
+          # changes, so the import resolves against the already-deployed stack.
+          cd infra && cdk deploy --exclusively \
+            HandloomLogsStack-${{ inputs.environment }} \
+            HandloomDatabaseStack-${{ inputs.environment }} \
+            HandloomStorageStack-${{ inputs.environment }} \
+            HandloomMetricsStack-${{ inputs.environment }} \
+            HandloomAPIStack-${{ inputs.environment }} \
+            --require-approval never \
             -c environment=${{ inputs.environment }}

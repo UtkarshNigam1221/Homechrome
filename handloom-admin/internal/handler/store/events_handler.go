@@ -1,7 +1,7 @@
 package store
 
 import (
-	"log/slog"
+	"context"
 	"net/http"
 	"time"
 
@@ -12,24 +12,21 @@ import (
 	"github.com/handloom/admin/pkg/response"
 )
 
+// eventRecorder maps a validated storefront beacon event to its PG metrics.
+// Implemented by service.StoreEventService.
+type eventRecorder interface {
+	Record(ctx context.Context, evt domain.StoreEvent)
+}
+
 // EventsHandler handles frontend tracking event ingestion for the storefront.
 type EventsHandler struct {
-	eventsRepo    domain.EventsRepository
-	analyticsRepo domain.AnalyticsRepository
-	validation    *middleware.Validation
+	validation *middleware.Validation
+	events     eventRecorder
 }
 
 // NewEventsHandler creates a new EventsHandler.
-func NewEventsHandler(
-	eventsRepo domain.EventsRepository,
-	analyticsRepo domain.AnalyticsRepository,
-	validation *middleware.Validation,
-) *EventsHandler {
-	return &EventsHandler{
-		eventsRepo:    eventsRepo,
-		analyticsRepo: analyticsRepo,
-		validation:    validation,
-	}
+func NewEventsHandler(validation *middleware.Validation, events eventRecorder) *EventsHandler {
+	return &EventsHandler{validation: validation, events: events}
 }
 
 // Routes returns the events routes.
@@ -44,11 +41,13 @@ func (h *EventsHandler) Routes() chi.Router {
 }
 
 // IngestEvents handles POST / — accepts a batch of frontend tracking events.
+// Each valid event is routed to PG metric_counters by the StoreEventService.
+// Raw events are no longer persisted (DDB events table dropped in M39).
 func (h *EventsHandler) IngestEvents(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	batch := middleware.MustGetValidatedBody[domain.StoreEventBatch](ctx)
 
-	// Filter out events older than 24 hours and with unknown event types
+	// Filter out events older than 24 hours and with unknown event types.
 	cutoff := time.Now().Add(-24 * time.Hour)
 	valid := make([]domain.StoreEvent, 0, len(batch.Events))
 	for _, evt := range batch.Events {
@@ -62,27 +61,8 @@ func (h *EventsHandler) IngestEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Write raw events (best-effort, don't fail the request)
-	if err := h.eventsRepo.BatchWriteEvents(ctx, valid); err != nil {
-		slog.ErrorContext(ctx, "failed to write raw events", "error", err)
-	}
-
-	// Update live counters (best-effort, log errors but don't fail the request)
 	for _, evt := range valid {
-		var field string
-		switch evt.EventType {
-		case "page_view":
-			field = "today_page_views"
-		case "add_to_cart":
-			field = "today_add_to_carts"
-		case "product_viewed":
-			field = "today_product_views"
-		default:
-			continue
-		}
-		if err := h.analyticsRepo.IncrementDashboardCounter(ctx, field, 1); err != nil {
-			slog.ErrorContext(ctx, "failed to increment counter", "field", field, "error", err)
-		}
+		h.events.Record(ctx, evt)
 	}
 
 	response.JSON(w, http.StatusAccepted, map[string]int{"accepted": len(valid)})

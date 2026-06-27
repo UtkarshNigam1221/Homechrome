@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"sync"
 	"time"
+
+	metricsmw "github.com/handloom/admin/pkg/metrics/middleware"
 )
 
 // Client implements the Shiprocket shipping gateway
@@ -26,7 +28,7 @@ func NewClient(config Config) *Client {
 	}
 	return &Client{
 		config:     config,
-		httpClient: &http.Client{Timeout: 30 * time.Second},
+		httpClient: metricsmw.NewInstrumentedClient(30*time.Second, "shiprocket"),
 	}
 }
 

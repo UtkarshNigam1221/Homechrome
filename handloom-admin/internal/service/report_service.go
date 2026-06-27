@@ -24,7 +24,6 @@ type ReportService struct {
 	productService   *ProductService
 	customerService  *CustomerService
 	inventoryService *InventoryService
-	analyticsService *AnalyticsService
 }
 
 // NewReportService creates a new ReportService
@@ -34,7 +33,6 @@ func NewReportService(
 	productService *ProductService,
 	customerService *CustomerService,
 	inventoryService *InventoryService,
-	analyticsService *AnalyticsService,
 ) *ReportService {
 	return &ReportService{
 		reportRepo:       reportRepo,
@@ -42,7 +40,6 @@ func NewReportService(
 		productService:   productService,
 		customerService:  customerService,
 		inventoryService: inventoryService,
-		analyticsService: analyticsService,
 	}
 }
 

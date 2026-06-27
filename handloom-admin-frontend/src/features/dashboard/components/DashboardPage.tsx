@@ -1,34 +1,12 @@
 import { useQuery } from '@tanstack/react-query';
-import { format } from 'date-fns';
-import {
-  AlertTriangle,
-  ArrowRight,
-  DollarSign,
-  Package,
-  ShoppingCart,
-  TrendingUp,
-  Users,
-} from 'lucide-react';
+import { AlertTriangle, ArrowRight, TrendingUp } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Line,
-  LineChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts';
 
-import { analyticsApi } from '@/features/analytics/api';
 import { inventoryApi } from '@/features/inventory/api';
 import { ordersApi } from '@/features/orders/api';
 import { DashboardSkeleton } from '@/shared/components/loading';
-import { Badge, Card, CardHeader, StatCard } from '@/shared/components/ui';
+import { Badge, Card } from '@/shared/components/ui';
 import { getStatusBadgeVariant } from '@/shared/utils/badge';
-import { CHART_COLORS } from '@/shared/utils/chartColors';
 import { formatCurrency } from '@/shared/utils/currency';
 
 function CardSkeleton() {
@@ -45,24 +23,6 @@ function CardSkeleton() {
 }
 
 export function DashboardPage() {
-  // Fetch dashboard stats
-  const { data: stats, isLoading: statsLoading } = useQuery({
-    queryKey: ['analytics-dashboard'],
-    queryFn: analyticsApi.getDashboard,
-  });
-
-  // Fetch sales analytics
-  const { data: salesData } = useQuery({
-    queryKey: ['analytics-sales'],
-    queryFn: () => analyticsApi.getSales({ period: 'last_30_days' }),
-  });
-
-  // Fetch top products
-  const { data: topProducts, isLoading: topProductsLoading } = useQuery({
-    queryKey: ['analytics-top-products', { limit: 5 }],
-    queryFn: () => analyticsApi.getTopProducts({ limit: 5 }),
-  });
-
   // Fetch recent orders
   const { data: recentOrders, isLoading: recentOrdersLoading } = useQuery({
     queryKey: ['recent-orders'],
@@ -75,8 +35,7 @@ export function DashboardPage() {
     queryFn: () => inventoryApi.getLowStock({ limit: 5 }),
   });
 
-  // Show skeleton loading state
-  if (statsLoading) {
+  if (recentOrdersLoading && lowStockLoading) {
     return <DashboardSkeleton />;
   }
 
@@ -88,126 +47,22 @@ export function DashboardPage() {
         <p className="page-subtitle">Welcome back! Here's what's happening with your store.</p>
       </div>
 
-      {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <StatCard
-          title="Total Revenue"
-          value={formatCurrency(stats?.total_revenue || 0)}
-          change={stats?.revenue_change}
-          changeLabel="vs last month"
-          icon={<DollarSign className="w-6 h-6" />}
-        />
-        <StatCard
-          title="Total Orders"
-          value={stats?.total_orders || 0}
-          change={stats?.orders_change}
-          changeLabel="vs last month"
-          icon={<ShoppingCart className="w-6 h-6" />}
-        />
-        <StatCard
-          title="Total Customers"
-          value={stats?.total_customers || 0}
-          icon={<Users className="w-6 h-6" />}
-        />
-        <StatCard
-          title="Active Products"
-          value={stats?.active_products || 0}
-          icon={<Package className="w-6 h-6" />}
-        />
-      </div>
-
-      {/* Charts Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Sales Chart */}
-        <Card>
-          <CardHeader
-            title="Sales Overview"
-            subtitle="Revenue trend over the last 30 days"
-            action={
-              <Link
-                to="/analytics"
-                className="text-sm text-primary-600 hover:text-primary-700 flex items-center gap-1"
-              >
-                View details <ArrowRight className="w-4 h-4" />
-              </Link>
-            }
-          />
-          <div className="h-80">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={salesData?.data || []}>
-                <CartesianGrid strokeDasharray="3 3" stroke={CHART_COLORS.grid} />
-                <XAxis
-                  dataKey="date"
-                  tickFormatter={(value) => format(new Date(value), 'MMM d')}
-                  stroke={CHART_COLORS.axis}
-                  fontSize={12}
-                />
-                <YAxis
-                  tickFormatter={(value) => `₹${(value / 100000).toFixed(0)}K`}
-                  stroke={CHART_COLORS.axis}
-                  fontSize={12}
-                />
-                <Tooltip
-                  formatter={(value) => [formatCurrency(Number(value) || 0), 'Revenue']}
-                  labelFormatter={(label) => format(new Date(label), 'MMM d, yyyy')}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="revenue"
-                  stroke={CHART_COLORS.primary}
-                  strokeWidth={2}
-                  dot={false}
-                  activeDot={{ r: 4, strokeWidth: 0 }}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        </Card>
-
-        {/* Top Products Chart */}
-        {topProductsLoading ? (
-          <CardSkeleton />
-        ) : (
-          <Card>
-            <CardHeader
-              title="Top Products"
-              subtitle="Best selling products by revenue"
-              action={
-                <Link
-                  to="/products"
-                  className="text-sm text-primary-600 hover:text-primary-700 flex items-center gap-1"
-                >
-                  View all <ArrowRight className="w-4 h-4" />
-                </Link>
-              }
-            />
-            <div className="h-80">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={topProducts || []} layout="vertical">
-                  <CartesianGrid strokeDasharray="3 3" stroke={CHART_COLORS.grid} />
-                  <XAxis
-                    type="number"
-                    tickFormatter={(value) => `₹${(value / 100000).toFixed(0)}K`}
-                    stroke={CHART_COLORS.axis}
-                    fontSize={12}
-                  />
-                  <YAxis
-                    type="category"
-                    dataKey="product_name"
-                    width={150}
-                    stroke={CHART_COLORS.axis}
-                    fontSize={12}
-                    tickFormatter={(value) =>
-                      value.length > 20 ? `${value.slice(0, 20)}...` : value
-                    }
-                  />
-                  <Tooltip formatter={(value) => [formatCurrency(Number(value) || 0), 'Revenue']} />
-                  <Bar dataKey="revenue" fill={CHART_COLORS.primary} radius={[0, 4, 4, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </Card>
-        )}
+      {/* Analytics link banner */}
+      <div className="rounded-xl bg-primary-50 border border-primary-200 p-4 flex items-center justify-between">
+        <div>
+          <p className="text-sm font-medium text-primary-900">
+            Analytics &amp; metrics have moved to Dashboards
+          </p>
+          <p className="text-xs text-primary-700 mt-0.5">
+            Revenue, orders, funnel, geography and RUM are now powered by Neon Data API.
+          </p>
+        </div>
+        <Link
+          to="/dashboards"
+          className="text-sm text-primary-600 hover:text-primary-700 flex items-center gap-1 shrink-0"
+        >
+          View Dashboards <ArrowRight className="w-4 h-4" />
+        </Link>
       </div>
 
       {/* Bottom Row */}
@@ -272,9 +127,7 @@ export function DashboardPage() {
                   </div>
                   <div>
                     <h3 className="text-lg font-semibold text-gray-900">Low Stock Alert</h3>
-                    <p className="text-sm text-gray-500">
-                      {stats?.low_stock_count || 0} products need attention
-                    </p>
+                    <p className="text-sm text-gray-500">Products that need attention</p>
                   </div>
                 </div>
                 <Link

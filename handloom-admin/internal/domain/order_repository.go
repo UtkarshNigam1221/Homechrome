@@ -78,6 +78,11 @@ type CustomerRepository interface {
 
 	// Search searches customers by query
 	Search(ctx context.Context, query string, pagination PaginationRequest) (*ListCustomersResponse, error)
+
+	// IncrementOrderCount atomically increments the customer's OrderCount by 1
+	// and returns the new count. Uses DynamoDB ADD with ReturnValues=UPDATED_NEW,
+	// which initializes the attribute to 0 if absent (so first-ever increment returns 1).
+	IncrementOrderCount(ctx context.Context, customerID string) (int64, error)
 }
 
 // ListCustomersRequest contains parameters for listing customers

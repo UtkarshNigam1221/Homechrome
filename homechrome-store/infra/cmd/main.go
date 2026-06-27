@@ -21,6 +21,9 @@ func main() {
 	if !ok {
 		panic(fmt.Sprintf("unknown environment: %s (valid: dev, prod)", environment))
 	}
+	if err := cfg.validate(environment); err != nil {
+		panic(err)
+	}
 
 	commonTags := &map[string]*string{
 		"Environment": jsii.String(environment),
@@ -39,17 +42,23 @@ func main() {
 		Environment: environment,
 	})
 
+	// Telemetry config is baked per-env in config.go (no deploy-time env vars).
+	// Empty CollectorLayerArn → StorefrontStack skips OTel (no-op path).
 	stacks.NewStorefrontStack(app, "HomechromeStoreStack-"+environment, &stacks.StorefrontStackProps{
 		StackProps: awscdk.StackProps{
 			Env:         env,
 			Description: jsii.String("Homechrome Store - Next.js SSR hosting (" + environment + ")"),
 			Tags:        commonTags,
 		},
-		Environment:   environment,
-		DomainNames:   cfg.DomainNames,
-		CertArn:       cfg.CertArn,
-		BackendApiUrl: cfg.BackendApiUrl,
-		LogsStack:     logsStack,
+		Environment:             environment,
+		DomainNames:             cfg.DomainNames,
+		CertArn:                 cfg.CertArn,
+		BackendApiUrl:           cfg.BackendApiUrl,
+		LogsStack:               logsStack,
+		CollectorLayerArn:       cfg.CollectorLayerArn,
+		NodeAutoInstrLayerArn:   cfg.NodeAutoInstrLayerArn,
+		GrafanaEndpointSSMParam: cfg.GrafanaEndpointSSMParam,
+		GrafanaAuthSSMParam:     cfg.GrafanaAuthSSMParam,
 	})
 
 	app.Synth(nil)

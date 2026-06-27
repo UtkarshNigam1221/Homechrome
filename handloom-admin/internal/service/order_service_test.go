@@ -75,19 +75,19 @@ func TestOrderService_Create(t *testing.T) {
 		}
 
 		mockCustomerRepo.EXPECT().
-			GetByID(ctx, "cust_123").
+			GetByID(gomock.Any(), "cust_123").
 			Return(customer, nil)
 
 		mockProductRepo.EXPECT().
-			GetByID(ctx, "prod_123").
+			GetByID(gomock.Any(), "prod_123").
 			Return(product, nil)
 
 		mockInventoryRepo.EXPECT().
-			GetByProductID(ctx, "prod_123").
+			GetByProductID(gomock.Any(), "prod_123").
 			Return(inventory, nil)
 
 		mockOrderRepo.EXPECT().
-			Create(ctx, gomock.Any()).
+			Create(gomock.Any(), gomock.Any()).
 			DoAndReturn(func(ctx context.Context, order *domain.Order) error {
 				assert.Equal(t, "cust_123", order.CustomerID)
 				assert.Len(t, order.Items, 1)
@@ -97,8 +97,12 @@ func TestOrderService_Create(t *testing.T) {
 			})
 
 		mockInventoryRepo.EXPECT().
-			ReserveStock(ctx, "prod_123", 2, gomock.Any()).
+			ReserveStock(gomock.Any(), "prod_123", 2, gomock.Any()).
 			Return(&domain.InventoryTransaction{}, nil)
+
+		mockCustomerRepo.EXPECT().
+			IncrementOrderCount(gomock.Any(), "cust_123").
+			Return(int64(1), nil)
 
 		order, err := service.Create(ctx, req, "admin_123")
 
@@ -116,7 +120,7 @@ func TestOrderService_Create(t *testing.T) {
 		}
 
 		mockCustomerRepo.EXPECT().
-			GetByID(ctx, "nonexistent").
+			GetByID(gomock.Any(), "nonexistent").
 			Return(nil, errors.NotFound("Customer not found"))
 
 		order, err := service.Create(ctx, req, "admin_123")
@@ -141,11 +145,11 @@ func TestOrderService_Create(t *testing.T) {
 		}
 
 		mockCustomerRepo.EXPECT().
-			GetByID(ctx, "cust_123").
+			GetByID(gomock.Any(), "cust_123").
 			Return(customer, nil)
 
 		mockProductRepo.EXPECT().
-			GetByID(ctx, "prod_nonexistent").
+			GetByID(gomock.Any(), "prod_nonexistent").
 			Return(nil, errors.NotFound("Product"))
 
 		order, err := service.Create(ctx, req, "admin_123")
@@ -183,15 +187,15 @@ func TestOrderService_Create(t *testing.T) {
 		}
 
 		mockCustomerRepo.EXPECT().
-			GetByID(ctx, "cust_123").
+			GetByID(gomock.Any(), "cust_123").
 			Return(customer, nil)
 
 		mockProductRepo.EXPECT().
-			GetByID(ctx, "prod_123").
+			GetByID(gomock.Any(), "prod_123").
 			Return(product, nil)
 
 		mockInventoryRepo.EXPECT().
-			GetByProductID(ctx, "prod_123").
+			GetByProductID(gomock.Any(), "prod_123").
 			Return(inventory, nil)
 
 		order, err := service.Create(ctx, req, "admin_123")
@@ -311,11 +315,11 @@ func TestOrderService_UpdateStatus(t *testing.T) {
 		}
 
 		mockOrderRepo.EXPECT().
-			GetByID(ctx, "order_123").
+			GetByID(gomock.Any(), "order_123").
 			Return(order, nil)
 
 		mockOrderRepo.EXPECT().
-			Update(ctx, gomock.Any()).
+			Update(gomock.Any(), gomock.Any()).
 			DoAndReturn(func(ctx context.Context, order *domain.Order) error {
 				assert.Equal(t, domain.OrderStatusConfirmed, order.Status)
 				return nil
@@ -334,7 +338,7 @@ func TestOrderService_UpdateStatus(t *testing.T) {
 		}
 
 		mockOrderRepo.EXPECT().
-			GetByID(ctx, "order_123").
+			GetByID(gomock.Any(), "order_123").
 			Return(order, nil)
 
 		err := service.UpdateStatus(ctx, "order_123", domain.OrderStatusPending, "admin_123")
@@ -351,11 +355,11 @@ func TestOrderService_UpdateStatus(t *testing.T) {
 		}
 
 		mockOrderRepo.EXPECT().
-			GetByID(ctx, "order_123").
+			GetByID(gomock.Any(), "order_123").
 			Return(order, nil)
 
 		mockOrderRepo.EXPECT().
-			Update(ctx, gomock.Any()).
+			Update(gomock.Any(), gomock.Any()).
 			DoAndReturn(func(ctx context.Context, order *domain.Order) error {
 				assert.Equal(t, domain.OrderStatusProcessing, order.Status)
 				return nil
@@ -373,11 +377,11 @@ func TestOrderService_UpdateStatus(t *testing.T) {
 		}
 
 		mockOrderRepo.EXPECT().
-			GetByID(ctx, "order_123").
+			GetByID(gomock.Any(), "order_123").
 			Return(order, nil)
 
 		mockOrderRepo.EXPECT().
-			Update(ctx, gomock.Any()).
+			Update(gomock.Any(), gomock.Any()).
 			Return(nil)
 
 		err := service.UpdateStatus(ctx, "order_123", domain.OrderStatusShipped, "admin_123")
@@ -392,11 +396,11 @@ func TestOrderService_UpdateStatus(t *testing.T) {
 		}
 
 		mockOrderRepo.EXPECT().
-			GetByID(ctx, "order_123").
+			GetByID(gomock.Any(), "order_123").
 			Return(order, nil)
 
 		mockOrderRepo.EXPECT().
-			Update(ctx, gomock.Any()).
+			Update(gomock.Any(), gomock.Any()).
 			Return(nil)
 
 		err := service.UpdateStatus(ctx, "order_123", domain.OrderStatusDelivered, "admin_123")
@@ -405,7 +409,7 @@ func TestOrderService_UpdateStatus(t *testing.T) {
 
 	t.Run("order not found for status update", func(t *testing.T) {
 		mockOrderRepo.EXPECT().
-			GetByID(ctx, "nonexistent").
+			GetByID(gomock.Any(), "nonexistent").
 			Return(nil, errors.NotFound("Order"))
 
 		err := service.UpdateStatus(ctx, "nonexistent", domain.OrderStatusConfirmed, "admin_123")
@@ -422,15 +426,15 @@ func TestOrderService_UpdateStatus(t *testing.T) {
 		}
 
 		mockOrderRepo.EXPECT().
-			GetByID(ctx, "order_123").
+			GetByID(gomock.Any(), "order_123").
 			Return(order, nil)
 
 		mockOrderRepo.EXPECT().
-			Update(ctx, gomock.Any()).
+			Update(gomock.Any(), gomock.Any()).
 			Return(nil)
 
 		mockInventoryRepo.EXPECT().
-			ReleaseStock(ctx, "prod_123", 2, "order_123").
+			ReleaseStock(gomock.Any(), "prod_123", 2, "order_123").
 			Return(&domain.InventoryTransaction{}, nil)
 
 		err := service.UpdateStatus(ctx, "order_123", domain.OrderStatusCancelled, "admin_123")
@@ -570,11 +574,11 @@ func TestOrderService_CancelOrder(t *testing.T) {
 		}
 
 		mockOrderRepo.EXPECT().
-			GetByID(ctx, "order_123").
+			GetByID(gomock.Any(), "order_123").
 			Return(order, nil)
 
 		mockOrderRepo.EXPECT().
-			Update(ctx, gomock.Any()).
+			Update(gomock.Any(), gomock.Any()).
 			DoAndReturn(func(ctx context.Context, order *domain.Order) error {
 				assert.Equal(t, domain.OrderStatusCancelled, order.Status)
 				assert.NotNil(t, order.CancelledAt)
@@ -582,11 +586,11 @@ func TestOrderService_CancelOrder(t *testing.T) {
 			})
 
 		mockInventoryRepo.EXPECT().
-			ReleaseStock(ctx, "prod_123", 2, "order_123").
+			ReleaseStock(gomock.Any(), "prod_123", 2, "order_123").
 			Return(&domain.InventoryTransaction{}, nil)
 
 		mockInventoryRepo.EXPECT().
-			ReleaseStock(ctx, "prod_456", 1, "order_123").
+			ReleaseStock(gomock.Any(), "prod_456", 1, "order_123").
 			Return(&domain.InventoryTransaction{}, nil)
 
 		err := service.CancelOrder(ctx, "order_123", "Customer requested", "admin_123")
@@ -604,18 +608,18 @@ func TestOrderService_CancelOrder(t *testing.T) {
 		}
 
 		mockOrderRepo.EXPECT().
-			GetByID(ctx, "order_456").
+			GetByID(gomock.Any(), "order_456").
 			Return(order, nil)
 
 		mockOrderRepo.EXPECT().
-			Update(ctx, gomock.Any()).
+			Update(gomock.Any(), gomock.Any()).
 			DoAndReturn(func(ctx context.Context, order *domain.Order) error {
 				assert.Equal(t, domain.OrderStatusCancelled, order.Status)
 				return nil
 			})
 
 		mockInventoryRepo.EXPECT().
-			ReleaseStock(ctx, "prod_123", 1, "order_456").
+			ReleaseStock(gomock.Any(), "prod_123", 1, "order_456").
 			Return(&domain.InventoryTransaction{}, nil)
 
 		err := service.CancelOrder(ctx, "order_456", "Changed mind", "admin_123")
@@ -624,7 +628,7 @@ func TestOrderService_CancelOrder(t *testing.T) {
 
 	t.Run("cancel order - order not found", func(t *testing.T) {
 		mockOrderRepo.EXPECT().
-			GetByID(ctx, "nonexistent").
+			GetByID(gomock.Any(), "nonexistent").
 			Return(nil, errors.NotFound("Order"))
 
 		err := service.CancelOrder(ctx, "nonexistent", "reason", "admin_123")
@@ -638,7 +642,7 @@ func TestOrderService_CancelOrder(t *testing.T) {
 		}
 
 		mockOrderRepo.EXPECT().
-			GetByID(ctx, "order_123").
+			GetByID(gomock.Any(), "order_123").
 			Return(order, nil)
 
 		err := service.CancelOrder(ctx, "order_123", "Customer requested", "admin_123")

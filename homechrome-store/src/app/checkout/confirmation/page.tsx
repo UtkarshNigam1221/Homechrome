@@ -31,6 +31,9 @@ interface PaymentStatusResponse {
   payment_status: PaymentStatus;
 }
 
+// How often to re-poll the order's payment status while it's still pending.
+const POLL_INTERVAL_MS = 3000;
+
 type IconVariant = 'success' | 'error' | 'warning';
 
 function StatusIcon({ variant }: { variant: IconVariant }) {
@@ -110,7 +113,7 @@ function ConfirmationContent() {
   useEffect(() => {
     if (!orderId) return;
     checkStatusRef.current?.();
-    intervalRef.current = setInterval(() => checkStatusRef.current?.(), 3000);
+    intervalRef.current = setInterval(() => checkStatusRef.current?.(), POLL_INTERVAL_MS);
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };

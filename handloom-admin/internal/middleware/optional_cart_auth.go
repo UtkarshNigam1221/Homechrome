@@ -3,14 +3,12 @@ package middleware
 import (
 	"context"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/pkg/response"
-	"github.com/handloom/admin/pkg/slogx"
 )
 
 const guestSessionCookieName = "guest_session"
@@ -40,13 +38,7 @@ func (m *OptionalCartAuth) Resolve(next http.Handler) http.Handler {
 		if token, err := extractBearerToken(r, "store_token"); err == nil {
 			claims, validateErr := m.customerAuthService.ValidateCustomerToken(ctx, token)
 			if validateErr == nil && claims.CustomerID != "" {
-				ctx = context.WithValue(ctx, CustomerIDKey, claims.CustomerID)
-				ctx = slogx.SetUserID(ctx, claims.CustomerID)
-				ctx = context.WithValue(ctx, CustomerKey, &domain.Customer{
-					ID:    claims.CustomerID,
-					Phone: claims.Phone,
-					Email: claims.Email,
-				})
+				ctx = setCustomerContext(ctx, claims)
 				next.ServeHTTP(w, r.WithContext(ctx))
 				return
 			}
@@ -73,7 +65,7 @@ func (m *OptionalCartAuth) Resolve(next http.Handler) http.Handler {
 		sessionID := uuid.New().String()
 		ctx = context.WithValue(ctx, GuestSessionKey, sessionID)
 
-		secure, sameSite, cookieDomain := guestCookieSettings()
+		secure, sameSite, cookieDomain := AuthCookieSettings()
 		//nolint:gosec // G124: Secure flag is environment-conditional, not omitted.
 		http.SetCookie(w, &http.Cookie{
 			Name:     guestSessionCookieName,
@@ -88,18 +80,6 @@ func (m *OptionalCartAuth) Resolve(next http.Handler) http.Handler {
 
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
-}
-
-// guestCookieSettings returns cookie settings matching store auth cookies.
-// IMPORTANT: Must stay in sync with cookieSettings() in handler/store/auth_handler.go.
-func guestCookieSettings() (secure bool, sameSite http.SameSite, domain string) {
-	if d := os.Getenv("COOKIE_DOMAIN"); d != "" {
-		return true, http.SameSiteLaxMode, d
-	}
-	if os.Getenv("AWS_LAMBDA_FUNCTION_NAME") != "" {
-		return true, http.SameSiteNoneMode, ""
-	}
-	return false, http.SameSiteLaxMode, ""
 }
 
 // GetCartIdentityFromContext returns the cart owner identifier and whether the user is a guest.

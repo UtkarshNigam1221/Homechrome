@@ -8,7 +8,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/handloom/admin/internal/config"
+	"github.com/handloom/admin/internal/bootstrap"
 	"github.com/handloom/admin/internal/handler"
 	"github.com/handloom/admin/internal/middleware"
 	"github.com/handloom/admin/internal/repository/dynamodb"
@@ -16,29 +16,24 @@ import (
 	"github.com/handloom/admin/internal/router"
 	"github.com/handloom/admin/internal/service"
 	"github.com/handloom/admin/internal/validator"
-	"github.com/handloom/admin/pkg/slogx"
 )
 
 func main() {
-	// Load configuration
-	cfg := config.Load()
-
-	// Initialize structured logger
-	slogx.Setup(cfg.App.Debug)
-	slog.Info("Starting Pricing Lambda")
+	bc := bootstrap.InitLambda("handloom-pricing")
+	defer bc.Shutdown()
 
 	// Initialize context
 	ctx := context.Background()
 
 	// Initialize DynamoDB client
-	dbClient, err := dynamodb.NewClient(ctx, cfg)
+	dbClient, err := dynamodb.NewClient(ctx, bc.Cfg)
 	if err != nil {
 		slog.Error("Failed to initialize DynamoDB client", "error", err)
 		os.Exit(1)
 	}
 
 	// Initialize PostgreSQL pool for catalog data
-	pgPool, err := postgres.NewPool(ctx, &cfg.Postgres)
+	pgPool, err := postgres.NewPool(ctx, &bc.Cfg.Postgres)
 	if err != nil {
 		slog.Error("Failed to initialize PostgreSQL pool", "error", err)
 		os.Exit(1)
@@ -57,17 +52,17 @@ func main() {
 	authService := service.NewAuthService(
 		userRepo,
 		tokenStore,
-		cfg.JWT.SecretKey,
-		cfg.JWT.AccessTokenDuration,
-		cfg.JWT.RefreshTokenDuration,
-		cfg.JWT.Issuer,
+		bc.Cfg.JWT.SecretKey,
+		bc.Cfg.JWT.AccessTokenDuration,
+		bc.Cfg.JWT.RefreshTokenDuration,
+		bc.Cfg.JWT.Issuer,
 	)
 	pricingService := service.NewPricingService(
 		pricingRuleRepo,
 		priceQuoteRepo,
 		categoryRepo,
 		productRepo,
-		cfg.App.QuoteValidityHrs,
+		bc.Cfg.App.QuoteValidityHrs,
 	)
 
 	// Initialize validation middleware
@@ -83,7 +78,7 @@ func main() {
 	// Create router
 	routerCfg := router.Config{
 		AllowedOrigins: getAllowedOrigins(),
-		Debug:          cfg.App.Debug,
+		Debug:          bc.Cfg.App.Debug,
 	}
 	r := router.NewBaseRouter(routerCfg, true)
 

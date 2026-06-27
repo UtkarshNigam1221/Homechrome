@@ -10,6 +10,7 @@ import {
   Card,
   Input,
   Modal,
+  PageHeader,
   Pagination,
   Table,
   TableBody,
@@ -79,15 +80,15 @@ export function CustomersPage() {
   return (
     <div className="space-y-6">
       {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="page-title">Customers</h1>
-          <p className="page-subtitle">Manage your customer database</p>
-        </div>
-        <Button leftIcon={<Plus className="w-4 h-4" />} onClick={handleOpenCreate}>
-          Add Customer
-        </Button>
-      </div>
+      <PageHeader
+        title="Customers"
+        subtitle="Manage your customer database"
+        action={
+          <Button leftIcon={<Plus className="w-4 h-4" />} onClick={handleOpenCreate}>
+            Add Customer
+          </Button>
+        }
+      />
 
       {/* Search */}
       <Card padding="sm">

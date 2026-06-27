@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"maps"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -121,15 +123,21 @@ WHERE p.status = 'ACTIVE'
 		sb.WriteString(`  AND COALESCE(i.available_qty, 0) > 0
 `)
 	}
+	// material/color are stored as attribute rows — treat them uniformly with
+	// af_* filters. Sorted keys keep the SQL string deterministic so pgx's
+	// prepared-statement cache doesn't thrash on clause reordering.
+	attrs := make(map[string][]string, len(req.AttributeFilters)+2)
+	for k, v := range req.AttributeFilters {
+		attrs[k] = v
+	}
 	if req.Material != "" {
-		fmt.Fprintf(&sb, `  AND EXISTS (SELECT 1 FROM product_attribute_values v WHERE v.product_id = p.id AND v.attribute_name = 'material' AND v.attribute_value = %s)
-`, add(req.Material))
+		attrs["material"] = append(attrs["material"], req.Material)
 	}
 	if req.Color != "" {
-		fmt.Fprintf(&sb, `  AND EXISTS (SELECT 1 FROM product_attribute_values v WHERE v.product_id = p.id AND v.attribute_name = 'color' AND v.attribute_value = %s)
-`, add(req.Color))
+		attrs["color"] = append(attrs["color"], req.Color)
 	}
-	for attrName, values := range req.AttributeFilters {
+	for _, attrName := range slices.Sorted(maps.Keys(attrs)) {
+		values := attrs[attrName]
 		if len(values) == 0 {
 			continue
 		}
@@ -139,25 +147,17 @@ WHERE p.status = 'ACTIVE'
 
 	// Ordering. With a query: weighted hybrid score. Without: stable sort_order/id.
 	if q != "" {
-		var scoreExpr string
+		terms := []string{
+			fmt.Sprintf(`%s::float * LEAST(COALESCE(ts_rank(p.search_vector, qd.qts), 0) * 10, 1.0)`, add(w.Keyword)),
+			fmt.Sprintf(`%s::float * similarity(p.name, qd.qstr)`, add(w.Trigram)),
+		}
 		if hasSemantic {
-			alphaSem := add(w.Semantic)
-			alphaKw := add(w.Keyword)
-			alphaTri := add(w.Trigram)
-			scoreExpr = fmt.Sprintf(
-				`%s::float * COALESCE(1 - (p.embedding <=> qd.qvec), 0) + %s::float * LEAST(COALESCE(ts_rank(p.search_vector, qd.qts), 0) * 10, 1.0) + %s::float * similarity(p.name, qd.qstr)`,
-				alphaSem, alphaKw, alphaTri,
-			)
-		} else {
-			alphaKw := add(w.Keyword)
-			alphaTri := add(w.Trigram)
-			scoreExpr = fmt.Sprintf(
-				`%s::float * LEAST(COALESCE(ts_rank(p.search_vector, qd.qts), 0) * 10, 1.0) + %s::float * similarity(p.name, qd.qstr)`,
-				alphaKw, alphaTri,
-			)
+			terms = append([]string{
+				fmt.Sprintf(`%s::float * COALESCE(1 - (p.embedding <=> qd.qvec), 0)`, add(w.Semantic)),
+			}, terms...)
 		}
 		fmt.Fprintf(&sb, `ORDER BY (%s) DESC, p.id ASC
-`, scoreExpr)
+`, strings.Join(terms, " + "))
 	} else {
 		sb.WriteString(`ORDER BY p.sort_order, p.id
 `)

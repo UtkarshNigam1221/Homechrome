@@ -1,11 +1,11 @@
 import { clsx } from 'clsx';
 import {
-  BarChart3,
   Bell,
   ChevronLeft,
   ChevronRight,
   FileText,
   FolderTree,
+  Gauge,
   LayoutDashboard,
   Package,
   Percent,
@@ -29,7 +29,7 @@ const navigation = [
   { name: 'Customers', href: '/customers', icon: Users },
   { name: 'Pricing Rules', href: '/pricing', icon: Tag },
   { name: 'Coupons', href: '/coupons', icon: Percent },
-  { name: 'Analytics', href: '/analytics', icon: BarChart3 },
+  { name: 'Dashboards', href: '/dashboards', icon: Gauge },
   { name: 'Reports', href: '/reports', icon: FileText },
   { name: 'Notifications', href: '/notifications', icon: Bell },
   { name: 'Settings', href: '/settings', icon: Settings },
