@@ -68,11 +68,13 @@ func buildEmbedderApp(app awscdk.App, env *awscdk.Environment, environment strin
 			Description: jsii.String("Handloom Admin - Embedder Lambda for hybrid semantic search (" + environment + ")"),
 			Tags:        tags,
 		},
-		Environment:      environment,
-		FnName:           cfg.EmbedderFnName,
-		StoreFrontHost:   cfg.StoreFrontHost,
-		PostgresDSN:      postgresDSN,
-		MetricsQueueName: cfg.MetricsQueueName,
+		Environment:             environment,
+		FnName:                  cfg.EmbedderFnName,
+		StoreFrontHost:          cfg.StoreFrontHost,
+		PostgresDSN:             postgresDSN,
+		MetricsQueueName:        cfg.MetricsQueueName,
+		GrafanaEndpointSSMParam: "/handloom/" + environment + "/grafana-otlp-endpoint",
+		GrafanaAuthSSMParam:     "/handloom/" + environment + "/grafana-otlp-auth",
 	})
 }
 

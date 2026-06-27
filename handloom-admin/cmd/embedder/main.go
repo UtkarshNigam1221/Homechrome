@@ -18,11 +18,35 @@ import (
 	emb "github.com/handloom/admin/cmd/embedder/embedder"
 	"github.com/handloom/admin/internal/repository/postgres"
 	"github.com/handloom/admin/pkg/metrics/awsmiddleware"
+	"github.com/handloom/admin/pkg/telemetry"
 )
 
 func main() {
 	ctx := context.Background()
 	cfg := loadConfig(ctx)
+
+	// Distributed tracing → Grafana Tempo. Container Lambdas can't use the OTel
+	// Collector layer the zip lambdas use, so export OTLP directly to Grafana
+	// (endpoint + auth from env, injected by CDK via {{resolve:ssm}}). Must run
+	// BEFORE newRouter — the otelhttp middleware binds the global TracerProvider +
+	// W3C propagator at construction, which is also what extracts the inbound
+	// traceparent so the embedder continues the caller's trace. Skipped (runs
+	// untraced, as before) when the Grafana env is absent (e.g. local dev).
+	grafanaEndpoint := os.Getenv("GRAFANA_OTLP_ENDPOINT")
+	grafanaAuth := os.Getenv("GRAFANA_OTLP_AUTH")
+	var tp *telemetry.TracerProvider
+	if grafanaEndpoint != "" && grafanaAuth != "" {
+		var shutdown telemetry.Shutdown
+		tp, shutdown = telemetry.MustInitDirect(
+			embedderServiceName(), os.Getenv("OTEL_SERVICE_VERSION"), os.Getenv("APP_ENV"),
+			grafanaEndpoint, map[string]string{"Authorization": grafanaAuth},
+		)
+		defer func() {
+			sctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			shutdown(sctx)
+		}()
+	}
 
 	// SQS metrics publisher (shared wiring with bootstrap.InitLambda). No-op
 	// when METRICS_QUEUE_URL is unset — metrics.Record() then falls through to
@@ -60,7 +84,15 @@ func main() {
 	adapter := httpadapter.New(newRouter(d))
 
 	lambda.Start(func(ctx context.Context, req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
-		return adapter.ProxyWithContext(ctx, req)
+		resp, err := adapter.ProxyWithContext(ctx, req)
+		// Drain spans before the runtime freezes (SimpleSpanProcessor exports on
+		// Span.End, but the HTTP POST is network I/O that a freeze can cut).
+		if tp != nil {
+			fctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+			_ = tp.ForceFlush(fctx)
+			cancel()
+		}
+		return resp, err
 	})
 }
 

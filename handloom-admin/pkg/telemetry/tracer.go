@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 
 	"go.opentelemetry.io/contrib/propagators/b3"
 	"go.opentelemetry.io/otel"
@@ -139,8 +140,15 @@ func createOTLPGRPCExporter(ctx context.Context, cfg *Config) (sdktrace.SpanExpo
 
 // createOTLPHTTPExporter creates an OTLP HTTP exporter.
 func createOTLPHTTPExporter(ctx context.Context, cfg *Config) (sdktrace.SpanExporter, error) {
-	opts := []otlptracehttp.Option{
-		otlptracehttp.WithEndpoint(cfg.Tracing.Endpoint),
+	var opts []otlptracehttp.Option
+	// A full URL (e.g. Grafana Cloud's https://otlp-gateway-.../otlp) carries its
+	// own scheme + base path, so use WithEndpointURL which honors them. WithEndpoint
+	// expects a bare host[:port] and would force the path to /v1/traces, POSTing to
+	// the wrong URL and silently dropping spans.
+	if strings.Contains(cfg.Tracing.Endpoint, "://") {
+		opts = append(opts, otlptracehttp.WithEndpointURL(cfg.Tracing.Endpoint))
+	} else {
+		opts = append(opts, otlptracehttp.WithEndpoint(cfg.Tracing.Endpoint))
 	}
 
 	if cfg.Tracing.Insecure {
@@ -159,6 +167,16 @@ func createOTLPHTTPExporter(ctx context.Context, cfg *Config) (sdktrace.SpanExpo
 func (tp *TracerProvider) Shutdown(ctx context.Context) error {
 	if tp.provider != nil {
 		return tp.provider.Shutdown(ctx)
+	}
+	return nil
+}
+
+// ForceFlush exports any buffered spans without tearing down the provider.
+// Call it per-invocation in Lambda so in-flight spans drain before the runtime
+// freezes (Shutdown would kill the provider after the first request).
+func (tp *TracerProvider) ForceFlush(ctx context.Context) error {
+	if tp.provider != nil {
+		return tp.provider.ForceFlush(ctx)
 	}
 	return nil
 }

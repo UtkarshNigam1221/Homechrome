@@ -44,6 +44,13 @@ type EmbedderStackProps struct {
 	// IAM grant, no foreign QueuePolicy, no cross-stack export. The queue must
 	// merely EXIST at runtime; its absence does not block embedder deploy.
 	MetricsQueueName string
+
+	// Grafana Cloud OTLP params (plain SSM String, shared with backend). Resolved
+	// at deploy via {{resolve:ssm}} and injected as env. The container Lambda can't
+	// use the OTel Collector layer the zip lambdas use, so the app exports OTLP
+	// directly to Grafana using these. Empty → embedder runs untraced (no-op).
+	GrafanaEndpointSSMParam string
+	GrafanaAuthSSMParam     string
 }
 
 // EmbedderStack publishes:
@@ -122,11 +129,21 @@ func NewEmbedderStack(scope constructs.Construct, id string, props *EmbedderStac
 				"SEARCH_WEIGHT_TRIGRAM":     jsii.String("0.10"),
 				"RATE_LIMIT_PER_IP_PER_MIN": jsii.String("60"),
 				"OTEL_SERVICE_NAME":         jsii.String("handloom-embedder"),
+				"OTEL_SERVICE_VERSION":      jsii.String(props.Environment),
+				"APP_ENV":                   jsii.String(props.Environment),
 			}
 			// METRICS_QUEUE_URL triggers SQSPublisher init in main.go; without
 			// it search_query metrics fall through to the noop publisher.
 			if metricsQueue != nil {
 				envMap["METRICS_QUEUE_URL"] = metricsQueue.QueueUrl()
+			}
+			// Grafana OTLP — resolved at deploy time, injected as plain env. The
+			// app exports traces directly (no collector layer on a container Lambda).
+			// {{resolve:ssm}} fails the deploy if the param is absent, so only wire
+			// it when both names are provided (mirrors backend; params are shared).
+			if props.GrafanaEndpointSSMParam != "" && props.GrafanaAuthSSMParam != "" {
+				envMap["GRAFANA_OTLP_ENDPOINT"] = jsii.String("{{resolve:ssm:" + props.GrafanaEndpointSSMParam + "}}")
+				envMap["GRAFANA_OTLP_AUTH"] = jsii.String("{{resolve:ssm:" + props.GrafanaAuthSSMParam + "}}")
 			}
 			return &envMap
 		}(),

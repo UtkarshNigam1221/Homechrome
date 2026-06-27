@@ -18,6 +18,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/lambda"
 	"github.com/aws/aws-sdk-go-v2/service/lambda/types"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
 )
 
 // Invoker is the subset of lambda.Client used here; abstracted for tests.
@@ -121,6 +123,10 @@ func (c *Client) Embed(ctx context.Context, texts ...string) ([][]float32, error
 			Path:       "/embed",
 		},
 	}
+	// Inject W3C traceparent into the synthetic APIGW headers so the embedder's
+	// server span continues the caller's trace. This is a lambda.Invoke with a
+	// hand-built payload — no transport-level header propagation happens otherwise.
+	otel.GetTextMapPropagator().Inject(ctx, propagation.MapCarrier(outer.Headers))
 	payload, err := json.Marshal(outer)
 	if err != nil {
 		return nil, err

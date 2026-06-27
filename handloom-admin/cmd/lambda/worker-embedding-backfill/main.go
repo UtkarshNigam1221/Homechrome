@@ -14,6 +14,7 @@ import (
 	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/jackc/pgx/v5/pgxpool"
 	pgvector "github.com/pgvector/pgvector-go"
+	"go.opentelemetry.io/otel"
 
 	"github.com/handloom/admin/internal/bootstrap"
 	"github.com/handloom/admin/internal/embedder"
@@ -63,6 +64,12 @@ type handler struct {
 }
 
 func (h *handler) Handle(ctx context.Context, req Request) (Response, error) {
+	// Root span so the traceparent injected into embedder /embed calls is valid —
+	// the Lambda entry ctx has no active span otherwise, and the embedder spans
+	// would chain to nothing.
+	ctx, span := otel.Tracer("handloom-worker-embedding-backfill").Start(ctx, "backfill.run")
+	defer span.End()
+
 	if req.BatchSize <= 0 {
 		req.BatchSize = defaultBatchSize
 	}
