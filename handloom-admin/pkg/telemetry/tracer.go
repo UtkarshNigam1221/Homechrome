@@ -138,15 +138,33 @@ func createOTLPGRPCExporter(ctx context.Context, cfg *Config) (sdktrace.SpanExpo
 	return otlptrace.New(ctx, client)
 }
 
+// endpointIsURL reports whether an OTLP endpoint is a full URL (scheme://host/path)
+// rather than a bare host[:port].
+func endpointIsURL(endpoint string) bool {
+	return strings.Contains(endpoint, "://")
+}
+
+// otlpTracesURL ensures a full OTLP/HTTP endpoint URL targets the traces signal
+// path (/v1/traces), the spec path WithEndpointURL would otherwise leave as-is.
+// A base like https://otlp-gateway.../otlp → .../otlp/v1/traces. Idempotent.
+func otlpTracesURL(raw string) string {
+	trimmed := strings.TrimRight(raw, "/")
+	if strings.HasSuffix(trimmed, "/v1/traces") {
+		return trimmed
+	}
+	return trimmed + "/v1/traces"
+}
+
 // createOTLPHTTPExporter creates an OTLP HTTP exporter.
 func createOTLPHTTPExporter(ctx context.Context, cfg *Config) (sdktrace.SpanExporter, error) {
 	var opts []otlptracehttp.Option
 	// A full URL (e.g. Grafana Cloud's https://otlp-gateway-.../otlp) carries its
-	// own scheme + base path, so use WithEndpointURL which honors them. WithEndpoint
-	// expects a bare host[:port] and would force the path to /v1/traces, POSTing to
-	// the wrong URL and silently dropping spans.
-	if strings.Contains(cfg.Tracing.Endpoint, "://") {
-		opts = append(opts, otlptracehttp.WithEndpointURL(cfg.Tracing.Endpoint))
+	// own scheme + base path, so use WithEndpointURL. Unlike WithEndpoint (bare
+	// host[:port], which auto-targets /v1/traces), WithEndpointURL uses the path
+	// VERBATIM — so normalize it to the OTLP/HTTP traces signal path or a base
+	// endpoint silently 404s and drops every span.
+	if endpointIsURL(cfg.Tracing.Endpoint) {
+		opts = append(opts, otlptracehttp.WithEndpointURL(otlpTracesURL(cfg.Tracing.Endpoint)))
 	} else {
 		opts = append(opts, otlptracehttp.WithEndpoint(cfg.Tracing.Endpoint))
 	}

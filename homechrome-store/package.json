@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "@heroicons/react": "^2.2.0",
+    "@vercel/otel": "^1.13.0",
     "@mantine/carousel": "^9.2.1",
     "@mantine/core": "^9.2.1",
     "@mantine/dates": "^9.2.1",

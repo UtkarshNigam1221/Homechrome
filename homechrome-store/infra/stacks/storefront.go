@@ -101,6 +101,12 @@ func NewStorefrontStack(scope constructs.Construct, id string, props *Storefront
 			stack, jsii.String("ImportedOtelCollectorLayer"), jsii.String(props.CollectorLayerArn),
 		)
 		serverFn.AddLayers(collectorLayer)
+		// NOTE: no Node auto-instrumentation layer. It wraps the runtime and
+		// double-manages Next.js's own OTel spans → "Operation attempted on ended
+		// Span" during SSR/revalidate. The app instruments itself via
+		// src/instrumentation.ts (@vercel/otel), exporting OTLP to the collector
+		// below — same pattern as the Go lambdas (manual app instrumentation +
+		// collector layer for export). NodeAutoInstrLayerArn is intentionally empty.
 		if props.NodeAutoInstrLayerArn != "" {
 			nodeAutoInstrLayer := awslambda.LayerVersion_FromLayerVersionArn(
 				stack, jsii.String("ImportedOtelNodeAutoInstrLayer"), jsii.String(props.NodeAutoInstrLayerArn),
@@ -118,9 +124,12 @@ func NewStorefrontStack(scope constructs.Construct, id string, props *Storefront
 		// Disable OTel metrics export — backend collector dropped the metrics pipeline
 		// (M30) and Grafana Cloud returns 404 on /v1/metrics. Traces + logs continue.
 		serverFn.AddEnvironment(jsii.String("OTEL_METRICS_EXPORTER"), jsii.String("none"), nil)
-		// /opt/otel-handler is provided by both layers; the Node auto-instr layer's
-		// version overrides the collector's and wraps the Node runtime so app code
-		// is traced without any instrumentation.ts in source.
+		// Mirror the admin lambdas exactly: collector layer + this exec wrapper +
+		// manual app instrumentation (src/instrumentation.ts), and NO Node
+		// auto-instrumentation layer. The "Operation attempted on ended Span"
+		// crash came from that layer's /opt/wrapper.js double-managing Next's
+		// spans; with the layer removed, the collector layer's /opt/otel-handler
+		// is a benign launcher (same as the Go lambdas).
 		serverFn.AddEnvironment(jsii.String("AWS_LAMBDA_EXEC_WRAPPER"), jsii.String("/opt/otel-handler"), nil)
 		serverFn.AddEnvironment(jsii.String("OPENTELEMETRY_COLLECTOR_CONFIG_URI"),
 			jsii.String("/var/task/otel.yaml"), nil) // yaml bundled into Lambda zip, not baked into layer

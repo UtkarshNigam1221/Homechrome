@@ -29,8 +29,11 @@ var envConfigs = map[string]EnvConfig{
 		DomainNames:   []string{"dev-store.homechrome.in"},
 		BackendApiUrl: "https://dev-api.homechrome.in",
 
-		CollectorLayerArn:       "arn:aws:lambda:ap-south-1:184161586896:layer:opentelemetry-collector-arm64-0_22_0:1",
-		NodeAutoInstrLayerArn:   "arn:aws:lambda:ap-south-1:184161586896:layer:opentelemetry-nodejs-0_22_0:1",
+		CollectorLayerArn: "arn:aws:lambda:ap-south-1:184161586896:layer:opentelemetry-collector-arm64-0_22_0:1",
+		// No Node auto-instrumentation layer: it double-instruments Next.js's own
+		// spans ("Operation attempted on ended Span"). The app instruments itself
+		// via src/instrumentation.ts (@vercel/otel), exporting to the collector.
+		NodeAutoInstrLayerArn:   "",
 		GrafanaEndpointSSMParam: "/handloom/dev/grafana-otlp-endpoint",
 		GrafanaAuthSSMParam:     "/handloom/dev/grafana-otlp-auth",
 	},
@@ -39,8 +42,11 @@ var envConfigs = map[string]EnvConfig{
 		DomainNames:   []string{"homechrome.in", "www.homechrome.in"},
 		BackendApiUrl: "https://api.homechrome.in",
 
-		CollectorLayerArn:       "arn:aws:lambda:ap-south-1:184161586896:layer:opentelemetry-collector-arm64-0_22_0:1",
-		NodeAutoInstrLayerArn:   "arn:aws:lambda:ap-south-1:184161586896:layer:opentelemetry-nodejs-0_22_0:1",
+		CollectorLayerArn: "arn:aws:lambda:ap-south-1:184161586896:layer:opentelemetry-collector-arm64-0_22_0:1",
+		// No Node auto-instrumentation layer: it double-instruments Next.js's own
+		// spans ("Operation attempted on ended Span"). The app instruments itself
+		// via src/instrumentation.ts (@vercel/otel), exporting to the collector.
+		NodeAutoInstrLayerArn:   "",
 		GrafanaEndpointSSMParam: "/handloom/prod/grafana-otlp-endpoint",
 		GrafanaAuthSSMParam:     "/handloom/prod/grafana-otlp-auth",
 	},

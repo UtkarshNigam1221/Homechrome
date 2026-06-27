@@ -11,12 +11,21 @@ import (
 // and stop all telemetry providers.
 type Shutdown func(context.Context)
 
+// otelDisabled reports whether the OTEL_SDK_DISABLED kill switch is set, logging
+// once when it is. Shared by MustInit / MustInitDirect.
+func otelDisabled() bool {
+	if os.Getenv("OTEL_SDK_DISABLED") == "true" {
+		slog.Info("telemetry disabled via OTEL_SDK_DISABLED")
+		return true
+	}
+	return false
+}
+
 // MustInit boots the tracer provider from env config and returns a shutdown
 // closure. Panics on construction failure — telemetry init must be
 // deterministic. Honors OTEL_SDK_DISABLED=true as an emergency kill switch.
 func MustInit(serviceName, serviceVersion, environment string) Shutdown {
-	if os.Getenv("OTEL_SDK_DISABLED") == "true" {
-		slog.Info("telemetry disabled via OTEL_SDK_DISABLED")
+	if otelDisabled() {
 		return func(context.Context) {}
 	}
 
@@ -56,8 +65,7 @@ func MustInit(serviceName, serviceVersion, environment string) Shutdown {
 // It returns the provider (so the caller can ForceFlush per-invocation) plus a
 // Shutdown closure for process exit. Honors OTEL_SDK_DISABLED=true.
 func MustInitDirect(serviceName, serviceVersion, environment, endpoint string, headers map[string]string) (*TracerProvider, Shutdown) {
-	if os.Getenv("OTEL_SDK_DISABLED") == "true" {
-		slog.Info("telemetry disabled via OTEL_SDK_DISABLED")
+	if otelDisabled() {
 		return nil, func(context.Context) {}
 	}
 
