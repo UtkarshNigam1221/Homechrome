@@ -9,12 +9,14 @@ FROM --platform=$BUILDPLATFORM golang:1.25-bookworm AS builder
 
 WORKDIR /src
 
-# CGO toolchain + aarch64 cross-compiler. libc6-dev-arm64-cross provides the
-# arm64 target libc headers (bits/libc-header-start.h etc.) the cross-gcc needs;
-# it is only a *Recommended* dep of gcc-aarch64-linux-gnu, so --no-install-recommends
-# would otherwise skip it and the CGO compile fails with a missing-header error.
+# CGO toolchain + aarch64 cross-compiler. The arm64 *cross* dev packages are only
+# Recommended deps (skipped by --no-install-recommends), so list them explicitly:
+#   libc6-dev-arm64-cross        → arm64 libc headers (bits/libc-header-start.h)
+#   libstdc++-12-dev-arm64-cross → arm64 libstdc++.so for the CGO link (-lstdc++,
+#                                  pulled in by the tokenizers lib)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc libc6-dev pkg-config curl gcc-aarch64-linux-gnu libc6-dev-arm64-cross \
+    gcc libc6-dev pkg-config curl gcc-aarch64-linux-gnu \
+    libc6-dev-arm64-cross libstdc++-12-dev-arm64-cross \
   && rm -rf /var/lib/apt/lists/*
 
 # Pre-fetch libtokenizers (linux-arm64 prebuilt from the Go binding's release).
