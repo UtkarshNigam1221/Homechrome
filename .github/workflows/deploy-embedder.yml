@@ -71,6 +71,16 @@ jobs:
         with:
           ref: ${{ inputs.branch }}
 
+      # CDK synth bundles the whole app: the embedder container image + the API's
+      # NodejsFunction (image resizer) both docker-build here, on top of the heavy
+      # HF/ONNX embedder assets. That overflows the runner's ~14GB default free
+      # space. Drop preinstalled toolchains we don't use to reclaim ~20GB+.
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /opt/hostedtoolcache/CodeQL
+          sudo docker image prune -af || true
+          df -h /
+
       # CDK app is `go run ./cmd/` — Go is required to synth/deploy.
       - uses: actions/setup-go@v6
         with:
