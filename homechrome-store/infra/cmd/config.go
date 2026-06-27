@@ -29,8 +29,8 @@ var envConfigs = map[string]EnvConfig{
 		DomainNames:   []string{"dev-store.homechrome.in"},
 		BackendApiUrl: "https://dev-api.homechrome.in",
 
-		CollectorLayerArn:       "", // set to enable storefront OTel
-		NodeAutoInstrLayerArn:   "",
+		CollectorLayerArn:       "arn:aws:lambda:ap-south-1:184161586896:layer:opentelemetry-collector-arm64-0_22_0:1",
+		NodeAutoInstrLayerArn:   "arn:aws:lambda:ap-south-1:184161586896:layer:opentelemetry-nodejs-0_22_0:1",
 		GrafanaEndpointSSMParam: "/handloom/dev/grafana-otlp-endpoint",
 		GrafanaAuthSSMParam:     "/handloom/dev/grafana-otlp-auth",
 	},
@@ -39,8 +39,8 @@ var envConfigs = map[string]EnvConfig{
 		DomainNames:   []string{"homechrome.in", "www.homechrome.in"},
 		BackendApiUrl: "https://api.homechrome.in",
 
-		CollectorLayerArn:       "", // set to enable storefront OTel
-		NodeAutoInstrLayerArn:   "",
+		CollectorLayerArn:       "arn:aws:lambda:ap-south-1:184161586896:layer:opentelemetry-collector-arm64-0_22_0:1",
+		NodeAutoInstrLayerArn:   "arn:aws:lambda:ap-south-1:184161586896:layer:opentelemetry-nodejs-0_22_0:1",
 		GrafanaEndpointSSMParam: "/handloom/prod/grafana-otlp-endpoint",
 		GrafanaAuthSSMParam:     "/handloom/prod/grafana-otlp-auth",
 	},
