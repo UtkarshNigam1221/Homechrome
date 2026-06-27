@@ -98,6 +98,12 @@ jobs:
       - name: Bootstrap embedder assets
         run: make prepare-embedder-assets
 
+      # CDK synth instantiates the whole app (APIStack + DatabaseStack), so every
+      # active lambda asset must exist on disk even though we only deploy the
+      # embedder stack here — notably bin/lambda/migrator for DatabaseStack.
+      - name: Build active Lambdas
+        run: make build-lambdas-active
+
       - uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
