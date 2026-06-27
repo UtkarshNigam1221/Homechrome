@@ -93,6 +93,9 @@ jobs:
           path: homechrome-store/.open-next
           retention-days: 1
           if-no-files-found: error
+          # .open-next is a dot-directory; upload-artifact@v4 excludes hidden
+          # paths by default, which drops the entire bundle → "No files found".
+          include-hidden-files: true
 
   deploy:
     name: Deploy
