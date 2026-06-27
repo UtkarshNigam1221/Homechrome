@@ -79,6 +79,14 @@ jobs:
           NEXT_PUBLIC_SITE_URL: ${{ steps.urls.outputs.site_url }}
         run: npx @opennextjs/aws build
 
+      # Fail loudly at the build (not the opaque upload step) and surface the
+      # output tree so a missing .open-next is diagnosable from the log.
+      - name: Verify OpenNext output
+        run: |
+          echo "--- .open-next ---"; ls -la .open-next 2>&1 || echo "MISSING .open-next"
+          test -d .open-next/server-functions/default || {
+            echo "::error::OpenNext build produced no .open-next/server-functions/default"; exit 1; }
+
       - uses: actions/upload-artifact@v4
         with:
           name: store-open-next-${{ inputs.environment }}
