@@ -84,6 +84,15 @@ func MustInitDirect(serviceName, serviceVersion, environment, endpoint string, h
 		panic("telemetry: tracer provider: " + err.Error())
 	}
 
+	// Also export logs directly (the container Lambda has no collector log tap).
+	// Non-fatal: if it fails, traces still work and logs stay on stdout/CloudWatch.
+	if lp, lerr := newLoggerProvider(ctx, cfg); lerr == nil {
+		tp.loggerProvider = lp
+		installSlogFanout(lp, cfg.ServiceName)
+	} else {
+		slog.Warn("telemetry: logs exporter init failed; logs stay on stdout only", "err", lerr)
+	}
+
 	slog.Info("telemetry initialized (direct export)", //nolint:gosec // G706: operator env/build config, not user input
 		"version", serviceVersion,
 		"environment", environment,
