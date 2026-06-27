@@ -1,13 +1,17 @@
 # syntax=docker/dockerfile:1.6
 
-# Stage 1: build the Go binary with CGO enabled, linking against libtokenizers.
-FROM --platform=linux/arm64 golang:1.25-bookworm AS builder
+# Stage 1: cross-compile the Go binary (CGO, linked against libtokenizers) on the
+# NATIVE build platform, targeting arm64. Pinning the builder to arm64 made the
+# CGO `go build` run under qemu emulation on amd64 CI runners — 20+ min and no
+# progress output. $BUILDPLATFORM keeps the builder native (fast); GOARCH +
+# aarch64 cross-gcc produce the arm64 binary the Lambda runtime needs.
+FROM --platform=$BUILDPLATFORM golang:1.25-bookworm AS builder
 
 WORKDIR /src
 
-# CGO toolchain.
+# CGO toolchain + aarch64 cross-compiler (CC for the arm64 CGO link below).
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc libc6-dev pkg-config curl \
+    gcc libc6-dev pkg-config curl gcc-aarch64-linux-gnu \
   && rm -rf /var/lib/apt/lists/*
 
 # Pre-fetch libtokenizers (linux-arm64 prebuilt from the Go binding's release).
@@ -23,6 +27,7 @@ RUN go mod download
 COPY . .
 
 ENV CGO_ENABLED=1 GOOS=linux GOARCH=arm64
+ENV CC=aarch64-linux-gnu-gcc
 ENV CGO_LDFLAGS="-L/usr/local/lib"
 RUN go build -ldflags="-s -w" -o /out/bootstrap ./cmd/embedder
 
