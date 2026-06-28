@@ -19,7 +19,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { useState } from 'react';
 
-import logo80 from '@/assets/logo-80.png';
+import logo80 from '@/assets/logo-80.webp';
 
 import { useAuthStore } from '@/stores/auth';
 import { useCartStore } from '@/stores/cart';
@@ -73,7 +73,6 @@ export default function Header({ categories }: HeaderProps) {
                     alt="Homechrome"
                     height={36}
                     style={{ height: 36, width: 'auto' }}
-                    priority
                     unoptimized
                   />
                   <Text fw={700} c="navy.7" visibleFrom="md" style={{ letterSpacing: '-0.01em' }}>
