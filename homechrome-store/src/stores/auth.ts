@@ -35,6 +35,8 @@ export const useAuthStore = create<AuthState>((set) => ({
       is_new_customer: boolean;
     }>(ROUTES.AUTH.VERIFY_OTP, { phone, code });
     set({ customer: data.customer, isAuthenticated: true });
+    const secure = window.location.protocol === 'https:' ? '; secure' : '';
+    document.cookie = `hc_session=1; path=/; max-age=604800; samesite=lax${secure}`;
     return data;
   },
 
@@ -43,6 +45,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       await api.post(ROUTES.AUTH.LOGOUT);
     } finally {
       set({ customer: null, isAuthenticated: false });
+      document.cookie = 'hc_session=; path=/; max-age=0';
     }
   },
 
@@ -52,6 +55,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       set({ customer: data, isAuthenticated: true, isLoading: false });
     } catch {
       set({ customer: null, isAuthenticated: false, isLoading: false });
+      document.cookie = 'hc_session=; path=/; max-age=0';
     }
   },
 }));

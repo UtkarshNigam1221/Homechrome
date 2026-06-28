@@ -22,7 +22,11 @@ import '@mantine/carousel/styles.css';
 function AuthInit() {
   const checkAuth = useAuthStore((s) => s.checkAuth);
   useEffect(() => {
-    checkAuth();
+    if (document.cookie.includes('hc_session=')) {
+      checkAuth();
+    } else {
+      useAuthStore.setState({ isAuthenticated: false, isLoading: false });
+    }
   }, [checkAuth]);
   return null;
 }
