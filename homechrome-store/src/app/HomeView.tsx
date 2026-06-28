@@ -105,8 +105,12 @@ export default function HomeView({ categories, products }: HomeViewProps) {
             </Group>
             <Divider mb="lg" />
             <SimpleGrid cols={{ base: 2, sm: 3, lg: 4 }} spacing="md">
-              {categories.slice(0, 8).map((category) => (
-                <CategoryCard key={category.id} category={category} />
+              {categories.slice(0, 8).map((category, index) => (
+                <CategoryCard
+                  key={category.id}
+                  category={category}
+                  priority={index < 2}
+                />
               ))}
             </SimpleGrid>
           </Container>
