@@ -52,6 +52,12 @@ export function ProductInfo({ product }: ProductInfoProps) {
         )}
       </Group>
 
+      {hasDiscount && (
+        <Text size="sm" fw={600} c="#2b7a2b">
+          You save {formatPrice(product.base_price - product.selling_price)} ({discountPercent}% off)
+        </Text>
+      )}
+
       <StockStatus inStock={product.in_stock} />
 
       {product.description && (
