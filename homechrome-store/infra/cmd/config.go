@@ -17,10 +17,10 @@ type EnvConfig struct {
 	// Leave the layer ARNs empty to skip OTel — StorefrontStack treats an empty
 	// CollectorLayerArn as a no-op. To enable, set the community OTel Collector
 	// layer ARN (account 184161586896, see handloom-admin telemetry.go) here.
-	CollectorLayerArn       string
-	NodeAutoInstrLayerArn   string
-	GrafanaEndpointSSMParam string
-	GrafanaAuthSSMParam     string
+	CollectorLayerArn     string
+	NodeAutoInstrLayerArn string
+	GrafanaEndpoint       string // non-secret OTLP base URL, baked here
+	GrafanaAuthSSMParam   string // secret token, resolved from SSM at deploy
 }
 
 var envConfigs = map[string]EnvConfig{
@@ -33,9 +33,9 @@ var envConfigs = map[string]EnvConfig{
 		// No Node auto-instrumentation layer: it double-instruments Next.js's own
 		// spans ("Operation attempted on ended Span"). The app instruments itself
 		// via src/instrumentation.ts (@vercel/otel), exporting to the collector.
-		NodeAutoInstrLayerArn:   "",
-		GrafanaEndpointSSMParam: "/handloom/dev/grafana-otlp-endpoint",
-		GrafanaAuthSSMParam:     "/handloom/dev/grafana-otlp-auth",
+		NodeAutoInstrLayerArn: "",
+		GrafanaEndpoint:       "https://otlp-gateway-prod-ap-south-1.grafana.net/otlp",
+		GrafanaAuthSSMParam:   "/handloom/dev/grafana-otlp-auth",
 	},
 	"prod": {
 		CertArn:       "arn:aws:acm:us-east-1:163053486005:certificate/4e15c02f-e7ef-48df-8eff-5097eefed2e8",
@@ -46,9 +46,9 @@ var envConfigs = map[string]EnvConfig{
 		// No Node auto-instrumentation layer: it double-instruments Next.js's own
 		// spans ("Operation attempted on ended Span"). The app instruments itself
 		// via src/instrumentation.ts (@vercel/otel), exporting to the collector.
-		NodeAutoInstrLayerArn:   "",
-		GrafanaEndpointSSMParam: "/handloom/prod/grafana-otlp-endpoint",
-		GrafanaAuthSSMParam:     "/handloom/prod/grafana-otlp-auth",
+		NodeAutoInstrLayerArn: "",
+		GrafanaEndpoint:       "https://otlp-gateway-prod-ap-south-1.grafana.net/otlp",
+		GrafanaAuthSSMParam:   "/handloom/prod/grafana-otlp-auth",
 	},
 }
 

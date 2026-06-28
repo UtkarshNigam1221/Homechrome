@@ -22,6 +22,11 @@ type EnvConfig struct {
 	MetricsQueueName string // SQS metrics queue (MetricsStack owns; Embedder + API import)
 	EmbedderFnName   string // Embedder Lambda (Embedder app owns; API imports for invoke + route)
 
+	// GrafanaEndpoint is the non-secret Grafana Cloud OTLP base URL. Baked here
+	// (like the cert ARNs / collector layer ARN) — only the AUTH token is secret
+	// and stays in SSM (/handloom/<env>/grafana-otlp-auth).
+	GrafanaEndpoint string
+
 	// Non-secret gateway config — baked per-env here so it never needs a
 	// deploy-time env var. SECRETS (client secret, passwords, auth keys,
 	// POSTGRES_DSN, JWT secrets) stay in the BACKEND_ENV_* deploy secret and are
@@ -46,6 +51,7 @@ var envConfigs = map[string]EnvConfig{
 
 		MetricsQueueName: "handloom-metrics-events-dev",
 		EmbedderFnName:   "handloom-embedder-dev",
+		GrafanaEndpoint:  "https://otlp-gateway-prod-ap-south-1.grafana.net/otlp",
 
 		PhonePeBaseURL:          "https://api-preprod.phonepe.com/apis/pg-sandbox",
 		PhonePeCallbackURL:      "https://dev-api.homechrome.in/api/v1/store/webhooks/phonepe",
@@ -65,6 +71,7 @@ var envConfigs = map[string]EnvConfig{
 
 		MetricsQueueName: "handloom-metrics-events-prod",
 		EmbedderFnName:   "handloom-embedder-prod",
+		GrafanaEndpoint:  "https://otlp-gateway-prod-ap-south-1.grafana.net/otlp",
 
 		// when this was filled — confirm against BACKEND_ENV_PROD before the next
 		// prod deploy. The URLs below follow the prod domain pattern.
@@ -97,6 +104,7 @@ func (c EnvConfig) validate(env string) error {
 		"MSG91OTPTemplateID":   c.MSG91OTPTemplateID,
 		"MetricsQueueName":     c.MetricsQueueName,
 		"EmbedderFnName":       c.EmbedderFnName,
+		"GrafanaEndpoint":      c.GrafanaEndpoint,
 	}
 	var missing []string
 	for name, val := range required {

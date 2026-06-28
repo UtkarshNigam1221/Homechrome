@@ -29,10 +29,10 @@ type APIStackProps struct {
 	LogsStack      *LogsStack   // Shared CloudWatch log groups (ApiLogGroup, WorkerLogGroup)
 	EmbedderFnName string       // Embedder Lambda name (cfg.EmbedderFnName); imported by name — no cross-stack ref to the embedder app
 	MetricsQueue   awssqs.Queue // Optional: PostgreSQL metrics pipeline SQS queue (publishers only)
-	BaseDomain     string         // Base domain (e.g. homechrome.in) — used for cookie domain
-	DomainName     string         // Optional: custom domain for API Gateway (e.g. dev-api.homechrome.in)
-	FrontendOrigin string         // Optional: frontend origin for CORS (e.g. https://dev-admin.homechrome.in)
-	CertArn        string         // Optional: ACM certificate ARN (us-east-1) for custom domain
+	BaseDomain     string       // Base domain (e.g. homechrome.in) — used for cookie domain
+	DomainName     string       // Optional: custom domain for API Gateway (e.g. dev-api.homechrome.in)
+	FrontendOrigin string       // Optional: frontend origin for CORS (e.g. https://dev-admin.homechrome.in)
+	CertArn        string       // Optional: ACM certificate ARN (us-east-1) for custom domain
 
 	// Non-secret gateway config, baked per-env in infra/cmd/config.go and
 	// injected into Lambda env. Secrets still come from the deploy shell.
@@ -49,11 +49,9 @@ type APIStackProps struct {
 	// names for Grafana Cloud credentials. All three must be set together; if
 	// CollectorLayerArn is empty the applyTelemetry helper is a no-op.
 	// Use stacks.OtelCollectorLayerArn(region, "arm64") to compute the ARN.
-	CollectorLayerArn       string // Community OTel Collector layer ARN (account 184161586896)
-	GrafanaAuthSSMParam     string // Plain SSM String, e.g. /handloom/dev/grafana-otlp-auth
-	GrafanaEndpointSSMParam string // Plain SSM String, e.g. /handloom/dev/grafana-otlp-endpoint
-	// Both params are plain `String` type (not SecureString) because CFN
-	// forbids {{resolve:ssm-secure:...}} in Lambda env vars.
+	CollectorLayerArn   string // Community OTel Collector layer ARN (account 184161586896)
+	GrafanaAuthSSMParam string // Secret token; resolved via {{resolve:ssm}} at deploy (plain String — CFN forbids ssm-secure in Lambda env)
+	GrafanaEndpoint     string // Non-secret OTLP base URL, baked in cmd/config.go
 }
 
 // ServiceLambda represents a Lambda function for a service
@@ -443,7 +441,7 @@ func (s *APIStack) applyTelemetry(fn awslambda.Function, serviceName string) {
 	fn.AddEnvironment(jsii.String("OPENTELEMETRY_COLLECTOR_CONFIG_URI"),
 		jsii.String("/var/task/otel.yaml"), nil) // yaml bundled into Lambda zip, not baked into layer
 	fn.AddEnvironment(jsii.String("GRAFANA_OTLP_ENDPOINT"),
-		jsii.String("{{resolve:ssm:"+s.props.GrafanaEndpointSSMParam+"}}"), nil)
+		jsii.String(s.props.GrafanaEndpoint), nil)
 	fn.AddEnvironment(jsii.String("GRAFANA_OTLP_AUTH"),
 		jsii.String("{{resolve:ssm:"+s.props.GrafanaAuthSSMParam+"}}"), nil)
 }

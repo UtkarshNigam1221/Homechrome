@@ -45,12 +45,12 @@ type EmbedderStackProps struct {
 	// merely EXIST at runtime; its absence does not block embedder deploy.
 	MetricsQueueName string
 
-	// Grafana Cloud OTLP params (plain SSM String, shared with backend). Resolved
-	// at deploy via {{resolve:ssm}} and injected as env. The container Lambda can't
-	// use the OTel Collector layer the zip lambdas use, so the app exports OTLP
-	// directly to Grafana using these. Empty → embedder runs untraced (no-op).
-	GrafanaEndpointSSMParam string
-	GrafanaAuthSSMParam     string
+	// Grafana Cloud OTLP config. The container Lambda exports OTLP directly to
+	// Grafana (no collector layer). Endpoint is a non-secret URL baked in
+	// cmd/config.go; only the auth token is secret (resolved from SSM at deploy).
+	// Empty → embedder runs untraced (no-op).
+	GrafanaEndpoint     string
+	GrafanaAuthSSMParam string
 }
 
 // EmbedderStack publishes:
@@ -141,8 +141,8 @@ func NewEmbedderStack(scope constructs.Construct, id string, props *EmbedderStac
 			// app exports traces directly (no collector layer on a container Lambda).
 			// {{resolve:ssm}} fails the deploy if the param is absent, so only wire
 			// it when both names are provided (mirrors backend; params are shared).
-			if props.GrafanaEndpointSSMParam != "" && props.GrafanaAuthSSMParam != "" {
-				envMap["GRAFANA_OTLP_ENDPOINT"] = jsii.String("{{resolve:ssm:" + props.GrafanaEndpointSSMParam + "}}")
+			if props.GrafanaEndpoint != "" && props.GrafanaAuthSSMParam != "" {
+				envMap["GRAFANA_OTLP_ENDPOINT"] = jsii.String(props.GrafanaEndpoint)
 				envMap["GRAFANA_OTLP_AUTH"] = jsii.String("{{resolve:ssm:" + props.GrafanaAuthSSMParam + "}}")
 			}
 			return &envMap
