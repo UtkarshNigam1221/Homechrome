@@ -74,7 +74,8 @@ func MustInitDirect(serviceName, serviceVersion, environment, endpoint string, h
 		serviceName, serviceVersion, environment,
 		"otlp-http", endpoint, 1.0, false /*insecure*/, true, /*traceCorrelation*/
 	)
-	cfg.Tracing.Headers = headers // NewConfigFromApp seeds an empty map; set auth here
+	cfg.Tracing.Headers = headers    // NewConfigFromApp seeds an empty map; set auth here
+	cfg.Tracing.BatchInLambda = true // safe: MustInitDirect callers ForceFlush per invocation
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

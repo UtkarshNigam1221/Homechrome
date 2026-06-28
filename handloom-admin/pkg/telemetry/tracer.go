@@ -78,9 +78,13 @@ func NewTracerProvider(ctx context.Context, cfg *Config) (*TracerProvider, error
 	// invocations — buffered spans are lost. Use SimpleSpanProcessor (synchronous
 	// export on Span.End()) in Lambda. Outside Lambda (monolith) batching is fine.
 	var spanProcessor sdktrace.TracerProviderOption
-	if os.Getenv("AWS_LAMBDA_FUNCTION_NAME") != "" {
+	if os.Getenv("AWS_LAMBDA_FUNCTION_NAME") != "" && !cfg.Tracing.BatchInLambda {
+		// Default in Lambda: synchronous export on Span.End (no ForceFlush needed).
 		spanProcessor = sdktrace.WithSyncer(exporter)
 	} else {
+		// Batch: outside Lambda, OR in Lambda when the caller ForceFlushes per
+		// invocation (BatchInLambda) — buffers a request's spans (server + DB)
+		// into one export instead of one POST per span.
 		spanProcessor = sdktrace.WithBatcher(exporter,
 			sdktrace.WithBatchTimeout(cfg.Tracing.BatchTimeout),
 			sdktrace.WithMaxExportBatchSize(cfg.Tracing.MaxExportBatchSize),

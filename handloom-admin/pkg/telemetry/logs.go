@@ -31,16 +31,13 @@ func newLoggerProvider(ctx context.Context, cfg *Config) (*sdklog.LoggerProvider
 	if err != nil {
 		return nil, err
 	}
-	// Synchronous export in Lambda (the runtime freezes between invocations, so a
-	// batch timer can't reliably fire); batch outside Lambda.
-	var proc sdklog.Processor
-	if os.Getenv("AWS_LAMBDA_FUNCTION_NAME") != "" {
-		proc = sdklog.NewSimpleProcessor(exp)
-	} else {
-		proc = sdklog.NewBatchProcessor(exp)
-	}
+	// BatchProcessor (not Simple): Simple would do a blocking OTLP POST on EVERY
+	// log line — 3+ synchronous round-trips per request. Batch buffers them and
+	// the caller's per-invocation ForceFlush drains the whole request in ONE POST.
+	// Safe under Lambda freeze precisely because ForceFlush is explicit (the batch
+	// timer never has to fire).
 	return sdklog.NewLoggerProvider(
-		sdklog.WithProcessor(proc),
+		sdklog.WithProcessor(sdklog.NewBatchProcessor(exp)),
 		sdklog.WithResource(newResource(cfg)),
 	), nil
 }
