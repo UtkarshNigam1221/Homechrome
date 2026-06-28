@@ -9,12 +9,16 @@ FROM --platform=$BUILDPLATFORM golang:1.25-bookworm AS builder
 
 WORKDIR /src
 
-# CGO toolchain + aarch64 cross-compiler. libc6-dev-arm64-cross provides the
-# arm64 target libc headers (bits/libc-header-start.h etc.) the cross-gcc needs;
-# it is only a *Recommended* dep of gcc-aarch64-linux-gnu, so --no-install-recommends
-# would otherwise skip it and the CGO compile fails with a missing-header error.
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc libc6-dev pkg-config curl gcc-aarch64-linux-gnu libc6-dev-arm64-cross \
+# Full arm64 cross-compile toolchain, installed in one shot so we never have to
+# chase individual missing target libs again. crossbuild-essential-arm64 pulls
+# the cross gcc/g++/binutils; allowing Recommends (NO --no-install-recommends)
+# brings the arm64 *target* dev libs the CGO compile + link need — libc headers
+# (bits/libc-header-start.h), libstdc++.so (-lstdc++), libgcc, etc. With
+# --no-install-recommends those target dev libs are skipped and the build fails
+# with missing-header / cannot-find-lXXX errors one at a time.
+# (This is the throwaway builder stage, so its size doesn't affect the Lambda image.)
+RUN apt-get update && apt-get install -y \
+    pkg-config curl crossbuild-essential-arm64 \
   && rm -rf /var/lib/apt/lists/*
 
 # Pre-fetch libtokenizers (linux-arm64 prebuilt from the Go binding's release).

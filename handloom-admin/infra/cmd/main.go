@@ -68,11 +68,13 @@ func buildEmbedderApp(app awscdk.App, env *awscdk.Environment, environment strin
 			Description: jsii.String("Handloom Admin - Embedder Lambda for hybrid semantic search (" + environment + ")"),
 			Tags:        tags,
 		},
-		Environment:      environment,
-		FnName:           cfg.EmbedderFnName,
-		StoreFrontHost:   cfg.StoreFrontHost,
-		PostgresDSN:      postgresDSN,
-		MetricsQueueName: cfg.MetricsQueueName,
+		Environment:         environment,
+		FnName:              cfg.EmbedderFnName,
+		StoreFrontHost:      cfg.StoreFrontHost,
+		PostgresDSN:         postgresDSN,
+		MetricsQueueName:    cfg.MetricsQueueName,
+		GrafanaEndpoint:     cfg.GrafanaEndpoint,
+		GrafanaAuthSSMParam: "/handloom/" + environment + "/grafana-otlp-auth",
 	})
 }
 
@@ -117,13 +119,13 @@ func buildBackendApp(app awscdk.App, env *awscdk.Environment, environment string
 			Description: jsii.String("Handloom Admin - Metrics SQS + consumer Lambda (" + environment + ")"),
 			Tags:        tags,
 		},
-		Environment:             environment,
-		QueueName:               cfg.MetricsQueueName,
-		DatabaseStack:           databaseStack,
-		LogsStack:               logsStack,
-		CollectorLayerArn:       collectorArn,
-		GrafanaAuthSSMParam:     "/handloom/" + environment + "/grafana-otlp-auth",
-		GrafanaEndpointSSMParam: "/handloom/" + environment + "/grafana-otlp-endpoint",
+		Environment:         environment,
+		QueueName:           cfg.MetricsQueueName,
+		DatabaseStack:       databaseStack,
+		LogsStack:           logsStack,
+		CollectorLayerArn:   collectorArn,
+		GrafanaAuthSSMParam: "/handloom/" + environment + "/grafana-otlp-auth",
+		GrafanaEndpoint:     cfg.GrafanaEndpoint,
 	})
 
 	stacks.NewAPIStack(app, "HandloomAPIStack-"+environment, &stacks.APIStackProps{
@@ -152,7 +154,7 @@ func buildBackendApp(app awscdk.App, env *awscdk.Environment, environment string
 		ShiprocketPickupPincode: cfg.ShiprocketPickupPincode,
 		CollectorLayerArn:       collectorArn,
 		GrafanaAuthSSMParam:     "/handloom/" + environment + "/grafana-otlp-auth",
-		GrafanaEndpointSSMParam: "/handloom/" + environment + "/grafana-otlp-endpoint",
+		GrafanaEndpoint:         cfg.GrafanaEndpoint,
 	})
 }
 

@@ -49,6 +49,12 @@ type TracingConfig struct {
 
 	// Headers for OTLP exporter (e.g., for authentication)
 	Headers map[string]string
+
+	// BatchInLambda forces the BatchSpanProcessor even inside Lambda. Only safe
+	// when the caller ForceFlushes per invocation (e.g. the embedder) — otherwise
+	// the batch timer can't fire under freeze and spans are lost, so Lambda
+	// defaults to the synchronous SimpleSpanProcessor.
+	BatchInLambda bool
 }
 
 // LoggingConfig holds logging-specific configuration.

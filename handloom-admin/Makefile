@@ -39,7 +39,7 @@ LAMBDA_SERVICES=auth user catalog order pricing inventory analytics notification
 	migrator
 
 # Active services for deployment
-LAMBDA_SERVICES_ACTIVE=auth user catalog asset order store-auth store-catalog store-cart store-checkout store-orders store-tracking store-profile store-events store-webhooks migrator worker-metrics-consumer
+LAMBDA_SERVICES_ACTIVE=auth user catalog asset order store-auth store-catalog store-cart store-checkout store-orders store-tracking store-profile store-events store-webhooks migrator worker-metrics-consumer worker-embedding-backfill
 
 # Main package path
 MAIN_PKG=./cmd/api
@@ -443,7 +443,8 @@ build-lambda-worker-metrics-consumer:
 	@mkdir -p $(LAMBDA_OUT_DIR)/worker-metrics-consumer
 	$(LAMBDA_BUILD_FLAGS) $(GOBUILD) -ldflags="-s -w" -o $(LAMBDA_OUT_DIR)/worker-metrics-consumer/bootstrap ./cmd/lambda/worker-metrics-consumer
 
-## Build the embedding backfill Lambda (not included in build-lambdas-active; triggered manually via GH Actions)
+## Build only the embedding backfill Lambda. Also built by build-lambdas-active
+## (APIStack creates the Lambda on every deploy, so its binary is always needed).
 .PHONY: prepare-embedder-assets build-lambda-backfill
 build-lambda-backfill:
 	@echo "Building worker-embedding-backfill Lambda..."

@@ -34,9 +34,9 @@ type MetricsStackProps struct {
 	// OTel collector layer + Grafana Cloud SSM endpoints. When all three are
 	// set, the consumer Lambda ships traces + logs to Grafana Cloud via the
 	// extension layer. Empty values degrade gracefully (no telemetry).
-	CollectorLayerArn       string
-	GrafanaAuthSSMParam     string
-	GrafanaEndpointSSMParam string
+	CollectorLayerArn   string
+	GrafanaAuthSSMParam string // secret, resolved from SSM at deploy
+	GrafanaEndpoint     string // non-secret URL, baked in cmd/config.go
 }
 
 // MetricsStack contains the SQS queue, DLQ, and consumer Lambda for the
@@ -128,7 +128,7 @@ func NewMetricsStack(scope constructs.Construct, id string, props *MetricsStackP
 	// Attach OTel collector layer + env so consumer logs ship to Grafana Loki
 	// (and traces to Tempo). Mirrors APIStack.applyTelemetry. Skipped when
 	// CollectorLayerArn or Grafana SSM params are empty.
-	if props.CollectorLayerArn != "" && props.GrafanaAuthSSMParam != "" && props.GrafanaEndpointSSMParam != "" {
+	if props.CollectorLayerArn != "" && props.GrafanaAuthSSMParam != "" && props.GrafanaEndpoint != "" {
 		collectorLayer := awslambda.LayerVersion_FromLayerVersionArn(
 			stack,
 			jsii.String("MetricsConsumerCollectorLayer"),
@@ -148,7 +148,7 @@ func NewMetricsStack(scope constructs.Construct, id string, props *MetricsStackP
 		consumer.AddEnvironment(jsii.String("OPENTELEMETRY_COLLECTOR_CONFIG_URI"),
 			jsii.String("/var/task/otel.yaml"), nil)
 		consumer.AddEnvironment(jsii.String("GRAFANA_OTLP_ENDPOINT"),
-			jsii.String("{{resolve:ssm:"+props.GrafanaEndpointSSMParam+"}}"), nil)
+			jsii.String(props.GrafanaEndpoint), nil)
 		consumer.AddEnvironment(jsii.String("GRAFANA_OTLP_AUTH"),
 			jsii.String("{{resolve:ssm:"+props.GrafanaAuthSSMParam+"}}"), nil)
 	}

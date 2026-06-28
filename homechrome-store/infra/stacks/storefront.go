@@ -18,7 +18,7 @@ import (
 type StorefrontStackProps struct {
 	awscdk.StackProps
 	Environment   string
-	DomainNames   []string   // Primary domain first, then aliases (e.g. ["homechrome.in", "www.homechrome.in"])
+	DomainNames   []string // Primary domain first, then aliases (e.g. ["homechrome.in", "www.homechrome.in"])
 	CertArn       string
 	BackendApiUrl string     // e.g. https://dev-api.homechrome.in
 	LogsStack     *LogsStack // shared CloudWatch log groups (server Lambda → ServerLogGroup)
@@ -29,10 +29,10 @@ type StorefrontStackProps struct {
 	//   2. Node auto-instrumentation layer (wraps Node runtime, no app code needed)
 	// We removed instrumentation.ts because Next.js 16 + OpenNext fails to
 	// include it in the standalone bundle; auto-instrumentation layer covers it.
-	CollectorLayerArn       string // ADOT Collector layer
-	NodeAutoInstrLayerArn   string // Node auto-instrumentation layer
-	GrafanaEndpointSSMParam string // Plain SSM String, e.g. /handloom/dev/grafana-otlp-endpoint
-	GrafanaAuthSSMParam     string // Plain SSM String, e.g. /handloom/dev/grafana-otlp-auth
+	CollectorLayerArn     string // ADOT Collector layer
+	NodeAutoInstrLayerArn string // Node auto-instrumentation layer
+	GrafanaEndpoint       string // Non-secret OTLP base URL, baked in cmd/config.go
+	GrafanaAuthSSMParam   string // Secret token, resolved from SSM at deploy (Plain SSM String)
 }
 
 type StorefrontStack struct {
@@ -76,8 +76,8 @@ func NewStorefrontStack(scope constructs.Construct, id string, props *Storefront
 		// the workload is only ~270MB; we bump for CPU not RAM. Next.js SSR +
 		// OTel auto-instr layer is CPU-bound during cold start and SSR render.
 		MemorySize: jsii.Number(1769),
-		Timeout:      awscdk.Duration_Seconds(jsii.Number(15)),
-		LogGroup:     props.LogsStack.ServerLogGroup,
+		Timeout:    awscdk.Duration_Seconds(jsii.Number(15)),
+		LogGroup:   props.LogsStack.ServerLogGroup,
 		Environment: &map[string]*string{
 			"CACHE_BUCKET_NAME":       bucket.BucketName(),
 			"CACHE_BUCKET_KEY_PREFIX": jsii.String("_cache"),
@@ -101,6 +101,12 @@ func NewStorefrontStack(scope constructs.Construct, id string, props *Storefront
 			stack, jsii.String("ImportedOtelCollectorLayer"), jsii.String(props.CollectorLayerArn),
 		)
 		serverFn.AddLayers(collectorLayer)
+		// NOTE: no Node auto-instrumentation layer. It wraps the runtime and
+		// double-manages Next.js's own OTel spans → "Operation attempted on ended
+		// Span" during SSR/revalidate. The app instruments itself via
+		// src/instrumentation.ts (@vercel/otel), exporting OTLP to the collector
+		// below — same pattern as the Go lambdas (manual app instrumentation +
+		// collector layer for export). NodeAutoInstrLayerArn is intentionally empty.
 		if props.NodeAutoInstrLayerArn != "" {
 			nodeAutoInstrLayer := awslambda.LayerVersion_FromLayerVersionArn(
 				stack, jsii.String("ImportedOtelNodeAutoInstrLayer"), jsii.String(props.NodeAutoInstrLayerArn),
@@ -108,8 +114,11 @@ func NewStorefrontStack(scope constructs.Construct, id string, props *Storefront
 			serverFn.AddLayers(nodeAutoInstrLayer)
 		}
 		serverFn.AddEnvironment(jsii.String("OTEL_SERVICE_NAME"), jsii.String("homechrome-store"), nil)
+		// APP_ENV feeds the collector's resource processor so telemetryAPI-tapped
+		// logs get deployment.environment.name (the collector ignores OTEL_RESOURCE_ATTRIBUTES).
+		serverFn.AddEnvironment(jsii.String("APP_ENV"), jsii.String(env), nil)
 		serverFn.AddEnvironment(jsii.String("OTEL_RESOURCE_ATTRIBUTES"),
-			jsii.String(fmt.Sprintf("deployment.environment=%s,service.namespace=handloom", env)), nil)
+			jsii.String(fmt.Sprintf("deployment.environment.name=%s,service.namespace=handloom", env)), nil)
 		// Node OTel SDK wants a full URL with scheme. Use HTTP/protobuf to
 		// localhost:4318 (collector's HTTP port). Without scheme the Node SDK
 		// parses 'localhost:4317' wrong and ends up dialing localhost:443.
@@ -118,15 +127,18 @@ func NewStorefrontStack(scope constructs.Construct, id string, props *Storefront
 		// Disable OTel metrics export — backend collector dropped the metrics pipeline
 		// (M30) and Grafana Cloud returns 404 on /v1/metrics. Traces + logs continue.
 		serverFn.AddEnvironment(jsii.String("OTEL_METRICS_EXPORTER"), jsii.String("none"), nil)
-		// /opt/otel-handler is provided by both layers; the Node auto-instr layer's
-		// version overrides the collector's and wraps the Node runtime so app code
-		// is traced without any instrumentation.ts in source.
-		serverFn.AddEnvironment(jsii.String("AWS_LAMBDA_EXEC_WRAPPER"), jsii.String("/opt/otel-handler"), nil)
+		// NO AWS_LAMBDA_EXEC_WRAPPER. /opt/otel-handler is shipped by the Node
+		// auto-instrumentation layer (removed — it caused the "ended Span" crash),
+		// NOT by the collector layer. Pointing the wrapper at it without that layer
+		// → "/opt/otel-handler: does not exist" → Runtime.ExitError on init.
+		// We don't need it: the collector runs as a Lambda extension (auto-starts,
+		// reads the config URI below), and the app instruments itself via
+		// src/instrumentation.ts (@vercel/otel) → OTLP to the collector on :4318.
 		serverFn.AddEnvironment(jsii.String("OPENTELEMETRY_COLLECTOR_CONFIG_URI"),
 			jsii.String("/var/task/otel.yaml"), nil) // yaml bundled into Lambda zip, not baked into layer
-		if props.GrafanaEndpointSSMParam != "" {
+		if props.GrafanaEndpoint != "" {
 			serverFn.AddEnvironment(jsii.String("GRAFANA_OTLP_ENDPOINT"),
-				jsii.String("{{resolve:ssm:"+props.GrafanaEndpointSSMParam+"}}"), nil)
+				jsii.String(props.GrafanaEndpoint), nil)
 		}
 		if props.GrafanaAuthSSMParam != "" {
 			serverFn.AddEnvironment(jsii.String("GRAFANA_OTLP_AUTH"),
@@ -134,13 +146,17 @@ func NewStorefrontStack(scope constructs.Construct, id string, props *Storefront
 		}
 	}
 
-	// AWS_IAM auth so the Function URL is NOT publicly invokable — only
-	// CloudFront, via the Origin Access Control wired below, can reach it.
-	// FunctionUrlOrigin_WithOriginAccessControl signs each origin request with
-	// SigV4 and grants CloudFront lambda:InvokeFunctionUrl automatically.
+	// Public Function URL fronted by CloudFront (the working pre-#141 setup).
+	// The AWS_IAM + OAC variant returned 403 AccessDeniedException on every
+	// CloudFront→Lambda request, so revert to the OpenNext-default public URL.
 	serverUrl := serverFn.AddFunctionUrl(&awslambda.FunctionUrlOptions{
-		AuthType:   awslambda.FunctionUrlAuthType_AWS_IAM,
+		AuthType:   awslambda.FunctionUrlAuthType_NONE,
 		InvokeMode: awslambda.InvokeMode_BUFFERED,
+	})
+	// Since Oct 2025, new Function URLs require lambda:InvokeFunction in addition to lambda:InvokeFunctionUrl
+	serverFn.AddPermission(jsii.String("PublicInvoke"), &awslambda.Permission{
+		Principal: awsiam.NewAnyPrincipal(),
+		Action:    jsii.String("lambda:InvokeFunction"),
 	})
 
 	// ─── CloudFront Origins ───
@@ -156,14 +172,13 @@ func NewStorefrontStack(scope constructs.Construct, id string, props *Storefront
 		OriginPath:          jsii.String("/_assets"),
 	})
 
-	// Server Lambda origin via Function URL, fronted by OAC. The OAC signs
-	// every CloudFront→Lambda request with SigV4, so the AWS_IAM Function URL
-	// rejects any request that doesn't come through this distribution. This
-	// also auto-creates the OAC and the CloudFront invoke permission.
-	serverOrigin := awscloudfrontorigins.FunctionUrlOrigin_WithOriginAccessControl(
-		serverUrl,
-		&awscloudfrontorigins.FunctionUrlOriginWithOACProps{},
-	)
+	// Server Lambda origin via the Function URL as a plain HTTPS origin (no OAC).
+	// Function URL format: https://xxxxx.lambda-url.region.on.aws/ — split on "/"
+	// → ["https:", "", "xxxxx.lambda-url..."] → index 2 is the host.
+	serverDomain := awscdk.Fn_Select(jsii.Number(2), awscdk.Fn_Split(jsii.String("/"), serverUrl.Url(), nil))
+	serverOrigin := awscloudfrontorigins.NewHttpOrigin(serverDomain, &awscloudfrontorigins.HttpOriginProps{
+		ProtocolPolicy: awscloudfront.OriginProtocolPolicy_HTTPS_ONLY,
+	})
 
 	// ─── CloudFront Function (inject x-forwarded-host) ───
 	// CloudFront replaces the Host header when forwarding to origins.
@@ -382,4 +397,3 @@ func NewStorefrontStack(scope constructs.Construct, id string, props *Storefront
 		WebsiteURL:   websiteURL,
 	}
 }
-

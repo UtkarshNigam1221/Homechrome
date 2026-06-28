@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 
 	"go.opentelemetry.io/contrib/propagators/b3"
 	"go.opentelemetry.io/otel"
@@ -14,6 +15,7 @@ import (
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	"go.opentelemetry.io/otel/exporters/stdout/stdouttrace"
 	"go.opentelemetry.io/otel/propagation"
+	sdklog "go.opentelemetry.io/otel/sdk/log"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.41.0"
@@ -21,9 +23,26 @@ import (
 )
 
 // TracerProvider wraps the OpenTelemetry TracerProvider with additional utilities.
+// loggerProvider is optional — set by MustInitDirect when OTLP logs export is
+// enabled — so ForceFlush/Shutdown drain both signals.
 type TracerProvider struct {
-	provider *sdktrace.TracerProvider
-	config   *Config
+	provider       *sdktrace.TracerProvider
+	loggerProvider *sdklog.LoggerProvider
+	config         *Config
+}
+
+// newResource builds the OTel resource shared by the tracer + logger providers.
+// Avoid resource.Merge(resource.Default(), ...) — the default resource uses the
+// SDK's latest schema URL which may drift ahead of our semconv import and cause
+// Merge to error on schema mismatch. Build it explicitly with our pinned schema.
+func newResource(cfg *Config) *resource.Resource {
+	return resource.NewWithAttributes(
+		semconv.SchemaURL,
+		attribute.String("service.name", cfg.ServiceName),
+		attribute.String("service.version", cfg.ServiceVersion),
+		attribute.String("service.namespace", "handloom"),
+		attribute.String("deployment.environment.name", cfg.Environment),
+	)
 }
 
 // NewTracerProvider creates and configures a new TracerProvider.
@@ -42,18 +61,7 @@ func NewTracerProvider(ctx context.Context, cfg *Config) (*TracerProvider, error
 		return nil, fmt.Errorf("failed to create trace exporter: %w", err)
 	}
 
-	// Create the resource with service information.
-	// Avoid resource.Merge(resource.Default(), ...) — the default resource
-	// uses the SDK's latest schema URL which may drift ahead of our semconv
-	// import and cause Merge to error on schema mismatch. Build the resource
-	// explicitly with our pinned schema URL instead.
-	res := resource.NewWithAttributes(
-		semconv.SchemaURL,
-		attribute.String("service.name", cfg.ServiceName),
-		attribute.String("service.version", cfg.ServiceVersion),
-		attribute.String("service.namespace", "handloom"),
-		attribute.String("deployment.environment.name", cfg.Environment),
-	)
+	res := newResource(cfg)
 
 	// Create the sampler based on sample rate
 	var sampler sdktrace.Sampler
@@ -70,9 +78,13 @@ func NewTracerProvider(ctx context.Context, cfg *Config) (*TracerProvider, error
 	// invocations — buffered spans are lost. Use SimpleSpanProcessor (synchronous
 	// export on Span.End()) in Lambda. Outside Lambda (monolith) batching is fine.
 	var spanProcessor sdktrace.TracerProviderOption
-	if os.Getenv("AWS_LAMBDA_FUNCTION_NAME") != "" {
+	if os.Getenv("AWS_LAMBDA_FUNCTION_NAME") != "" && !cfg.Tracing.BatchInLambda {
+		// Default in Lambda: synchronous export on Span.End (no ForceFlush needed).
 		spanProcessor = sdktrace.WithSyncer(exporter)
 	} else {
+		// Batch: outside Lambda, OR in Lambda when the caller ForceFlushes per
+		// invocation (BatchInLambda) — buffers a request's spans (server + DB)
+		// into one export instead of one POST per span.
 		spanProcessor = sdktrace.WithBatcher(exporter,
 			sdktrace.WithBatchTimeout(cfg.Tracing.BatchTimeout),
 			sdktrace.WithMaxExportBatchSize(cfg.Tracing.MaxExportBatchSize),
@@ -137,10 +149,39 @@ func createOTLPGRPCExporter(ctx context.Context, cfg *Config) (sdktrace.SpanExpo
 	return otlptrace.New(ctx, client)
 }
 
+// endpointIsURL reports whether an OTLP endpoint is a full URL (scheme://host/path)
+// rather than a bare host[:port].
+func endpointIsURL(endpoint string) bool {
+	return strings.Contains(endpoint, "://")
+}
+
+// otlpSignalURL ensures a full OTLP/HTTP endpoint URL targets a specific signal
+// path (/v1/<signal>), the spec path WithEndpointURL would otherwise leave as-is.
+// A base like https://otlp-gateway.../otlp + "traces" → .../otlp/v1/traces. Idempotent.
+func otlpSignalURL(raw, signal string) string {
+	trimmed := strings.TrimRight(raw, "/")
+	suffix := "/v1/" + signal
+	if strings.HasSuffix(trimmed, suffix) {
+		return trimmed
+	}
+	return trimmed + suffix
+}
+
+// otlpTracesURL is otlpSignalURL for the traces signal.
+func otlpTracesURL(raw string) string { return otlpSignalURL(raw, "traces") }
+
 // createOTLPHTTPExporter creates an OTLP HTTP exporter.
 func createOTLPHTTPExporter(ctx context.Context, cfg *Config) (sdktrace.SpanExporter, error) {
-	opts := []otlptracehttp.Option{
-		otlptracehttp.WithEndpoint(cfg.Tracing.Endpoint),
+	var opts []otlptracehttp.Option
+	// A full URL (e.g. Grafana Cloud's https://otlp-gateway-.../otlp) carries its
+	// own scheme + base path, so use WithEndpointURL. Unlike WithEndpoint (bare
+	// host[:port], which auto-targets /v1/traces), WithEndpointURL uses the path
+	// VERBATIM — so normalize it to the OTLP/HTTP traces signal path or a base
+	// endpoint silently 404s and drops every span.
+	if endpointIsURL(cfg.Tracing.Endpoint) {
+		opts = append(opts, otlptracehttp.WithEndpointURL(otlpTracesURL(cfg.Tracing.Endpoint)))
+	} else {
+		opts = append(opts, otlptracehttp.WithEndpoint(cfg.Tracing.Endpoint))
 	}
 
 	if cfg.Tracing.Insecure {
@@ -155,10 +196,30 @@ func createOTLPHTTPExporter(ctx context.Context, cfg *Config) (sdktrace.SpanExpo
 	return otlptrace.New(ctx, client)
 }
 
-// Shutdown gracefully shuts down the TracerProvider.
+// Shutdown gracefully shuts down the tracer + logger providers.
 func (tp *TracerProvider) Shutdown(ctx context.Context) error {
 	if tp.provider != nil {
-		return tp.provider.Shutdown(ctx)
+		if err := tp.provider.Shutdown(ctx); err != nil {
+			return err
+		}
+	}
+	if tp.loggerProvider != nil {
+		return tp.loggerProvider.Shutdown(ctx)
+	}
+	return nil
+}
+
+// ForceFlush exports any buffered spans + logs without tearing down the
+// providers. Call it per-invocation in Lambda so in-flight telemetry drains
+// before the runtime freezes (Shutdown would kill the providers after one request).
+func (tp *TracerProvider) ForceFlush(ctx context.Context) error {
+	if tp.provider != nil {
+		if err := tp.provider.ForceFlush(ctx); err != nil {
+			return err
+		}
+	}
+	if tp.loggerProvider != nil {
+		return tp.loggerProvider.ForceFlush(ctx)
 	}
 	return nil
 }

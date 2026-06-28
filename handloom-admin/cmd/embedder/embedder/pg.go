@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/exaring/otelpgx"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	pgvecpgx "github.com/pgvector/pgvector-go/pgx"
@@ -22,6 +23,9 @@ func NewPGPool(ctx context.Context, dsn string, maxConns int32) (*pgxpool.Pool, 
 		return nil, fmt.Errorf("parse postgres dsn: %w", err)
 	}
 	cfg.MaxConns = maxConns
+	// Emit an OTel span per query, nested under the active request span, so the
+	// /search trace shows the hybrid-search SQL time (not just one flat span).
+	cfg.ConnConfig.Tracer = otelpgx.NewTracer()
 	cfg.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
 		if err := pgvecpgx.RegisterTypes(ctx, conn); err != nil {
 			return fmt.Errorf("register pgvector types: %w", err)

@@ -36,6 +36,16 @@ processors:
   # Bump Lambda memory and re-add if OOM ever surfaces.
   resource:
     attributes:
+      # telemetryAPI logs (stdout-tapped) only carry the collector's resource
+      # attrs — the collector ignores OTEL_RESOURCE_ATTRIBUTES — so stamp the
+      # environment here from APP_ENV (set on every collector lambda) to match
+      # the deployment.environment.name on traces.
+      - key: deployment.environment.name
+        value: ${env:APP_ENV}
+        action: insert
+      - key: service.namespace
+        value: handloom
+        action: insert
       - key: cloud.region
         value: ${env:AWS_REGION}
         action: insert
