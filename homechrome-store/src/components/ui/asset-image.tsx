@@ -15,7 +15,6 @@ interface AssetImageProps {
   /** Intrinsic height in pixels for layout-stability. */
   height: number;
   loading?: 'lazy' | 'eager';
-  fetchPriority?: 'high' | 'low' | 'auto';
   className?: string;
   style?: CSSProperties;
 }
@@ -37,7 +36,6 @@ export function AssetImage({
   width,
   height,
   loading = 'lazy',
-  fetchPriority,
   className,
   style,
 }: AssetImageProps) {
@@ -54,7 +52,6 @@ export function AssetImage({
         width={width}
         height={height}
         loading={loading}
-        fetchPriority={fetchPriority}
         alt={alt}
         className={className}
         style={style}

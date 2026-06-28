@@ -9,11 +9,9 @@ import { Category } from '@/types';
 
 interface CategoryCardProps {
   category: Category;
-  /** Eager-load + high fetch priority for above-the-fold LCP images. */
-  priority?: boolean;
 }
 
-export default function CategoryCard({ category, priority }: CategoryCardProps) {
+export default function CategoryCard({ category }: CategoryCardProps) {
   return (
     <Card
       component={Link}
@@ -33,8 +31,6 @@ export default function CategoryCard({ category, priority }: CategoryCardProps) 
               sizes="(max-width: 767px) 50vw, (max-width: 1199px) 33vw, 25vw"
               width={640}
               height={480}
-              loading={priority ? 'eager' : 'lazy'}
-              fetchPriority={priority ? 'high' : undefined}
               style={{ width: '100%', height: '100%', objectFit: 'cover' }}
             />
           ) : (
