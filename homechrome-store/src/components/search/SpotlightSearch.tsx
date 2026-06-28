@@ -13,6 +13,8 @@ import { searchProducts } from '@/lib/api';
 import { formatPrice } from '@/lib/utils';
 import { Category, Product } from '@/types';
 
+import '@mantine/spotlight/styles.css';
+
 interface SpotlightSearchProps {
   categories: Category[];
 }

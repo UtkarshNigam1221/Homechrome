@@ -6,7 +6,7 @@ import EmbedderWarmer from '@/components/EmbedderWarmer';
 import { FloatingActions } from '@/components/layout/FloatingActions';
 import Footer from '@/components/layout/Footer';
 import Header from '@/components/layout/Header';
-import { SpotlightSearch } from '@/components/search/SpotlightSearch';
+import { SpotlightSearchLoader } from '@/components/search/SpotlightSearchLoader';
 import { API_BASE } from '@/lib/constants';
 import { ROUTES } from '@/lib/routes';
 import { Category } from '@/types';
@@ -49,7 +49,7 @@ export default async function RootLayout({
         <Providers>
           <EmbedderWarmer />
           <Header categories={categories} />
-          <SpotlightSearch categories={categories} />
+          <SpotlightSearchLoader categories={categories} />
           <MiniCartDrawer />
           <FloatingActions />
           <main style={{ minHeight: '100vh' }}>{children}</main>
