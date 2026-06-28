@@ -5,7 +5,7 @@
 import { Playfair_Display, Roboto } from 'next/font/google';
 
 export const siteFont = Roboto({
-  subsets: ['latin'],
+  subsets: ['latin', 'latin-ext'],
   weight: ['400', '500', '700'],
   display: 'swap',
 });
@@ -13,6 +13,6 @@ export const siteFont = Roboto({
 // Display serif — used on hero / headlines that need editorial feel.
 export const displayFont = Playfair_Display({
   subsets: ['latin'],
-  weight: ['400', '500', '600', '700'],
+  weight: ['700'],
   display: 'swap',
 });

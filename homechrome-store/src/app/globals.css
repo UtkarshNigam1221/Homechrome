@@ -9,6 +9,19 @@ body {
   color: var(--mantine-color-text);
 }
 
+/* iOS Safari auto-zooms (and stays zoomed) when a focused input's font-size is
+   < 16px, which left the page zoomed/misaligned after the OTP step and across
+   subsequent navigations. Mantine's default input size is ~14.9px at our 17px
+   root, so force >=16px on small screens — focusing any field (phone, OTP,
+   checkout, search) then never triggers the zoom. */
+@media (max-width: 768px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
 /* Smooth page transitions */
 main {
   animation: pageIn 0.3s ease-out;

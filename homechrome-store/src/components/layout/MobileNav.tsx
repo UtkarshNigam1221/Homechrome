@@ -36,7 +36,7 @@ export default function MobileNav({ isOpen, onClose, categories }: MobileNavProp
       onClose={onClose}
       position="left"
       size="xs"
-      withCloseButton={false}
+      closeButtonProps={{ 'aria-label': 'Close menu' }}
       padding={0}
       title={
         <Anchor component={Link} href="/" onClick={onClose} underline="never">

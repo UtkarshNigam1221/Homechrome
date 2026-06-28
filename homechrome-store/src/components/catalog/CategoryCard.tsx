@@ -28,7 +28,7 @@ export default function CategoryCard({ category }: CategoryCardProps) {
             <AssetImage
               src={category.image_url}
               alt={category.name}
-              sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
+              sizes="(max-width: 767px) 50vw, (max-width: 1199px) 33vw, 25vw"
               width={640}
               height={480}
               style={{ width: '100%', height: '100%', objectFit: 'cover' }}

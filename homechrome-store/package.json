@@ -47,6 +47,15 @@
   "overrides": {
     "fast-xml-parser": "5.8.0"
   },
+  "browserslist": [
+    "chrome >= 92",
+    "edge >= 92",
+    "firefox >= 90",
+    "safari >= 15.4",
+    "ios_saf >= 15.4",
+    "and_chr >= 92",
+    "not dead"
+  ],
   "devDependencies": {
     "@opennextjs/aws": "^4.0.2",
     "@types/node": "^25",
