@@ -33,8 +33,10 @@ export default function ProductCard({ product }: ProductCardProps) {
   const cartQty = useCartStore((s) => s.getQuantity(product.id));
 
   const primaryImage = product.images?.find((img) => img.is_primary) || product.images?.[0];
-  const hasDiscount = product.mrp > product.selling_price;
-  const discountPercent = calculateDiscountPercent(product.mrp, product.selling_price);
+  // API populates `base_price` (the MRP); `mrp` is a legacy alias the API
+  // never sends, so reading it left the discount UI dead. Match the admin: use base_price.
+  const hasDiscount = product.base_price > product.selling_price;
+  const discountPercent = calculateDiscountPercent(product.base_price, product.selling_price);
 
   const handleAddToCart = async (e: React.MouseEvent) => {
     e.preventDefault();
@@ -132,7 +134,7 @@ export default function ProductCard({ product }: ProductCardProps) {
           </Text>
           {hasDiscount && (
             <Text size="sm" c="dimmed" td="line-through">
-              {formatPrice(product.mrp)}
+              {formatPrice(product.base_price)}
             </Text>
           )}
         </Group>
