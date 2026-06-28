@@ -7,10 +7,19 @@ html {
 body {
   background: #F5F0EB;
   color: var(--mantine-color-text);
-  /* Guard against stray horizontal overflow on mobile (e.g. iOS Safari):
-     clip (not hidden) clips overflow without creating a scroll container,
-     so the sticky header still works and vertical scroll is unaffected. */
-  overflow-x: clip;
+}
+
+/* iOS Safari auto-zooms (and stays zoomed) when a focused input's font-size is
+   < 16px, which left the page zoomed/misaligned after the OTP step and across
+   subsequent navigations. Mantine's default input size is ~14.9px at our 17px
+   root, so force >=16px on small screens — focusing any field (phone, OTP,
+   checkout, search) then never triggers the zoom. */
+@media (max-width: 768px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
 }
 
 /* Smooth page transitions */
