@@ -111,7 +111,15 @@ function FooterColumn({ title, children }: { title: string; children: React.Reac
 
 // Shared styling so every clickable footer item reads as a link (navy, hover
 // underline) — visually distinct from the dimmed static text around it.
-const LINK_PROPS = { size: 'sm', c: 'navy.7', fw: 500, underline: 'hover' } as const;
+const LINK_PROPS = {
+  size: 'sm',
+  c: 'navy.7',
+  fw: 500,
+  // Force a persistent underline via style — the Mantine `underline` prop was
+  // being suppressed by the cascade, leaving links indistinguishable from the
+  // headings/static text.
+  style: { textDecoration: 'underline', textUnderlineOffset: 3 },
+} as const;
 
 function FooterLink({ href, children }: { href: string; children: React.ReactNode }) {
   return (
