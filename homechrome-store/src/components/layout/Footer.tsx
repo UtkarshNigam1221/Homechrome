@@ -17,8 +17,6 @@ import Link from 'next/link';
 import logo80 from '@/assets/logo-80.webp';
 import { INSTAGRAM_URL, SUPPORT_EMAIL, SUPPORT_WHATSAPP } from '@/lib/constants';
 
-const WHATSAPP_HREF = `https://wa.me/${SUPPORT_WHATSAPP}?text=${encodeURIComponent('Hi, I need help with my order')}`;
-
 export default function Footer() {
   return (
     <Box
@@ -55,7 +53,7 @@ export default function Footer() {
 
           <FooterColumn title="Need Help?">
             <FooterContactLink
-              href={WHATSAPP_HREF}
+              href={`https://wa.me/${SUPPORT_WHATSAPP}?text=${encodeURIComponent('Hi, I need help with my order')}`}
               external
               label="WhatsApp us"
               icon={<WhatsAppIcon />}
@@ -101,11 +99,8 @@ function FooterColumn({ title, children }: { title: string; children: React.Reac
   );
 }
 
-// Shared styling so every clickable footer item reads as a link (navy, hover
-// underline) — visually distinct from the dimmed static text around it.
-// Links read as navy + persistent underline (distinct from headings/static).
-// The underline now renders thanks to the global Anchor-underline fix in
-// globals.css (Mantine's own rules were suppressed by the cascade).
+// Navy + persistent underline — reads as a clickable link, distinct from the
+// uppercase headings and the dimmed static text.
 const LINK_PROPS = { size: 'sm', c: 'navy.7', fw: 500, underline: 'always' } as const;
 
 function FooterLink({ href, children }: { href: string; children: React.ReactNode }) {
