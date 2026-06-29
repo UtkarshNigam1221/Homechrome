@@ -1,5 +1,6 @@
 'use client';
 
+import { EnvelopeIcon } from '@heroicons/react/24/outline';
 import {
   Anchor,
   Box,
@@ -14,7 +15,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 
 import logo80 from '@/assets/logo-80.webp';
-import { INSTAGRAM_URL, SUPPORT_WHATSAPP } from '@/lib/constants';
+import { INSTAGRAM_URL, SUPPORT_EMAIL, SUPPORT_WHATSAPP } from '@/lib/constants';
 
 const WHATSAPP_HREF = `https://wa.me/${SUPPORT_WHATSAPP}?text=${encodeURIComponent('Hi, I need help with my order')}`;
 
@@ -58,6 +59,11 @@ export default function Footer() {
               external
               label="WhatsApp us"
               icon={<WhatsAppIcon />}
+            />
+            <FooterContactLink
+              href={`mailto:${SUPPORT_EMAIL}`}
+              label="Email us"
+              icon={<EnvelopeIcon width={15} height={15} />}
             />
           </FooterColumn>
         </SimpleGrid>
