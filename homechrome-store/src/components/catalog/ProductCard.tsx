@@ -123,7 +123,7 @@ export default function ProductCard({ product }: ProductCardProps) {
 
       <Stack p="md" gap="xs">
         <Link href={`/p/${product.slug}`} style={{ textDecoration: 'none' }}>
-          <Text size="sm" fw={500} c="navy.7" lineClamp={2}>
+          <Text size="sm" fw={500} c="navy.7" lineClamp={2} style={{ minHeight: '2lh' }}>
             {product.name}
           </Text>
         </Link>

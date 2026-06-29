@@ -1,13 +1,17 @@
 'use client';
 
+import { PhotoIcon } from '@heroicons/react/24/outline';
 import {
   Anchor,
+  AspectRatio,
   Box,
   Button,
+  Center,
   Divider,
   Drawer,
   Group,
   ScrollArea,
+  SimpleGrid,
   Stack,
   Text,
   Title,
@@ -15,6 +19,7 @@ import {
 import Image from 'next/image';
 import Link from 'next/link';
 
+import { AssetImage } from '@/components/ui/asset-image';
 import logo80 from '@/assets/logo-80.png';
 import { useAuthStore } from '@/stores/auth';
 import { Category } from '@/types';
@@ -70,13 +75,11 @@ export default function MobileNav({ isOpen, onClose, categories }: MobileNavProp
           <Title order={3} size="xs" tt="uppercase" fw={600} c="dimmed" mt="lg" mb="xs" px="xs" style={{ letterSpacing: '0.05em' }}>
             Categories
           </Title>
-          <Stack gap={4}>
+          <SimpleGrid cols={3} spacing="xs" px="xs">
             {categories.map((category) => (
-              <NavItem key={category.id} href={`/c/${category.slug}`} onClose={onClose}>
-                {category.name}
-              </NavItem>
+              <CategoryTile key={category.id} category={category} onClose={onClose} />
             ))}
-          </Stack>
+          </SimpleGrid>
         </Box>
       </ScrollArea>
 
@@ -141,10 +144,51 @@ function NavItem({ href, onClose, children }: NavItemProps) {
       fw={500}
       px="xs"
       py={10}
-      display="block"
+      lineClamp={2}
       style={{ borderRadius: 'var(--mantine-radius-md)' }}
     >
       {children}
+    </Anchor>
+  );
+}
+
+interface CategoryTileProps {
+  category: Category;
+  onClose: () => void;
+}
+
+function CategoryTile({ category, onClose }: CategoryTileProps) {
+  return (
+    <Anchor
+      component={Link}
+      href={`/c/${category.slug}`}
+      onClick={onClose}
+      underline="never"
+      c="navy.7"
+    >
+      <AspectRatio
+        ratio={1}
+        bg="gray.1"
+        style={{ borderRadius: 'var(--mantine-radius-md)', overflow: 'hidden' }}
+      >
+        {category.image_url ? (
+          <AssetImage
+            src={category.image_url}
+            alt={category.name}
+            sizes="120px"
+            width={120}
+            height={120}
+            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+          />
+        ) : (
+          <Center bg="brand.1" h="100%">
+            <PhotoIcon width={24} height={24} color="var(--mantine-color-brand-5)" opacity={0.4} />
+          </Center>
+        )}
+      </AspectRatio>
+      <Text size="xs" fw={500} mt={4} lineClamp={2} style={{ lineHeight: 1.2 }}>
+        {category.name}
+      </Text>
     </Anchor>
   );
 }
