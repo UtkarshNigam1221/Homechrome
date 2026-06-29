@@ -9,13 +9,6 @@ body {
   color: var(--mantine-color-text);
 }
 
-/* Darken Mantine's default "dimmed" text (#868e96, 3.32:1 on white — fails
-   WCAG AA) to #6c757d (~4.6:1). !important because this file loads before
-   Mantine's variable CSS, so it would otherwise lose the cascade. */
-:root {
-  --mantine-color-dimmed: #6c757d !important;
-}
-
 /* iOS Safari auto-zooms (and stays zoomed) when a focused input's font-size is
    < 16px, which left the page zoomed/misaligned after the OTP step and across
    subsequent navigations. Mantine's default input size is ~14.9px at our 17px

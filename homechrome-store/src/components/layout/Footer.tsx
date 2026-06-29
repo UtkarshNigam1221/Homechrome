@@ -39,7 +39,7 @@ export default function Footer() {
               <Group gap={10} align="center" wrap="nowrap">
                 <Image src={logo80} alt="Homechrome" style={{ height: 36, width: 'auto' }} unoptimized />
                 <Text fw={700} size="lg" c="navy.7" style={{ letterSpacing: '-0.01em' }}>
-                  HOME<Text span c="brand.7">CHROME</Text>
+                  HOME<Text span c="brand">CHROME</Text>
                 </Text>
               </Group>
             </Anchor>

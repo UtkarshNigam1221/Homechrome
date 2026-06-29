@@ -59,23 +59,6 @@ export const theme = createTheme({
       defaultProps: {
         radius: 'xl',
       },
-      // The brand tan (brand.5 #D4A574) is too light for white button text
-      // (2.23:1, fails WCAG). For FILLED brand CTAs, use a deeper shade so the
-      // default white text passes (white on brand.7 #946B3A = 5.24:1). Tan is
-      // kept for accents; outline/subtle brand buttons are left untouched.
-      vars: (_theme, props) => {
-        const filledBrand =
-          (!props.color || props.color === 'brand') &&
-          (!props.variant || props.variant === 'filled');
-        return filledBrand
-          ? {
-              root: {
-                '--button-bg': 'var(--mantine-color-brand-7)',
-                '--button-hover': 'var(--mantine-color-brand-8)',
-              },
-            }
-          : { root: {} };
-      },
     }),
   },
 });
