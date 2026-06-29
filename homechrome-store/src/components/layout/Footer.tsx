@@ -2,10 +2,11 @@
 
 import { EnvelopeIcon } from '@heroicons/react/24/outline';
 import {
+  ActionIcon,
   Anchor,
   Box,
   Container,
-  Divider,
+  Flex,
   Group,
   SimpleGrid,
   Stack,
@@ -21,13 +22,20 @@ export default function Footer() {
   return (
     <Box
       component="footer"
-      bg="white"
-      style={{ borderTop: '1px solid var(--mantine-color-default-border)' }}
+      bg="gray.0"
+      mt={64}
+      style={{ borderTop: '1px solid var(--mantine-color-gray-2)' }}
     >
-      <Container size="xl" py={48}>
-        <SimpleGrid cols={{ base: 2, md: 4 }} spacing="xl" verticalSpacing="xl">
-          {/* Brand */}
-          <Stack gap="sm">
+      <Container size="xl">
+        {/* Top: brand left, link groups right */}
+        <Flex
+          py={48}
+          gap="xl"
+          direction={{ base: 'column', sm: 'row' }}
+          justify="space-between"
+          align={{ base: 'center', sm: 'flex-start' }}
+        >
+          <Flex direction="column" gap={6} maw={280} align={{ base: 'center', sm: 'flex-start' }}>
             <Anchor component={Link} href="/" underline="never" w="fit-content">
               <Group gap={10} align="center" wrap="nowrap">
                 <Image src={logo80} alt="Homechrome" style={{ height: 36, width: 'auto' }} unoptimized />
@@ -36,53 +44,63 @@ export default function Footer() {
                 </Text>
               </Group>
             </Anchor>
-            <Text size="sm" c="dimmed" maw={260}>
+            <Text size="sm" c="dimmed" ta={{ base: 'center', sm: 'left' }}>
               Premium handloom textiles from across India. Celebrating the art of traditional weaving.
             </Text>
-          </Stack>
+          </Flex>
 
-          <FooterColumn title="Shop">
-            <FooterLink href="/products">All Products</FooterLink>
-            <FooterLink href="/categories">Categories</FooterLink>
-          </FooterColumn>
+          <SimpleGrid cols={{ base: 2, sm: 3 }} spacing={48} verticalSpacing="lg" visibleFrom="sm">
+            <FooterColumn title="Shop">
+              <FooterLink href="/products">All Products</FooterLink>
+              <FooterLink href="/categories">Categories</FooterLink>
+            </FooterColumn>
 
-          <FooterColumn title="Customer">
-            <FooterLink href="/track">Track Order</FooterLink>
-            <FooterLink href="/account">My Account</FooterLink>
-          </FooterColumn>
+            <FooterColumn title="Customer">
+              <FooterLink href="/track">Track Order</FooterLink>
+              <FooterLink href="/account">My Account</FooterLink>
+            </FooterColumn>
 
-          <FooterColumn title="Need Help?">
-            <FooterContactLink
-              href={`https://wa.me/${SUPPORT_WHATSAPP}?text=${encodeURIComponent('Hi, I need help with my order')}`}
-              external
-              label="WhatsApp us"
-              icon={<WhatsAppIcon />}
-            />
-            <FooterContactLink
-              href={`mailto:${SUPPORT_EMAIL}`}
-              label="Email us"
-              icon={<EnvelopeIcon width={15} height={15} />}
-            />
-          </FooterColumn>
-        </SimpleGrid>
+            <FooterColumn title="Need Help?">
+              <FooterContactLink
+                href={`https://wa.me/${SUPPORT_WHATSAPP}?text=${encodeURIComponent('Hi, I need help with my order')}`}
+                external
+                label="WhatsApp us"
+                icon={<WhatsAppIcon />}
+              />
+              <FooterContactLink
+                href={`mailto:${SUPPORT_EMAIL}`}
+                label="Email us"
+                icon={<EnvelopeIcon width={15} height={15} />}
+              />
+            </FooterColumn>
+          </SimpleGrid>
+        </Flex>
 
-        <Divider my="xl" />
-
-        <Group justify="space-between" align="center" gap="sm">
-          <Text size="xs" c="dimmed">
+        {/* Bottom bar: copyright + social */}
+        <Flex
+          py="xl"
+          gap="sm"
+          direction={{ base: 'column', sm: 'row' }}
+          justify="space-between"
+          align="center"
+          style={{ borderTop: '1px solid var(--mantine-color-gray-2)' }}
+        >
+          <Text size="sm" c="dimmed">
             &copy; {new Date().getFullYear()} Homechrome. All rights reserved.
           </Text>
-          <Anchor
+          <ActionIcon
+            component="a"
             href={INSTAGRAM_URL}
             target="_blank"
             rel="noopener noreferrer"
-            c="navy.7"
-            display="inline-flex"
+            size="lg"
+            color="gray"
+            variant="subtle"
             aria-label="Follow Homechrome on Instagram"
           >
             <InstagramIcon />
-          </Anchor>
-        </Group>
+          </ActionIcon>
+        </Flex>
       </Container>
     </Box>
   );
@@ -91,17 +109,17 @@ export default function Footer() {
 function FooterColumn({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <Stack gap="xs">
-      <Text fw={700} size="xs" tt="uppercase" c="navy.9" style={{ letterSpacing: '0.06em' }}>
+      <Text fw={500} size="lg" c="navy.7">
         {title}
       </Text>
-      <Stack gap={8}>{children}</Stack>
+      <Stack gap={6}>{children}</Stack>
     </Stack>
   );
 }
 
-// Navy + persistent underline — reads as a clickable link, distinct from the
-// uppercase headings and the dimmed static text.
-const LINK_PROPS = { size: 'sm', c: 'navy.7', fw: 500, underline: 'always' } as const;
+// Dimmed links with hover-underline — the FooterLinks finesse; the group title
+// carries the contrast, links stay quiet until hovered.
+const LINK_PROPS = { size: 'sm', c: 'dimmed', underline: 'hover' } as const;
 
 function FooterLink({ href, children }: { href: string; children: React.ReactNode }) {
   return (

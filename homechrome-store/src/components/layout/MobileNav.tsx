@@ -21,6 +21,7 @@ import Link from 'next/link';
 
 import { AssetImage } from '@/components/ui/asset-image';
 import logo80 from '@/assets/logo-80.png';
+import { SUPPORT_WHATSAPP } from '@/lib/constants';
 import { useAuthStore } from '@/stores/auth';
 import { Category } from '@/types';
 
@@ -32,8 +33,7 @@ interface MobileNavProps {
 
 export default function MobileNav({ isOpen, onClose, categories }: MobileNavProps) {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
-  const customer = useAuthStore((s) => s.customer);
-  const logout = useAuthStore((s) => s.logout);
+  const contactHref = `https://wa.me/${SUPPORT_WHATSAPP}?text=${encodeURIComponent('Hi, I need help with my order')}`;
 
   return (
     <Drawer
@@ -65,14 +65,7 @@ export default function MobileNav({ isOpen, onClose, categories }: MobileNavProp
     >
       <ScrollArea style={{ flex: 1 }}>
         <Box p="md">
-          <NavItem href="/products" onClose={onClose}>
-            All Products
-          </NavItem>
-          <NavItem href="/cart" onClose={onClose}>
-            My Cart
-          </NavItem>
-
-          <Title order={3} size="xs" tt="uppercase" fw={600} c="dimmed" mt="lg" mb="xs" px="xs" style={{ letterSpacing: '0.05em' }}>
+          <Title order={3} size="xs" tt="uppercase" fw={600} c="dimmed" mb="xs" px="xs" style={{ letterSpacing: '0.05em' }}>
             Categories
           </Title>
           <SimpleGrid cols={3} spacing="xs" px="xs">
@@ -80,47 +73,44 @@ export default function MobileNav({ isOpen, onClose, categories }: MobileNavProp
               <CategoryTile key={category.id} category={category} onClose={onClose} />
             ))}
           </SimpleGrid>
+
+          <Box mt="sm">
+            <NavItem href="/products" onClose={onClose}>
+              All Products
+            </NavItem>
+          </Box>
         </Box>
       </ScrollArea>
 
       <Divider />
 
-      <Box p="md">
-        {isAuthenticated ? (
-          <Stack gap="sm">
-            <Text size="sm" c="dimmed">
-              Hello, {customer?.first_name || 'there'}
-            </Text>
-            <NavItem href="/account" onClose={onClose}>
-              My Account
-            </NavItem>
-            <NavItem href="/account/orders" onClose={onClose}>
-              My Orders
-            </NavItem>
+      <Box p="sm">
+        <Stack gap="xs">
+          {isAuthenticated && (
+            <>
+              <NavItem href="/account" onClose={onClose}>
+                Account
+              </NavItem>
+              <NavItem href="/account/orders" onClose={onClose}>
+                Orders
+              </NavItem>
+            </>
+          )}
+          {!isAuthenticated && (
             <Button
-              variant="light"
-              color="red"
+              component={Link}
+              href="/login"
+              onClick={onClose}
               fullWidth
-              justify="start"
-              onClick={() => {
-                logout();
-                onClose();
-              }}
+              color="brand"
             >
-              Sign Out
+              Sign In
             </Button>
-          </Stack>
-        ) : (
-          <Button
-            component={Link}
-            href="/login"
-            onClick={onClose}
-            fullWidth
-            color="brand"
-          >
-            Sign In
-          </Button>
-        )}
+          )}
+          <NavItem href={contactHref} onClose={onClose} external>
+            Contact us
+          </NavItem>
+        </Stack>
       </Box>
     </Drawer>
   );
@@ -130,9 +120,31 @@ interface NavItemProps {
   href: string;
   onClose: () => void;
   children: React.ReactNode;
+  external?: boolean;
 }
 
-function NavItem({ href, onClose, children }: NavItemProps) {
+function NavItem({ href, onClose, children, external }: NavItemProps) {
+  if (external) {
+    return (
+      <Anchor
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        onClick={onClose}
+        underline="never"
+        c="navy.7"
+        size="md"
+        fw={500}
+        px="xs"
+        py={10}
+        lineClamp={2}
+        style={{ borderRadius: 'var(--mantine-radius-md)' }}
+      >
+        {children}
+      </Anchor>
+    );
+  }
+
   return (
     <Anchor
       component={Link}
