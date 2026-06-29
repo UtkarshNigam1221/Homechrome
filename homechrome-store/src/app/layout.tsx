@@ -7,7 +7,7 @@ import { FloatingActions } from '@/components/layout/FloatingActions';
 import Footer from '@/components/layout/Footer';
 import Header from '@/components/layout/Header';
 import { SpotlightSearchLoader } from '@/components/search/SpotlightSearchLoader';
-import { API_BASE } from '@/lib/constants';
+import { API_BASE, IS_INDEXABLE, SITE_URL } from '@/lib/constants';
 import { ROUTES } from '@/lib/routes';
 import { Category } from '@/types';
 
@@ -29,6 +29,11 @@ async function getCategories(): Promise<Category[]> {
 }
 
 export const metadata: Metadata = {
+  // Absolute base for canonical + Open Graph URLs (fixes Next's metadataBase
+  // warning). Derives from SITE_URL, so it tracks whatever canonical host is set.
+  metadataBase: new URL(SITE_URL),
+  // Non-prod hosts (dev, local) get noindex so they can't surface in search.
+  ...(IS_INDEXABLE ? {} : { robots: { index: false, follow: false } }),
   title: 'Homechrome | Handloom Textiles',
   description:
     'Premium handloom textiles from across India. Sarees, dupattas, fabrics, and more.',
