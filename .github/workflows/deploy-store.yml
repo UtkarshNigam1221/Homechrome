@@ -66,8 +66,6 @@ jobs:
           DOMAIN="homechrome.in"
           if [ "${{ inputs.environment }}" = "prod" ]; then
             echo "api_url=https://api.${DOMAIN}" >> "$GITHUB_OUTPUT"
-            # www is the canonical host (apex 301-redirects to www at GoDaddy),
-            # so sitemap/canonical/OG must emit www to avoid redirect-in-sitemap.
             echo "site_url=https://www.${DOMAIN}" >> "$GITHUB_OUTPUT"
           else
             echo "api_url=https://dev-api.${DOMAIN}" >> "$GITHUB_OUTPUT"
