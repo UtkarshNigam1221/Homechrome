@@ -31,10 +31,6 @@ const navy: MantineColorsTuple = [
 export const theme = createTheme({
   primaryColor: 'brand',
   primaryShade: 5,
-  // Auto-pick readable text on filled colored elements: the light tan brand
-  // (#D4A574) gets dark text (theme.black = navy #1C2951, ~6.7:1) instead of
-  // white (2.23:1, fails WCAG); dark navy buttons keep white text.
-  autoContrast: true,
   black: '#1C2951',
   white: '#FFFFFF',
   colors: { brand, navy },
@@ -62,6 +58,23 @@ export const theme = createTheme({
     Button: Button.extend({
       defaultProps: {
         radius: 'xl',
+      },
+      // The brand tan (brand.5 #D4A574) is too light for white button text
+      // (2.23:1, fails WCAG). For FILLED brand CTAs, use a deeper shade so the
+      // default white text passes (white on brand.7 #946B3A = 5.24:1). Tan is
+      // kept for accents; outline/subtle brand buttons are left untouched.
+      vars: (_theme, props) => {
+        const filledBrand =
+          (!props.color || props.color === 'brand') &&
+          (!props.variant || props.variant === 'filled');
+        return filledBrand
+          ? {
+              root: {
+                '--button-bg': 'var(--mantine-color-brand-7)',
+                '--button-hover': 'var(--mantine-color-brand-8)',
+              },
+            }
+          : { root: {} };
       },
     }),
   },
