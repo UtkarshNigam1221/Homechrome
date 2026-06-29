@@ -62,17 +62,15 @@ export default function Footer() {
             </FooterColumn>
 
             <FooterColumn title="Need Help?">
-              <FooterContactLink
+              <FooterLink
                 href={`https://wa.me/${SUPPORT_WHATSAPP}?text=${encodeURIComponent('Hi, I need help with my order')}`}
-                external
-                label="WhatsApp us"
                 icon={<WhatsAppIcon size={16} />}
-              />
-              <FooterContactLink
-                href={`mailto:${SUPPORT_EMAIL}`}
-                label="Email us"
-                icon={<EnvelopeIcon width={15} height={15} />}
-              />
+              >
+                WhatsApp us
+              </FooterLink>
+              <FooterLink href={`mailto:${SUPPORT_EMAIL}`} icon={<EnvelopeIcon width={15} height={15} />}>
+                Email us
+              </FooterLink>
             </FooterColumn>
           </SimpleGrid>
         </Flex>
@@ -122,38 +120,32 @@ function FooterColumn({ title, children }: { title: string; children: React.Reac
 // carries the contrast, links stay quiet until hovered.
 const LINK_PROPS = { size: 'sm', c: 'dimmed', underline: 'hover' } as const;
 
-function FooterLink({ href, children }: { href: string; children: React.ReactNode }) {
-  return (
-    <Anchor component={Link} href={href} {...LINK_PROPS}>
-      {children}
-    </Anchor>
-  );
-}
-
-function FooterContactLink({
+// One footer link helper: internal routes use Next Link; raw hrefs (mailto:,
+// wa.me) use a plain anchor and open http(s) in a new tab. Pass `icon` for the
+// icon+label row.
+function FooterLink({
   href,
-  label,
+  children,
   icon,
-  external,
 }: {
   href: string;
-  label: string;
-  icon: React.ReactNode;
-  external?: boolean;
+  children: React.ReactNode;
+  icon?: React.ReactNode;
 }) {
-  return (
-    <Anchor
-      href={href}
-      aria-label={label}
-      {...LINK_PROPS}
-      {...(external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
-    >
-      <Group component="span" gap={8} wrap="nowrap" align="center">
-        {icon}
-        {label}
-      </Group>
-    </Anchor>
+  const content = icon ? (
+    <Group component="span" gap={8} wrap="nowrap" align="center">
+      {icon}
+      {children}
+    </Group>
+  ) : (
+    children
   );
+
+  if (href.startsWith('/')) {
+    return <Anchor component={Link} href={href} {...LINK_PROPS}>{content}</Anchor>;
+  }
+  const newTab = href.startsWith('http') ? { target: '_blank', rel: 'noopener noreferrer' } : {};
+  return <Anchor href={href} {...newTab} {...LINK_PROPS}>{content}</Anchor>;
 }
 
 function InstagramIcon() {
