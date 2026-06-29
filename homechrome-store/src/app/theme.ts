@@ -31,6 +31,10 @@ const navy: MantineColorsTuple = [
 export const theme = createTheme({
   primaryColor: 'brand',
   primaryShade: 5,
+  // Auto-pick readable text on filled colored elements: the light tan brand
+  // (#D4A574) gets dark text (theme.black = navy #1C2951, ~6.7:1) instead of
+  // white (2.23:1, fails WCAG); dark navy buttons keep white text.
+  autoContrast: true,
   black: '#1C2951',
   white: '#FFFFFF',
   colors: { brand, navy },
