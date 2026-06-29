@@ -63,7 +63,7 @@ jobs:
       - name: Build
         run: npm run build:${{ inputs.environment }}
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: admin-frontend-dist-${{ inputs.environment }}
           path: handloom-admin-frontend/dist
