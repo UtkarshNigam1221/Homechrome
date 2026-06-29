@@ -101,7 +101,7 @@ jobs:
       # versions, so hashing it invalidates the cache on any version bump.
       # Cold build ≈ 10 min; cache hit ≈ seconds.
       - name: Cache embedder assets
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/handloom-embedder
           key: embedder-assets-${{ hashFiles('scripts/bootstrap-embedder-assets.sh') }}
