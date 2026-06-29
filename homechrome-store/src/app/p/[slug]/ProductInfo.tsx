@@ -24,8 +24,10 @@ export function ProductInfo({ product }: ProductInfoProps) {
     handleDecrement,
   } = useProductCartActions(product);
 
-  const hasDiscount = product.mrp > product.selling_price;
-  const discountPercent = calculateDiscountPercent(product.mrp, product.selling_price);
+  // API populates `base_price` (the MRP); `mrp` is a legacy alias the API
+  // never sends, so reading it left the discount UI dead. Match the admin: use base_price.
+  const hasDiscount = product.base_price > product.selling_price;
+  const discountPercent = calculateDiscountPercent(product.base_price, product.selling_price);
 
   return (
     <Stack gap="md">
@@ -43,12 +45,18 @@ export function ProductInfo({ product }: ProductInfoProps) {
         {hasDiscount && (
           <>
             <Text size="lg" c="dimmed" td="line-through">
-              {formatPrice(product.mrp)}
+              {formatPrice(product.base_price)}
             </Text>
             <DiscountBadge percent={discountPercent} variant="soft" />
           </>
         )}
       </Group>
+
+      {hasDiscount && (
+        <Text size="sm" fw={600} c="#2b7a2b">
+          You save {formatPrice(product.base_price - product.selling_price)} ({discountPercent}% off)
+        </Text>
+      )}
 
       <StockStatus inStock={product.in_stock} />
 
