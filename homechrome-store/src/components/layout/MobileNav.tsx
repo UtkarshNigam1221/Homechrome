@@ -1,6 +1,12 @@
 'use client';
 
-import { PhotoIcon } from '@heroicons/react/24/outline';
+import {
+  ChatBubbleLeftRightIcon,
+  ChevronRightIcon,
+  ShoppingBagIcon,
+  Squares2X2Icon,
+  UserIcon,
+} from '@heroicons/react/24/outline';
 import {
   Anchor,
   AspectRatio,
@@ -10,6 +16,7 @@ import {
   Divider,
   Drawer,
   Group,
+  NavLink,
   ScrollArea,
   SimpleGrid,
   Stack,
@@ -21,7 +28,6 @@ import Link from 'next/link';
 
 import { AssetImage } from '@/components/ui/asset-image';
 import logo80 from '@/assets/logo-80.png';
-import { SUPPORT_WHATSAPP } from '@/lib/constants';
 import { useAuthStore } from '@/stores/auth';
 import { Category } from '@/types';
 
@@ -33,7 +39,6 @@ interface MobileNavProps {
 
 export default function MobileNav({ isOpen, onClose, categories }: MobileNavProps) {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
-  const contactHref = `https://wa.me/${SUPPORT_WHATSAPP}?text=${encodeURIComponent('Hi, I need help with my order')}`;
 
   return (
     <Drawer
@@ -65,19 +70,20 @@ export default function MobileNav({ isOpen, onClose, categories }: MobileNavProp
     >
       <ScrollArea style={{ flex: 1 }}>
         <Box p="md">
-          <Title order={3} size="xs" tt="uppercase" fw={600} c="dimmed" mb="xs" px="xs" style={{ letterSpacing: '0.05em' }}>
-            Categories
-          </Title>
+          <Eyebrow>Categories</Eyebrow>
           <SimpleGrid cols={3} spacing="xs" px="xs">
             {categories.map((category) => (
               <CategoryTile key={category.id} category={category} onClose={onClose} />
             ))}
           </SimpleGrid>
 
-          <Box mt="sm">
-            <NavItem href="/products" onClose={onClose}>
-              All Products
-            </NavItem>
+          <Box mt="xs">
+            <DrawerRow
+              href="/products"
+              label="All products"
+              icon={<Squares2X2Icon width={20} height={20} />}
+              onClose={onClose}
+            />
           </Box>
         </Box>
       </ScrollArea>
@@ -85,82 +91,83 @@ export default function MobileNav({ isOpen, onClose, categories }: MobileNavProp
       <Divider />
 
       <Box p="sm">
-        <Stack gap="xs">
-          {isAuthenticated && (
-            <>
-              <NavItem href="/account" onClose={onClose}>
-                Account
-              </NavItem>
-              <NavItem href="/account/orders" onClose={onClose}>
-                Orders
-              </NavItem>
-            </>
-          )}
-          {!isAuthenticated && (
-            <Button
-              component={Link}
-              href="/login"
-              onClick={onClose}
-              fullWidth
-              color="brand"
-            >
+        {isAuthenticated ? (
+          <>
+            <Eyebrow>Account</Eyebrow>
+            <DrawerRow
+              href="/account"
+              label="Account"
+              icon={<UserIcon width={20} height={20} />}
+              onClose={onClose}
+            />
+            <DrawerRow
+              href="/account/orders"
+              label="Orders"
+              icon={<ShoppingBagIcon width={20} height={20} />}
+              onClose={onClose}
+            />
+            <DrawerRow
+              href="/contact"
+              label="Contact us"
+              icon={<ChatBubbleLeftRightIcon width={20} height={20} />}
+              onClose={onClose}
+            />
+          </>
+        ) : (
+          <Stack gap="xs">
+            <Button component={Link} href="/login" onClick={onClose} fullWidth color="brand">
               Sign In
             </Button>
-          )}
-          <NavItem href={contactHref} onClose={onClose} external>
-            Contact us
-          </NavItem>
-        </Stack>
+            <DrawerRow
+              href="/contact"
+              label="Contact us"
+              icon={<ChatBubbleLeftRightIcon width={20} height={20} />}
+              onClose={onClose}
+            />
+          </Stack>
+        )}
       </Box>
     </Drawer>
   );
 }
 
-interface NavItemProps {
-  href: string;
-  onClose: () => void;
-  children: React.ReactNode;
-  external?: boolean;
+function Eyebrow({ children }: { children: React.ReactNode }) {
+  return (
+    <Title
+      order={3}
+      size="xs"
+      tt="uppercase"
+      fw={600}
+      c="dimmed"
+      mb="xs"
+      px="xs"
+      style={{ letterSpacing: '0.05em' }}
+    >
+      {children}
+    </Title>
+  );
 }
 
-function NavItem({ href, onClose, children, external }: NavItemProps) {
-  if (external) {
-    return (
-      <Anchor
-        href={href}
-        target="_blank"
-        rel="noopener noreferrer"
-        onClick={onClose}
-        underline="never"
-        c="navy.7"
-        size="md"
-        fw={500}
-        px="xs"
-        py={10}
-        lineClamp={2}
-        style={{ borderRadius: 'var(--mantine-radius-md)' }}
-      >
-        {children}
-      </Anchor>
-    );
-  }
+interface DrawerRowProps {
+  href: string;
+  label: string;
+  icon: React.ReactNode;
+  onClose: () => void;
+}
 
+function DrawerRow({ href, label, icon, onClose }: DrawerRowProps) {
   return (
-    <Anchor
+    <NavLink
       component={Link}
       href={href}
       onClick={onClose}
-      underline="never"
+      label={label}
+      leftSection={icon}
+      rightSection={<ChevronRightIcon width={16} height={16} style={{ opacity: 0.4 }} />}
+      color="brand"
       c="navy.7"
-      size="md"
-      fw={500}
-      px="xs"
-      py={10}
-      lineClamp={2}
       style={{ borderRadius: 'var(--mantine-radius-md)' }}
-    >
-      {children}
-    </Anchor>
+    />
   );
 }
 
@@ -194,7 +201,9 @@ function CategoryTile({ category, onClose }: CategoryTileProps) {
           />
         ) : (
           <Center bg="brand.1" h="100%">
-            <PhotoIcon width={24} height={24} color="var(--mantine-color-brand-5)" opacity={0.4} />
+            <Text fw={600} fz={22} c="brand.6">
+              {category.name.charAt(0).toUpperCase()}
+            </Text>
           </Center>
         )}
       </AspectRatio>
