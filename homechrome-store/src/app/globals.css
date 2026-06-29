@@ -9,23 +9,6 @@ body {
   color: var(--mantine-color-text);
 }
 
-/* Mantine's per-component Anchor CSS declares its underline rules at :where()
-   (specificity 0), so under our per-component import setup they lose the
-   cascade and `underline="hover"|"always"` never render. Restore the
-   documented behaviour for every Mantine anchor (scoped to [data-underline],
-   which only Mantine anchors carry). */
-a[data-underline='always'] {
-  text-decoration: underline !important;
-}
-a[data-underline='never'] {
-  text-decoration: none !important;
-}
-@media (hover: hover) {
-  a[data-underline='hover']:hover {
-    text-decoration: underline !important;
-  }
-}
-
 /* iOS Safari auto-zooms (and stays zoomed) when a focused input's font-size is
    < 16px, which left the page zoomed/misaligned after the OTP step and across
    subsequent navigations. Mantine's default input size is ~14.9px at our 17px
