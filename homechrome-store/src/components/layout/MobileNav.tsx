@@ -27,7 +27,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 
 import { AssetImage } from '@/components/ui/asset-image';
-import logo80 from '@/assets/logo-80.png';
+import logo80 from '@/assets/logo-80.webp';
 import { useAuthStore } from '@/stores/auth';
 import { Category } from '@/types';
 
@@ -81,7 +81,7 @@ export default function MobileNav({ isOpen, onClose, categories }: MobileNavProp
             <DrawerRow
               href="/products"
               label="All products"
-              icon={<Squares2X2Icon width={20} height={20} />}
+              icon={<Squares2X2Icon width={20} height={20} aria-hidden="true" />}
               onClose={onClose}
             />
           </Box>
@@ -97,19 +97,19 @@ export default function MobileNav({ isOpen, onClose, categories }: MobileNavProp
             <DrawerRow
               href="/account"
               label="Account"
-              icon={<UserIcon width={20} height={20} />}
+              icon={<UserIcon width={20} height={20} aria-hidden="true" />}
               onClose={onClose}
             />
             <DrawerRow
               href="/account/orders"
               label="Orders"
-              icon={<ShoppingBagIcon width={20} height={20} />}
+              icon={<ShoppingBagIcon width={20} height={20} aria-hidden="true" />}
               onClose={onClose}
             />
             <DrawerRow
               href="/contact"
               label="Contact us"
-              icon={<ChatBubbleLeftRightIcon width={20} height={20} />}
+              icon={<ChatBubbleLeftRightIcon width={20} height={20} aria-hidden="true" />}
               onClose={onClose}
             />
           </>
@@ -121,7 +121,7 @@ export default function MobileNav({ isOpen, onClose, categories }: MobileNavProp
             <DrawerRow
               href="/contact"
               label="Contact us"
-              icon={<ChatBubbleLeftRightIcon width={20} height={20} />}
+              icon={<ChatBubbleLeftRightIcon width={20} height={20} aria-hidden="true" />}
               onClose={onClose}
             />
           </Stack>
@@ -163,7 +163,9 @@ function DrawerRow({ href, label, icon, onClose }: DrawerRowProps) {
       onClick={onClose}
       label={label}
       leftSection={icon}
-      rightSection={<ChevronRightIcon width={16} height={16} style={{ opacity: 0.4 }} />}
+      rightSection={
+        <ChevronRightIcon width={16} height={16} aria-hidden="true" style={{ opacity: 0.4 }} />
+      }
       color="brand"
       c="navy.7"
       style={{ borderRadius: 'var(--mantine-radius-md)' }}
@@ -201,7 +203,7 @@ function CategoryTile({ category, onClose }: CategoryTileProps) {
           />
         ) : (
           <Center bg="brand.1" h="100%">
-            <Text fw={600} fz={22} c="brand.6">
+            <Text fw={600} fz={22} c="brand.5">
               {category.name.charAt(0).toUpperCase()}
             </Text>
           </Center>
