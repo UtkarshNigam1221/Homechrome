@@ -93,7 +93,7 @@ jobs:
           node-version: 22
 
       # Python is needed by scripts/bootstrap-embedder-assets.sh (optimum/onnx).
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
 
