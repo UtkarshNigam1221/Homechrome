@@ -1,6 +1,5 @@
 'use client';
 
-import { PhoneIcon } from '@heroicons/react/24/outline';
 import {
   Anchor,
   Box,
@@ -15,12 +14,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 
 import logo80 from '@/assets/logo-80.webp';
-import {
-  INSTAGRAM_URL,
-  SUPPORT_PHONE,
-  SUPPORT_PHONE_DISPLAY,
-  SUPPORT_WHATSAPP,
-} from '@/lib/constants';
+import { INSTAGRAM_URL, SUPPORT_PHONE_DISPLAY, SUPPORT_WHATSAPP } from '@/lib/constants';
 
 const WHATSAPP_HREF = `https://wa.me/${SUPPORT_WHATSAPP}?text=${encodeURIComponent('Hi, I need help with my order')}`;
 
@@ -32,7 +26,7 @@ export default function Footer() {
       style={{ borderTop: '1px solid var(--mantine-color-default-border)' }}
     >
       <Container size="xl" py={48}>
-        <SimpleGrid cols={{ base: 1, xs: 2, md: 4 }} spacing="xl" verticalSpacing="xl">
+        <SimpleGrid cols={{ base: 2, md: 4 }} spacing="xl" verticalSpacing="xl">
           {/* Brand */}
           <Stack gap="sm">
             <Anchor component={Link} href="/" underline="never" w="fit-content">
@@ -64,11 +58,6 @@ export default function Footer() {
               external
               label="WhatsApp us"
               icon={<WhatsAppIcon />}
-            />
-            <FooterContactLink
-              href={`tel:${SUPPORT_PHONE}`}
-              label="Call to order"
-              icon={<PhoneIcon width={15} height={15} />}
             />
             <Text size="xs" c="dimmed" mt={2}>
               {SUPPORT_PHONE_DISPLAY}
