@@ -136,7 +136,7 @@ export default function Header({ categories }: HeaderProps) {
                 </>
               )}
 
-              <Box visibleFrom="md">
+              <Box visibleFrom="md" style={{ display: 'flex', alignItems: 'center' }}>
                 <Tooltip label={cartCount > 0 ? `Cart (${cartCount})` : 'Cart'} withArrow>
                   <Indicator
                     label={cartCount > 0 ? cartCount : undefined}
