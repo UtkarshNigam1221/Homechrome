@@ -1,6 +1,6 @@
 import type { MetadataRoute } from 'next';
 
-import { API_BASE, SITE_URL } from '@/lib/constants';
+import { API_BASE, IS_INDEXABLE, SITE_URL } from '@/lib/constants';
 import { ROUTES } from '@/lib/routes';
 import { Category, Product } from '@/types';
 
@@ -31,6 +31,9 @@ async function getAllProducts(): Promise<Product[]> {
 }
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
+  // Non-prod hosts are disallowed in robots; don't expose their URLs here either.
+  if (!IS_INDEXABLE) return [];
+
   const [categories, products] = await Promise.all([getAllCategories(), getAllProducts()]);
 
   const staticRoutes: MetadataRoute.Sitemap = [
@@ -41,10 +44,22 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       priority: 1,
     },
     {
+      url: `${SITE_URL}/products`,
+      lastModified: new Date(),
+      changeFrequency: 'daily',
+      priority: 0.9,
+    },
+    {
       url: `${SITE_URL}/categories`,
       lastModified: new Date(),
       changeFrequency: 'daily',
       priority: 0.8,
+    },
+    {
+      url: `${SITE_URL}/contact`,
+      lastModified: new Date(),
+      changeFrequency: 'monthly',
+      priority: 0.3,
     },
   ];
 
