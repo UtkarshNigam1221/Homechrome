@@ -42,7 +42,7 @@ export default function CategoryCard({ category }: CategoryCardProps) {
       </Card.Section>
 
       <Stack p="md" gap={4}>
-        <Text fw={600} c="navy.7">
+        <Text fw={600} c="navy.7" lineClamp={2} style={{ minHeight: '2lh' }}>
           {category.name}
         </Text>
         <Text size="sm" c="dimmed">

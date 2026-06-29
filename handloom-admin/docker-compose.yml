@@ -1,7 +1,8 @@
 services:
   # LocalStack — unified AWS emulator (DynamoDB, S3, Lambda, API Gateway, IAM)
   localstack:
-    image: localstack/localstack:latest
+    # pinned to community major 3 — `latest` (2026.x) now requires a Pro LOCALSTACK_AUTH_TOKEN (exit 55)
+    image: localstack/localstack:3
     container_name: handloom-localstack
     ports:
       - "4566:4566"           # LocalStack gateway
@@ -34,7 +35,8 @@ services:
 
   # PostgreSQL — catalog data (categories, products, inventory)
   postgres:
-    image: postgres:16
+    # pgvector image (Postgres 16 + `vector` ext) — migration 005 needs CREATE EXTENSION vector
+    image: pgvector/pgvector:pg16
     container_name: handloom-postgres
     ports:
       - "5432:5432"

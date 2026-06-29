@@ -1,13 +1,24 @@
 'use client';
 
 import {
+  ChatBubbleLeftRightIcon,
+  ChevronRightIcon,
+  ShoppingBagIcon,
+  Squares2X2Icon,
+  UserIcon,
+} from '@heroicons/react/24/outline';
+import {
   Anchor,
+  AspectRatio,
   Box,
   Button,
+  Center,
   Divider,
   Drawer,
   Group,
+  NavLink,
   ScrollArea,
+  SimpleGrid,
   Stack,
   Text,
   Title,
@@ -15,7 +26,8 @@ import {
 import Image from 'next/image';
 import Link from 'next/link';
 
-import logo80 from '@/assets/logo-80.png';
+import { AssetImage } from '@/components/ui/asset-image';
+import logo80 from '@/assets/logo-80.webp';
 import { useAuthStore } from '@/stores/auth';
 import { Category } from '@/types';
 
@@ -27,8 +39,6 @@ interface MobileNavProps {
 
 export default function MobileNav({ isOpen, onClose, categories }: MobileNavProps) {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
-  const customer = useAuthStore((s) => s.customer);
-  const logout = useAuthStore((s) => s.logout);
 
   return (
     <Drawer
@@ -60,91 +70,148 @@ export default function MobileNav({ isOpen, onClose, categories }: MobileNavProp
     >
       <ScrollArea style={{ flex: 1 }}>
         <Box p="md">
-          <NavItem href="/products" onClose={onClose}>
-            All Products
-          </NavItem>
-          <NavItem href="/cart" onClose={onClose}>
-            My Cart
-          </NavItem>
-
-          <Title order={3} size="xs" tt="uppercase" fw={600} c="dimmed" mt="lg" mb="xs" px="xs" style={{ letterSpacing: '0.05em' }}>
-            Categories
-          </Title>
-          <Stack gap={4}>
+          <Eyebrow>Categories</Eyebrow>
+          <SimpleGrid cols={3} spacing="xs" px="xs">
             {categories.map((category) => (
-              <NavItem key={category.id} href={`/c/${category.slug}`} onClose={onClose}>
-                {category.name}
-              </NavItem>
+              <CategoryTile key={category.id} category={category} onClose={onClose} />
             ))}
-          </Stack>
+          </SimpleGrid>
+
+          <Box mt="xs">
+            <DrawerRow
+              href="/products"
+              label="All products"
+              icon={<Squares2X2Icon width={20} height={20} aria-hidden="true" />}
+              onClose={onClose}
+            />
+          </Box>
         </Box>
       </ScrollArea>
 
       <Divider />
 
-      <Box p="md">
+      <Box p="sm">
         {isAuthenticated ? (
-          <Stack gap="sm">
-            <Text size="sm" c="dimmed">
-              Hello, {customer?.first_name || 'there'}
-            </Text>
-            <NavItem href="/account" onClose={onClose}>
-              My Account
-            </NavItem>
-            <NavItem href="/account/orders" onClose={onClose}>
-              My Orders
-            </NavItem>
-            <Button
-              variant="light"
-              color="red"
-              fullWidth
-              justify="start"
-              onClick={() => {
-                logout();
-                onClose();
-              }}
-            >
-              Sign Out
-            </Button>
-          </Stack>
+          <>
+            <Eyebrow>Account</Eyebrow>
+            <DrawerRow
+              href="/account"
+              label="Account"
+              icon={<UserIcon width={20} height={20} aria-hidden="true" />}
+              onClose={onClose}
+            />
+            <DrawerRow
+              href="/account/orders"
+              label="Orders"
+              icon={<ShoppingBagIcon width={20} height={20} aria-hidden="true" />}
+              onClose={onClose}
+            />
+            <DrawerRow
+              href="/contact"
+              label="Contact us"
+              icon={<ChatBubbleLeftRightIcon width={20} height={20} aria-hidden="true" />}
+              onClose={onClose}
+            />
+          </>
         ) : (
-          <Button
-            component={Link}
-            href="/login"
-            onClick={onClose}
-            fullWidth
-            color="brand"
-          >
-            Sign In
-          </Button>
+          <Stack gap="xs">
+            <Button component={Link} href="/login" onClick={onClose} fullWidth color="brand">
+              Sign In
+            </Button>
+            <DrawerRow
+              href="/contact"
+              label="Contact us"
+              icon={<ChatBubbleLeftRightIcon width={20} height={20} aria-hidden="true" />}
+              onClose={onClose}
+            />
+          </Stack>
         )}
       </Box>
     </Drawer>
   );
 }
 
-interface NavItemProps {
-  href: string;
-  onClose: () => void;
-  children: React.ReactNode;
+function Eyebrow({ children }: { children: React.ReactNode }) {
+  return (
+    <Title
+      order={3}
+      size="xs"
+      tt="uppercase"
+      fw={600}
+      c="dimmed"
+      mb="xs"
+      px="xs"
+      style={{ letterSpacing: '0.05em' }}
+    >
+      {children}
+    </Title>
+  );
 }
 
-function NavItem({ href, onClose, children }: NavItemProps) {
+interface DrawerRowProps {
+  href: string;
+  label: string;
+  icon: React.ReactNode;
+  onClose: () => void;
+}
+
+function DrawerRow({ href, label, icon, onClose }: DrawerRowProps) {
   return (
-    <Anchor
+    <NavLink
       component={Link}
       href={href}
       onClick={onClose}
+      label={label}
+      leftSection={icon}
+      rightSection={
+        <ChevronRightIcon width={16} height={16} aria-hidden="true" style={{ opacity: 0.4 }} />
+      }
+      color="brand"
+      c="navy.7"
+      style={{ borderRadius: 'var(--mantine-radius-md)' }}
+    />
+  );
+}
+
+interface CategoryTileProps {
+  category: Category;
+  onClose: () => void;
+}
+
+function CategoryTile({ category, onClose }: CategoryTileProps) {
+  return (
+    <Anchor
+      component={Link}
+      href={`/c/${category.slug}`}
+      onClick={onClose}
       underline="never"
       c="navy.7"
-      size="md"
-      fw={500}
-      px="xs"
-      py={10}
-      display="block"
-      style={{ borderRadius: 'var(--mantine-radius-md)' }}
     >
-      {children}
+      <AspectRatio
+        ratio={1}
+        bg="gray.1"
+        style={{ borderRadius: 'var(--mantine-radius-md)', overflow: 'hidden' }}
+      >
+        {category.image_url ? (
+          <AssetImage
+            src={category.image_url}
+            alt={category.name}
+            sizes="120px"
+            width={120}
+            height={120}
+            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+          />
+        ) : (
+          <Center bg="brand.1" h="100%">
+            <Text fw={600} fz={22} c="brand.5">
+              {category.name.charAt(0).toUpperCase()}
+            </Text>
+          </Center>
+        )}
+      </AspectRatio>
+      <Text size="xs" fw={500} mt={4} lineClamp={2} style={{ lineHeight: 1.2 }}>
+        {category.name}
+      </Text>
     </Anchor>
   );
 }

@@ -2,10 +2,11 @@
 
 import { EnvelopeIcon } from '@heroicons/react/24/outline';
 import {
+  ActionIcon,
   Anchor,
   Box,
   Container,
-  Divider,
+  Flex,
   Group,
   SimpleGrid,
   Stack,
@@ -15,19 +16,27 @@ import Image from 'next/image';
 import Link from 'next/link';
 
 import logo80 from '@/assets/logo-80.webp';
+import { WhatsAppIcon } from '@/components/ui/whatsapp-icon';
 import { INSTAGRAM_URL, SUPPORT_EMAIL, SUPPORT_WHATSAPP } from '@/lib/constants';
 
 export default function Footer() {
   return (
     <Box
       component="footer"
-      bg="white"
-      style={{ borderTop: '1px solid var(--mantine-color-default-border)' }}
+      bg="gray.0"
+      mt={64}
+      style={{ borderTop: '1px solid var(--mantine-color-gray-2)' }}
     >
-      <Container size="xl" py={48}>
-        <SimpleGrid cols={{ base: 2, md: 4 }} spacing="xl" verticalSpacing="xl">
-          {/* Brand */}
-          <Stack gap="sm">
+      <Container size="xl">
+        {/* Top: brand left, link groups right */}
+        <Flex
+          py={48}
+          gap="xl"
+          direction={{ base: 'column', sm: 'row' }}
+          justify="space-between"
+          align={{ base: 'center', sm: 'flex-start' }}
+        >
+          <Flex direction="column" gap={6} maw={280} align={{ base: 'center', sm: 'flex-start' }}>
             <Anchor component={Link} href="/" underline="never" w="fit-content">
               <Group gap={10} align="center" wrap="nowrap">
                 <Image src={logo80} alt="Homechrome" style={{ height: 36, width: 'auto' }} unoptimized />
@@ -36,53 +45,63 @@ export default function Footer() {
                 </Text>
               </Group>
             </Anchor>
-            <Text size="sm" c="dimmed" maw={260}>
+            <Text size="sm" c="dimmed" ta={{ base: 'center', sm: 'left' }}>
               Premium handloom textiles from across India. Celebrating the art of traditional weaving.
             </Text>
-          </Stack>
+          </Flex>
 
-          <FooterColumn title="Shop">
-            <FooterLink href="/products">All Products</FooterLink>
-            <FooterLink href="/categories">Categories</FooterLink>
-          </FooterColumn>
+          <SimpleGrid cols={{ base: 2, sm: 3 }} spacing={48} verticalSpacing="lg" visibleFrom="sm">
+            <FooterColumn title="Shop">
+              <FooterLink href="/products">All Products</FooterLink>
+              <FooterLink href="/categories">Categories</FooterLink>
+            </FooterColumn>
 
-          <FooterColumn title="Customer">
-            <FooterLink href="/track">Track Order</FooterLink>
-            <FooterLink href="/account">My Account</FooterLink>
-          </FooterColumn>
+            <FooterColumn title="Customer">
+              <FooterLink href="/track">Track Order</FooterLink>
+              <FooterLink href="/account">My Account</FooterLink>
+            </FooterColumn>
 
-          <FooterColumn title="Need Help?">
-            <FooterContactLink
-              href={`https://wa.me/${SUPPORT_WHATSAPP}?text=${encodeURIComponent('Hi, I need help with my order')}`}
-              external
-              label="WhatsApp us"
-              icon={<WhatsAppIcon />}
-            />
-            <FooterContactLink
-              href={`mailto:${SUPPORT_EMAIL}`}
-              label="Email us"
-              icon={<EnvelopeIcon width={15} height={15} />}
-            />
-          </FooterColumn>
-        </SimpleGrid>
+            <FooterColumn title="Need Help?">
+              <FooterContactLink
+                href={`https://wa.me/${SUPPORT_WHATSAPP}?text=${encodeURIComponent('Hi, I need help with my order')}`}
+                external
+                label="WhatsApp us"
+                icon={<WhatsAppIcon size={16} />}
+              />
+              <FooterContactLink
+                href={`mailto:${SUPPORT_EMAIL}`}
+                label="Email us"
+                icon={<EnvelopeIcon width={15} height={15} />}
+              />
+            </FooterColumn>
+          </SimpleGrid>
+        </Flex>
 
-        <Divider my="xl" />
-
-        <Group justify="space-between" align="center" gap="sm">
-          <Text size="xs" c="dimmed">
+        {/* Bottom bar: copyright + social */}
+        <Flex
+          py="xl"
+          gap="sm"
+          direction={{ base: 'column', sm: 'row' }}
+          justify="space-between"
+          align="center"
+          style={{ borderTop: '1px solid var(--mantine-color-gray-2)' }}
+        >
+          <Text size="sm" c="dimmed">
             &copy; {new Date().getFullYear()} Homechrome. All rights reserved.
           </Text>
-          <Anchor
+          <ActionIcon
+            component="a"
             href={INSTAGRAM_URL}
             target="_blank"
             rel="noopener noreferrer"
-            c="navy.7"
-            display="inline-flex"
+            size="lg"
+            color="gray"
+            variant="subtle"
             aria-label="Follow Homechrome on Instagram"
           >
             <InstagramIcon />
-          </Anchor>
-        </Group>
+          </ActionIcon>
+        </Flex>
       </Container>
     </Box>
   );
@@ -91,17 +110,17 @@ export default function Footer() {
 function FooterColumn({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <Stack gap="xs">
-      <Text fw={700} size="xs" tt="uppercase" c="navy.9" style={{ letterSpacing: '0.06em' }}>
+      <Text fw={500} size="lg" c="navy.7">
         {title}
       </Text>
-      <Stack gap={8}>{children}</Stack>
+      <Stack gap={6}>{children}</Stack>
     </Stack>
   );
 }
 
-// Navy + persistent underline — reads as a clickable link, distinct from the
-// uppercase headings and the dimmed static text.
-const LINK_PROPS = { size: 'sm', c: 'navy.7', fw: 500, underline: 'always' } as const;
+// Dimmed links with hover-underline — the FooterLinks finesse; the group title
+// carries the contrast, links stay quiet until hovered.
+const LINK_PROPS = { size: 'sm', c: 'dimmed', underline: 'hover' } as const;
 
 function FooterLink({ href, children }: { href: string; children: React.ReactNode }) {
   return (
@@ -134,14 +153,6 @@ function FooterContactLink({
         {label}
       </Group>
     </Anchor>
-  );
-}
-
-function WhatsAppIcon() {
-  return (
-    <svg width={16} height={16} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-      <path d="M19.05 4.91A9.816 9.816 0 0 0 12.04 2c-5.46 0-9.91 4.45-9.91 9.91 0 1.75.46 3.45 1.32 4.95L2.05 22l5.25-1.38c1.45.79 3.08 1.21 4.74 1.21h.01c5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.91-7.01zm-7.01 15.24c-1.48 0-2.93-.4-4.2-1.15l-.3-.18-3.12.82.83-3.04-.2-.31a8.264 8.264 0 0 1-1.26-4.38c0-4.54 3.7-8.24 8.25-8.24 2.2 0 4.27.86 5.82 2.42a8.183 8.183 0 0 1 2.41 5.83c0 4.54-3.7 8.23-8.24 8.23zm4.52-6.16c-.25-.12-1.47-.72-1.69-.81-.23-.08-.39-.12-.56.12-.17.25-.64.81-.78.97-.14.17-.29.19-.54.06-.25-.12-1.05-.39-1.99-1.23-.74-.66-1.23-1.47-1.38-1.72-.14-.25-.02-.38.11-.51.11-.11.25-.29.37-.43.13-.14.17-.25.25-.41.08-.17.04-.31-.02-.43-.06-.12-.56-1.34-.76-1.84-.2-.48-.41-.42-.56-.43-.14-.01-.31-.01-.48-.01-.17 0-.43.06-.66.31-.22.25-.86.85-.86 2.07 0 1.22.89 2.4 1.01 2.56.12.17 1.75 2.67 4.23 3.74.59.26 1.05.41 1.41.52.59.19 1.13.16 1.56.1.48-.07 1.47-.6 1.68-1.18.21-.58.21-1.07.14-1.18-.06-.11-.22-.17-.47-.29z" />
-    </svg>
   );
 }
 
