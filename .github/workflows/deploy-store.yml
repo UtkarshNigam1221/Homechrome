@@ -126,7 +126,7 @@ jobs:
         with:
           ref: ${{ inputs.branch }}
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: store-open-next-${{ inputs.environment }}
           path: homechrome-store/.open-next
