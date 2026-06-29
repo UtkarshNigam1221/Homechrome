@@ -14,7 +14,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 
 import logo80 from '@/assets/logo-80.webp';
-import { INSTAGRAM_URL, SUPPORT_PHONE_DISPLAY, SUPPORT_WHATSAPP } from '@/lib/constants';
+import { INSTAGRAM_URL, SUPPORT_WHATSAPP } from '@/lib/constants';
 
 const WHATSAPP_HREF = `https://wa.me/${SUPPORT_WHATSAPP}?text=${encodeURIComponent('Hi, I need help with my order')}`;
 
@@ -59,9 +59,6 @@ export default function Footer() {
               label="WhatsApp us"
               icon={<WhatsAppIcon />}
             />
-            <Text size="xs" c="dimmed" mt={2}>
-              {SUPPORT_PHONE_DISPLAY}
-            </Text>
           </FooterColumn>
         </SimpleGrid>
 
