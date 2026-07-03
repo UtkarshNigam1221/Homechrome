@@ -1,6 +1,7 @@
 'use client';
 
-import { Box, Button, Divider, Group, SimpleGrid, Stack, Text, Title } from '@mantine/core';
+import { ChevronDownIcon } from '@heroicons/react/24/outline';
+import { Accordion, Box, Button, Divider, Group, Stack, Text, Title } from '@mantine/core';
 
 import { DiscountBadge } from '@/components/ui/discount-badge';
 import { QuantityStepper } from '@/components/ui/quantity-stepper';
@@ -8,17 +9,51 @@ import { useProductCartActions } from '@/hooks/useProductCartActions';
 import { calculateDiscountPercent, formatPrice } from '@/lib/utils';
 import { Product } from '@/types';
 
+type Spec = { label: string; value: string };
+
+const COMMON_ATTRS: [keyof Product, string][] = [
+  ['material', 'Material'],
+  ['color', 'Color'],
+  ['weave_type', 'Weave type'],
+  ['origin', 'Origin'],
+  ['craft_type', 'Craft type'],
+];
+
+function formatDimensions(d?: Product['dimensions']): string {
+  if (!d) return '';
+  const parts = [d.length, d.width, d.height].filter(
+    (n): n is number => typeof n === 'number' && n > 0,
+  );
+  return parts.length ? `${parts.join(' × ')} ${d.unit}` : '';
+}
+
+// Combine backend's top-level common attrs + dimensions/weight + free-form attributes map.
+// Commons live on top-level fields (excluded from the attributes map by the API), so they
+// must be read explicitly — that's why they never rendered before.
+function buildSpecs(p: Product): Spec[] {
+  const out: Spec[] = [];
+  for (const [key, label] of COMMON_ATTRS) {
+    const v = p[key];
+    if (typeof v === 'string' && v.trim()) out.push({ label, value: v });
+  }
+  const dim = formatDimensions(p.dimensions);
+  if (dim) out.push({ label: 'Dimensions', value: dim });
+  if (p.weight && p.weight > 0) out.push({ label: 'Weight', value: `${p.weight} g` });
+  for (const [key, v] of Object.entries(p.attributes || {})) {
+    const value = Array.isArray(v) ? v.filter(Boolean).join(', ') : v;
+    if (value && value.trim()) out.push({ label: key.replace(/_/g, ' '), value });
+  }
+  return out;
+}
+
 interface ProductInfoProps {
   product: Product;
 }
 
 export function ProductInfo({ product }: ProductInfoProps) {
   const {
-    quantity,
     cartQty,
     loading,
-    incrementQuantity,
-    decrementQuantity,
     handleAdd,
     handleIncrement,
     handleDecrement,
@@ -28,6 +63,7 @@ export function ProductInfo({ product }: ProductInfoProps) {
   // never sends, so reading it left the discount UI dead. Match the admin: use base_price.
   const hasDiscount = product.base_price > product.selling_price;
   const discountPercent = calculateDiscountPercent(product.base_price, product.selling_price);
+  const specs = buildSpecs(product);
 
   return (
     <Stack gap="md">
@@ -53,7 +89,7 @@ export function ProductInfo({ product }: ProductInfoProps) {
       </Group>
 
       {hasDiscount && (
-        <Text size="sm" fw={600} c="#2b7a2b">
+        <Text size="sm" fw={600} c="teal.7">
           You save {formatPrice(product.base_price - product.selling_price)} ({discountPercent}% off)
         </Text>
       )}
@@ -62,67 +98,64 @@ export function ProductInfo({ product }: ProductInfoProps) {
 
       {product.description && (
         <Section title="Description">
-          <Text c="dimmed" style={{ whiteSpace: 'pre-line', lineHeight: 1.6 }}>
+          <Text size="md" c="gray.7" maw="62ch" style={{ whiteSpace: 'pre-line', lineHeight: 1.7 }}>
             {product.description}
           </Text>
         </Section>
       )}
 
-      {product.attributes && Object.keys(product.attributes).length > 0 && (
+      {specs.length > 0 && (
         <Section title="Details">
-          <Stack gap="xs" mt="xs">
-            {Object.entries(product.attributes).map(([key, value]) => (
-              <SimpleGrid key={key} cols={2} spacing="md">
-                <Text size="sm" fw={500} c="navy.7" tt="capitalize">
-                  {key.replace(/_/g, ' ')}
-                </Text>
-                <Text size="sm" c="dimmed">{value}</Text>
-              </SimpleGrid>
+          <Accordion
+            multiple
+            variant="separated"
+            chevronPosition="right"
+            chevron={<ChevronDownIcon width={18} height={18} strokeWidth={2} />}
+            mt="xs"
+          >
+            {specs.map((s) => (
+              <Accordion.Item key={s.label} value={s.label}>
+                <Accordion.Control>
+                  <Text size="sm" fw={500} c="navy.7" tt="capitalize">{s.label}</Text>
+                </Accordion.Control>
+                <Accordion.Panel>
+                  <Text size="sm" c="dimmed">{s.value}</Text>
+                </Accordion.Panel>
+              </Accordion.Item>
             ))}
-          </Stack>
+          </Accordion>
         </Section>
       )}
 
       <Divider my="md" />
 
       {cartQty > 0 ? (
-        <Group align="center" gap="md">
-          <QuantityStepper
-            value={cartQty}
-            onIncrement={handleIncrement}
-            onDecrement={handleDecrement}
-            disabled={loading}
-            variant="primary"
-            size="lg"
-          />
-          <Text size="sm" c="dimmed">in your cart</Text>
-        </Group>
+        <QuantityStepper
+          value={cartQty}
+          onIncrement={handleIncrement}
+          onDecrement={handleDecrement}
+          disabled={loading}
+          variant="primary"
+          size="lg"
+          fullWidth
+        />
       ) : (
-        <Group align="center" gap="md">
-          <QuantityStepper
-            value={quantity}
-            onIncrement={incrementQuantity}
-            onDecrement={decrementQuantity}
-            disableDecrement={quantity <= 1}
-          />
-          <Button
-            color="brand"
-            size="lg"
-            flex={1}
-            onClick={handleAdd}
-            loading={loading}
-            disabled={!product.in_stock}
-          >
-            {product.in_stock ? 'Add to Cart' : 'Out of Stock'}
-          </Button>
-        </Group>
+        <Button
+          color="brand"
+          size="lg"
+          fullWidth
+          onClick={handleAdd}
+          loading={loading}
+          disabled={!product.in_stock}
+        >
+          {product.in_stock ? 'Add to Cart' : 'Out of Stock'}
+        </Button>
       )}
     </Stack>
   );
 }
 
 function StockStatus({ inStock }: { inStock: boolean }) {
-  const color = inStock ? 'success' : 'destructive';
   return (
     <Group gap={6} align="center">
       <Box
@@ -133,17 +166,16 @@ function StockStatus({ inStock }: { inStock: boolean }) {
       <Text size="sm" fw={500} c={inStock ? 'teal.7' : 'red.7'}>
         {inStock ? 'In Stock' : 'Out of Stock'}
       </Text>
-      <span style={{ display: 'none' }}>{color}</span>
     </Group>
   );
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <Stack gap="xs">
-      <Text size="xs" fw={600} tt="uppercase" c="navy.7" style={{ letterSpacing: '0.05em' }}>
+    <Stack gap="sm">
+      <Title order={2} size="h4" c="navy.7">
         {title}
-      </Text>
+      </Title>
       {children}
     </Stack>
   );
