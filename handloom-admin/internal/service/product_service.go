@@ -91,7 +91,11 @@ func (s *ProductService) Create(ctx context.Context, req domain.CreateProductReq
 		req.VideoPosterURL = finalURL
 	}
 
-	product := domain.NewProduct(req, "prod_"+uuid.New().String(), generateSlug(req.Name), createdBy)
+	slug, err := s.uniqueSlug(ctx, req.Name, "")
+	if err != nil {
+		return nil, err
+	}
+	product := domain.NewProduct(req, "prod_"+uuid.New().String(), slug, createdBy)
 
 	// Build inventory record to include in the same transaction
 	inventory := &domain.Inventory{
@@ -130,6 +134,27 @@ func (s *ProductService) Create(ctx context.Context, req domain.CreateProductReq
 
 	slog.InfoContext(ctx, "Created product", keyProductID, product.ID)
 	return product, nil
+}
+
+// uniqueSlug builds a collision-free slug from name. It slugifies the name,
+// then appends "-N" when the base is already taken (base, base-2, base-3, ...).
+// excludeID skips a product's own row so re-saving an unchanged name is a no-op.
+func (s *ProductService) uniqueSlug(ctx context.Context, name, excludeID string) (string, error) {
+	base := generateSlug(name)
+	if base == "" {
+		// Names of only special/non-ASCII chars slugify to "" — which would
+		// break the /p/<slug> route and burn the empty UNIQUE slot. Seed a
+		// valid base so the dedup below yields product, product-2, ...
+		base = "product"
+	}
+	maxN, err := s.productRepo.MaxSlugSuffix(ctx, base, excludeID)
+	if err != nil {
+		return "", err
+	}
+	if maxN == 0 {
+		return base, nil
+	}
+	return fmt.Sprintf("%s-%d", base, maxN+1), nil
 }
 
 // imageURLs extracts the URL field from a ProductImage slice.
@@ -232,10 +257,17 @@ func (s *ProductService) Update(ctx context.Context, id string, req domain.Updat
 		*req.VideoPosterURL = newURL
 	}
 
-	// Apply updates
+	// Apply updates (capture the old name first — ApplyUpdate overwrites it).
+	oldName := product.Name
 	product.ApplyUpdate(req)
-	if req.Name != nil {
-		product.Slug = generateSlug(*req.Name)
+	if req.Name != nil && generateSlug(*req.Name) != generateSlug(oldName) {
+		// Slug base changed — regenerate a unique slug, excluding this product's
+		// own row so re-saving the same name doesn't bump its suffix.
+		slug, slugErr := s.uniqueSlug(ctx, *req.Name, product.ID)
+		if slugErr != nil {
+			return nil, slugErr
+		}
+		product.Slug = slug
 	}
 
 	// Validate required searchable attributes (after applying updates)

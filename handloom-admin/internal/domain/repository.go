@@ -113,6 +113,12 @@ type ProductRepository interface {
 	// GetBySKU retrieves a product by SKU
 	GetBySKU(ctx context.Context, sku string) (*Product, error)
 
+	// MaxSlugSuffix returns the highest numeric slug suffix for a base slug:
+	// 0 if the base is unused, 1 if only the bare base exists, else the max
+	// N among "<base>-N" slugs. excludeID (when non-empty) skips that product's
+	// own row so re-saving an unchanged name doesn't collide with itself.
+	MaxSlugSuffix(ctx context.Context, base, excludeID string) (int, error)
+
 	// Update updates an existing product
 	Update(ctx context.Context, product *Product) error
 

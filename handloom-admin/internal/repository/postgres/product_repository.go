@@ -283,6 +283,30 @@ func (r *ProductRepository) GetBySKU(ctx context.Context, sku string) (*domain.P
 }
 
 // ---------------------------------------------------------------------------
+// MaxSlugSuffix
+// ---------------------------------------------------------------------------
+
+// MaxSlugSuffix returns the highest numeric suffix among slugs matching base:
+// 0 if base is unused, 1 if only the bare base exists, else max N of "base-N".
+// base comes from generateSlug ([a-z0-9-] only), so it is regex-safe here.
+// excludeID (when non-empty) skips that product's own row.
+func (r *ProductRepository) MaxSlugSuffix(ctx context.Context, base, excludeID string) (int, error) {
+	const q = `
+		SELECT COALESCE(MAX(
+			CASE WHEN slug = $1 THEN 1
+			     ELSE substring(slug from '^' || $1 || '-([0-9]+)$')::int
+			END), 0)
+		FROM products
+		WHERE (slug = $1 OR slug ~ ('^' || $1 || '-[0-9]+$'))
+		  AND ($2 = '' OR id <> $2)`
+	var maxN int
+	if err := r.pool.QueryRow(ctx, q, base, excludeID).Scan(&maxN); err != nil {
+		return 0, errors.Internal(err)
+	}
+	return maxN, nil
+}
+
+// ---------------------------------------------------------------------------
 // Update
 // ---------------------------------------------------------------------------
 

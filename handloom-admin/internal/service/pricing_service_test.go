@@ -162,6 +162,11 @@ func (m *MockProductRepository) GetBySKU(ctx context.Context, sku string) (*doma
 	return args.Get(0).(*domain.Product), args.Error(1)
 }
 
+func (m *MockProductRepository) MaxSlugSuffix(ctx context.Context, base, excludeID string) (int, error) {
+	args := m.Called(ctx, base, excludeID)
+	return args.Int(0), args.Error(1)
+}
+
 func (m *MockProductRepository) Update(ctx context.Context, product *domain.Product) error {
 	args := m.Called(ctx, product)
 	return args.Error(0)
