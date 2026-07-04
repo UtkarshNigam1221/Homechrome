@@ -1,6 +1,6 @@
 'use client';
 
-import { MinusIcon, PlusIcon } from '@heroicons/react/24/outline';
+import { MinusIcon, PlusIcon, TrashIcon } from '@heroicons/react/24/outline';
 import { ActionIcon, Group, Text } from '@mantine/core';
 
 interface QuantityStepperProps {
@@ -8,7 +8,6 @@ interface QuantityStepperProps {
   onIncrement: () => void;
   onDecrement: () => void;
   disabled?: boolean;
-  disableDecrement?: boolean;
   loading?: boolean;
   variant?: 'default' | 'primary';
   size?: 'sm' | 'default' | 'lg';
@@ -27,7 +26,6 @@ export function QuantityStepper({
   onIncrement,
   onDecrement,
   disabled = false,
-  disableDecrement = false,
   loading = false,
   variant = 'default',
   size = 'default',
@@ -55,12 +53,16 @@ export function QuantityStepper({
       <ActionIcon
         size={s.icon}
         variant="subtle"
-        color={color}
+        color={value <= 1 ? 'red' : color}
         onClick={onDecrement}
-        disabled={disabled || disableDecrement}
-        aria-label="Decrease quantity"
+        disabled={disabled}
+        aria-label={value <= 1 ? 'Remove item' : 'Decrease quantity'}
       >
-        <MinusIcon width={s.iconSize} height={s.iconSize} />
+        {value <= 1 ? (
+          <TrashIcon width={s.iconSize} height={s.iconSize} />
+        ) : (
+          <MinusIcon width={s.iconSize} height={s.iconSize} />
+        )}
       </ActionIcon>
       <Text
         ta="center"

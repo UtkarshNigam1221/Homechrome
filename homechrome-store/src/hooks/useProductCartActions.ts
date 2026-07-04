@@ -1,3 +1,4 @@
+import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 
 import { useCart } from '@/hooks/useCart';
@@ -10,6 +11,22 @@ export function useProductCartActions(product: Product) {
   const [loading, setLoading] = useState(false);
   const { addItem, updateQuantity, removeItem } = useCart();
   const cartQty = useCartStore((s) => s.getQuantity(product.id));
+  const router = useRouter();
+
+  // Buy Now: ensure the item is in the cart, then jump to checkout (reuses the
+  // full cart flow). If already in cart, skip the add.
+  const handleBuyNow = async () => {
+    setLoading(true);
+    try {
+      if (cartQty === 0) await addItem(product.id, quantity);
+      track('buy_now', { product_id: product.id, price: product.selling_price });
+      router.push('/checkout');
+    } catch {
+      /* useCart shows error toast */
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleAdd = async () => {
     setLoading(true);
@@ -65,6 +82,7 @@ export function useProductCartActions(product: Product) {
     incrementQuantity,
     decrementQuantity,
     handleAdd,
+    handleBuyNow,
     handleIncrement,
     handleDecrement,
   };

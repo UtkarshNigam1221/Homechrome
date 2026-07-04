@@ -55,6 +55,7 @@ export function ProductInfo({ product }: ProductInfoProps) {
     cartQty,
     loading,
     handleAdd,
+    handleBuyNow,
     handleIncrement,
     handleDecrement,
   } = useProductCartActions(product);
@@ -129,28 +130,39 @@ export function ProductInfo({ product }: ProductInfoProps) {
 
       <Divider my="md" />
 
-      {cartQty > 0 ? (
-        <QuantityStepper
-          value={cartQty}
-          onIncrement={handleIncrement}
-          onDecrement={handleDecrement}
-          disabled={loading}
-          variant="primary"
-          size="lg"
-          fullWidth
-        />
-      ) : (
+      <Group grow align="stretch" gap="sm">
+        {cartQty > 0 ? (
+          <QuantityStepper
+            value={cartQty}
+            onIncrement={handleIncrement}
+            onDecrement={handleDecrement}
+            disabled={loading}
+            variant="primary"
+            size="lg"
+            fullWidth
+          />
+        ) : (
+          <Button
+            variant="light"
+            color="brand"
+            size="lg"
+            onClick={handleAdd}
+            loading={loading}
+            disabled={!product.in_stock}
+          >
+            {product.in_stock ? 'Add to Cart' : 'Out of Stock'}
+          </Button>
+        )}
         <Button
           color="brand"
           size="lg"
-          fullWidth
-          onClick={handleAdd}
+          onClick={handleBuyNow}
           loading={loading}
           disabled={!product.in_stock}
         >
-          {product.in_stock ? 'Add to Cart' : 'Out of Stock'}
+          Buy Now
         </Button>
-      )}
+      </Group>
     </Stack>
   );
 }
