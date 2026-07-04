@@ -22,11 +22,6 @@ on:
         type: choice
         options: [dev, prod]
         default: dev
-      branch:
-        description: 'Branch/ref to build & deploy across all three projects (prod requires main)'
-        required: false
-        type: string
-        default: main
       deploy_embedder:
         description: 'Deploy the embedder FIRST (required on a fresh env; skip for normal incremental deploys)'
         required: false
@@ -43,7 +38,6 @@ jobs:
     uses: ./.github/workflows/deploy-embedder.yml
     with:
       environment: ${{ inputs.environment }}
-      branch: ${{ inputs.branch }}
     secrets: inherit
 
   backend:
@@ -54,7 +48,6 @@ jobs:
     uses: ./.github/workflows/deploy-backend.yml
     with:
       environment: ${{ inputs.environment }}
-      branch: ${{ inputs.branch }}
     secrets: inherit
 
   admin-frontend:
@@ -63,7 +56,6 @@ jobs:
     uses: ./.github/workflows/deploy-admin-frontend.yml
     with:
       environment: ${{ inputs.environment }}
-      branch: ${{ inputs.branch }}
     secrets: inherit
 
   store:
@@ -72,5 +64,4 @@ jobs:
     uses: ./.github/workflows/deploy-store.yml
     with:
       environment: ${{ inputs.environment }}
-      branch: ${{ inputs.branch }}
     secrets: inherit

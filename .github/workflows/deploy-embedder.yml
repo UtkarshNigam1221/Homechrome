@@ -28,11 +28,6 @@ on:
         type: choice
         options: [dev, prod]
         default: dev
-      branch:
-        description: 'Branch/ref to build & deploy (prod requires main)'
-        required: false
-        type: string
-        default: main
 
   # Allows an orchestrator to invoke this workflow.
   workflow_call:
@@ -41,11 +36,6 @@ on:
         description: 'Environment to deploy'
         required: true
         type: string
-      branch:
-        description: 'Branch/ref to build & deploy'
-        required: false
-        type: string
-        default: main
 
 permissions:
   id-token: write
@@ -64,14 +54,12 @@ jobs:
         working-directory: handloom-admin
     steps:
       - name: Guard prod deploy from non-main branches
-        if: inputs.environment == 'prod' && inputs.branch != 'main'
+        if: inputs.environment == 'prod' && github.ref_name != 'main'
         run: |
-          echo "::error::Prod deploy must target main. Chosen branch: ${{ inputs.branch }}"
+          echo "::error::Prod deploy must target main. Selected ref: ${{ github.ref_name }}"
           exit 1
 
       - uses: actions/checkout@v7
-        with:
-          ref: ${{ inputs.branch }}
 
       # The embedder app (-c app=embedder) builds only the embedder container
       # image (HF/ONNX model, large) at deploy. Reclaim ~20GB of preinstalled
