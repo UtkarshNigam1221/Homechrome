@@ -1,6 +1,6 @@
 'use client';
 
-import { Container, SimpleGrid } from '@mantine/core';
+import { Box, Container, SimpleGrid } from '@mantine/core';
 
 import { Breadcrumb } from '@/components/ui/breadcrumb';
 import { useProductGallery } from '@/hooks/useProductGallery';
@@ -29,13 +29,21 @@ export default function ProductDetailView({ product }: ProductDetailViewProps) {
       />
 
       <SimpleGrid cols={{ base: 1, lg: 2 }} spacing="xl">
-        <ProductGallery
-          productName={product.name}
-          items={items}
-          selectedIndex={selectedIndex}
-          selectedItem={selectedItem}
-          onSelect={setSelectedIndex}
-        />
+        {/* Sticky left column: gallery pins while the taller right column scrolls,
+            then releases at the row end so both scroll together. */}
+        <Box
+          pos={{ base: 'static', lg: 'sticky' }}
+          top="calc(var(--app-header-h) + var(--mantine-spacing-md))"
+          style={{ alignSelf: 'start' }}
+        >
+          <ProductGallery
+            productName={product.name}
+            items={items}
+            selectedIndex={selectedIndex}
+            selectedItem={selectedItem}
+            onSelect={setSelectedIndex}
+          />
+        </Box>
         <ProductInfo product={product} />
       </SimpleGrid>
     </Container>
