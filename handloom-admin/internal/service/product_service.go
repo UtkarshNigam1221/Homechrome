@@ -54,6 +54,26 @@ func buildEmbeddingInput(name, description string) string {
 	return name + "\n" + description
 }
 
+// reembedProduct returns a fresh embedding for the product when needsReembed is
+// set and an embedder is configured. Embedding failures are logged and treated
+// as a no-op (nil vector) so a product save is never blocked on the embedder.
+func (s *ProductService) reembedProduct(ctx context.Context, product *domain.Product, needsReembed bool) []float32 {
+	if !needsReembed || s.embedder == nil {
+		return nil
+	}
+	text := buildEmbeddingInput(product.Name, product.Description)
+	vecs, embedErr := s.embedder.Embed(ctx, text)
+	if embedErr != nil {
+		slog.WarnContext(ctx, "embedding failed; saving without re-embed",
+			"product_id", product.ID, "err", embedErr)
+		return nil
+	}
+	if len(vecs) == 1 {
+		return vecs[0]
+	}
+	return nil
+}
+
 // Create creates a new product
 func (s *ProductService) Create(ctx context.Context, req domain.CreateProductRequest, createdBy string) (*domain.Product, error) {
 	// Validate category exists
@@ -63,30 +83,30 @@ func (s *ProductService) Create(ctx context.Context, req domain.CreateProductReq
 	}
 
 	// Validate required searchable attributes are provided
-	if err := validateRequiredAttributes(req.Attributes, category.OwnAttributes); err != nil {
-		return nil, err
+	if verr := validateRequiredAttributes(req.Attributes, category.OwnAttributes); verr != nil {
+		return nil, verr
 	}
 
 	// Finalize any tmp/ image keys to permanent assets/ URLs
 	for i, img := range req.Images {
-		finalURL, err := s.assetFinalizer.FinalizeIfTemp(ctx, img.URL)
-		if err != nil {
-			return nil, errors.Wrap(err, "failed to finalize image")
+		finalURL, ferr := s.assetFinalizer.FinalizeIfTemp(ctx, img.URL)
+		if ferr != nil {
+			return nil, errors.Wrap(ferr, "failed to finalize image")
 		}
 		req.Images[i].URL = finalURL
 	}
 
 	if req.VideoURL != "" {
-		finalURL, err := s.assetFinalizer.FinalizeIfTemp(ctx, req.VideoURL)
-		if err != nil {
-			return nil, errors.Wrap(err, "failed to finalize video")
+		finalURL, ferr := s.assetFinalizer.FinalizeIfTemp(ctx, req.VideoURL)
+		if ferr != nil {
+			return nil, errors.Wrap(ferr, "failed to finalize video")
 		}
 		req.VideoURL = finalURL
 	}
 	if req.VideoPosterURL != "" {
-		finalURL, err := s.assetFinalizer.FinalizeIfTemp(ctx, req.VideoPosterURL)
-		if err != nil {
-			return nil, errors.Wrap(err, "failed to finalize video poster")
+		finalURL, ferr := s.assetFinalizer.FinalizeIfTemp(ctx, req.VideoPosterURL)
+		if ferr != nil {
+			return nil, errors.Wrap(ferr, "failed to finalize video poster")
 		}
 		req.VideoPosterURL = finalURL
 	}
@@ -280,17 +300,7 @@ func (s *ProductService) Update(ctx context.Context, id string, req domain.Updat
 
 	// Re-embed only when text fields change.
 	needsReembed := req.Name != nil || req.Description != nil
-	var vec []float32
-	if needsReembed && s.embedder != nil {
-		text := buildEmbeddingInput(product.Name, product.Description)
-		vecs, embedErr := s.embedder.Embed(ctx, text)
-		if embedErr != nil {
-			slog.WarnContext(ctx, "embedding failed; saving without re-embed",
-				"product_id", product.ID, "err", embedErr)
-		} else if len(vecs) == 1 {
-			vec = vecs[0]
-		}
-	}
+	vec := s.reembedProduct(ctx, product, needsReembed)
 
 	if err := s.productRepo.UpdateProductWithOptionalEmbedding(ctx, product, vec, needsReembed); err != nil {
 		return nil, err
