@@ -15,21 +15,13 @@ import (
 	"github.com/handloom/admin/pkg/telemetry"
 )
 
-// defaultPickupPincode is the warehouse/pickup location pincode
-const defaultPickupPincode = "560001"
-
-// defaultWeightGrams is the default parcel weight used for serviceability checks
-const defaultWeightGrams = 500
-
 // CheckoutService implements domain.CheckoutService
 type CheckoutService struct {
-	cartService     domain.CartService
-	orderRepo       domain.OrderRepository
-	paymentService  domain.PaymentService
-	shippingService domain.ShippingService
-	inventoryRepo   domain.InventoryRepository
-	customerRepo    domain.CustomerRepository
-	pickupPincode   string
+	cartService    domain.CartService
+	orderRepo      domain.OrderRepository
+	paymentService domain.PaymentService
+	inventoryRepo  domain.InventoryRepository
+	customerRepo   domain.CustomerRepository
 }
 
 // NewCheckoutService creates a new CheckoutService
@@ -37,37 +29,16 @@ func NewCheckoutService(
 	cartService domain.CartService,
 	orderRepo domain.OrderRepository,
 	paymentService domain.PaymentService,
-	shippingService domain.ShippingService,
 	inventoryRepo domain.InventoryRepository,
 	customerRepo domain.CustomerRepository,
 ) *CheckoutService {
 	return &CheckoutService{
-		cartService:     cartService,
-		orderRepo:       orderRepo,
-		paymentService:  paymentService,
-		shippingService: shippingService,
-		inventoryRepo:   inventoryRepo,
-		customerRepo:    customerRepo,
-		pickupPincode:   defaultPickupPincode,
+		cartService:    cartService,
+		orderRepo:      orderRepo,
+		paymentService: paymentService,
+		inventoryRepo:  inventoryRepo,
+		customerRepo:   customerRepo,
 	}
-}
-
-// CheckServiceability checks whether delivery is available for a given pincode
-func (s *CheckoutService) CheckServiceability(ctx context.Context, customerID, pincode string) (*domain.ServiceabilityResult, error) {
-	// Verify the customer exists
-	_, err := s.customerRepo.GetByID(ctx, customerID)
-	if err != nil {
-		slog.ErrorContext(ctx, "Failed to get customer for serviceability check", "error", err)
-		return nil, err
-	}
-
-	result, err := s.shippingService.CheckServiceability(ctx, s.pickupPincode, pincode, defaultWeightGrams)
-	if err != nil {
-		slog.ErrorContext(ctx, "Failed to check serviceability", "error", err)
-		return nil, errors.Wrap(err, "Failed to check serviceability")
-	}
-
-	return result, nil
 }
 
 // Initiate orchestrates the full checkout flow: reserve inventory, create order,
@@ -128,24 +99,14 @@ func (s *CheckoutService) Initiate(ctx context.Context, customerID string, req d
 	// 6. Build order items from cart items
 	orderItems := cartItemsToOrderItems(cart.Items)
 
-	// 7. Calculate totals
+	// 7. Calculate totals. Shipping is free at checkout — deliveries are
+	// scheduled manually, so no courier rate is charged.
 	subtotal := cart.Cart.Subtotal
 	var discountAmount int64
 	var taxAmount int64
-	shippingAmount := s.resolveShippingAmount(ctx, shippingAddr, req.CourierID)
+	var shippingAmount int64
 
 	totalAmount := subtotal - discountAmount + taxAmount + shippingAmount
-
-	// shipping_cost_shown: emitted once the price is computed so we can
-	// dashboard shipping revenue/cost by country. Fires even when shippingAmount==0.
-	metrics.Record(ctx, "shipping_cost_shown", metrics.L{
-		metrics.LabelCountry: country,
-	})
-	if shippingAmount > 0 {
-		metrics.RecordSum(ctx, "shipping_cost_shown", shippingAmount, metrics.L{
-			metrics.LabelCountry: country,
-		})
-	}
 
 	// 8. Generate order number
 	orderNumber := generateOrderNumber()
@@ -308,29 +269,6 @@ func cartItemsToOrderItems(items []domain.CartItem) []domain.OrderItem {
 		})
 	}
 	return orderItems
-}
-
-// resolveShippingAmount returns the shipping cost for the destination, selecting
-// the requested courier or defaulting to the first available. Returns 0 when the
-// serviceability check fails or the pincode isn't serviceable — checkout proceeds
-// with free shipping rather than blocking the order.
-func (s *CheckoutService) resolveShippingAmount(ctx context.Context, addr domain.Address, courierID *int) int64 {
-	serviceResult, err := s.shippingService.CheckServiceability(ctx, s.pickupPincode, addr.PostalCode, defaultWeightGrams)
-	if err != nil {
-		slog.ErrorContext(ctx, "Failed to check serviceability for shipping cost", "error", err)
-		return 0
-	}
-	if !serviceResult.Serviceable || len(serviceResult.Couriers) == 0 {
-		return 0
-	}
-	if courierID != nil {
-		for _, c := range serviceResult.Couriers {
-			if c.ID == *courierID {
-				return c.Rate
-			}
-		}
-	}
-	return serviceResult.Couriers[0].Rate
 }
 
 // releaseReservedItems releases inventory for items that were previously reserved

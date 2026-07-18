@@ -42,8 +42,6 @@ type APIStackProps struct {
 	PhonePeClientVersion    string
 	MSG91BaseURL            string
 	MSG91OTPTemplateID      string
-	ShiprocketBaseURL       string
-	ShiprocketPickupPincode string
 
 	// Telemetry — community-published OTel Collector layer ARN + SSM parameter
 	// names for Grafana Cloud credentials. All three must be set together; if
@@ -173,8 +171,6 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 		"PHONEPE_CLIENT_VERSION":    props.PhonePeClientVersion,
 		"MSG91_BASE_URL":            props.MSG91BaseURL,
 		"MSG91_OTP_TEMPLATE_ID":     props.MSG91OTPTemplateID,
-		"SHIPROCKET_BASE_URL":       props.ShiprocketBaseURL,
-		"SHIPROCKET_PICKUP_PINCODE": props.ShiprocketPickupPincode,
 	}
 	for k, v := range gatewayConfig {
 		if v != "" {
@@ -188,7 +184,6 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 		"PHONEPE_CLIENT_ID", "PHONEPE_CLIENT_SECRET",
 		"PHONEPE_WEBHOOK_USERNAME", "PHONEPE_WEBHOOK_PASSWORD",
 		"MSG91_AUTH_KEY",
-		"SHIPROCKET_EMAIL", "SHIPROCKET_PASSWORD",
 	}
 	for _, key := range gatewaySecretKeys {
 		if v := os.Getenv(key); v != "" {

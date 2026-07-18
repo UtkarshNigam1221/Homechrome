@@ -38,7 +38,6 @@ func (h *WebhookHandler) Routes() chi.Router {
 	r := chi.NewRouter()
 
 	r.Post("/phonepe", h.PhonePeWebhook)
-	r.Post("/shiprocket", h.ShiprocketWebhook)
 
 	return r
 }
@@ -112,11 +111,5 @@ func (h *WebhookHandler) PhonePeWebhook(w http.ResponseWriter, r *http.Request) 
 		slog.WarnContext(ctx, "Unhandled PhonePe webhook event", "event", webhookPayload.Event)
 	}
 
-	response.JSON(w, http.StatusOK, map[string]string{response.KeyStatus: "ok"})
-}
-
-// ShiprocketWebhook is a placeholder for Shiprocket shipping callbacks.
-// It acknowledges receipt and returns 200 OK.
-func (h *WebhookHandler) ShiprocketWebhook(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, http.StatusOK, map[string]string{response.KeyStatus: "ok"})
 }

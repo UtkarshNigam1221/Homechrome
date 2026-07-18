@@ -32,26 +32,10 @@ func NewCheckoutHandler(
 func (h *CheckoutHandler) Routes() chi.Router {
 	r := chi.NewRouter()
 
-	r.With(middleware.ValidateJSONTyped[domain.ServiceabilityRequest](h.validation)).Post("/serviceability", h.CheckServiceability)
 	r.With(middleware.ValidateJSONTyped[domain.CheckoutRequest](h.validation)).Post("/initiate", h.Initiate)
 	r.Get("/payment-status/{orderID}", h.GetPaymentStatus)
 
 	return r
-}
-
-// CheckServiceability handles POST /serviceability - checks if delivery is available for a pincode.
-func (h *CheckoutHandler) CheckServiceability(w http.ResponseWriter, r *http.Request) {
-	customerID := middleware.GetCustomerIDFromContext(r.Context())
-
-	req := middleware.MustGetValidatedBody[domain.ServiceabilityRequest](r.Context())
-
-	result, err := h.checkoutService.CheckServiceability(r.Context(), customerID, req.Pincode)
-	if err != nil {
-		response.Error(w, err)
-		return
-	}
-
-	response.Success(w, result)
 }
 
 // Initiate handles POST /initiate - creates an order and initiates payment.

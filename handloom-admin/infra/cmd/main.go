@@ -150,8 +150,6 @@ func buildBackendApp(app awscdk.App, env *awscdk.Environment, environment string
 		PhonePeClientVersion:    cfg.PhonePeClientVersion,
 		MSG91BaseURL:            cfg.MSG91BaseURL,
 		MSG91OTPTemplateID:      cfg.MSG91OTPTemplateID,
-		ShiprocketBaseURL:       cfg.ShiprocketBaseURL,
-		ShiprocketPickupPincode: cfg.ShiprocketPickupPincode,
 		CollectorLayerArn:       collectorArn,
 		GrafanaAuthSSMParam:     "/handloom/" + environment + "/grafana-otlp-auth",
 		GrafanaEndpoint:         cfg.GrafanaEndpoint,
