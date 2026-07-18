@@ -4,21 +4,18 @@ import { Box, Card, Center, Divider, Group, ScrollArea, Stack, Text, Title } fro
 import { AssetImage } from '@/components/ui/asset-image';
 
 import { formatPrice } from '@/lib/utils';
-import { CartItem, CourierOption } from '@/types';
+import { CartItem } from '@/types';
 
 interface OrderSummaryProps {
   items: CartItem[];
   subtotal: number;
-  shippingCourier?: CourierOption | null;
 }
 
 export default function OrderSummary({
   items,
   subtotal,
-  shippingCourier,
 }: OrderSummaryProps) {
-  const shippingCost = shippingCourier?.rate ?? 0;
-  const total = subtotal + shippingCost;
+  const total = subtotal;
 
   return (
     <Card shadow="sm" radius="lg" padding="md" withBorder>
@@ -80,13 +77,7 @@ export default function OrderSummary({
           </Group>
           <Group justify="space-between">
             <Text size="sm" c="dimmed">Shipping</Text>
-            <Text size="sm" c="navy.7">
-              {shippingCourier
-                ? shippingCost === 0
-                  ? 'FREE'
-                  : formatPrice(shippingCost)
-                : '--'}
-            </Text>
+            <Text size="sm" c="navy.7">FREE</Text>
           </Group>
           <Divider />
           <Group justify="space-between">

@@ -16,7 +16,6 @@ export const ROUTES = {
     ITEM: (productId: string) => `/api/v1/store/cart/items/${productId}`,
   },
   CHECKOUT: {
-    SERVICEABILITY: '/api/v1/store/checkout/serviceability',
     INITIATE: '/api/v1/store/checkout/initiate',
     PAYMENT_STATUS: (orderId: string) => `/api/v1/store/checkout/payment-status/${orderId}`,
   },

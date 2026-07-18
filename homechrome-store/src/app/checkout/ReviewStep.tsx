@@ -4,27 +4,23 @@ import { Anchor, Box, Button, Card, Group, Stack, Text, Title } from '@mantine/c
 
 import InlineLoaderOverlay from '@/components/ui/InlineLoaderOverlay';
 import { formatPrice } from '@/lib/utils';
-import { Address, CartItem, CourierOption } from '@/types';
+import { Address, CartItem } from '@/types';
 
 interface ReviewStepProps {
   selectedAddress: Address | null;
-  selectedCourier: CourierOption | null;
   items: CartItem[];
   initiating: boolean;
   initiatingCheckout: boolean;
   onChangeAddress: () => void;
-  onChangeShipping: () => void;
   onPayNow: () => void;
 }
 
 export function ReviewStep({
   selectedAddress,
-  selectedCourier,
   items,
   initiating,
   initiatingCheckout,
   onChangeAddress,
-  onChangeShipping,
   onPayNow,
 }: ReviewStepProps) {
   return (
@@ -38,13 +34,6 @@ export function ReviewStep({
             {selectedAddress.first_name} {selectedAddress.last_name},{' '}
             {selectedAddress.address_line1}, {selectedAddress.city},{' '}
             {selectedAddress.state} - {selectedAddress.postal_code}
-          </SummaryBlock>
-        )}
-
-        {selectedCourier && (
-          <SummaryBlock title="Shipping Method" onChange={onChangeShipping}>
-            {selectedCourier.name} - Est. {selectedCourier.estimated_days}{' '}
-            {selectedCourier.estimated_days === 1 ? 'day' : 'days'}
           </SummaryBlock>
         )}
 
@@ -64,7 +53,7 @@ export function ReviewStep({
           <Button onClick={onPayNow} loading={initiating} color="brand">
             Pay Now
           </Button>
-          <Button variant="outline" color="navy" onClick={onChangeShipping}>
+          <Button variant="outline" color="navy" onClick={onChangeAddress}>
             Back
           </Button>
         </Group>

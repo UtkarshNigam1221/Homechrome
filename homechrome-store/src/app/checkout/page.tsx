@@ -11,7 +11,6 @@ import { useAuthStore } from '@/stores/auth';
 import { AddressStep } from './AddressStep';
 import { CheckoutProgress } from './CheckoutProgress';
 import { ReviewStep } from './ReviewStep';
-import { ShippingStep } from './ShippingStep';
 import { useCheckoutState } from './useCheckoutState';
 
 export default function CheckoutPage() {
@@ -21,13 +20,10 @@ export default function CheckoutPage() {
     dispatch,
     addresses,
     selectedAddress,
-    selectedCourier,
     handleAddressNext,
-    handleShippingNext,
     handleAddAddress,
     handlePayNow,
     goToStep,
-    checkingServiceability,
     creatingAddress,
     initiatingCheckout,
   } = useCheckoutState();
@@ -39,10 +35,6 @@ export default function CheckoutPage() {
     selectedAddressId,
     showAddressForm,
     addressSaving,
-    couriers,
-    selectedCourierId,
-    serviceabilityLoading,
-    serviceabilityError,
     initiating,
     error,
   } = state;
@@ -82,29 +74,13 @@ export default function CheckoutPage() {
             />
           )}
 
-          {step === 'shipping' && (
-            <ShippingStep
-              selectedAddress={selectedAddress}
-              couriers={couriers}
-              selectedCourierId={selectedCourierId}
-              serviceabilityLoading={serviceabilityLoading}
-              serviceabilityError={serviceabilityError}
-              checkingServiceability={checkingServiceability}
-              onSelectCourier={(id) => dispatch({ type: 'SELECT_COURIER', id })}
-              onChangeAddress={() => dispatch({ type: 'GO_TO_STEP', step: 'address' })}
-              onContinue={handleShippingNext}
-            />
-          )}
-
           {step === 'review' && (
             <ReviewStep
               selectedAddress={selectedAddress}
-              selectedCourier={selectedCourier}
               items={cart.items}
               initiating={initiating}
               initiatingCheckout={initiatingCheckout}
               onChangeAddress={() => dispatch({ type: 'GO_TO_STEP', step: 'address' })}
-              onChangeShipping={() => dispatch({ type: 'GO_TO_STEP', step: 'shipping' })}
               onPayNow={handlePayNow}
             />
           )}
@@ -115,7 +91,6 @@ export default function CheckoutPage() {
             <OrderSummary
               items={cart.items}
               subtotal={cart.cart.subtotal}
-              shippingCourier={selectedCourier}
             />
             <Box ta="center" mt="md">
               <Anchor component={Link} href="/cart" size="sm" c="brand">

@@ -6,7 +6,6 @@ import { CheckoutStep } from './checkoutReducer';
 
 const STEPS: { id: CheckoutStep; label: string }[] = [
   { id: 'address', label: 'Address' },
-  { id: 'shipping', label: 'Shipping' },
   { id: 'review', label: 'Review' },
 ];
 

@@ -20,15 +20,9 @@ interface CartSummaryProps {
   isAuthenticated: boolean;
 }
 
-// Pre-checkout estimates only (paise). Actual shipping is computed at checkout
-// from courier serviceability; these just preview the cart.
-const FREE_SHIPPING_THRESHOLD = 99900;
-const SHIPPING_ESTIMATE_PAISE = 7900;
-
 export default function CartSummary({ subtotal, itemCount, isAuthenticated }: CartSummaryProps) {
-  const shippingEstimate = subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_ESTIMATE_PAISE;
-  const total = subtotal + shippingEstimate;
-  const amountToFreeShipping = FREE_SHIPPING_THRESHOLD - subtotal;
+  // Shipping is free — deliveries are scheduled manually.
+  const total = subtotal;
 
   return (
     <Card shadow="sm" radius="lg" padding="md">
@@ -44,12 +38,8 @@ export default function CartSummary({ subtotal, itemCount, isAuthenticated }: Ca
           </Group>
 
           <Group justify="space-between">
-            <Text size="sm" c="dimmed">Shipping estimate</Text>
-            {shippingEstimate === 0 ? (
-              <Text size="sm" fw={500} c="teal.7">Free</Text>
-            ) : (
-              <Text size="sm" fw={500} c="navy.7">{formatPrice(shippingEstimate)}</Text>
-            )}
+            <Text size="sm" c="dimmed">Shipping</Text>
+            <Text size="sm" fw={500} c="teal.7">Free</Text>
           </Group>
 
           <Divider />
@@ -59,12 +49,6 @@ export default function CartSummary({ subtotal, itemCount, isAuthenticated }: Ca
             <Text fw={700} c="navy.7">{formatPrice(total)}</Text>
           </Group>
         </Stack>
-
-        {subtotal > 0 && amountToFreeShipping > 0 && (
-          <Text size="xs" c="dimmed">
-            Add {formatPrice(amountToFreeShipping)} more for free shipping!
-          </Text>
-        )}
 
         <Button
           component={Link}

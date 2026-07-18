@@ -171,18 +171,6 @@ export interface OrderItem {
 }
 
 // Checkout
-export interface ServiceabilityResult {
-  serviceable: boolean;
-  couriers: CourierOption[];
-}
-
-export interface CourierOption {
-  id: number;
-  name: string;
-  rate: number; // paise
-  estimated_days: number;
-}
-
 export interface CheckoutResult {
   order: Order;
   redirect_url: string;
