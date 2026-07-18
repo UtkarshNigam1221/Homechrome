@@ -46,7 +46,7 @@ jobs:
           echo "::error::Prod deploy must target main. Chosen branch: ${{ inputs.branch }}"
           exit 1
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.branch }}
 
@@ -98,7 +98,7 @@ jobs:
           test -f .open-next/server-functions/default/otel.yaml || {
             echo "::error::otel.yaml not bundled into the server function"; exit 1; }
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: store-open-next-${{ inputs.environment }}
           path: homechrome-store/.open-next
@@ -122,11 +122,11 @@ jobs:
           echo "::error::Prod deploy must target main. Chosen branch: ${{ inputs.branch }}"
           exit 1
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.branch }}
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: store-open-next-${{ inputs.environment }}
           path: homechrome-store/.open-next

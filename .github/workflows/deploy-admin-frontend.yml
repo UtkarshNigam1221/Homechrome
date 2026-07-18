@@ -46,7 +46,7 @@ jobs:
           echo "::error::Prod deploy must target main. Chosen branch: ${{ inputs.branch }}"
           exit 1
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.branch }}
 
@@ -63,7 +63,7 @@ jobs:
       - name: Build
         run: npm run build:${{ inputs.environment }}
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: admin-frontend-dist-${{ inputs.environment }}
           path: handloom-admin-frontend/dist
@@ -84,11 +84,11 @@ jobs:
           echo "::error::Prod deploy must target main. Chosen branch: ${{ inputs.branch }}"
           exit 1
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.branch }}
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: admin-frontend-dist-${{ inputs.environment }}
           path: handloom-admin-frontend/dist
