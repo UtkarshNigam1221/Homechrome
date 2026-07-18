@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -37,7 +38,9 @@ func TestTrackOrder_FallsBackToOrderTracking(t *testing.T) {
 	srv := httptest.NewServer(NewTrackingHandler(orderRepo, shipmentRepo).Routes())
 	defer srv.Close()
 
-	resp, err := http.Get(srv.URL + "/HC-123")
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, srv.URL+"/HC-123", nil)
+	require.NoError(t, err)
+	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	defer func() { _ = resp.Body.Close() }()
 	require.Equal(t, http.StatusOK, resp.StatusCode)
