@@ -5,9 +5,9 @@ go 1.25.0
 require (
 	github.com/aws/aws-lambda-go v1.54.0
 	github.com/aws/aws-sdk-go-v2 v1.41.7
-	github.com/aws/aws-sdk-go-v2/config v1.26.6
-	github.com/aws/aws-sdk-go-v2/credentials v1.19.16
-	github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue v1.20.39
+	github.com/aws/aws-sdk-go-v2/config v1.32.18
+	github.com/aws/aws-sdk-go-v2/credentials v1.19.17
+	github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue v1.20.40
 	github.com/aws/aws-sdk-go-v2/feature/dynamodb/expression v1.6.16
 	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.57.4
 	github.com/aws/aws-sdk-go-v2/service/lambda v1.90.1
@@ -19,7 +19,7 @@ require (
 	github.com/daulet/tokenizers v1.27.0
 	github.com/exaring/otelpgx v0.11.1
 	github.com/georgysavva/scany/v2 v2.1.4
-	github.com/go-chi/chi/v5 v5.2.4
+	github.com/go-chi/chi/v5 v5.3.0
 	github.com/go-chi/cors v1.2.2
 	github.com/go-chi/httprate v0.15.0
 	github.com/go-playground/validator/v10 v10.30.2
@@ -46,7 +46,7 @@ require (
 	go.opentelemetry.io/otel/sdk/log v0.20.0
 	go.opentelemetry.io/otel/trace v1.44.0
 	go.uber.org/mock v0.4.0
-	golang.org/x/crypto v0.51.0
+	golang.org/x/crypto v0.52.0
 	golang.org/x/sync v0.20.0
 )
 
@@ -55,7 +55,6 @@ require (
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.23 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.23 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.7.23 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/ini v1.7.3 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/v4a v1.4.24 // indirect
 	github.com/aws/aws-sdk-go-v2/service/dynamodbstreams v1.32.16 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.9 // indirect
@@ -63,9 +62,10 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/internal/endpoint-discovery v1.12.0 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.13.23 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.19.23 // indirect
+	github.com/aws/aws-sdk-go-v2/service/signin v1.0.11 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sns v1.39.17 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sso v1.30.17 // indirect
-	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.35.21 // indirect
+	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.36.0 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.42.1 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect

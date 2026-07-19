@@ -33,8 +33,10 @@ permissions:
   contents: read
 
 jobs:
-  build:
-    name: Build
+  # Single job: build + deploy on one runner. dist/ stays on-disk instead of
+  # crossing a job boundary via an Actions artifact (was burning storage quota).
+  deploy:
+    name: Build & Deploy
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -46,7 +48,7 @@ jobs:
           echo "::error::Prod deploy must target main. Chosen branch: ${{ inputs.branch }}"
           exit 1
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.branch }}
 
@@ -62,36 +64,6 @@ jobs:
 
       - name: Build
         run: npm run build:${{ inputs.environment }}
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: admin-frontend-dist-${{ inputs.environment }}
-          path: handloom-admin-frontend/dist
-          retention-days: 1
-          if-no-files-found: error
-
-  deploy:
-    name: Deploy
-    needs: build
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: handloom-admin-frontend
-    steps:
-      - name: Guard prod deploy from non-main branches
-        if: inputs.environment == 'prod' && inputs.branch != 'main'
-        run: |
-          echo "::error::Prod deploy must target main. Chosen branch: ${{ inputs.branch }}"
-          exit 1
-
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ inputs.branch }}
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: admin-frontend-dist-${{ inputs.environment }}
-          path: handloom-admin-frontend/dist
 
       - uses: aws-actions/configure-aws-credentials@v6
         with:

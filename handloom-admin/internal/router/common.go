@@ -23,7 +23,7 @@ type Config struct {
 
 // ApplyObservability installs the provider-agnostic middleware stack every
 // HTTP entry point should have: server tracing, request ID, metrics, geo, logs,
-// panic recovery, real-IP. CORS and auth are intentionally left out — those are
+// panic recovery. CORS and auth are intentionally left out — those are
 // per-router concerns (admin JWT, store JWT, embedder HMAC). Call this from any
 // chi router (NewBaseRouter, or a hand-rolled one like the embedder's) so the
 // observability stack can't drift between services.
@@ -44,7 +44,6 @@ func ApplyObservability(r chi.Router) {
 	r.Use(middleware.GeoExtractor)               // reads the X-Hc-Visitor header into ctx
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
-	r.Use(chimiddleware.RealIP)
 }
 
 // NewBaseRouter creates a base router with common middleware

@@ -10,7 +10,7 @@ name: Deploy All
 # heavy model-asset/image build is then skipped.
 #
 # Order: [embedder?] -> backend -> (admin + store in parallel).
-# Each project's workflow owns its own build->deploy split; this orchestrator
+# Each project's workflow builds and deploys in a single job; this orchestrator
 # only sequences them via `workflow_call`.
 
 on:
