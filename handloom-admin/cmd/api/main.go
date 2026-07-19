@@ -96,7 +96,6 @@ func createRouter(d *wire.MonolithDeps) *chi.Mux {
 	r.Use(middleware.RequestID)
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
-	r.Use(chimiddleware.RealIP)
 	r.Use(chimiddleware.Compress(5))
 
 	r.Use(cors.Handler(cors.Options{
