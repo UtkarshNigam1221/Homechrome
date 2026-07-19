@@ -19,7 +19,6 @@ import (
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/internal/embedder"
 	"github.com/handloom/admin/internal/gateway/phonepe"
-	"github.com/handloom/admin/internal/gateway/shiprocket"
 	"github.com/handloom/admin/internal/gateway/sms"
 	"github.com/handloom/admin/internal/handler"
 	"github.com/handloom/admin/internal/handler/store"
@@ -603,36 +602,15 @@ func ProvidePaymentService(
 	return service.NewPaymentService(paymentRepo, orderRepo, inventoryRepo, cartService, customerRepo, phonePeClient)
 }
 
-// ProvideShippingService creates a new ShippingService with Shiprocket gateway
-func ProvideShippingService(
-	shipmentRepo domain.ShipmentRepository,
-	orderRepo domain.OrderRepository,
-	cfg *config.Config,
-) *service.ShippingService {
-	var shiprocketClient shiprocket.Gateway
-	if cfg.Store.ShiprocketEmail == "" || cfg.Store.ShiprocketPassword == "" {
-		shiprocketClient = shiprocket.NewDevClient()
-	} else {
-		shiprocketClient = shiprocket.NewClient(shiprocket.Config{
-			Email:         cfg.Store.ShiprocketEmail,
-			Password:      cfg.Store.ShiprocketPassword,
-			BaseURL:       cfg.Store.ShiprocketBaseURL,
-			PickupPincode: cfg.Store.ShiprocketPickupPincode,
-		})
-	}
-	return service.NewShippingService(shipmentRepo, orderRepo, shiprocketClient, cfg.Store.ShiprocketPickupPincode)
-}
-
 // ProvideCheckoutService creates a new CheckoutService
 func ProvideCheckoutService(
 	cartService *service.CartService,
 	orderRepo domain.OrderRepository,
 	paymentService *service.PaymentService,
-	shippingService *service.ShippingService,
 	inventoryRepo domain.InventoryRepository,
 	customerRepo domain.CustomerRepository,
 ) *service.CheckoutService {
-	return service.NewCheckoutService(cartService, orderRepo, paymentService, shippingService, inventoryRepo, customerRepo)
+	return service.NewCheckoutService(cartService, orderRepo, paymentService, inventoryRepo, customerRepo)
 }
 
 // ============================================================================
@@ -750,7 +728,6 @@ var StoreRepositorySet = wire.NewSet(
 
 var StoreServiceSet = wire.NewSet(
 	ProvideCustomerAuthService,
-	ProvideShippingService,
 	ProvideCheckoutService,
 )
 

@@ -46,12 +46,6 @@ type StoreConfig struct {
 	PhonePeWebhookUsername string
 	PhonePeWebhookPassword string
 
-	// Shiprocket
-	ShiprocketEmail         string
-	ShiprocketPassword      string
-	ShiprocketBaseURL       string
-	ShiprocketPickupPincode string
-
 	// MSG91
 	MSG91AuthKey       string
 	MSG91OTPTemplateID string
@@ -175,11 +169,6 @@ func Load() *Config {
 			PhonePeRedirectURL:     getEnv("PHONEPE_REDIRECT_URL", ""),
 			PhonePeWebhookUsername: getEnv("PHONEPE_WEBHOOK_USERNAME", ""),
 			PhonePeWebhookPassword: getEnv("PHONEPE_WEBHOOK_PASSWORD", ""),
-
-			ShiprocketEmail:         getEnv("SHIPROCKET_EMAIL", ""),
-			ShiprocketPassword:      getEnv("SHIPROCKET_PASSWORD", ""),
-			ShiprocketBaseURL:       getEnv("SHIPROCKET_BASE_URL", "https://apiv2.shiprocket.in/v1/external"),
-			ShiprocketPickupPincode: getEnv("SHIPROCKET_PICKUP_PINCODE", "560001"),
 
 			MSG91AuthKey:       getEnv("MSG91_AUTH_KEY", ""),
 			MSG91OTPTemplateID: getEnv("MSG91_OTP_TEMPLATE_ID", ""),

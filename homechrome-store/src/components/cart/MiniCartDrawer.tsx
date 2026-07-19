@@ -136,12 +136,12 @@ export function MiniCartDrawer() {
                       }}
                       onDecrement={async () => {
                         try {
-                          await updateQuantity(item.product_id, item.quantity - 1);
+                          if (item.quantity <= 1) await removeItem(item.product_id);
+                          else await updateQuantity(item.product_id, item.quantity - 1);
                         } catch {
                           /* useCart shows error toast */
                         }
                       }}
-                      disableDecrement={item.quantity <= 1}
                       size="sm"
                     />
                     <Text size="sm" fw={700} c="navy.7">

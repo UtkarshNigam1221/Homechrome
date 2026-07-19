@@ -85,7 +85,7 @@ export function AddressStep({
 
             <Group>
               <Button onClick={onContinue} disabled={!selectedAddressId} color="brand">
-                Continue to Shipping
+                Continue to Review
               </Button>
             </Group>
           </Stack>

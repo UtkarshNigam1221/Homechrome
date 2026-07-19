@@ -48,24 +48,3 @@ func (s *Shipment) SetKeys() {
 	s.SK = "SHIPMENT#" + s.ID
 	s.EntityType = "SHIPMENT"
 }
-
-// ==================== SHIPPING REQUEST/RESPONSE TYPES ====================
-
-// ServiceabilityRequest contains data for checking shipping serviceability
-type ServiceabilityRequest struct {
-	Pincode string `json:"pincode" validate:"required,len=6"`
-}
-
-// ServiceabilityResult contains the result of a serviceability check
-type ServiceabilityResult struct {
-	Serviceable bool            `json:"serviceable"`
-	Couriers    []CourierOption `json:"couriers,omitempty"`
-}
-
-// CourierOption represents an available courier option
-type CourierOption struct {
-	ID            int    `json:"id"`
-	Name          string `json:"name"`
-	Rate          int64  `json:"rate"` // in paise
-	EstimatedDays int    `json:"estimated_days"`
-}

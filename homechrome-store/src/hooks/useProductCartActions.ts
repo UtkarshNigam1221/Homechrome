@@ -1,7 +1,9 @@
+import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 
 import { useCart } from '@/hooks/useCart';
 import { track } from '@/lib/analytics';
+import { useAuthStore } from '@/stores/auth';
 import { useCartStore } from '@/stores/cart';
 import { Product } from '@/types';
 
@@ -10,6 +12,24 @@ export function useProductCartActions(product: Product) {
   const [loading, setLoading] = useState(false);
   const { addItem, updateQuantity, removeItem } = useCart();
   const cartQty = useCartStore((s) => s.getQuantity(product.id));
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const router = useRouter();
+
+  // Buy Now: ensure the item is in the cart, then head to checkout — but
+  // checkout is auth-gated (its cart fetch only runs when logged in), so send
+  // guests to login first, mirroring the cart page's checkout button.
+  const handleBuyNow = async () => {
+    setLoading(true);
+    try {
+      if (cartQty === 0) await addItem(product.id, quantity);
+      track('buy_now', { product_id: product.id, price: product.selling_price });
+      router.push(isAuthenticated ? '/checkout' : '/login?redirect=/checkout');
+    } catch {
+      /* useCart shows error toast */
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleAdd = async () => {
     setLoading(true);
@@ -65,6 +85,7 @@ export function useProductCartActions(product: Product) {
     incrementQuantity,
     decrementQuantity,
     handleAdd,
+    handleBuyNow,
     handleIncrement,
     handleDecrement,
   };

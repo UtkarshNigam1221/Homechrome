@@ -37,8 +37,6 @@ type EnvConfig struct {
 	PhonePeClientVersion    string
 	MSG91BaseURL            string
 	MSG91OTPTemplateID      string
-	ShiprocketBaseURL       string
-	ShiprocketPickupPincode string
 }
 
 var envConfigs = map[string]EnvConfig{
@@ -59,8 +57,6 @@ var envConfigs = map[string]EnvConfig{
 		PhonePeClientVersion:    "1",
 		MSG91BaseURL:            "https://control.msg91.com",
 		MSG91OTPTemplateID:      "6a04664c95bc5e4fa90fb332",
-		ShiprocketBaseURL:       "", // unset in dev — gateway falls back to DevClient
-		ShiprocketPickupPincode: "",
 	},
 	"prod": {
 		CertArn:        "arn:aws:acm:ap-south-1:163053486005:certificate/c20f97ff-ba58-4821-8f3d-6f50f772df89",
@@ -81,14 +77,11 @@ var envConfigs = map[string]EnvConfig{
 		PhonePeClientVersion:    "1",
 		MSG91BaseURL:            "https://control.msg91.com",
 		MSG91OTPTemplateID:      "6a04664c95bc5e4fa90fb332", // VERIFY prod template
-		ShiprocketBaseURL:       "",
-		ShiprocketPickupPincode: "",
 	},
 }
 
 // validate fails the CDK synth if a required config field is empty, so a
 // misconfigured env never deploys and surfaces as a runtime failure instead.
-// Shiprocket* are intentionally optional (empty → gateway DevClient).
 func (c EnvConfig) validate(env string) error {
 	required := map[string]string{
 		"CertArn":              c.CertArn,

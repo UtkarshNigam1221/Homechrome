@@ -36,7 +36,6 @@ type CartService interface {
 
 // CheckoutService defines checkout operations
 type CheckoutService interface {
-	CheckServiceability(ctx context.Context, customerID, pincode string) (*ServiceabilityResult, error)
 	Initiate(ctx context.Context, customerID string, req CheckoutRequest) (*CheckoutResult, error)
 	GetPaymentStatus(ctx context.Context, customerID, orderID string) (*PaymentStatusResult, error)
 }
@@ -44,7 +43,6 @@ type CheckoutService interface {
 // CheckoutRequest contains data for initiating checkout
 type CheckoutRequest struct {
 	ShippingAddressID string `json:"shipping_address_id" validate:"required"`
-	CourierID         *int   `json:"courier_id,omitempty"`
 }
 
 // CheckoutResult contains the result of a checkout initiation
@@ -97,12 +95,4 @@ type PaymentResponse struct {
 	PaymentID     string `json:"payment_id"`
 	RedirectURL   string `json:"redirect_url"`
 	MerchantTxnID string `json:"merchant_txn_id"`
-}
-
-// ShippingService defines shipping operations
-type ShippingService interface {
-	CheckServiceability(ctx context.Context, pickupPincode, deliveryPincode string, weightGrams int) (*ServiceabilityResult, error)
-	CreateShipment(ctx context.Context, order *Order) (*Shipment, error)
-	TrackShipment(ctx context.Context, orderID string) (*Shipment, error)
-	HandleWebhook(ctx context.Context, payload []byte, token string) error
 }

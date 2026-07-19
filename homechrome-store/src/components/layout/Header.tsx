@@ -45,6 +45,7 @@ export default function Header({ categories }: HeaderProps) {
         component="header"
         pos="sticky"
         top={0}
+        mih="var(--app-header-h)"
         style={{
           zIndex: 40,
           borderBottom: '1px solid var(--mantine-color-default-border)',

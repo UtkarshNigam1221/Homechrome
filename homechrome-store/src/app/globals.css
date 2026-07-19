@@ -4,6 +4,13 @@ html {
   font-size: 17px;
 }
 
+:root {
+  /* Single source of truth for the sticky header's height. Header enforces it
+     via min-height; sticky columns offset against it (+ a gap). rem so it
+     scales with the font-size bump above. */
+  --app-header-h: 3.5rem;
+}
+
 body {
   background: #F5F0EB;
   color: var(--mantine-color-text);

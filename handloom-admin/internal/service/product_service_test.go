@@ -61,9 +61,43 @@ func setupProductTest(t *testing.T) (
 	mockFinalizer := mocks.NewMockAssetFinalizer(ctrl)
 	// SyncImageVariants is best-effort side effect, allow any invocation pattern.
 	mockFinalizer.EXPECT().SyncImageVariants(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
+	// Slug uniqueness lookup runs on create + rename; default to "base free".
+	mockProdRepo.EXPECT().MaxSlugSuffix(gomock.Any(), gomock.Any(), gomock.Any()).Return(0, nil).AnyTimes()
 
 	svc := NewProductService(mockProdRepo, mockCatRepo, mockInvRepo, mockFinalizer, nil)
 	return svc, mockProdRepo, mockCatRepo, mockInvRepo, mockFinalizer, context.Background()
+}
+
+func TestProductService_Create_DedupesSlug(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+
+	mockProdRepo := mocks.NewMockProductRepository(ctrl)
+	mockCatRepo := mocks.NewMockCategoryRepository(ctrl)
+	mockInvRepo := mocks.NewMockInventoryRepository(ctrl)
+	mockFinalizer := mocks.NewMockAssetFinalizer(ctrl)
+	mockFinalizer.EXPECT().SyncImageVariants(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
+	svc := NewProductService(mockProdRepo, mockCatRepo, mockInvRepo, mockFinalizer, nil)
+	ctx := context.Background()
+
+	// Base "casement-cotton" already used with a -2; next free suffix is -3.
+	mockCatRepo.EXPECT().GetByID(ctx, "cat_1").Return(&domain.Category{ID: "cat_1"}, nil)
+	mockProdRepo.EXPECT().
+		MaxSlugSuffix(ctx, "casement-cotton", "").
+		Return(2, nil)
+	mockProdRepo.EXPECT().
+		UpsertProductWithEmbedding(ctx, gomock.Any(), gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, p *domain.Product, _ *domain.Inventory, _ []float32) error {
+			assert.Equal(t, "casement-cotton-3", p.Slug)
+			return nil
+		})
+	mockCatRepo.EXPECT().IncrementProductCount(ctx, "cat_1", 1).Return(nil)
+
+	_, err := svc.Create(ctx, domain.CreateProductRequest{
+		Name: "Casement Cotton", SKU: "CC-1", CategoryID: "cat_1",
+		BasePrice: 1000, SellingPrice: 900,
+	}, "admin_1")
+	require.NoError(t, err)
 }
 
 func TestProductService_Create(t *testing.T) {
@@ -429,6 +463,62 @@ func TestProductService_Update(t *testing.T) {
 
 		require.NoError(t, err)
 		assert.Equal(t, "New Name", product.Name)
+	})
+
+	t.Run("re-saving same name does not touch the slug or call the dedup lookup", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+		mockProdRepo := mocks.NewMockProductRepository(ctrl)
+		mockCatRepo := mocks.NewMockCategoryRepository(ctrl)
+		mockInvRepo := mocks.NewMockInventoryRepository(ctrl)
+		mockFinalizer := mocks.NewMockAssetFinalizer(ctrl)
+		mockFinalizer.EXPECT().SyncImageVariants(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
+		// Deliberately NO MaxSlugSuffix expectation: if uniqueSlug runs, the call
+		// is unexpected and the test fails.
+		svc := NewProductService(mockProdRepo, mockCatRepo, mockInvRepo, mockFinalizer, nil)
+		ctx := context.Background()
+
+		existing := &domain.Product{ID: "prod_1", Name: "Casement Cotton", Slug: "casement-cotton", CategoryID: "cat_1"}
+		mockProdRepo.EXPECT().GetByID(ctx, "prod_1").Return(existing, nil)
+		mockCatRepo.EXPECT().GetByID(ctx, "cat_1").Return(&domain.Category{ID: "cat_1"}, nil)
+		mockProdRepo.EXPECT().
+			UpdateProductWithOptionalEmbedding(ctx, gomock.Any(), gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, p *domain.Product, _ []float32, _ bool) error {
+				assert.Equal(t, "casement-cotton", p.Slug) // unchanged
+				return nil
+			})
+
+		sameName := "Casement Cotton"
+		_, err := svc.Update(ctx, "prod_1", domain.UpdateProductRequest{Name: &sameName}, "admin_1")
+		require.NoError(t, err)
+	})
+
+	t.Run("rename excludes the product's own row from the dedup lookup", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+		mockProdRepo := mocks.NewMockProductRepository(ctrl)
+		mockCatRepo := mocks.NewMockCategoryRepository(ctrl)
+		mockInvRepo := mocks.NewMockInventoryRepository(ctrl)
+		mockFinalizer := mocks.NewMockAssetFinalizer(ctrl)
+		mockFinalizer.EXPECT().SyncImageVariants(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
+		svc := NewProductService(mockProdRepo, mockCatRepo, mockInvRepo, mockFinalizer, nil)
+		ctx := context.Background()
+
+		existing := &domain.Product{ID: "prod_1", Name: "Old Name", Slug: "old-name", CategoryID: "cat_1"}
+		mockProdRepo.EXPECT().GetByID(ctx, "prod_1").Return(existing, nil)
+		mockCatRepo.EXPECT().GetByID(ctx, "cat_1").Return(&domain.Category{ID: "cat_1"}, nil)
+		// Base already taken (bare) -> next suffix -2; excludeID must be prod_1.
+		mockProdRepo.EXPECT().MaxSlugSuffix(ctx, "casement-cotton", "prod_1").Return(1, nil)
+		mockProdRepo.EXPECT().
+			UpdateProductWithOptionalEmbedding(ctx, gomock.Any(), gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, p *domain.Product, _ []float32, _ bool) error {
+				assert.Equal(t, "casement-cotton-2", p.Slug)
+				return nil
+			})
+
+		newName := "Casement Cotton"
+		_, err := svc.Update(ctx, "prod_1", domain.UpdateProductRequest{Name: &newName}, "admin_1")
+		require.NoError(t, err)
 	})
 
 	t.Run("product not found", func(t *testing.T) {
@@ -1141,6 +1231,8 @@ func TestProductService_Update_ReplacesVideoAndDeletesOld(t *testing.T) {
 	mockFinalizer := mocks.NewMockAssetFinalizer(ctrl)
 	// SyncImageVariants is best-effort side effect, allow any invocation pattern.
 	mockFinalizer.EXPECT().SyncImageVariants(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
+	// Slug uniqueness lookup runs on create + rename; default to "base free".
+	mockProdRepo.EXPECT().MaxSlugSuffix(gomock.Any(), gomock.Any(), gomock.Any()).Return(0, nil).AnyTimes()
 	svc := NewProductService(mockProdRepo, mockCatRepo, mockInvRepo, mockFinalizer, nil)
 	ctx := context.Background()
 
@@ -1184,6 +1276,8 @@ func TestProductService_Update_NoDeleteAssetIfUpdateFails(t *testing.T) {
 	mockFinalizer := mocks.NewMockAssetFinalizer(ctrl)
 	// SyncImageVariants is best-effort side effect, allow any invocation pattern.
 	mockFinalizer.EXPECT().SyncImageVariants(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
+	// Slug uniqueness lookup runs on create + rename; default to "base free".
+	mockProdRepo.EXPECT().MaxSlugSuffix(gomock.Any(), gomock.Any(), gomock.Any()).Return(0, nil).AnyTimes()
 	svc := NewProductService(mockProdRepo, mockCatRepo, mockInvRepo, mockFinalizer, nil)
 	ctx := context.Background()
 
@@ -1226,6 +1320,7 @@ func newServiceWithEmbedder(t *testing.T, emb Embedder) (
 	mockInvRepo := mocks.NewMockInventoryRepository(ctrl)
 	mockFinalizer := mocks.NewMockAssetFinalizer(ctrl)
 	mockFinalizer.EXPECT().SyncImageVariants(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
+	mockProdRepo.EXPECT().MaxSlugSuffix(gomock.Any(), gomock.Any(), gomock.Any()).Return(0, nil).AnyTimes()
 
 	// Default stub: category exists, upsert succeeds, count increments OK.
 	mockCatRepo.EXPECT().

@@ -87,7 +87,9 @@ func (h *TrackingHandler) TrackOrder(w http.ResponseWriter, r *http.Request) {
 	// Build status history from the order's known timestamps
 	statusHistory := buildStatusHistory(order)
 
-	// Attempt to fetch shipment info (may not exist for all orders)
+	// Attempt to fetch a Shipment record. These are no longer written (the
+	// Shiprocket integration was removed); this read only surfaces legacy rows.
+	// New orders fall through to the order-level tracking fields below.
 	var shipmentInfo *ShipmentInfo
 	shipment, err := h.shipmentRepo.GetByOrderID(ctx, order.ID)
 	if err != nil {
@@ -101,6 +103,17 @@ func (h *TrackingHandler) TrackOrder(w http.ResponseWriter, r *http.Request) {
 			CourierName:   shipment.CourierName,
 			Status:        string(shipment.Status),
 			EstimatedDays: shipment.EstimatedDelivery,
+		}
+	}
+
+	// Fall back to order-level tracking set manually by an admin
+	// (PATCH /orders/{id}/tracking) when there is no shipment record —
+	// this is the path for manually-scheduled deliveries.
+	if shipmentInfo == nil && order.TrackingNumber != "" {
+		shipmentInfo = &ShipmentInfo{
+			AWBNumber:   order.TrackingNumber,
+			CourierName: order.ShippingCarrier,
+			Status:      string(order.Status),
 		}
 	}
 

@@ -100,9 +100,10 @@ export default function CartItem({ item, onUpdateQuantity, onRemove }: CartItemP
             <QuantityStepper
               value={item.quantity}
               onIncrement={() => handleQuantityChange(item.quantity + 1)}
-              onDecrement={() => handleQuantityChange(item.quantity - 1)}
-              disableDecrement={item.quantity <= 1 || updating}
-              disabled={updating}
+              onDecrement={() =>
+                item.quantity <= 1 ? handleRemove() : handleQuantityChange(item.quantity - 1)
+              }
+              disabled={updating || removing}
               loading={updating}
               size="sm"
             />

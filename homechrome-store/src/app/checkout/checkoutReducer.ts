@@ -1,6 +1,6 @@
-import { CartWithItems, CourierOption } from '@/types';
+import { CartWithItems } from '@/types';
 
-export type CheckoutStep = 'address' | 'shipping' | 'review';
+export type CheckoutStep = 'address' | 'review';
 
 export interface CheckoutState {
   cart: CartWithItems | null;
@@ -9,10 +9,6 @@ export interface CheckoutState {
   selectedAddressId: string | null;
   showAddressForm: boolean;
   addressSaving: boolean;
-  couriers: CourierOption[];
-  selectedCourierId: number | null;
-  serviceabilityLoading: boolean;
-  serviceabilityError: string | null;
   initiating: boolean;
   error: string | null;
 }
@@ -26,10 +22,6 @@ export type CheckoutAction =
   | { type: 'ADDRESS_SAVE_START' }
   | { type: 'ADDRESS_SAVED'; addressId: string }
   | { type: 'ADDRESS_SAVE_FAILED'; error: string }
-  | { type: 'SERVICEABILITY_START' }
-  | { type: 'SERVICEABILITY_SUCCESS'; couriers: CourierOption[] }
-  | { type: 'SERVICEABILITY_FAIL'; error: string }
-  | { type: 'SELECT_COURIER'; id: number }
   | { type: 'PAYMENT_START' }
   | { type: 'PAYMENT_FAILED'; error: string }
   | { type: 'CLEAR_ERROR' };
@@ -41,10 +33,6 @@ export const initialCheckoutState: CheckoutState = {
   selectedAddressId: null,
   showAddressForm: false,
   addressSaving: false,
-  couriers: [],
-  selectedCourierId: null,
-  serviceabilityLoading: false,
-  serviceabilityError: null,
   initiating: false,
   error: null,
 };
@@ -72,31 +60,6 @@ export function checkoutReducer(state: CheckoutState, action: CheckoutAction): C
       };
     case 'ADDRESS_SAVE_FAILED':
       return { ...state, addressSaving: false, error: action.error };
-    case 'SERVICEABILITY_START':
-      return {
-        ...state,
-        serviceabilityLoading: true,
-        serviceabilityError: null,
-        couriers: [],
-        selectedCourierId: null,
-      };
-    case 'SERVICEABILITY_SUCCESS': {
-      const autoSelect = action.couriers.length === 1 ? action.couriers[0].id : null;
-      return {
-        ...state,
-        serviceabilityLoading: false,
-        couriers: action.couriers,
-        selectedCourierId: autoSelect,
-      };
-    }
-    case 'SERVICEABILITY_FAIL':
-      return {
-        ...state,
-        serviceabilityLoading: false,
-        serviceabilityError: action.error,
-      };
-    case 'SELECT_COURIER':
-      return { ...state, selectedCourierId: action.id };
     case 'PAYMENT_START':
       return { ...state, initiating: true, error: null };
     case 'PAYMENT_FAILED':

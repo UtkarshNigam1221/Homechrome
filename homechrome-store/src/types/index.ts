@@ -74,7 +74,12 @@ export interface Product {
   in_stock: boolean;
   color?: string;
   material?: string;
-  attributes: Record<string, string>;
+  weave_type?: string;
+  origin?: string;
+  craft_type?: string;
+  weight?: number; // in grams
+  dimensions?: { length: number; width: number; height?: number; unit: string };
+  attributes: Record<string, string | string[]>; // API sends arrays for multi-value attrs
   allow_custom_dimensions: boolean;
   created_at?: string;
   updated_at?: string;
@@ -166,18 +171,6 @@ export interface OrderItem {
 }
 
 // Checkout
-export interface ServiceabilityResult {
-  serviceable: boolean;
-  couriers: CourierOption[];
-}
-
-export interface CourierOption {
-  id: number;
-  name: string;
-  rate: number; // paise
-  estimated_days: number;
-}
-
 export interface CheckoutResult {
   order: Order;
   redirect_url: string;
