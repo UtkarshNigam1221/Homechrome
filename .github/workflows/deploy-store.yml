@@ -33,8 +33,11 @@ permissions:
   contents: read
 
 jobs:
-  build:
-    name: Build
+  # Single job: build + deploy on one runner. Keeps the OpenNext output on-disk
+  # instead of shipping 2600+ files (or a tarball) through an Actions artifact,
+  # which was exhausting the artifact-storage quota.
+  deploy:
+    name: Build & Deploy
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -88,7 +91,7 @@ jobs:
       - name: Bundle OTel collector config into server function
         run: cp ../handloom-admin/infra/configs/otel-collector.yaml .open-next/server-functions/default/otel.yaml
 
-      # Fail loudly at the build (not the opaque upload step) and surface the
+      # Fail loudly at the build (not the opaque deploy step) and surface the
       # output tree so a missing .open-next is diagnosable from the log.
       - name: Verify OpenNext output
         run: |
@@ -97,45 +100,6 @@ jobs:
             echo "::error::OpenNext build produced no .open-next/server-functions/default"; exit 1; }
           test -f .open-next/server-functions/default/otel.yaml || {
             echo "::error::otel.yaml not bundled into the server function"; exit 1; }
-
-      # Archive before upload: a single gzipped tarball is far smaller than the
-      # 2600+ raw files, easing the Actions artifact-storage quota, and avoids the
-      # hidden-dot-dir handling. Extracted back in the deploy job.
-      - name: Archive OpenNext output
-        run: tar -czf open-next.tar.gz .open-next
-
-      - uses: actions/upload-artifact@v7
-        with:
-          name: store-open-next-${{ inputs.environment }}
-          path: homechrome-store/open-next.tar.gz
-          retention-days: 1
-          if-no-files-found: error
-
-  deploy:
-    name: Deploy
-    needs: build
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: homechrome-store
-    steps:
-      - name: Guard prod deploy from non-main branches
-        if: inputs.environment == 'prod' && inputs.branch != 'main'
-        run: |
-          echo "::error::Prod deploy must target main. Chosen branch: ${{ inputs.branch }}"
-          exit 1
-
-      - uses: actions/checkout@v7
-        with:
-          ref: ${{ inputs.branch }}
-
-      - uses: actions/download-artifact@v8
-        with:
-          name: store-open-next-${{ inputs.environment }}
-          path: homechrome-store
-
-      - name: Extract OpenNext output
-        run: tar -xzf open-next.tar.gz && rm open-next.tar.gz
 
       - uses: aws-actions/configure-aws-credentials@v6
         with:

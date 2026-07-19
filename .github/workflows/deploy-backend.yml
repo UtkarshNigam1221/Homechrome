@@ -33,9 +33,16 @@ permissions:
   contents: read
 
 jobs:
-  build:
-    name: Build Lambdas
+  # Single job: build + deploy on one runner. Lambda binaries stay on-disk
+  # instead of crossing a job boundary via an Actions artifact (was burning
+  # storage quota). On-disk output keeps its exec bit, so the tar/untar/chmod
+  # dance that worked around upload-artifact dropping it is gone too.
+  deploy:
+    name: Build & Deploy
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: handloom-admin
     steps:
       - name: Guard prod deploy from non-main branches
         if: inputs.environment == 'prod' && inputs.branch != 'main'
@@ -53,62 +60,14 @@ jobs:
           cache-dependency-path: handloom-admin/go.sum
 
       - name: Build active Lambdas
-        working-directory: handloom-admin
         run: make build-lambdas-active
-
-      # tar before upload: actions/upload-artifact does not preserve the Unix
-      # executable bit, and provided.al2023 requires an executable `bootstrap`.
-      - name: Package binaries
-        working-directory: handloom-admin
-        run: tar czf lambda-bin.tar.gz bin/lambda
-
-      - uses: actions/upload-artifact@v7
-        with:
-          name: backend-lambdas-${{ inputs.environment }}
-          path: handloom-admin/lambda-bin.tar.gz
-          retention-days: 1
-          if-no-files-found: error
-
-  deploy:
-    name: Deploy
-    needs: build
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: handloom-admin
-    steps:
-      - name: Guard prod deploy from non-main branches
-        if: inputs.environment == 'prod' && inputs.branch != 'main'
-        run: |
-          echo "::error::Prod deploy must target main. Chosen branch: ${{ inputs.branch }}"
-          exit 1
-
-      - uses: actions/checkout@v7
-        with:
-          ref: ${{ inputs.branch }}
-
-      - uses: actions/download-artifact@v8
-        with:
-          name: backend-lambdas-${{ inputs.environment }}
-          path: handloom-admin
-
-      - name: Unpack binaries
-        run: |
-          tar xzf lambda-bin.tar.gz
-          # restore exec bit the artifact round-trip may have dropped
-          chmod +x bin/lambda/*/bootstrap
 
       - uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
 
-      # CDK app is `go run ./cmd/` — Go is required to synth/deploy.
-      - uses: actions/setup-go@v6
-        with:
-          go-version: '1.25'
-          cache-dependency-path: handloom-admin/go.sum
-
+      # Go already set up above for the Lambda build; CDK (`go run ./cmd/`) reuses it.
       - uses: actions/setup-node@v6
         with:
           node-version: 22
