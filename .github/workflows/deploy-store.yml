@@ -95,7 +95,7 @@ jobs:
           aws-region: ${{ vars.AWS_REGION }}
 
       # CDK app is `go run ./cmd/` — Go is required to synth/deploy.
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
           go-version: '1.25'
           cache-dependency-path: homechrome-store/infra/go.sum
