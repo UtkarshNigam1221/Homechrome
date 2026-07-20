@@ -136,17 +136,8 @@ export function FunnelDashboard() {
     [byMetric]
   );
 
-  // Attribution — utm_source breakdown for site_visitor + the two conversion
-  // events. Drops the "unknown" bucket since direct/no-utm traffic would dominate.
-  const visitorsBySource = useMemo(
-    () =>
-      rankByLabel(byMetric.get('site_visitor') ?? [], 'utm_source', {
-        excludeUnknown: true,
-        limit: 10,
-      }),
-    [byMetric]
-  );
-
+  // Attribution — utm_source breakdown for the two conversion events.
+  // Drops the "unknown" bucket since direct/no-utm traffic would dominate.
   const paymentsBySource = useMemo(
     () =>
       rankByLabel(byMetric.get('payment_completed') ?? [], 'utm_source', {
@@ -369,30 +360,11 @@ export function FunnelDashboard() {
       <div>
         <h2 className="text-base font-semibold text-neutral-900">Attribution</h2>
         <p className="text-sm text-neutral-600">
-          Which marketing source drives visitors, orders + new customers. Direct traffic (no utm) is
-          filtered out so paid channels stand on their own.
+          Which marketing source drives orders + new customers. Direct traffic (no utm) is filtered
+          out so paid channels stand on their own.
         </p>
       </div>
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <Card>
-          <SectionTitle subtitle="site_visitor grouped by utm_source, top 10">
-            Visitors by source
-          </SectionTitle>
-          <PanelState isLoading={isLoading} isError={isError} hasData={visitorsBySource.length > 0}>
-            <div className="h-64 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={visitorsBySource} layout="vertical" margin={{ left: 60 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                  <XAxis type="number" fontSize={11} stroke="#737373" />
-                  <YAxis type="category" dataKey="key" fontSize={11} stroke="#737373" width={100} />
-                  <Tooltip contentStyle={{ fontSize: 12 }} />
-                  <Bar dataKey="count" fill="#6366f1" radius={[0, 4, 4, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </PanelState>
-        </Card>
-
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Card>
           <SectionTitle subtitle="payment_completed grouped by utm_source, top 10">
             Payments by source
