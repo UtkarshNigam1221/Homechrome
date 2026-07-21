@@ -13,3 +13,17 @@ export const SUPPORT_WHATSAPP = (
 ).replace(/\D/g, '');
 export const SUPPORT_EMAIL = 'info@homechrome.in';
 export const INSTAGRAM_URL = 'https://www.instagram.com/_home.chrome_';
+
+// Legal entity + policy facts — single source of truth for the legal pages
+// ((legal) route group, contact grievance section). Update LEGAL_LAST_UPDATED
+// whenever any policy text or these values change.
+export const LEGAL_ENTITY_NAME = 'Home Shome';
+export const LEGAL_PROPRIETOR = 'Ritu Batra';
+export const LEGAL_ADDRESS =
+  '945, Shri Nagar, Railway Road, Hapur, Uttar Pradesh 245101, India';
+export const GRIEVANCE_OFFICER = 'Ritu Batra';
+export const DAMAGE_CLAIM_WINDOW_HOURS = 48;
+export const DISPATCH_DAYS = '2–3';
+export const DELIVERY_DAYS = '5–10';
+export const REFUND_DAYS = '5–7';
+export const LEGAL_LAST_UPDATED = '21 July 2026';
