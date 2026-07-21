@@ -61,6 +61,13 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       changeFrequency: 'monthly',
       priority: 0.3,
     },
+    // Legal/policy pages — low priority, rarely change.
+    ...['privacy-policy', 'terms', 'refund-policy', 'shipping-policy'].map((slug) => ({
+      url: `${SITE_URL}/${slug}`,
+      lastModified: new Date(),
+      changeFrequency: 'yearly' as const,
+      priority: 0.2,
+    })),
   ];
 
   const categoryRoutes: MetadataRoute.Sitemap = categories.map((category) => ({
