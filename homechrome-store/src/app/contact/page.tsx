@@ -1,10 +1,16 @@
 import { EnvelopeIcon } from '@heroicons/react/24/outline';
-import { Anchor, Card, Container, Group, Stack, Text, ThemeIcon } from '@mantine/core';
+import { Anchor, Card, Container, Group, Stack, Text, ThemeIcon, Title } from '@mantine/core';
 import type { Metadata } from 'next';
 
 import { PageHeader } from '@/components/ui/page-header';
 import { WhatsAppIcon } from '@/components/ui/whatsapp-icon';
-import { SUPPORT_EMAIL, SUPPORT_WHATSAPP } from '@/lib/constants';
+import {
+  GRIEVANCE_OFFICER,
+  LEGAL_ADDRESS,
+  LEGAL_ENTITY_NAME,
+  SUPPORT_EMAIL,
+  SUPPORT_WHATSAPP,
+} from '@/lib/constants';
 
 export const metadata: Metadata = {
   title: 'Contact Us | Homechrome',
@@ -37,6 +43,30 @@ export default function ContactPage() {
           detail={SUPPORT_EMAIL}
         />
       </Stack>
+
+      {/* Grievance Officer — required to be displayed under the Consumer
+          Protection (E-Commerce) Rules, 2020 and the DPDP Act, 2023. Anchored
+          so the footer can deep-link to /contact#grievance. */}
+      <Card id="grievance" shadow="sm" radius="lg" padding="lg" withBorder mt="xl">
+        <Stack gap={4}>
+          <Title order={2} size="h4" c="navy.7">
+            Grievance Officer
+          </Title>
+          <Text size="sm">
+            {GRIEVANCE_OFFICER}, {LEGAL_ENTITY_NAME}
+          </Text>
+          <Text size="sm" c="dimmed">
+            {LEGAL_ADDRESS}
+          </Text>
+          <Text size="sm">
+            Email: <Anchor href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</Anchor>
+          </Text>
+          <Text size="sm" c="dimmed">
+            Grievances are acknowledged within 48 hours and resolved within one month, as required
+            under the Consumer Protection (E-Commerce) Rules, 2020.
+          </Text>
+        </Stack>
+      </Card>
     </Container>
   );
 }
