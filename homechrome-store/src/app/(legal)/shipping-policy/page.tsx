@@ -1,7 +1,7 @@
-import { Anchor, List, ListItem, Text } from '@mantine/core';
+import { List, ListItem, Text } from '@mantine/core';
 import type { Metadata } from 'next';
-import Link from 'next/link';
 
+import { LegalLink } from '@/components/legal/LegalLink';
 import { LegalPageLayout, LegalSection } from '@/components/legal/LegalPageLayout';
 import { DELIVERY_DAYS, DISPATCH_DAYS } from '@/lib/constants';
 
@@ -34,9 +34,7 @@ export default function ShippingPolicyPage() {
       <LegalSection heading="Tracking">
         <Text>
           Track your order any time at{' '}
-          <Anchor component={Link} href="/track">
-            homechrome.in/track
-          </Anchor>{' '}
+          <LegalLink href="/track">homechrome.in/track</LegalLink>{' '}
           using your order ID, or from your account&rsquo;s order history.
         </Text>
       </LegalSection>
@@ -53,9 +51,7 @@ export default function ShippingPolicyPage() {
         <Text>
           If the package appears damaged on arrival, record an unboxing video before opening — see
           the{' '}
-          <Anchor component={Link} href="/refund-policy">
-            Refund, Replacement &amp; Cancellation Policy
-          </Anchor>{' '}
+          <LegalLink href="/refund-policy">Refund, Replacement &amp; Cancellation Policy</LegalLink>{' '}
           for the claim process.
         </Text>
       </LegalSection>

@@ -1,7 +1,7 @@
 import { Anchor, List, ListItem, Text } from '@mantine/core';
 import type { Metadata } from 'next';
-import Link from 'next/link';
 
+import { LegalLink } from '@/components/legal/LegalLink';
 import { LegalPageLayout, LegalSection } from '@/components/legal/LegalPageLayout';
 import { DAMAGE_CLAIM_WINDOW_HOURS, REFUND_DAYS, SUPPORT_EMAIL } from '@/lib/constants';
 
@@ -30,9 +30,7 @@ export default function RefundPolicyPage() {
         <Text>
           Minor variations in colour, weave, texture, or dimension are inherent to handloom
           products and are not defects (see our{' '}
-          <Anchor component={Link} href="/terms">
-            Terms &amp; Conditions
-          </Anchor>
+          <LegalLink href="/terms">Terms &amp; Conditions</LegalLink>
           ).
         </Text>
       </LegalSection>
@@ -84,9 +82,7 @@ export default function RefundPolicyPage() {
       <LegalSection heading="Questions">
         <Text>
           Contact us via the{' '}
-          <Anchor component={Link} href="/contact">
-            contact page
-          </Anchor>{' '}
+          <LegalLink href="/contact">contact page</LegalLink>{' '}
           — WhatsApp is fastest.
         </Text>
       </LegalSection>

@@ -1,7 +1,7 @@
 import { Anchor, List, ListItem, Text } from '@mantine/core';
 import type { Metadata } from 'next';
-import Link from 'next/link';
 
+import { LegalLink } from '@/components/legal/LegalLink';
 import { LegalPageLayout, LegalSection } from '@/components/legal/LegalPageLayout';
 import { LEGAL_ADDRESS, LEGAL_ENTITY_NAME, LEGAL_PROPRIETOR, SUPPORT_EMAIL } from '@/lib/constants';
 
@@ -59,13 +59,9 @@ export default function TermsPage() {
       <LegalSection heading="Shipping, cancellation, and replacement">
         <Text>
           Shipping terms are set out in the{' '}
-          <Anchor component={Link} href="/shipping-policy">
-            Shipping &amp; Delivery Policy
-          </Anchor>{' '}
+          <LegalLink href="/shipping-policy">Shipping &amp; Delivery Policy</LegalLink>{' '}
           and replacement/cancellation terms in the{' '}
-          <Anchor component={Link} href="/refund-policy">
-            Refund, Replacement &amp; Cancellation Policy
-          </Anchor>
+          <LegalLink href="/refund-policy">Refund, Replacement &amp; Cancellation Policy</LegalLink>
           . Both form part of these Terms.
         </Text>
       </LegalSection>
