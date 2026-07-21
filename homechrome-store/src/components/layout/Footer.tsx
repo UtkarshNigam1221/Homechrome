@@ -50,7 +50,14 @@ export default function Footer() {
             </Text>
           </Flex>
 
-          <SimpleGrid cols={{ base: 2, sm: 3 }} spacing={48} verticalSpacing="lg" visibleFrom="sm">
+          {/* Links render on every breakpoint: legal/policy pages must be
+              reachable on mobile (E-Commerce Rules disclosure requirement),
+              and most buyers are on phones. */}
+          <SimpleGrid
+            cols={{ base: 2, sm: 4 }}
+            spacing={{ base: 24, sm: 48 }}
+            verticalSpacing="lg"
+          >
             <FooterColumn title="Shop">
               <FooterLink href="/products">All Products</FooterLink>
               <FooterLink href="/categories">Categories</FooterLink>
@@ -59,6 +66,14 @@ export default function Footer() {
             <FooterColumn title="Customer">
               <FooterLink href="/track">Track Order</FooterLink>
               <FooterLink href="/account">My Account</FooterLink>
+            </FooterColumn>
+
+            <FooterColumn title="Policies">
+              <FooterLink href="/privacy-policy">Privacy Policy</FooterLink>
+              <FooterLink href="/terms">Terms &amp; Conditions</FooterLink>
+              <FooterLink href="/refund-policy">Refund &amp; Replacement</FooterLink>
+              <FooterLink href="/shipping-policy">Shipping &amp; Delivery</FooterLink>
+              <FooterLink href="/contact#grievance">Grievance Redressal</FooterLink>
             </FooterColumn>
 
             <FooterColumn title="Need Help?">
