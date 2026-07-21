@@ -3,7 +3,7 @@ import type { Metadata } from 'next';
 
 import { LegalLink } from '@/components/legal/LegalLink';
 import { LegalPageLayout, LegalSection } from '@/components/legal/LegalPageLayout';
-import { LEGAL_ADDRESS, LEGAL_ENTITY_NAME, LEGAL_PROPRIETOR, SUPPORT_EMAIL } from '@/lib/constants';
+import { GSTIN, LEGAL_ADDRESS, LEGAL_ENTITY_NAME, LEGAL_PROPRIETOR, SUPPORT_EMAIL } from '@/lib/constants';
 
 export const metadata: Metadata = {
   title: 'Terms & Conditions | Homechrome',
@@ -17,7 +17,7 @@ export default function TermsPage() {
         <Text>
           www.homechrome.in (the &ldquo;Site&rdquo;) is owned and operated by {LEGAL_ENTITY_NAME},
           a sole proprietorship firm (proprietor: {LEGAL_PROPRIETOR}), registered at{' '}
-          {LEGAL_ADDRESS} ([GSTIN to be updated]). By using the Site you agree to these Terms; if
+          {LEGAL_ADDRESS} ({GSTIN}). By using the Site you agree to these Terms; if
           you do not agree, please do not use the Site.
         </Text>
       </LegalSection>

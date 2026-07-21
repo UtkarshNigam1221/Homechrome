@@ -21,6 +21,7 @@ export const LEGAL_ENTITY_NAME = 'Home Shome';
 export const LEGAL_PROPRIETOR = 'Ritu Batra';
 export const LEGAL_ADDRESS =
   '945, Shri Nagar, Railway Road, Hapur, Uttar Pradesh 245101, India';
+export const GSTIN = '[GSTIN to be updated]';
 export const GRIEVANCE_OFFICER = 'Ritu Batra';
 export const DAMAGE_CLAIM_WINDOW_HOURS = 48;
 export const DISPATCH_DAYS = '2–3';
