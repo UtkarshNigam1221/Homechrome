@@ -16,7 +16,11 @@ import { AttributeFields } from './AttributeFields';
 
 const productSchema = z.object({
   name: z.string().min(1, 'Name is required').max(200, 'Name must be less than 200 characters'),
-  sku: z.string().min(1, 'SKU is required').max(50, 'SKU must be less than 50 characters'),
+  sku: z
+    .string()
+    .min(1, 'SKU is required')
+    .max(50, 'SKU must be less than 50 characters')
+    .regex(/^[A-Za-z0-9-]+$/, 'Letters, numbers and dashes only — no spaces'),
   description: z.string().optional(),
   category_id: z.string().min(1, 'Category is required'),
   base_price: z.number().min(0, 'Base price must be positive'),
@@ -81,7 +85,7 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
     watch,
     setValue,
     control,
-    formState: { errors },
+    formState: { errors, dirtyFields },
   } = useForm<ProductFormData>({
     resolver: zodResolver(productSchema),
     defaultValues: {
@@ -136,9 +140,10 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
     }
   }, [selectedCategoryId, isEditing]);
 
-  // Auto-generate SKU from name
+  // Auto-generate SKU from name, but only until the user types their own —
+  // a manually entered design code (e.g. DBK2228) must never be overwritten.
   useEffect(() => {
-    if (!isEditing && name) {
+    if (!isEditing && name && !dirtyFields.sku) {
       const sku =
         name
           .toUpperCase()
@@ -149,7 +154,7 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
         Math.random().toString(36).substring(2, 6).toUpperCase();
       setValue('sku', sku);
     }
-  }, [name, isEditing, setValue]);
+  }, [name, isEditing, setValue, dirtyFields.sku]);
 
   // Reset form when modal opens/closes or product changes
   useEffect(() => {
@@ -408,11 +413,15 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
 
             <Input
               label="SKU"
-              placeholder="e.g., SILK-BS-001"
+              placeholder="Design code, e.g. DBK2228"
               error={errors.sku?.message}
               required
               disabled={isEditing}
-              hint={isEditing ? 'SKU cannot be changed after creation' : undefined}
+              hint={
+                isEditing
+                  ? 'SKU cannot be changed after creation'
+                  : 'Type the supplier design code — auto-filled from name until you do'
+              }
               {...register('sku')}
             />
 
