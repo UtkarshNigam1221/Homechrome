@@ -323,6 +323,9 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 				"EMBEDDER_FN_NAME":        embedderFn.FunctionName(),
 				"EMBEDDER_AUTH_KEY_PARAM": jsii.String(fmt.Sprintf("/handloom/%s/embedder-auth-key", props.Environment)),
 				"EMBEDDING_MODEL_VERSION": jsii.String("l3cube-indic-sbert-nli-v1"),
+				// No OTel collector on this one-shot job; silence the SDK's
+				// localhost:4317 fallback exporter (see pkg/telemetry/init.go).
+				"OTEL_SDK_DISABLED": jsii.String("true"),
 			},
 		})
 

@@ -80,6 +80,7 @@ jobs:
             # payload that lacks our .error/.remaining_estimate fields, which the
             # old check missed.
             META=$(aws lambda invoke \
+              --cli-read-timeout 900 --cli-connect-timeout 10 \
               --function-name "$FN" \
               --payload "$PAYLOAD" \
               --cli-binary-format raw-in-base64-out \
