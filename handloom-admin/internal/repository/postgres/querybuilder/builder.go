@@ -57,19 +57,22 @@ func (b *Builder) WithLike(cond bool, col string, val string) *Builder {
 // WithSearch adds a full-text search condition combined with an ILIKE fallback.
 // When cond is true it emits:
 //
-//	(vectorCol @@ websearch_to_tsquery('english', $N) OR likeCol ILIKE $N+1)
+//	(vectorCol @@ websearch_to_tsquery('english', $N) OR likeCol ILIKE $N+1 [OR moreLikeCol ILIKE $N+1 ...])
 //
-// The ILIKE uses a wrapping wildcard (%term%) so partial matches are still found.
-func (b *Builder) WithSearch(cond bool, vectorCol, likeCol, term string) *Builder {
+// The ILIKE uses a wrapping wildcard (%term%) so partial matches are still
+// found. Extra columns (e.g. sku for partial design-code lookups) share the
+// same wildcard argument.
+func (b *Builder) WithSearch(cond bool, vectorCol, likeCol, term string, moreLikeCols ...string) *Builder {
 	if !cond {
 		return b
 	}
 	tsArg := b.nextArg(term)
 	likeArg := b.nextArg("%" + term + "%")
-	b.where = append(b.where, fmt.Sprintf(
-		"(%s @@ websearch_to_tsquery('english', %s) OR %s ILIKE %s)",
-		vectorCol, tsArg, likeCol, likeArg,
-	))
+	expr := fmt.Sprintf("%s @@ websearch_to_tsquery('english', %s) OR %s ILIKE %s", vectorCol, tsArg, likeCol, likeArg)
+	for _, col := range moreLikeCols {
+		expr += fmt.Sprintf(" OR %s ILIKE %s", col, likeArg)
+	}
+	b.where = append(b.where, "("+expr+")")
 	return b
 }
 

@@ -98,10 +98,11 @@ WHERE p.status = 'ACTIVE'
     (p.embedding IS NOT NULL AND (1 - (p.embedding <=> qd.qvec)) > %s::float)
     OR p.search_vector @@ qd.qts
     OR p.name %% qd.qstr
+    OR p.sku %% qd.qstr
   )
 `, semThresholdPlaceholder)
 		} else {
-			sb.WriteString(`  AND (p.search_vector @@ qd.qts OR p.name % qd.qstr)
+			sb.WriteString(`  AND (p.search_vector @@ qd.qts OR p.name % qd.qstr OR p.sku % qd.qstr)
 `)
 		}
 	}
@@ -149,7 +150,7 @@ WHERE p.status = 'ACTIVE'
 	if q != "" {
 		terms := []string{
 			fmt.Sprintf(`%s::float * LEAST(COALESCE(ts_rank(p.search_vector, qd.qts), 0) * 10, 1.0)`, add(w.Keyword)),
-			fmt.Sprintf(`%s::float * similarity(p.name, qd.qstr)`, add(w.Trigram)),
+			fmt.Sprintf(`%s::float * GREATEST(similarity(p.name, qd.qstr), similarity(p.sku, qd.qstr))`, add(w.Trigram)),
 		}
 		if hasSemantic {
 			terms = append([]string{

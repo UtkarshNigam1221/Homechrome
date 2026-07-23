@@ -516,7 +516,7 @@ func (r *ProductRepository) List(ctx context.Context, req domain.ListProductsReq
 		WithFilter(req.CategoryID != nil, "p.category_id", deref(req.CategoryID)).
 		WithFilter(req.Status != nil, "p.status", string(deref(req.Status))).
 		WithFilter(req.Slug != "", "p.slug", req.Slug).
-		WithSearch(searching, "p.search_vector", "p.name", req.Search).
+		WithSearch(searching, "p.search_vector", "p.name", req.Search, "p.sku").
 		WithRange("p.selling_price", req.MinPrice, req.MaxPrice).
 		Limit(limit + 1).
 		Offset(offset)

@@ -215,6 +215,20 @@ func TestWithSearch(t *testing.T) {
 	}
 }
 
+func TestWithSearchExtraLikeColumns(t *testing.T) {
+	sql, args := querybuilder.Select("id").From("products p").
+		WithSearch(true, "p.search_vector", "p.name", "2221", "p.sku").
+		Build()
+
+	wantSQL := "SELECT id FROM products p WHERE (p.search_vector @@ websearch_to_tsquery('english', $1) OR p.name ILIKE $2 OR p.sku ILIKE $2)"
+	if sql != wantSQL {
+		t.Errorf("sql = %q, want %q", sql, wantSQL)
+	}
+	if len(args) != 2 || args[1] != "%2221%" {
+		t.Errorf("args = %v, want 2 args with %%2221%%", args)
+	}
+}
+
 func TestWithSearchSkipped(t *testing.T) {
 	sql, args := querybuilder.Select("id").From("t").
 		WithSearch(false, "t.search_vector", "t.name", "ignored").
