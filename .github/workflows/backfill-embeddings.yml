@@ -49,6 +49,15 @@ jobs:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
 
+      - name: Show deployed function config
+        env:
+          ENV: ${{ inputs.env }}
+        run: |
+          aws lambda get-function-configuration \
+            --function-name "handloom-worker-embedding-backfill-${ENV}" \
+            --query '{LastModified:LastModified,Layers:Layers[].Arn,ExecWrapper:Environment.Variables.AWS_LAMBDA_EXEC_WRAPPER,OtelConfig:Environment.Variables.OPENTELEMETRY_COLLECTOR_CONFIG_URI}' \
+            --output json
+
       - name: Loop backfill until done
         env:
           BATCH_SIZE: ${{ inputs.batch_size }}
