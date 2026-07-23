@@ -341,10 +341,8 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 			),
 		}))
 
-		// No OTel layer here on purpose: this is a manually-dispatched one-shot
-		// job whose logs are read straight from CloudWatch by the backfill
-		// workflow. The collector extension also killed the Lambda at init
-		// (Extension.InitError) and telemetry adds nothing to a batch job.
+		// No OTel layer on purpose: the backfill workflow reads this one-shot
+		// job's logs from CloudWatch, and the collector extension broke its init.
 
 		lambdas["embedding-backfill"] = &ServiceLambda{
 			Function: backfillFn,

@@ -1,36 +1,20 @@
-// Command promote-catalog promotes catalog data (categories, products,
-// media) from the dev environment to prod.
+// Command promote-catalog copies catalog data (categories, products, media)
+// from dev to prod. Additive-only: upserts by id, never deletes prod-only
+// rows; child rows are replaced per promoted parent; asset URLs are rewritten
+// to the prod CDN; S3 media syncs without --delete. Inventory is seeded only
+// where missing unless --overwrite-inventory. DynamoDB data and
+// inventory_transactions are never touched.
 //
-// Additive-only: rows are upserted by id — prod rows with matching ids are
-// overwritten, prod-only rows are never deleted. Child rows (category
-// attributes/options, product attribute values, product images) are
-// replaced as a set, scoped to promoted parents only. Asset URLs are
-// rewritten from the dev CDN host to the prod CDN host. S3 media is synced
-// additively (aws s3 sync without --delete).
+// Usage: go run ./scripts/promote-catalog [--products active|all|id1,id2,...]
+// [--overwrite-inventory] [--skip-s3] [--yes]
 //
-// Inventory rows are seeded for products that have none in prod; existing
-// prod stock is never touched unless --overwrite-inventory is passed.
-//
-// Not promoted (by design): inventory_transactions (dev audit noise),
-// DynamoDB data (users, orders, coupons, pricing rules), tmp/ S3 uploads.
-//
-// Usage:
-//
-//	go run ./scripts/promote-catalog [--products active|all|id1,id2,...]
-//	                                 [--overwrite-inventory] [--skip-s3] [--yes]
-//
-// Config (env):
-//
-//	DEV_DSN / PROD_DSN                 Postgres DSNs. Default: POSTGRES_DSN
-//	                                   from .env.dev / .env.prod.
-//	DEV_ASSET_HOST / PROD_ASSET_HOST   CDN hosts for URL rewriting. Default:
-//	                                   CloudFormation exports
-//	                                   handloom-assets-cdn-{dev,prod}.
-//	AWS_REGION                         Default ap-south-1.
+// Env: DEV_DSN/PROD_DSN (default: POSTGRES_DSN from .env.{dev,prod}),
+// DEV_ASSET_HOST/PROD_ASSET_HOST (default: CloudFormation exports), AWS_REGION.
 package main
 
 import (
 	"bufio"
+	"cmp"
 	"context"
 	"flag"
 	"fmt"
@@ -38,6 +22,7 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
@@ -50,11 +35,8 @@ const (
 
 var idListRe = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
 
-// column is one insertable column of a catalog table. Generated columns
-// (products.search_vector) are excluded at query time. typ is the exact SQL
-// type (e.g. "text[]", "vector(768)"): values travel dev->prod as text and
-// are cast back to typ on insert, so pgx never needs to understand pgvector
-// or array types.
+// column is one insertable column. Values travel dev->prod as text and are
+// cast back to typ on insert, so pgx never needs pgvector/array type support.
 type column struct {
 	name string
 	typ  string
@@ -70,9 +52,9 @@ func main() {
 	flag.Parse()
 
 	ctx := context.Background()
-	region := envOr("AWS_REGION", "ap-south-1")
+	region := cmp.Or(os.Getenv("AWS_REGION"), "ap-south-1")
 	if !regexp.MustCompile(`^[a-z0-9-]+$`).MatchString(region) {
-		log.Fatalf("invalid AWS_REGION %q", region)
+		log.Fatal("invalid AWS_REGION env var")
 	}
 
 	devDSN := dsnOrEnvFile("DEV_DSN", ".env.dev")
@@ -383,7 +365,7 @@ func rewriteURLs(rows [][]any, cols []column, urlCols []string, rewrites [][2]st
 func updateSetClause(cols []column, exclude ...string) string {
 	var parts []string
 	for _, c := range cols {
-		if contains(exclude, c.name) {
+		if slices.Contains(exclude, c.name) {
 			continue
 		}
 		parts = append(parts, ident(c.name)+" = EXCLUDED."+ident(c.name))
@@ -412,15 +394,6 @@ func colIndex(cols []column, name string) int {
 	}
 	log.Fatalf("column %q not found in %v", name, cols)
 	return -1
-}
-
-func contains(list []string, s string) bool {
-	for _, v := range list {
-		if v == s {
-			return true
-		}
-	}
-	return false
 }
 
 func ident(name string) string {
@@ -470,13 +443,6 @@ func printableOnly(r rune) rune {
 		return -1
 	}
 	return r
-}
-
-func envOr(key, def string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return def
 }
 
 func confirm(prompt string) bool {

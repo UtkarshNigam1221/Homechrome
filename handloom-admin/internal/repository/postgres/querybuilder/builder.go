@@ -54,14 +54,9 @@ func (b *Builder) WithLike(cond bool, col string, val string) *Builder {
 	return b
 }
 
-// WithSearch adds a full-text search condition combined with an ILIKE fallback.
-// When cond is true it emits:
-//
-//	(vectorCol @@ websearch_to_tsquery('english', $N) OR likeCol ILIKE $N+1 [OR moreLikeCol ILIKE $N+1 ...])
-//
-// The ILIKE uses a wrapping wildcard (%term%) so partial matches are still
-// found. Extra columns (e.g. sku for partial design-code lookups) share the
-// same wildcard argument.
+// WithSearch adds a full-text condition plus %term% ILIKE fallbacks:
+// (vectorCol @@ websearch_to_tsquery('english', $N) OR likeCol ILIKE $N+1 [OR ...]).
+// Extra columns (e.g. sku for partial design-code lookups) share the wildcard arg.
 func (b *Builder) WithSearch(cond bool, vectorCol, likeCol, term string, moreLikeCols ...string) *Builder {
 	if !cond {
 		return b
