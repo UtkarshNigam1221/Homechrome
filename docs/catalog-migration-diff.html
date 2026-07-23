@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Catalog Migration — Exact Diff</title>
+<style>
+  :root {
+    --ground: #FAF7F2; --surface: #FFFFFF; --ink: #2B2620; --ink-soft: #6B6255;
+    --line: #E4DDD0; --accent: #34478A; --accent-soft: #E7EBF7;
+    --good: #2E6E4B; --good-bg: #EAF3ED; --bad: #A93F2A; --bad-bg: #F8ECE8;
+    --warn: #8A6D1F; --warn-bg: #F6EFDC; --code-bg: #F1EBE1;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: #1E1B16; --surface: #26221C; --ink: #EDE6D9; --ink-soft: #A79C8A;
+      --line: #3B352C; --accent: #93A5E0; --accent-soft: #2A3046;
+      --good: #7FC29B; --good-bg: #22312A; --bad: #E0967F; --bad-bg: #372520;
+      --warn: #D9B96A; --warn-bg: #35301F; --code-bg: #2E2922;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    background: var(--ground); color: var(--ink);
+    font-family: Seravek, "Segoe UI", Ubuntu, Calibri, system-ui, sans-serif;
+    line-height: 1.5; margin: 0; padding: 2.5rem 1.25rem 4rem;
+  }
+  .page { max-width: 64rem; margin: 0 auto; }
+  h1, h2, h3 { font-family: Charter, "Bitstream Charter", Cambria, Georgia, serif; line-height: 1.2; }
+  h1 { font-size: 2rem; margin: 0.4rem 0 0.6rem; }
+  h2 { font-size: 1.35rem; margin: 0 0 0.75rem; }
+  .eyebrow { font-size: 0.7rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); font-weight: 600; }
+  .lede { color: var(--ink-soft); max-width: 64ch; margin: 0 0 1.5rem; }
+  .part { margin-top: 2.75rem; border-top: 3px solid var(--accent); padding-top: 1rem; }
+
+  .stats { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+  .stat {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 6px;
+    padding: 0.5rem 0.9rem; font-size: 0.88rem;
+  }
+  .stat b { color: var(--accent); font-variant-numeric: tabular-nums; }
+
+  del { color: var(--bad); text-decoration: line-through; text-decoration-thickness: 1px; opacity: 0.85; }
+  ins { color: var(--good); text-decoration: none; font-weight: 600; }
+  .to { color: var(--ink-soft); padding: 0 0.25rem; }
+
+  code { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 0.85em; background: var(--code-bg); padding: 0.05em 0.3em; border-radius: 3px; }
+  del code { background: var(--bad-bg); }
+  ins code { background: var(--good-bg); }
+
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 1rem 1.2rem; margin-top: 1rem; }
+  .card h3 { margin: 0 0 0.5rem; font-size: 1.05rem; }
+  .merge-list { margin: 0.3rem 0 0.8rem; padding-left: 1.2rem; }
+  .merge-list li { margin: 0.15rem 0; }
+
+  .table-scroll { overflow-x: auto; margin-top: 0.75rem; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.88rem; background: var(--surface); }
+  th, td { text-align: left; padding: 0.45rem 0.65rem; border: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 0.68rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-soft); background: var(--ground); }
+  tr.ghead td { background: var(--accent-soft); font-weight: 700; font-size: 0.85rem; }
+  .chip {
+    display: inline-block; border-radius: 999px; padding: 0.05rem 0.55rem;
+    font-size: 0.78rem; margin: 0.1rem 0.15rem 0.1rem 0; white-space: nowrap;
+    background: var(--accent-soft); color: var(--ink);
+  }
+  .chip.fix { background: var(--good-bg); color: var(--good); font-weight: 600; }
+  .chip.warn { background: var(--warn-bg); color: var(--warn); font-weight: 600; }
+  .note { color: var(--ink-soft); font-size: 0.9rem; max-width: 64ch; }
+  ul { padding-left: 1.2rem; margin: 0.4rem 0; }
+  li { margin: 0.2rem 0; }
+</style>
+</head>
+<body>
+<div class="page">
+  <header>
+    <div class="eyebrow">Homechrome · Catalog Migration</div>
+    <h1>Exact diff: today → after the change</h1>
+    <p class="lede"><del>Struck red</del> = removed/old value · <ins>green bold</ins> = new value.
+    Print names and colours were read from every product's main photo. Everything below runs in one
+    reversible transaction on dev; full snapshot taken first.</p>
+    <div class="stats">
+      <span class="stat"><b>7 → 3</b> categories</span>
+      <span class="stat"><b>46</b> renames + SKU fixes</span>
+      <span class="stat"><b>46</b> print names + colours from photos</span>
+      <span class="stat"><b>0 → 6</b> filter definitions</span>
+      <span class="stat"><b>25</b> weave rows removed</span>
+      <span class="stat"><b>3</b> drafts activated</span>
+      <span class="stat"><b>10</b> descriptions fixed</span>
+      <span class="stat">search now matches SKUs</span>
+      <span class="stat"><b>4</b> weights, <b>6</b> reserved resets, <b>1</b> cost, <b>2</b> thresholds</span>
+    </div>
+  </header>
+
+  <!-- ================= CATEGORIES ================= -->
+  <section class="part">
+    <div class="eyebrow">Section 1</div>
+    <h2>Categories: 7 → 3</h2>
+
+    <div class="card">
+      <h3><ins>Bedsheets</ins> — new category, absorbs 5 old ones (37 products)</h3>
+      <ul class="merge-list">
+        <li><del>BEDSHEET COTTON CASEMENT DOUBLE BED</del> (6)</li>
+        <li><del>BEDSHEET COTTON CASEMENT KING SIZE</del> (4)</li>
+        <li><del>BEDSHEET COTTON JAIPURI DOUBLE BED XL</del> (6)</li>
+        <li><del>BEDSHEET POLYCOT DOUBLE BED␣</del> (14 — note trailing space in old name)</li>
+        <li><del>BEDSHEET POLYCOT DOUBLE BED KING SIZE</del> (7)</li>
+      </ul>
+      <div class="table-scroll"><table>
+        <tr><th>Filter (new — none existed)</th><th>Options</th></tr>
+        <tr><td>Size</td><td><ins>Double Bed · Double Bed XL · King Size</ins></td></tr>
+        <tr><td>Material</td><td><ins>Cotton · Polycot</ins></td></tr>
+        <tr><td>Fit</td><td><ins>Flat · Fitted</ins> (all 37 = Flat today)</td></tr>
+        <tr><td>Craft</td><td><ins>Handloom · Hand Block Print</ins></td></tr>
+        <tr><td>Origin</td><td><ins>Uttar Pradesh · Rajasthan</ins></td></tr>
+        <tr><td>Colour</td><td><del>MULTICOLOR PRINTED / multicolour on everything</del> <ins>White · Cream · Grey · Blue · Green · Yellow · Orange · Pink · Purple · Maroon · Brown · Multicolour</ins> — up to 2 per product, read from its photo (Section 3)</td></tr>
+      </table></div>
+      <p class="note">Gets a new 2–3 sentence description; image reused from the old polycot category.</p>
+    </div>
+
+    <div class="card">
+      <h3><del>DOHAR</del> <span class="to">→</span> <ins>Dohars</ins> (5 products, unchanged membership)</h3>
+      <p class="note">Description kept. Product values: Material <del>COTTON</del> → <ins>Mul Mul Cotton</ins>
+      (folds in the deleted weave value), Craft <ins>Handloom</ins>, Origin <del>INDIA</del> → <ins>Uttar Pradesh</ins>,
+      Colour assigned per product. Colour becomes this category's filter.</p>
+    </div>
+
+    <div class="card">
+      <h3><del>CUSHIONS</del> <span class="to">→</span> <ins>Cushions</ins> (4 products, unchanged membership)</h3>
+      <p class="note">Gets a description (currently empty). Product values: Material <del>COTTON</del> →
+      <ins>Jute-base Slub Cotton</ins> (folds in deleted weave), Craft <del>HANDLOOM / handloom</del> → <ins>Handloom</ins>,
+      Origin <del>UTTAR PRADESH</del> → <ins>Uttar Pradesh</ins>, Colour assigned per product.</p>
+    </div>
+  </section>
+
+  <!-- ================= ATTRIBUTE VALUES ================= -->
+  <section class="part">
+    <div class="eyebrow">Section 2</div>
+    <h2>Attribute values per product group</h2>
+    <div class="table-scroll"><table>
+      <tr><th>Group</th><th>Size</th><th>Material</th><th>Fit</th><th>Craft</th><th>Origin</th><th>Weave</th></tr>
+      <tr>
+        <td>Casement Double (6)</td>
+        <td><ins>Double Bed</ins></td>
+        <td><del>COTTON</del> <ins>Cotton</ins></td>
+        <td><ins>Flat</ins></td>
+        <td><ins>Handloom</ins> (new)</td>
+        <td><del>INDIA</del> <ins>Uttar Pradesh</ins></td>
+        <td><del>COTTON CASEMENT</del> removed</td>
+      </tr>
+      <tr>
+        <td>Casement King (4)</td>
+        <td><ins>King Size</ins></td>
+        <td><del>COTTON</del> <ins>Cotton</ins></td>
+        <td><ins>Flat</ins></td>
+        <td><del>HANDLOOM ×2</del> <ins>Handloom</ins> (all 4)</td>
+        <td><del>INDIA</del> <ins>Uttar Pradesh</ins></td>
+        <td><del>COTTON CASEMENT</del> removed</td>
+      </tr>
+      <tr>
+        <td>Jaipuri (6)</td>
+        <td><ins>Double Bed XL</ins></td>
+        <td><del>COTTON</del> <ins>Cotton</ins></td>
+        <td><ins>Flat</ins></td>
+        <td><del>HAND BLOCK</del> <ins>Hand Block Print</ins></td>
+        <td><del>SANGANER RAJASTHAN</del> <ins>Rajasthan</ins></td>
+        <td><del>COTTON SHEETING</del> removed</td>
+      </tr>
+      <tr>
+        <td>Polycot Double (14)</td>
+        <td><ins>Double Bed</ins></td>
+        <td><del>POLYCOT/MICROFIBRE</del> <ins>Polycot</ins></td>
+        <td><ins>Flat</ins></td>
+        <td><del>HANDLOOM ×2</del> removed — machine-made, not applicable</td>
+        <td><del>INDIA ×9 / missing ×5</del> <ins>Uttar Pradesh</ins></td>
+        <td>— (never had)</td>
+      </tr>
+      <tr>
+        <td>Polycot King (7)</td>
+        <td><ins>King Size</ins></td>
+        <td><del>POLYCOT/MICROFIBRE</del> <ins>Polycot</ins></td>
+        <td><ins>Flat</ins></td>
+        <td>— (none, correct)</td>
+        <td><del>INDIA</del> <ins>Uttar Pradesh</ins></td>
+        <td>— (never had)</td>
+      </tr>
+      <tr>
+        <td>Dohars (5)</td>
+        <td><ins>Single Bed</ins></td>
+        <td><del>COTTON</del> <ins>Mul Mul Cotton</ins></td>
+        <td>—</td>
+        <td><del>HANDLOOM</del> <ins>Handloom</ins></td>
+        <td><del>INDIA</del> <ins>Uttar Pradesh</ins></td>
+        <td><del>COTTON MUL MUL</del> folded into Material</td>
+      </tr>
+      <tr>
+        <td>Cushions (4)</td>
+        <td><ins>Lumbar 12×20 in</ins></td>
+        <td><del>COTTON</del> <ins>Jute-base Slub Cotton</ins></td>
+        <td>—</td>
+        <td><del>HANDLOOM / handloom</del> <ins>Handloom</ins></td>
+        <td><del>UTTAR PRADESH</del> <ins>Uttar Pradesh</ins></td>
+        <td><del>JUTE BASE SLABH COTTON</del> folded into Material</td>
+      </tr>
+    </table></div>
+    <p class="note">Colour: every product's <del>MULTICOLOR PRINTED / multicolour</del> is replaced with 1–2 real
+    colours read from its photo — per-product values in Section 3. Both colours are filterable.</p>
+  </section>
+
+  <!-- ================= PRODUCTS ================= -->
+  <section class="part">
+    <div class="eyebrow">Section 3</div>
+    <h2>All 46 products — new name, SKU, colours</h2>
+    <p class="note">Name pattern: <b>Size + Material + Type, Print Name</b> — no code in the display name.
+    The code lives in the SKU (shown on the product page), and search gets a small upgrade so it matches
+    SKUs directly — typing <code>DBK2221</code> or <code>2221</code> finds the product. Size + print name keeps
+    every name unique. Print names are drafts read from the photos — veto or edit any. Slug regenerates from
+    the new name. Blue chips = assigned colours; green chips = other fixes. Casement King reuses four
+    Casement Double prints (same design, bigger size) — identical print names are intentional.</p>
+
+    <div class="table-scroll"><table>
+      <tr><th style="width:40%">Name</th><th style="width:26%">SKU</th><th>Colours · other changes</th></tr>
+
+      <tr class="ghead"><td colspan="3">Casement Double → Bedsheets · <ins>Double Bed Cotton Casement Bedsheet, [Print]</ins></td></tr>
+      <tr><td><del>CASEMENT COTTON DOUBLE BEDSHEET</del> <ins>…, Mauve Vine</ins></td><td><del><code>CASEMENT-COTTON-DOUB-DBGW5101</code></del> <ins><code>DBGW5101</code></ins></td><td><span class="chip">Cream</span><span class="chip">Purple</span><span class="chip fix">description added</span></td></tr>
+      <tr><td><del>CASEMENT COTTON DOUBLE BEDSHEET</del> <ins>…, Indigo Leaf</ins></td><td><code>DBGW5102</code> ✓</td><td><span class="chip">Blue</span><span class="chip fix">description added</span></td></tr>
+      <tr><td><del>CASEMENT COTTON DOUBLE BEDSHEET</del> <ins>…, Terra Circles</ins></td><td><del><code>DBGU5103</code></del> <ins><code>DBGW5103</code></ins> (typo fix)</td><td><span class="chip">Brown</span><span class="chip">Cream</span><span class="chip fix">description added</span></td></tr>
+      <tr><td><del>CASEMENT COTTON DOUBLE BEDSHEET</del> <ins>…, Autumn Sprig</ins></td><td><del><code>DBGU5104</code></del> <ins><code>DBGW5104</code></ins> (typo fix)</td><td><span class="chip">Cream</span><span class="chip">Orange</span><span class="chip fix">description added</span></td></tr>
+      <tr><td><del>CASEMENT COTTON DOUBLE BEDSHEET</del> <ins>…, Taupe Foliage</ins></td><td><code>DBGW5105</code> ✓</td><td><span class="chip">Brown</span><span class="chip">Yellow</span><span class="chip fix">description added</span></td></tr>
+      <tr><td><del>CASEMENT COTTON DOUBLE BEDSHEET</del> <ins>…, Ogee Trellis</ins></td><td><code>DBGW5106</code> ✓</td><td><span class="chip">Blue</span><span class="chip">Brown</span><span class="chip fix">description added</span></td></tr>
+
+      <tr class="ghead"><td colspan="3">Casement King → Bedsheets · <ins>King Size Cotton Casement Bedsheet, [Print]</ins></td></tr>
+      <tr><td><del>BEDSHEET CASEMENT COTTON KING SIZE</del> <ins>…, Indigo Leaf</ins></td><td><code>DBGWK5102</code> ✓</td><td><span class="chip">Blue</span><span class="chip fix">DRAFT → ACTIVE</span></td></tr>
+      <tr><td><del>DBGWK5103</del> <ins>…, Terra Circles</ins></td><td><del><code>DBGWK5103-6IGT</code></del> <ins><code>DBGWK5103</code></ins></td><td><span class="chip">Brown</span><span class="chip">Cream</span><span class="chip fix">cost ₹0 → ₹615</span></td></tr>
+      <tr><td><del>DBGWK 5104</del> <ins>…, Autumn Sprig</ins></td><td><del><code>DBGWK-5104-JW2R</code></del> <ins><code>DBGWK5104</code></ins></td><td><span class="chip">Cream</span><span class="chip">Orange</span></td></tr>
+      <tr><td><del>DBGWK5105</del> <ins>…, Taupe Foliage</ins></td><td><del><code>DBGWK5105-YW6N</code></del> <ins><code>DBGWK5105</code></ins></td><td><span class="chip">Brown</span><span class="chip">Yellow</span></td></tr>
+
+      <tr class="ghead"><td colspan="3">Jaipuri → Bedsheets · <ins>Double Bed XL Jaipuri Cotton Bedsheet, [Print]</ins></td></tr>
+      <tr><td><del>BEDSHEET DOUBLE BED JAIPURI DBJU3004</del> <ins>…, Sage Booti</ins></td><td><del><code>BEDSHEET-DOUBLE-BED--DBJU3004</code></del> <ins><code>DBJU3004</code></ins></td><td><span class="chip">White</span><span class="chip">Green</span></td></tr>
+      <tr><td><del>… JAIPURI COTTON DBJU3005</del> <ins>…, Sage Jaal</ins></td><td><del><code>BEDSHEET-DOUBLE-BED--0B6Y</code></del> <ins><code>DBJU3005</code></ins></td><td><span class="chip">White</span><span class="chip">Green</span></td></tr>
+      <tr><td><del>… DBJU3006</del> <ins>…, Maroon Booti</ins></td><td><del><code>BEDSHEET-DOUBLE-BED--QFR2</code></del> <ins><code>DBJU3006</code></ins></td><td><span class="chip">White</span><span class="chip">Maroon</span></td></tr>
+      <tr><td><del>… DBJU3007</del> <ins>…, Magenta Vine</ins></td><td><del><code>BEDSHEET-DOUBLE-BED--FBYF</code></del> <ins><code>DBJU3007</code></ins></td><td><span class="chip">White</span><span class="chip">Pink</span><span class="chip fix">DRAFT → ACTIVE</span><span class="chip warn">stock 0 — shows out of stock</span></td></tr>
+      <tr><td><del>… DBJU3008</del> <ins>…, Classic Booti</ins></td><td><del><code>BEDSHEET-DOUBLE-BED--B1G4</code></del> <ins><code>DBJU3008</code></ins></td><td><span class="chip">White</span><span class="chip">Maroon</span></td></tr>
+      <tr><td><del>… DBJU3009</del> <ins>…, Rose Stripe</ins></td><td><del><code>BEDSHEET-DOUBLE-BED--COYT</code></del> <ins><code>DBJU3009</code></ins></td><td><span class="chip">White</span><span class="chip">Pink</span><span class="chip fix">tag cleared</span></td></tr>
+
+      <tr class="ghead"><td colspan="3">Polycot Double → Bedsheets · <ins>Double Bed Polycot Bedsheet, [Print]</ins></td></tr>
+      <tr><td><del>BEDSHEET DOUBLE BED DBN1221</del> <ins>…, Peach Blossom</ins></td><td><del><code>BEDSHEET-DOUBLE-BED--MST5</code></del> <ins><code>DBN1221</code></ins></td><td><span class="chip">Pink</span><span class="chip">Green</span><span class="chip fix">weight 0 → 1200 g</span><span class="chip fix">reserved 4 → 0</span><span class="chip fix">low-stock alert 0 → 1</span><span class="chip fix">tag cleared</span></td></tr>
+      <tr><td><del>… DBN1222</del> <ins>…, Teal Magnolia</ins></td><td><del><code>BEDSHEET-DOUBLE-BED--EEZ3</code></del> <ins><code>DBN1222</code></ins></td><td><span class="chip">Green</span><span class="chip">White</span><span class="chip fix">reserved 5 → 0</span></td></tr>
+      <tr><td><del>… DBN1223</del> <ins>…, Ivory Posy</ins></td><td><del><code>BEDSHEET-DOUBLE-BED--LR1R</code></del> <ins><code>DBN1223</code></ins></td><td><span class="chip">Cream</span><span class="chip">Purple</span><span class="chip fix">weight 0 → 1200 g</span><span class="chip fix">reserved 5 → 0</span><span class="chip fix">tag cleared</span></td></tr>
+      <tr><td><del>… DBN1224</del> <ins>…, Lavender Meadow</ins></td><td><del><code>BEDSHEET-DOUBLE-BED--LA2W</code></del> <ins><code>DBN1224</code></ins></td><td><span class="chip">Cream</span><span class="chip">Purple</span><span class="chip fix">weight 0 → 1200 g</span><span class="chip fix">reserved 2 → 0</span><span class="chip fix">tag cleared</span></td></tr>
+      <tr><td><del>… DBN1225</del> <ins>…, Blush Fade</ins></td><td><del><code>BEDSHEET-DOUBLE-BED--AQVD</code></del> <ins><code>DBN1225</code></ins></td><td><span class="chip">Pink</span><span class="chip fix">weight 0 → 1200 g</span><span class="chip fix">reserved 2 → 0</span><span class="chip fix">tag cleared</span></td></tr>
+      <tr><td><del>BEDSHEETS DOUBLE BED DBN 1226</del> <ins>…, Mint Ditsy</ins></td><td><del><code>BEDSHEETS-DOUBLE-BED-U37E</code></del> <ins><code>DBN1226</code></ins></td><td><span class="chip">Green</span></td></tr>
+      <tr><td><del>BEDSHEET DOUBLE BEDDBN 1227</del> <ins>…, Feather Grey</ins> (typo fix)</td><td><del><code>BEDSHEET-DOUBLE-BEDD-R9V4</code></del> <ins><code>DBN1227</code></ins></td><td><span class="chip">Grey</span><span class="chip">Pink</span></td></tr>
+      <tr><td><del>BEDSHEET DOUBLE BED DBN 1228</del> <ins>…, Olive Vine</ins></td><td><del><code>BEDSHEET-DOUBLE-BED--GGET</code></del> <ins><code>DBN1228</code></ins></td><td><span class="chip">White</span><span class="chip">Green</span></td></tr>
+      <tr><td><del>… DBN1229</del> <ins>…, Tossed Leaves</ins></td><td><del><code>BEDSHEET-DOUBLE-BED--OJ85</code></del> <ins><code>DBN1229</code></ins></td><td><span class="chip">White</span><span class="chip">Multicolour</span></td></tr>
+      <tr><td><del>… DBN1230</del> <ins>…, Ditsy Garden</ins></td><td><del><code>BEDSHEET-DOUBLE-BED--AD0I</code></del> <ins><code>DBN1230</code></ins></td><td><span class="chip">White</span></td></tr>
+      <tr><td><del>… DBN1231</del> <ins>…, Aztec Aqua</ins></td><td><del><code>BEDSHEET-DOUBLE-BED--8G2B</code></del> <ins><code>DBN1231</code></ins></td><td><span class="chip">White</span><span class="chip">Blue</span></td></tr>
+      <tr><td><del>… DBN1232</del> <ins>…, Jacobean Blue</ins></td><td><del><code>BEDSHEET-DOUBLE-BED--1508</code></del> <ins><code>DBN1232</code></ins></td><td><span class="chip">Blue</span></td></tr>
+      <tr><td><del>… DBN1233</del> <ins>…, Teal Trellis</ins></td><td><del><code>BEDSHEET-DOUBLE-BED--HOU9</code></del> <ins><code>DBN1233</code></ins></td><td><span class="chip">White</span><span class="chip">Green</span><span class="chip fix">reserved 1 → 0</span></td></tr>
+      <tr><td><del>… DBN1234</del> <ins>…, Rose Tile</ins></td><td><del><code>BEDSHEET-DOUBLE-BED--A6PW</code></del> <ins><code>DBN1234</code></ins></td><td><span class="chip">Pink</span></td></tr>
+
+      <tr class="ghead"><td colspan="3">Polycot King → Bedsheets · <ins>King Size Polycot Bedsheet, [Print]</ins></td></tr>
+      <tr><td><del>DBK 2221</del> <ins>…, Purple Prism</ins></td><td><del><code>DBK-2221-BBDD</code></del> <ins><code>DBK2221</code></ins></td><td><span class="chip">Purple</span><span class="chip fix">wrong "Fitted" description → flat 108×108</span></td></tr>
+      <tr><td><del>DBK2222</del> <ins>…, Mustard Ikat</ins></td><td><del><code>DBK2222-V3JV</code></del> <ins><code>DBK2222</code></ins></td><td><span class="chip">Yellow</span><span class="chip">Grey</span></td></tr>
+      <tr><td><del>DBK2223</del> <ins>…, Lilac Damask</ins></td><td><del><code>DBK2223-WE5Z</code></del> <ins><code>DBK2223</code></ins></td><td><span class="chip">Cream</span><span class="chip">Purple</span><span class="chip fix">wrong "Fitted" description → flat 108×108</span></td></tr>
+      <tr><td><del>DBK2224</del> <ins>…, Powder Paisley</ins></td><td><del><code>DBK2224-E2J8</code></del> <ins><code>DBK2224</code></ins></td><td><span class="chip">Cream</span><span class="chip">Blue</span></td></tr>
+      <tr><td><del>DBK2225</del> <ins>…, Pink Daisy</ins></td><td><del><code>DBK2225-RG6Z</code></del> <ins><code>DBK2225</code></ins></td><td><span class="chip">Pink</span><span class="chip fix">wrong "Fitted" description → flat 108×108</span></td></tr>
+      <tr><td><del>DBK2226</del> <ins>…, Deco Diamond</ins></td><td><del><code>DBK2226-E4NZ</code></del> <ins><code>DBK2226</code></ins></td><td><span class="chip">Grey</span></td></tr>
+      <tr><td><del>DBK2227</del> <ins>…, Grey Blossom</ins></td><td><del><code>DBK2227-KRXG</code></del> <ins><code>DBK2227</code></ins></td><td><span class="chip">Grey</span><span class="chip">White</span><span class="chip fix">DRAFT → ACTIVE</span><span class="chip fix">wrong "Fitted" description → flat 108×108</span></td></tr>
+
+      <tr class="ghead"><td colspan="3">DOHAR → Dohars · <ins>Single Bed Mul Mul Cotton Dohar, [Print]</ins></td></tr>
+      <tr><td><del>DOHAR SINGLE BED MUL MUL COTTON</del> <ins>…, Rust Floral</ins></td><td><del><code>DOHAR-SINGLE-BED-MUL- DSB1621</code></del> <ins><code>DSB1621</code></ins> (space bug fix)</td><td><span class="chip">Cream</span><span class="chip">Orange</span></td></tr>
+      <tr><td><del>DOHAR SINGLE BED MUL MUL COTTON</del> <ins>…, Olive Tile</ins></td><td><del><code>DOHAR-SINGLE-BED-MUL-DSB1622</code></del> <ins><code>DSB1622</code></ins></td><td><span class="chip">White</span><span class="chip">Green</span></td></tr>
+      <tr><td><del>DOHAR SINGLE BED MUL MUL COTTON</del> <ins>…, Maroon Ditsy</ins></td><td><code>DSB1623</code> ✓</td><td><span class="chip">White</span><span class="chip">Maroon</span></td></tr>
+      <tr><td><del>DOHAR SINGLE BED MUL MUL COTTON</del> <ins>…, Powder Blue</ins></td><td><code>DSB1624</code> ✓</td><td><span class="chip">Blue</span><span class="chip">White</span></td></tr>
+      <tr><td><del>DOHAR SINGLE BED MUL MUL COTTON</del> <ins>…, Cocoa Vine</ins></td><td><code>DSB1625</code> ✓</td><td><span class="chip">Cream</span><span class="chip">Brown</span><span class="chip fix">low-stock alert 0 → 1</span></td></tr>
+
+      <tr class="ghead"><td colspan="3">CUSHIONS → Cushions · <ins>Lumbar Handloom Cushion 12×20, [Print]</ins> · codes proposed, veto welcome</td></tr>
+      <tr><td><del>CUSHION (LUMBERS) 12*20</del> <ins>…, Daisy Meadow</ins></td><td><del><code>CUSHION-LUMBERS-1220-42PZ</code></del> <ins><code>CU-1601</code></ins></td><td><span class="chip">Yellow</span></td></tr>
+      <tr><td><del>CUSHION ( LUMBERS) 12*20 INCHES</del> <ins>…, Sunshine Garden</ins></td><td><del><code>CUSHION-LUMBERS-1220-74SL</code></del> <ins><code>CU-1602</code></ins></td><td><span class="chip">Cream</span><span class="chip">Yellow</span></td></tr>
+      <tr><td><del>CUSHION (LUMBERS) 20*12</del> <ins>…, Wildflower Bee</ins></td><td><del><code>CUSHION-LUMBERS-2012-FSLE</code></del> <ins><code>CU-1603</code></ins></td><td><span class="chip">Cream</span><span class="chip">Pink</span></td></tr>
+      <tr><td><del>CUSHION(LUMBERS) 12*20</del> <ins>…, Summer Meadow</ins></td><td><del><code>CUSHIONLUMBERS-1220-GBUH</code></del> <ins><code>CU-1604</code></ins></td><td><span class="chip">Cream</span><span class="chip">Pink</span></td></tr>
+    </table></div>
+  </section>
+
+  <!-- ================= NOT CHANGING / PENDING ================= -->
+  <section class="part">
+    <div class="eyebrow">Section 4</div>
+    <h2>Not changing · still pending</h2>
+    <div class="card">
+      <h3>Untouched</h3>
+      <ul>
+        <li>Selling prices, MRPs, stock quantities (only phantom <em>reserved</em> counts reset)</li>
+        <li>All images and their order (photos for the 6 single-image products = separate task)</li>
+        <li>Admin users, coupons, pricing rules</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Pending your input</h3>
+      <ul>
+        <li><span class="chip warn">Print names</span> — drafted from photos; veto/edit any in Section 3</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Automatic afterwards</h3>
+      <ul>
+        <li>Slugs regenerate from new names (old dev URLs change — dev only, prod untouched)</li>
+        <li>Embeddings regenerate from new names + descriptions (search &amp; "similar products")</li>
+        <li>New DB migration: search matches SKUs (full + partial codes)</li>
+        <li>Dev order-history wipe: skipped for now — independent of this migration, can run any time</li>
+        <li>Revert: single command restores today's exact state from the snapshot</li>
+      </ul>
+    </div>
+  </section>
+</div>
+</body>
+</html>

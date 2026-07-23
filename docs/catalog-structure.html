@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Catalog Structure — After Optimization</title>
+<style>
+  :root {
+    --ground: #FAF7F2;
+    --surface: #FFFFFF;
+    --ink: #2B2620;
+    --ink-soft: #6B6255;
+    --line: #E4DDD0;
+    --accent: #34478A;
+    --accent-soft: #E7EBF7;
+    --good: #2E6E4B;
+    --good-bg: #EAF3ED;
+    --bad: #A93F2A;
+    --bad-bg: #F8ECE8;
+    --code-bg: #F1EBE1;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: #1E1B16; --surface: #26221C; --ink: #EDE6D9; --ink-soft: #A79C8A;
+      --line: #3B352C; --accent: #93A5E0; --accent-soft: #2A3046;
+      --good: #7FC29B; --good-bg: #22312A; --bad: #E0967F; --bad-bg: #372520;
+      --code-bg: #2E2922;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: Seravek, "Segoe UI", Ubuntu, Calibri, system-ui, sans-serif;
+    line-height: 1.5;
+    margin: 0;
+    padding: 2.5rem 1.25rem 4rem;
+  }
+  .page { max-width: 56rem; margin: 0 auto; }
+  h1, h2, h3 { font-family: Charter, "Bitstream Charter", Cambria, Georgia, serif; line-height: 1.2; }
+  h1 { font-size: 2rem; margin: 0.4rem 0 0.6rem; }
+  .eyebrow {
+    font-size: 0.7rem; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--accent); font-weight: 600;
+  }
+  .lede { color: var(--ink-soft); max-width: 62ch; margin: 0 0 2rem; }
+
+  /* before/after strip */
+  .strip { display: flex; gap: 1rem; flex-wrap: wrap; align-items: stretch; margin-bottom: 2.5rem; }
+  .strip .col {
+    flex: 1 1 16rem; background: var(--surface); border: 1px solid var(--line);
+    border-radius: 8px; padding: 1rem 1.2rem;
+  }
+  .strip .col.after { border-color: var(--accent); }
+  .strip h3 { margin: 0 0 0.5rem; font-size: 0.95rem; }
+  .strip ul { margin: 0; padding-left: 1.1rem; font-size: 0.92rem; }
+  .strip li { margin: 0.25rem 0; }
+  .arrow {
+    align-self: center; font-size: 1.6rem; color: var(--accent);
+    font-family: Charter, Georgia, serif;
+  }
+
+  /* category cards */
+  .cat {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
+    margin-top: 1.5rem; overflow: hidden;
+  }
+  .cat-head {
+    background: var(--accent); color: #fff;
+    padding: 0.7rem 1.2rem; display: flex; justify-content: space-between;
+    align-items: baseline; flex-wrap: wrap; gap: 0.5rem;
+  }
+  @media (prefers-color-scheme: dark) { .cat-head { color: #16192B; } }
+  .cat-head h2 { margin: 0; font-size: 1.25rem; }
+  .cat-head .count { font-size: 0.85rem; opacity: 0.85; }
+  .cat-body { padding: 1rem 1.2rem 1.2rem; }
+
+  .attr { margin-top: 0.8rem; }
+  .attr-name {
+    font-size: 0.72rem; letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--ink-soft); font-weight: 700; margin-bottom: 0.3rem;
+  }
+  .chips { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+  .chip {
+    background: var(--accent-soft); color: var(--ink);
+    border-radius: 999px; padding: 0.15rem 0.7rem; font-size: 0.88rem;
+  }
+  .chip .n { color: var(--accent); font-weight: 700; font-variant-numeric: tabular-nums; }
+  .chip.gap { background: var(--bad-bg); color: var(--bad); font-weight: 600; }
+
+  .products { margin-top: 1.1rem; border-top: 1px dashed var(--line); padding-top: 0.9rem; }
+  .products .attr-name { color: var(--ink-soft); }
+  .pgroup { font-size: 0.9rem; margin: 0.35rem 0; display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: baseline; }
+  .pgroup .n { font-variant-numeric: tabular-nums; font-weight: 700; color: var(--accent); min-width: 1.5rem; text-align: right; }
+  .pgroup .old { color: var(--ink-soft); text-decoration: line-through; }
+  .pgroup .new { font-weight: 600; }
+  code {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 0.85em; background: var(--code-bg); padding: 0.1em 0.35em; border-radius: 3px;
+  }
+
+  /* mapping table */
+  .table-scroll { overflow-x: auto; margin-top: 1rem; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.9rem; background: var(--surface); }
+  th, td { text-align: left; padding: 0.5rem 0.7rem; border: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 0.7rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-soft); background: var(--ground); }
+  td .v { white-space: nowrap; }
+  .fill { color: var(--bad); font-weight: 600; }
+  .part { margin-top: 3rem; }
+  .note { color: var(--ink-soft); font-size: 0.9rem; max-width: 62ch; }
+</style>
+</head>
+<body>
+<div class="page">
+  <header>
+    <div class="eyebrow">Homechrome · Catalog Restructure</div>
+    <h1>Your catalog after the optimization</h1>
+    <p class="lede">Built from the 46 products currently in dev. Numbers in <strong>blue</strong> are how many
+    products fall under each filter option; <strong>red chips</strong> are values that still need to be
+    filled in during the migration.</p>
+  </header>
+
+  <div class="strip">
+    <div class="col">
+      <h3>Today</h3>
+      <ul>
+        <li><strong>7 categories</strong> — 5 are bedsheet variants</li>
+        <li><strong>0 filters</strong> defined — filter sidebar is empty</li>
+        <li>152 attribute values invisible to customers</li>
+        <li>No way to see all king-size or all cotton items together</li>
+      </ul>
+    </div>
+    <div class="arrow">→</div>
+    <div class="col after">
+      <h3>After</h3>
+      <ul>
+        <li><strong>3 categories</strong> — one per product type</li>
+        <li><strong>4–5 filters each</strong>, with fixed option lists</li>
+        <li>Every product findable through every relevant filter</li>
+        <li>One Bedsheets page; size/material/weave narrow it down</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- ================= BEDSHEETS ================= -->
+  <div class="cat">
+    <div class="cat-head">
+      <h2>Bedsheets</h2>
+      <span class="count">37 products (34 active · 3 draft)</span>
+    </div>
+    <div class="cat-body">
+      <div class="attr">
+        <div class="attr-name">Size</div>
+        <div class="chips">
+          <span class="chip">Double Bed <span class="n">20</span></span>
+          <span class="chip">Double Bed XL <span class="n">6</span></span>
+          <span class="chip">King Size <span class="n">11</span></span>
+        </div>
+      </div>
+      <div class="attr">
+        <div class="attr-name">Material</div>
+        <div class="chips">
+          <span class="chip">Cotton <span class="n">16</span></span>
+          <span class="chip">Polycot <span class="n">21</span></span>
+        </div>
+      </div>
+      <div class="attr">
+        <div class="attr-name">Weave</div>
+        <div class="chips">
+          <span class="chip">Casement <span class="n">10</span></span>
+          <span class="chip">Sheeting <span class="n">6</span></span>
+          <span class="chip gap">to fill: 21 polycot products</span>
+        </div>
+      </div>
+      <div class="attr">
+        <div class="attr-name">Craft</div>
+        <div class="chips">
+          <span class="chip">Hand Block Print <span class="n">6</span></span>
+          <span class="chip">Handloom <span class="n">4</span></span>
+          <span class="chip gap">to fill: 27 products</span>
+        </div>
+      </div>
+      <div class="attr">
+        <div class="attr-name">Origin</div>
+        <div class="chips">
+          <span class="chip">Rajasthan <span class="n">6</span></span>
+          <span class="chip gap">to fix: 31 — "India" (26) or empty (5), replace with state</span>
+        </div>
+      </div>
+
+      <div class="products">
+        <div class="attr-name">Products — old name → new name pattern</div>
+        <div class="pgroup"><span class="n">6</span><span class="old">CASEMENT COTTON DOUBLE BEDSHEET (×6 identical)</span>→<span class="new">Double Bed Cotton Casement Bedsheet — DBC 1101…1106</span></div>
+        <div class="pgroup"><span class="n">4</span><span class="old">DBGWK 5104 / DBGWK5103…</span>→<span class="new">King Size Cotton Casement Bedsheet — DBGWK 5103…5105</span></div>
+        <div class="pgroup"><span class="n">6</span><span class="old">BEDSHEET DOUBLE BED JAIPURI COTTON DBJU3005…</span>→<span class="new">Double Bed XL Jaipuri Cotton Bedsheet — DBJU 3004…3009</span></div>
+        <div class="pgroup"><span class="n">14</span><span class="old">BEDSHEET DOUBLE BED DBN1221… / BEDDBN 1227 (typo)</span>→<span class="new">Double Bed Polycot Bedsheet — DBN 1221…1234</span></div>
+        <div class="pgroup"><span class="n">7</span><span class="old">DBK 2221 / DBK2222…</span>→<span class="new">King Size Polycot Bedsheet — DBK 2221…2227</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= DOHARS ================= -->
+  <div class="cat">
+    <div class="cat-head">
+      <h2>Dohars</h2>
+      <span class="count">5 products (all active)</span>
+    </div>
+    <div class="cat-body">
+      <div class="attr">
+        <div class="attr-name">Size</div>
+        <div class="chips"><span class="chip">Single Bed <span class="n">5</span></span></div>
+      </div>
+      <div class="attr">
+        <div class="attr-name">Material</div>
+        <div class="chips"><span class="chip">Mul Mul Cotton <span class="n">5</span></span></div>
+      </div>
+      <div class="attr">
+        <div class="attr-name">Craft</div>
+        <div class="chips"><span class="chip">Handloom <span class="n">5</span></span></div>
+      </div>
+      <div class="attr">
+        <div class="attr-name">Origin</div>
+        <div class="chips"><span class="chip gap">to fix: 5 say "India" — replace with state</span></div>
+      </div>
+      <div class="products">
+        <div class="attr-name">Products</div>
+        <div class="pgroup"><span class="n">5</span><span class="old">DOHAR SINGLE BED MUL MUL COTTON (×5 identical)</span>→<span class="new">Single Bed Mul Mul Cotton Dohar — [design code]</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= CUSHIONS ================= -->
+  <div class="cat">
+    <div class="cat-head">
+      <h2>Cushions</h2>
+      <span class="count">4 products (all active)</span>
+    </div>
+    <div class="cat-body">
+      <div class="attr">
+        <div class="attr-name">Size</div>
+        <div class="chips"><span class="chip">Lumbar 12 × 20 in <span class="n">4</span></span></div>
+      </div>
+      <div class="attr">
+        <div class="attr-name">Material</div>
+        <div class="chips"><span class="chip">Jute-base Slub Cotton <span class="n">4</span></span></div>
+      </div>
+      <div class="attr">
+        <div class="attr-name">Craft</div>
+        <div class="chips"><span class="chip">Handloom <span class="n">4</span></span></div>
+      </div>
+      <div class="attr">
+        <div class="attr-name">Origin</div>
+        <div class="chips"><span class="chip">Uttar Pradesh <span class="n">4</span></span></div>
+      </div>
+      <div class="products">
+        <div class="attr-name">Products</div>
+        <div class="pgroup"><span class="n">4</span><span class="old">CUSHION (LUMBERS) 12*20 — 4 near-identical names</span>→<span class="new">Lumbar Handloom Cushion 12×20 — [design code]</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= MAPPING ================= -->
+  <div class="part">
+    <div class="eyebrow">Migration map</div>
+    <h2>Where each old category goes</h2>
+    <div class="table-scroll">
+      <table>
+        <tr>
+          <th>Old category</th><th>New category</th>
+          <th>Size</th><th>Material</th><th>Weave</th><th>Craft</th>
+        </tr>
+        <tr>
+          <td>BEDSHEET COTTON CASEMENT DOUBLE BED (6)</td><td>Bedsheets</td>
+          <td class="v">Double Bed</td><td>Cotton</td><td>Casement</td><td class="fill">fill in</td>
+        </tr>
+        <tr>
+          <td>BEDSHEET COTTON CASEMENT KING SIZE (4)</td><td>Bedsheets</td>
+          <td class="v">King Size</td><td>Cotton</td><td>Casement</td><td class="fill">2 done · 2 fill</td>
+        </tr>
+        <tr>
+          <td>BEDSHEET COTTON JAIPURI DOUBLE BED XL (6)</td><td>Bedsheets</td>
+          <td class="v">Double Bed XL</td><td>Cotton</td><td>Sheeting</td><td>Hand Block Print</td>
+        </tr>
+        <tr>
+          <td>BEDSHEET POLYCOT DOUBLE BED (14)</td><td>Bedsheets</td>
+          <td class="v">Double Bed</td><td>Polycot</td><td class="fill">fill in</td><td class="fill">2 done · 12 fill</td>
+        </tr>
+        <tr>
+          <td>BEDSHEET POLYCOT DOUBLE BED KING SIZE (7)</td><td>Bedsheets</td>
+          <td class="v">King Size</td><td>Polycot</td><td class="fill">fill in</td><td class="fill">fill in</td>
+        </tr>
+        <tr>
+          <td>CUSHIONS (4)</td><td>Cushions</td>
+          <td class="v">Lumbar 12×20</td><td>Jute-base Slub Cotton</td><td>—</td><td>Handloom</td>
+        </tr>
+        <tr>
+          <td>DOHAR (5)</td><td>Dohars</td>
+          <td class="v">Single Bed</td><td>Mul Mul Cotton</td><td>—</td><td>Handloom</td>
+        </tr>
+      </table>
+    </div>
+    <p class="note" style="margin-top:1rem">
+      Because every old category maps to <em>one</em> combination of filter values, most of the migration
+      is mechanical — the values can be set per group in one go. The red cells are the only judgement
+      calls, and the "one habit": every value gets copied from the option lists above, never retyped.
+      After renaming and descriptions are done, product embeddings get regenerated so search and
+      "similar products" pick up the new text.
+    </p>
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Catalog Rulebook — Homechrome</title>
+<style>
+  :root {
+    --ground: #FAF7F2;
+    --surface: #FFFFFF;
+    --ink: #2B2620;
+    --ink-soft: #6B6255;
+    --line: #E4DDD0;
+    --accent: #34478A;
+    --good: #2E6E4B;
+    --good-bg: #EAF3ED;
+    --bad: #A93F2A;
+    --bad-bg: #F8ECE8;
+    --code-bg: #F1EBE1;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: #1E1B16; --surface: #26221C; --ink: #EDE6D9; --ink-soft: #A79C8A;
+      --line: #3B352C; --accent: #93A5E0; --good: #7FC29B; --good-bg: #22312A;
+      --bad: #E0967F; --bad-bg: #372520; --code-bg: #2E2922;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: Seravek, "Segoe UI", Ubuntu, Calibri, system-ui, sans-serif;
+    line-height: 1.55;
+    margin: 0;
+    padding: 2.5rem 1.25rem 4rem;
+  }
+  .page { max-width: 44rem; margin: 0 auto; }
+  h1, h2 {
+    font-family: Charter, "Bitstream Charter", Cambria, Georgia, serif;
+    line-height: 1.2;
+  }
+  h1 { font-size: 2rem; margin: 0.4rem 0 0.6rem; }
+  h2 { font-size: 1.3rem; margin: 0 0 0.75rem; }
+  .eyebrow {
+    font-size: 0.7rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .lede { color: var(--ink-soft); max-width: 60ch; margin: 0; }
+  .lede strong { color: var(--ink); }
+  .part { margin-top: 2.5rem; border-top: 3px solid var(--accent); padding-top: 1rem; }
+  .rule {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 0.9rem 1.1rem;
+    margin-top: 0.75rem;
+  }
+  .rule h3 { margin: 0; font-size: 1rem; }
+  .rule h3 .num {
+    font-family: Charter, Cambria, Georgia, serif;
+    color: var(--accent);
+    margin-right: 0.4rem;
+  }
+  .rule p { margin: 0.4rem 0 0; }
+  .why { color: var(--ink-soft); font-size: 0.9rem; }
+  .pair { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.6rem; }
+  .do, .dont { flex: 1 1 14rem; border-radius: 5px; padding: 0.45rem 0.7rem; font-size: 0.9rem; }
+  .do   { background: var(--good-bg); border-left: 3px solid var(--good); }
+  .dont { background: var(--bad-bg);  border-left: 3px solid var(--bad); }
+  .do::before, .dont::before {
+    display: block; font-size: 0.65rem; letter-spacing: 0.12em;
+    text-transform: uppercase; font-weight: 700; margin-bottom: 0.1rem;
+  }
+  .do::before   { content: "Do"; color: var(--good); }
+  .dont::before { content: "Don't"; color: var(--bad); }
+  code {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 0.88em;
+    background: var(--code-bg);
+    padding: 0.1em 0.35em;
+    border-radius: 3px;
+  }
+  .table-scroll { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.9rem; margin-top: 0.5rem; }
+  th, td { text-align: left; padding: 0.4rem 0.6rem; border-bottom: 1px solid var(--line); }
+  th { font-size: 0.7rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-soft); }
+  .checklist {
+    background: var(--surface);
+    border: 1px solid var(--accent);
+    border-radius: 6px;
+    padding: 1rem 1.2rem;
+    margin-top: 0.75rem;
+  }
+  .checklist label { display: flex; gap: 0.55rem; padding: 0.22rem 0; align-items: baseline; cursor: pointer; }
+  .checklist input { accent-color: var(--accent); }
+  ul { padding-left: 1.2rem; margin: 0.4rem 0 0; }
+  li { margin: 0.2rem 0; }
+</style>
+</head>
+<body>
+<div class="page">
+  <header>
+    <div class="eyebrow">Homechrome · Catalog Team</div>
+    <h1>Catalog Rulebook</h1>
+    <p class="lede">Filters, search results, and shipping charges are all built
+    <strong>automatically from what you type</strong>. These 12 rules keep products findable
+    and prices correct.</p>
+  </header>
+
+  <section class="part">
+    <div class="eyebrow">Part A</div>
+    <h2>Categories</h2>
+
+    <div class="rule">
+      <h3><span class="num">1</span>A category is a <em>type</em> of product — never a size, fabric, or print</h3>
+      <p>Sizes and fabrics are filters, not categories. Creating a new category should be rare.</p>
+      <div class="pair">
+        <div class="do">Bedsheets · Dohars · Cushions</div>
+        <div class="dont">Bedsheet Cotton Casement King Size</div>
+      </div>
+    </div>
+
+    <div class="rule">
+      <h3><span class="num">2</span>Clean name, plus a description and an image</h3>
+      <p>No codes, no trailing spaces (<code>"Bedsheets "</code> ≠ <code>"Bedsheets"</code>).
+      Description: 2–3 sentences about the range — Google reads it.</p>
+    </div>
+
+    <div class="rule">
+      <h3><span class="num">3</span>Define the filters and their allowed options when creating the category</h3>
+      <p class="why">A filter only appears on the website if it's defined on the category.
+      Only add filters where products actually differ.</p>
+      <div class="table-scroll">
+      <table>
+        <tr><th>Filter</th><th>Allowed options (example: Bedsheets)</th></tr>
+        <tr><td>Size</td><td>Double Bed · Double Bed XL · King Size</td></tr>
+        <tr><td>Material</td><td>Cotton · Polycot</td></tr>
+        <tr><td>Weave</td><td>Casement · Jaipuri · Sheeting</td></tr>
+        <tr><td>Craft</td><td>Handloom · Hand Block Print</td></tr>
+      </table>
+      </div>
+    </div>
+  </section>
+
+  <section class="part">
+    <div class="eyebrow">Part B</div>
+    <h2>Filter values on products</h2>
+
+    <div class="rule">
+      <h3><span class="num">4</span>Copy values from the option list — never type from memory</h3>
+      <p>Spelling and capitals must match exactly. <code>HANDLOOM</code>, <code>Handloom</code> and
+      <code>handloom</code> become three broken filters.</p>
+    </div>
+
+    <div class="rule">
+      <h3><span class="num">5</span>Fill every filter on every product</h3>
+      <p>A product with no "Craft" value <strong>disappears</strong> the moment a customer ticks any
+      Craft box. Don't know the value? Find out before it goes live.</p>
+    </div>
+
+    <div class="rule">
+      <h3><span class="num">6</span>One level of detail per filter</h3>
+      <div class="pair">
+        <div class="do">Rajasthan · Uttar Pradesh</div>
+        <div class="dont">India · Sanganer Rajasthan · UP (mixed levels)</div>
+      </div>
+      <p class="why">Colours: record the dominant colour (Blue, Pink) — or if everything is
+      "multicolour printed", have no colour filter at all.</p>
+    </div>
+  </section>
+
+  <section class="part">
+    <div class="eyebrow">Part C</div>
+    <h2>Products</h2>
+
+    <div class="rule">
+      <h3><span class="num">7</span>Name = Size + Material + Type — Design code. Always unique.</h3>
+      <div class="pair">
+        <div class="do">King Size Cotton Casement Bedsheet — DBGWK 5104</div>
+        <div class="dont">DBGWK 5104 · six products all named the same</div>
+      </div>
+      <p class="why">The name is the strongest search signal — a code-only name is invisible to
+      someone searching "cotton bedsheet king size".</p>
+    </div>
+
+    <div class="rule">
+      <h3><span class="num">8</span>Description: minimum four lines, never empty</h3>
+      <ul>
+        <li><strong>Fabric</strong> — "100% cotton casement, 144 TC"</li>
+        <li><strong>Size</strong> — inches/cm, which bed it fits</li>
+        <li><strong>Contents</strong> — "1 bedsheet + 2 pillow covers"</li>
+        <li><strong>Care</strong> — "machine wash, dark colours separately"</li>
+      </ul>
+      <p class="why">Search and "similar products" read this. Empty description = nobody finds it.</p>
+    </div>
+
+    <div class="rule">
+      <h3><span class="num">9</span>Weight: real packed grams, never 0</h3>
+      <p>Courier charge is calculated from this. Weight 0 = we pay the shipping difference.
+      A double bedsheet ≈ 1200 g. If unsure, weigh it.</p>
+    </div>
+
+    <div class="rule">
+      <h3><span class="num">10</span>At least 2 photos of the actual item, best one first</h3>
+      <p>First photo shows in listings. Add a close-up of the weave/print.</p>
+    </div>
+
+    <div class="rule">
+      <h3><span class="num">11</span>MRP above selling price, both in rupees</h3>
+      <p>The strike-through discount is calculated from these two.</p>
+    </div>
+
+    <div class="rule">
+      <h3><span class="num">12</span>Stay Draft until the checklist passes</h3>
+      <p>Draft = invisible to customers. Only Active products reach the live website.</p>
+    </div>
+  </section>
+
+  <section class="part">
+    <div class="eyebrow">Before switching to Active</div>
+    <h2>Final checklist</h2>
+    <div class="checklist">
+      <label><input type="checkbox"> Unique name following the formula (7)</label>
+      <label><input type="checkbox"> Description: fabric, size, contents, care (8)</label>
+      <label><input type="checkbox"> Every filter filled, values copied from the list (4–5)</label>
+      <label><input type="checkbox"> Real weight in grams (9)</label>
+      <label><input type="checkbox"> 2+ photos, main first (10)</label>
+      <label><input type="checkbox"> MRP &gt; selling price (11)</label>
+      <label><input type="checkbox"> Stock quantity entered</label>
+      <label><input type="checkbox"> No trailing or double spaces anywhere</label>
+    </div>
+    <p class="why" style="margin-top:0.8rem"><strong>The one habit that prevents most mistakes:</strong>
+    never type a value you've typed before — copy it from an existing product or the option list.</p>
+  </section>
+</div>
+</body>
+</html>

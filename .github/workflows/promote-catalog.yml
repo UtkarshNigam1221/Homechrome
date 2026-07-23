@@ -1,0 +1,82 @@
+name: Promote Catalog
+
+# Promotes catalog data (categories, products, media) from dev to prod.
+# Additive-only: upserts by id, never deletes prod-only data. See
+# handloom-admin/scripts/promote-catalog/main.go for the full semantics.
+
+on:
+  workflow_dispatch:
+    inputs:
+      products:
+        description: 'Products to promote: "active", "all", or comma-separated ids'
+        required: true
+        default: active
+        type: string
+      overwrite_inventory:
+        description: 'Overwrite prod stock quantities with dev values'
+        type: boolean
+        default: false
+      skip_s3:
+        description: 'Skip S3 media sync'
+        type: boolean
+        default: false
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  promote:
+    name: Promote dev → prod
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: handloom-admin
+    steps:
+      - name: Guard prod promotion from non-main branches
+        if: github.ref_name != 'main'
+        run: |
+          echo "::error::Catalog promotion must run from main. Selected ref: ${{ github.ref_name }}"
+          exit 1
+
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.25'
+          cache-dependency-path: handloom-admin/go.sum
+
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Promote catalog
+        env:
+          BACKEND_ENV_DEV: ${{ secrets.BACKEND_ENV_DEV }}
+          BACKEND_ENV_PROD: ${{ secrets.BACKEND_ENV_PROD }}
+          # Passed via env, not inline templating, so the value can't inject shell.
+          PRODUCTS: ${{ inputs.products }}
+        run: |
+          printf '%s\n' "$BACKEND_ENV_DEV"  > /tmp/dev.env
+          printf '%s\n' "$BACKEND_ENV_PROD" > /tmp/prod.env
+
+          dsn_from() { ( set -a; . "$1" >/dev/null 2>&1; printf '%s' "${POSTGRES_DSN:-}" ); }
+          DEV_DSN="$(dsn_from /tmp/dev.env)"
+          PROD_DSN="$(dsn_from /tmp/prod.env)"
+          export DEV_DSN PROD_DSN
+
+          if [ -z "$DEV_DSN" ] || [ -z "$PROD_DSN" ]; then
+            echo "::error::POSTGRES_DSN missing from BACKEND_ENV_DEV or BACKEND_ENV_PROD secret." >&2
+            exit 1
+          fi
+
+          args=( --products "$PRODUCTS" --yes )
+          if [ "${{ inputs.overwrite_inventory }}" = "true" ]; then
+            args+=( --overwrite-inventory )
+          fi
+          if [ "${{ inputs.skip_s3 }}" = "true" ]; then
+            args+=( --skip-s3 )
+          fi
+
+          go run ./scripts/promote-catalog "${args[@]}"
