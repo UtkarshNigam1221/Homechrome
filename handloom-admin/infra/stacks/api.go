@@ -338,8 +338,10 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 			),
 		}))
 
-		// Attach OTel Collector layer + telemetry env to the backfill worker.
-		apiStackRef.applyTelemetry(backfillFn, "handloom-worker-embedding-backfill")
+		// No OTel layer here on purpose: this is a manually-dispatched one-shot
+		// job whose logs are read straight from CloudWatch by the backfill
+		// workflow. The collector extension also killed the Lambda at init
+		// (Extension.InitError) and telemetry adds nothing to a batch job.
 
 		lambdas["embedding-backfill"] = &ServiceLambda{
 			Function: backfillFn,

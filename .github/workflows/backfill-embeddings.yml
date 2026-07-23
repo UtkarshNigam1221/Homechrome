@@ -109,3 +109,13 @@ jobs:
               exit 1
             fi
           done
+
+      - name: Print Lambda logs
+        if: always()
+        env:
+          ENV: ${{ inputs.env }}
+        run: |
+          # Worker Lambdas share one log group; surface the last few minutes
+          # directly in the Actions console so failures are debuggable without
+          # CloudWatch access.
+          aws logs tail "/aws/lambda/handloom-workers-${ENV}" --since 15m --format short || echo "no logs available"
