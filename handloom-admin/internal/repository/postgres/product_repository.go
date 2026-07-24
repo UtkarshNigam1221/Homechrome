@@ -24,7 +24,8 @@ var hardcodedAttrFields = []struct {
 	Set   func(*domain.Product, string)
 }{
 	{"material", func(p *domain.Product) string { return p.Material }, func(p *domain.Product, v string) { p.Material = v }},
-	{"color", func(p *domain.Product) string { return p.Color }, func(p *domain.Product, v string) { p.Color = v }},
+	// color is deliberately NOT here: products can carry multiple colors, so it
+	// flows through the Attributes map (string or []string) like any EAV attribute.
 	{"weave_type", func(p *domain.Product) string { return p.WeaveType }, func(p *domain.Product, v string) { p.WeaveType = v }},
 	{"origin", func(p *domain.Product) string { return p.Origin }, func(p *domain.Product, v string) { p.Origin = v }},
 	{"craft_type", func(p *domain.Product) string { return p.CraftType }, func(p *domain.Product, v string) { p.CraftType = v }},

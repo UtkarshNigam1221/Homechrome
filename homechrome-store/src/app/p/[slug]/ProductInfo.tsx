@@ -13,7 +13,8 @@ type Spec = { label: string; value: string };
 
 const COMMON_ATTRS: [keyof Product, string][] = [
   ['material', 'Material'],
-  ['color', 'Color'],
+  // color intentionally absent: it is multi-valued and arrives via the
+  // attributes map, rendered by the dynamic loop below.
   ['weave_type', 'Weave type'],
   ['origin', 'Origin'],
   ['craft_type', 'Craft type'],

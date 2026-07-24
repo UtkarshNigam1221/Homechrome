@@ -27,7 +27,6 @@ const productSchema = z.object({
   selling_price: z.number().min(0, 'Selling price must be positive'),
   cost_price: z.number().min(0, 'Cost price must be positive').optional(),
   material: z.string().optional(),
-  color: z.string().optional(),
   weave_type: z.string().optional(),
   origin: z.string().optional(),
   craft_type: z.string().optional(),
@@ -98,7 +97,6 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
       selling_price: 0,
       cost_price: 0,
       material: '',
-      color: '',
       weave_type: '',
       origin: '',
       craft_type: '',
@@ -169,7 +167,6 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
           selling_price: product.selling_price / 100,
           cost_price: product.cost_price ? product.cost_price / 100 : 0,
           material: product.material || '',
-          color: product.color || '',
           weave_type: product.weave_type || '',
           origin: product.origin || '',
           craft_type: product.craft_type || '',
@@ -197,7 +194,6 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
           selling_price: 0,
           cost_price: 0,
           material: '',
-          color: '',
           weave_type: '',
           origin: '',
           craft_type: '',
@@ -232,7 +228,6 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
     const src = (fullProduct ?? product) as Product;
     const hardcoded: Record<string, unknown> = {};
     if (src.material) hardcoded.material = src.material;
-    if (src.color) hardcoded.color = src.color;
     if (src.weave_type) hardcoded.weave_type = src.weave_type;
     if (src.origin) hardcoded.origin = src.origin;
     if (src.craft_type) hardcoded.craft_type = src.craft_type;
@@ -289,7 +284,9 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
   // Handle multi-select toggle
   const handleMultiSelectToggle = (attrName: string, optionValue: string) => {
     setAttributeValues((prev) => {
-      const current = (prev[attrName] as string[]) || [];
+      const raw = prev[attrName];
+      // Normalize: single-value attributes load as a plain string.
+      const current = Array.isArray(raw) ? (raw as string[]) : raw ? [String(raw)] : [];
       const newValues = current.includes(optionValue)
         ? current.filter((v) => v !== optionValue)
         : [...current, optionValue];
@@ -334,7 +331,6 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
       selling_price: Math.round(data.selling_price * 100),
       cost_price: data.cost_price ? Math.round(data.cost_price * 100) : undefined,
       material: data.material || undefined,
-      color: data.color || undefined,
       weave_type: data.weave_type || undefined,
       origin: data.origin || undefined,
       craft_type: data.craft_type || undefined,
@@ -556,8 +552,6 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
           <h3 className="text-sm font-medium text-gray-700 mb-3">Product Details</h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <Input label="Material" placeholder="e.g., Silk, Cotton" {...register('material')} />
-
-            <Input label="Color" placeholder="e.g., Red, Blue" {...register('color')} />
 
             <Input
               label="Weave Type"

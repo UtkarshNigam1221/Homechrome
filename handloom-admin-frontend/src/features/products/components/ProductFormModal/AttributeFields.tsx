@@ -73,7 +73,11 @@ function renderAttributeField(
           <div className="mt-1 space-y-2 p-3 border border-gray-200 rounded-lg max-h-40 overflow-y-auto">
             {attr.options && attr.options.length > 0 ? (
               attr.options.map((opt) => {
-                const selectedValues = (value as string[]) || [];
+                const selectedValues = Array.isArray(value)
+                  ? (value as string[])
+                  : value
+                    ? [String(value)]
+                    : [];
                 const isSelected = selectedValues.includes(opt.value);
                 return (
                   <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
