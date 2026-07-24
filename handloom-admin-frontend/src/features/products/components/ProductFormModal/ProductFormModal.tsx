@@ -1,6 +1,6 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
 import { z } from 'zod';
@@ -14,14 +14,19 @@ import { Button, ImageUpload, Input, Modal, Select } from '@/shared/components/u
 import type { CreateProductRequest, Product } from '../../types';
 import { AttributeFields } from './AttributeFields';
 
-const productSchema = z.object({
-  name: z.string().min(1, 'Name is required').max(200, 'Name must be less than 200 characters'),
-  sku: z
-    .string()
-    .min(1, 'SKU is required')
-    .max(50, 'SKU must be less than 50 characters')
-    .regex(/^[A-Za-z0-9-]+$/, 'Letters, numbers and dashes only — no spaces'),
-  description: z.string().optional(),
+// The SKU pattern applies on create only: the field is locked when editing,
+// and legacy products with nonconforming SKUs must stay editable.
+const makeProductSchema = (isEditing: boolean) =>
+  z.object({
+    name: z.string().min(1, 'Name is required').max(200, 'Name must be less than 200 characters'),
+    sku: isEditing
+      ? z.string()
+      : z
+          .string()
+          .min(1, 'SKU is required')
+          .max(50, 'SKU must be less than 50 characters')
+          .regex(/^[A-Za-z0-9-]+$/, 'Letters, numbers and dashes only — no spaces'),
+    description: z.string().optional(),
   category_id: z.string().min(1, 'Category is required'),
   base_price: z.number().min(0, 'Base price must be positive'),
   selling_price: z.number().min(0, 'Selling price must be positive'),
@@ -45,7 +50,7 @@ const productSchema = z.object({
   video_poster_url: z.string().optional().or(z.literal('')),
 });
 
-type ProductFormData = z.infer<typeof productSchema>;
+type ProductFormData = z.infer<ReturnType<typeof makeProductSchema>>;
 
 interface ProductFormModalProps {
   isOpen: boolean;
@@ -59,6 +64,13 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
 
   // Dynamic category attribute values (managed outside of Zod since schema is dynamic)
   const [attributeValues, setAttributeValues] = useState<Record<string, unknown>>({});
+
+  // Latches once the user has ever typed in the SKU field. dirtyFields alone
+  // is not enough: clearing the field back to '' un-dirties it and would
+  // re-arm the auto-generator over a value the user is retyping.
+  const skuEdited = useRef(false);
+
+  const schema = useMemo(() => makeProductSchema(!!product?.id), [product?.id]);
 
   // Fetch categories (flat list - no hierarchy)
   const { data: categoriesData } = useQuery({
@@ -86,7 +98,7 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
     control,
     formState: { errors, dirtyFields },
   } = useForm<ProductFormData>({
-    resolver: zodResolver(productSchema),
+    resolver: zodResolver(schema),
     defaultValues: {
       name: '',
       sku: '',
@@ -141,7 +153,10 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
   // Auto-generate SKU from name, but only until the user types their own —
   // a manually entered design code (e.g. DBK2228) must never be overwritten.
   useEffect(() => {
-    if (!isEditing && name && !dirtyFields.sku) {
+    if (dirtyFields.sku) {
+      skuEdited.current = true;
+    }
+    if (!isEditing && name && !skuEdited.current) {
       const sku =
         name
           .toUpperCase()
@@ -157,6 +172,7 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
   // Reset form when modal opens/closes or product changes
   useEffect(() => {
     if (isOpen) {
+      skuEdited.current = isEditing; // fresh create form re-arms auto-generation
       if (product?.id) {
         reset({
           name: product.name,
@@ -212,7 +228,7 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
         });
       }
     }
-  }, [isOpen, product, reset]);
+  }, [isOpen, product, reset, isEditing]);
 
   // Hydrate dynamic attribute values when editing. Tracks both the list-level
   // product (immediate) and the full product detail (async, includes attributes
