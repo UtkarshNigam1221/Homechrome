@@ -27,12 +27,28 @@ func TestRewriteURLs(t *testing.T) {
 }
 
 func TestProductFilter(t *testing.T) {
-	where, args := productFilter("active")
-	if where != "status = 'ACTIVE'" || args != nil {
-		t.Errorf("active: got %q %v", where, args)
+	where, args, ids := productFilter("active")
+	if where != "status = 'ACTIVE'" || args != nil || ids != nil {
+		t.Errorf("active: got %q %v %v", where, args, ids)
 	}
-	where, args = productFilter("id-1,id_2")
-	if where != "id = ANY($1)" || len(args) != 1 {
-		t.Errorf("ids: got %q %v", where, args)
+	// Keyword matching is case-insensitive so "Active" can't fall through to
+	// the id-list path and silently match nothing.
+	where, _, ids = productFilter("Active")
+	if where != "status = 'ACTIVE'" || ids != nil {
+		t.Errorf("Active: got %q %v", where, ids)
+	}
+	where, args, ids = productFilter("id-1,id_2")
+	if where != "id = ANY($1)" || len(args) != 1 || len(ids) != 2 {
+		t.Errorf("ids: got %q %v %v", where, args, ids)
+	}
+}
+
+func TestAssetKeys(t *testing.T) {
+	keys := assetKeys("dev.cdn", "ap-south-1",
+		[]string{"https://dev.cdn/assets/IMAGE/a.jpg", "https://dev.cdn/assets/IMAGE/a.jpg", ""},
+		[]string{"https://handloom-assets-dev.s3.ap-south-1.amazonaws.com/assets/IMAGE/b.png"})
+	want := []string{"IMAGE/a.jpg", "IMAGE/b.png"}
+	if len(keys) != 2 || keys[0] != want[0] || keys[1] != want[1] {
+		t.Errorf("got %v, want %v", keys, want)
 	}
 }

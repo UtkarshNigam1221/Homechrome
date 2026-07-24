@@ -1,8 +1,10 @@
 // Command promote-catalog copies catalog data (categories, products, media)
-// from dev to prod. Additive-only: upserts by id, never deletes prod-only
-// rows; child rows are replaced per promoted parent; asset URLs are rewritten
-// to the prod CDN; S3 media syncs without --delete. Inventory is seeded only
-// where missing unless --overwrite-inventory. DynamoDB data and
+// from dev to prod. Additive-only: everything upserts by id and nothing
+// prod-only is ever deleted; a promoted product's attribute values and images
+// are replaced as a set; asset URLs are rewritten to the prod CDN; only S3
+// objects referenced by promoted rows are copied. Inventory is seeded with
+// zero reservations where missing; --overwrite-inventory updates stock
+// numbers while preserving prod's reserved quantities. DynamoDB data and
 // inventory_transactions are never touched.
 //
 // Usage: go run ./scripts/promote-catalog [--products active|all|id1,id2,...]
@@ -16,6 +18,7 @@ import (
 	"bufio"
 	"cmp"
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -26,6 +29,7 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 const (
@@ -69,7 +73,7 @@ func main() {
 		{fmt.Sprintf("https://%s.s3.%s.amazonaws.com/", devBucket, region), "https://" + prodHost + "/"},
 	}
 
-	productWhere, productArgs := productFilter(*products)
+	productWhere, productArgs, wantIDs := productFilter(*products)
 	childWhere := "product_id IN (SELECT id FROM products WHERE " + productWhere + ")"
 
 	dev, err := pgx.Connect(ctx, devDSN)
@@ -83,27 +87,7 @@ func main() {
 	}
 	defer func() { _ = prod.Close(ctx) }()
 
-	// Schema parity: dev and prod must have identical columns, otherwise prod
-	// needs a deploy (which runs the migrator) before promoting.
-	tables := []string{
-		"categories", "category_attributes", "category_attribute_options",
-		"products", "product_attribute_values", "product_images", "inventory",
-	}
-	cols := map[string][]column{}
-	for _, t := range tables {
-		devCols, colErr := columnsOf(ctx, dev, t)
-		if colErr != nil {
-			log.Fatalf("read dev schema for %s: %v", t, colErr)
-		}
-		prodCols, colErr := columnsOf(ctx, prod, t)
-		if colErr != nil {
-			log.Fatalf("read prod schema for %s: %v", t, colErr)
-		}
-		if fmt.Sprint(devCols) != fmt.Sprint(prodCols) {
-			log.Fatalf("schema drift on %q:\n  dev:  %v\n  prod: %v\ndeploy the backend to prod first (runs the migrator), then retry", t, devCols, prodCols)
-		}
-		cols[t] = devCols
-	}
+	cols := loadColumns(ctx, dev, prod)
 
 	// Fetch everything from dev up front so the plan shows exact counts.
 	fetch := func(table, where string, args ...any) [][]any {
@@ -121,11 +105,27 @@ func main() {
 	images := fetch("product_images", childWhere, productArgs...)
 	inventory := fetch("inventory", childWhere, productArgs...)
 
-	inventoryMode := "seed missing rows only, prod stock untouched"
-	if *overwriteInventory {
-		inventoryMode = "OVERWRITE prod stock with dev values"
+	verifySelection(*products, prods, cols["products"], wantIDs)
+
+	// A prod-only product already owning a promoted sku/slug would abort the
+	// transaction on the unique index — surface it up front, readably.
+	checkUniqueOwnership(ctx, prod, prods, cols["products"])
+
+	// Only media referenced by promoted rows is copied — a full-prefix sync
+	// would publish dev-only media (drafts, test uploads) through the prod CDN.
+	var mediaKeys []string
+	if !*skipS3 {
+		mediaKeys = assetKeys(devHost, region,
+			urlValues(categories, cols["categories"], "image_url"),
+			urlValues(prods, cols["products"], "video_url", "video_poster_url"),
+			urlValues(images, cols["product_images"], "url"))
 	}
-	mediaMode := fmt.Sprintf("s3://%s/assets/ -> s3://%s/assets/ (additive)", devBucket, prodBucket)
+
+	inventoryMode := "seed missing rows only (zero reservations), prod stock untouched"
+	if *overwriteInventory {
+		inventoryMode = "OVERWRITE prod stock numbers with dev values (prod reservations preserved)"
+	}
+	mediaMode := fmt.Sprintf("%d referenced objects -> s3://%s/assets/ (additive)", len(mediaKeys), prodBucket)
 	if *skipS3 {
 		mediaMode = "skipped"
 	}
@@ -146,23 +146,32 @@ Promotion plan (dev -> prod):
 	}
 
 	// Media first, so no DB row ever points at a missing object.
-	if !*skipS3 {
-		log.Println("Syncing media...")
-		sync := exec.CommandContext(ctx, "aws", "s3", "sync", //nolint:gosec // fixed args; region validated above
-			"s3://"+devBucket+"/assets/", "s3://"+prodBucket+"/assets/", "--region", region)
-		sync.Stdout, sync.Stderr = os.Stdout, os.Stderr
-		if syncErr := sync.Run(); syncErr != nil {
-			log.Fatalf("s3 sync: %v", syncErr)
-		}
+	if !*skipS3 && len(mediaKeys) > 0 {
+		syncMedia(ctx, region, mediaKeys)
 	}
 
 	rewriteURLs(categories, cols["categories"], []string{"image_url"}, urlRewrites)
 	rewriteURLs(prods, cols["products"], []string{"video_url", "video_poster_url"}, urlRewrites)
 	rewriteURLs(images, cols["product_images"], []string{"url"}, urlRewrites)
 
+	// Reservation state belongs to prod: seeded rows start with zero reserved,
+	// and the overwrite path updates stock numbers while preserving prod's
+	// reserved_qty (available recomputed against it).
+	iQty := colIndex(cols["inventory"], "quantity")
+	iRes := colIndex(cols["inventory"], "reserved_qty")
+	iAvail := colIndex(cols["inventory"], "available_qty")
+	for _, row := range inventory {
+		row[iRes] = "0"
+		row[iAvail] = row[iQty]
+	}
 	inventoryConflict := "ON CONFLICT (product_id) DO NOTHING"
 	if *overwriteInventory {
-		inventoryConflict = "ON CONFLICT (product_id) DO UPDATE SET " + updateSetClause(cols["inventory"], "id", "product_id")
+		inventoryConflict = "ON CONFLICT (product_id) DO UPDATE SET " +
+			"quantity = EXCLUDED.quantity, " +
+			"available_qty = EXCLUDED.quantity - inventory.reserved_qty, " +
+			"low_stock_threshold = EXCLUDED.low_stock_threshold, " +
+			"reorder_point = EXCLUDED.reorder_point, " +
+			"updated_at = now(), updated_by = EXCLUDED.updated_by"
 	}
 
 	// Single transaction: either the whole catalog lands or none of it.
@@ -174,29 +183,34 @@ Promotion plan (dev -> prod):
 
 	step := func(name string, n int, err error) {
 		if err != nil {
+			var pgErr *pgconn.PgError
+			if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+				log.Fatalf("%s: unique constraint %s violated (%s) — a promoted row collides with an existing one; resolve the duplicate and retry",
+					name, pgErr.ConstraintName, pgErr.Detail)
+			}
 			log.Fatalf("%s: %v", name, err)
 		}
 		log.Printf("  %-28s %d rows", name, n)
 	}
 
-	// Categories: upsert by id. Prod-only categories untouched.
+	// Categories: upsert by id, keeping prod's creation stamps and its own
+	// product_count (recomputed below — prod may hold products dev never had).
 	n, err := insertRows(ctx, tx, "categories", cols["categories"], categories,
-		"ON CONFLICT (id) DO UPDATE SET "+updateSetClause(cols["categories"], "id"))
+		"ON CONFLICT (id) DO UPDATE SET "+updateSetClause(cols["categories"], "id", "product_count", "created_at", "created_by"))
 	step("categories", n, err)
 
-	// Category attributes + options: replace as a set, scoped to promoted
-	// categories (options fall via ON DELETE CASCADE, then both re-insert).
-	err = deleteScoped(ctx, tx, "category_attributes", "category_id", idsOf(categories, cols["categories"]))
-	if err == nil {
-		n, err = insertRows(ctx, tx, "category_attributes", cols["category_attributes"], categoryAttrs, "")
-	}
+	// Category attribute definitions + options: upsert by id, no deletes —
+	// definitions added directly on prod survive (additive-only guarantee).
+	n, err = insertRows(ctx, tx, "category_attributes", cols["category_attributes"], categoryAttrs,
+		"ON CONFLICT (id) DO UPDATE SET "+updateSetClause(cols["category_attributes"], "id"))
 	step("category_attributes", n, err)
-	n, err = insertRows(ctx, tx, "category_attribute_options", cols["category_attribute_options"], categoryOpts, "")
+	n, err = insertRows(ctx, tx, "category_attribute_options", cols["category_attribute_options"], categoryOpts,
+		"ON CONFLICT (id) DO UPDATE SET "+updateSetClause(cols["category_attribute_options"], "id"))
 	step("category_attribute_options", n, err)
 
 	// Products: upsert by id. search_vector regenerates; embeddings copy over.
 	n, err = insertRows(ctx, tx, "products", cols["products"], prods,
-		"ON CONFLICT (id) DO UPDATE SET "+updateSetClause(cols["products"], "id"))
+		"ON CONFLICT (id) DO UPDATE SET "+updateSetClause(cols["products"], "id", "created_at", "created_by"))
 	step("products", n, err)
 
 	// Attribute values + images: replace as a set, scoped to promoted products.
@@ -215,6 +229,11 @@ Promotion plan (dev -> prod):
 	n, err = insertRows(ctx, tx, "inventory", cols["inventory"], inventory, inventoryConflict)
 	step("inventory", n, err)
 
+	// Denormalized counter must reflect prod's actual rows, not dev's.
+	if _, cntErr := tx.Exec(ctx, `UPDATE categories c SET product_count = (SELECT count(*) FROM products p WHERE p.category_id = c.id)`); cntErr != nil {
+		log.Fatalf("recompute product_count: %v", cntErr)
+	}
+
 	if commitErr := tx.Commit(ctx); commitErr != nil {
 		log.Fatalf("commit: %v", commitErr)
 	}
@@ -227,16 +246,17 @@ Promotion plan (dev -> prod):
 		log.Fatalf("prod totals: %v", err)
 	}
 	fmt.Printf("\nDone. Prod now has %d categories, %d products, %d images, %d inventory rows.\n", nCat, nProd, nImg, nInv)
-	fmt.Println("Note: prod catalog Lambda has a 1h in-process cache — force a cold start (or wait up to 1h) before expecting fresh data on the storefront.")
+	fmt.Println("Note: catalog responses carry Cache-Control max-age=3600 (cached by CloudFront and browsers) — run a CloudFront invalidation on the prod distribution for instant visibility, or wait up to 1h.")
 }
 
-// productFilter maps the --products flag to a WHERE clause + args.
-func productFilter(products string) (string, []any) {
-	switch products {
+// productFilter maps the --products flag to a WHERE clause + args. For an id
+// list it also returns the requested ids so the caller can verify coverage.
+func productFilter(products string) (string, []any, []string) {
+	switch strings.ToLower(products) {
 	case "active":
-		return "status = 'ACTIVE'", nil
+		return "status = 'ACTIVE'", nil, nil
 	case "all":
-		return "TRUE", nil
+		return "TRUE", nil, nil
 	default:
 		ids := strings.Split(products, ",")
 		for _, id := range ids {
@@ -244,8 +264,152 @@ func productFilter(products string) (string, []any) {
 				log.Fatalf("--products must be \"active\", \"all\", or a comma-separated id list (bad id: %q)", id)
 			}
 		}
-		return "id = ANY($1)", []any{ids}
+		return "id = ANY($1)", []any{ids}, ids
 	}
+}
+
+// loadColumns reads every table's insertable columns from both sides and
+// fails on drift: prod needs a deploy (which runs the migrator) first.
+func loadColumns(ctx context.Context, dev, prod *pgx.Conn) map[string][]column {
+	tables := []string{
+		"categories", "category_attributes", "category_attribute_options",
+		"products", "product_attribute_values", "product_images", "inventory",
+	}
+	cols := map[string][]column{}
+	for _, t := range tables {
+		devCols, err := columnsOf(ctx, dev, t)
+		if err != nil {
+			log.Fatalf("read dev schema for %s: %v", t, err)
+		}
+		prodCols, err := columnsOf(ctx, prod, t)
+		if err != nil {
+			log.Fatalf("read prod schema for %s: %v", t, err)
+		}
+		if fmt.Sprint(devCols) != fmt.Sprint(prodCols) {
+			log.Fatalf("schema drift on %q:\n  dev:  %v\n  prod: %v\ndeploy the backend to prod first (runs the migrator), then retry", t, devCols, prodCols)
+		}
+		cols[t] = devCols
+	}
+	return cols
+}
+
+// verifySelection refuses selections that match nothing (an operator mistake,
+// e.g. "Active" parsed as an id) or id lists with ids dev doesn't have.
+func verifySelection(products string, prods [][]any, cols []column, wantIDs []string) {
+	if len(prods) == 0 {
+		log.Fatalf("--products %q matched no dev products — nothing to promote", products)
+	}
+	if wantIDs == nil {
+		return
+	}
+	got := make(map[string]bool, len(prods))
+	for _, id := range idsOf(prods, cols) {
+		got[id] = true
+	}
+	var missing []string
+	for _, id := range wantIDs {
+		if !got[id] {
+			missing = append(missing, id)
+		}
+	}
+	if len(missing) > 0 {
+		log.Fatalf("--products ids not found in dev: %s", strings.Join(missing, ", "))
+	}
+}
+
+// syncMedia copies exactly the referenced objects dev -> prod (additive).
+func syncMedia(ctx context.Context, region string, keys []string) {
+	log.Printf("Syncing %d media objects...", len(keys))
+	// ponytail: one sync call with N --include flags; chunk the calls if a
+	// catalog ever references thousands of objects.
+	args := make([]string, 0, 8+2*len(keys))
+	args = append(args, "s3", "sync",
+		"s3://"+devBucket+"/assets/", "s3://"+prodBucket+"/assets/",
+		"--region", region, "--exclude", "*")
+	for _, k := range keys {
+		args = append(args, "--include", k)
+	}
+	sync := exec.CommandContext(ctx, "aws", args...) //nolint:gosec // fixed command; keys come from our own DB rows
+	sync.Stdout, sync.Stderr = os.Stdout, os.Stderr
+	if err := sync.Run(); err != nil {
+		log.Fatalf("s3 sync: %v", err)
+	}
+}
+
+// checkUniqueOwnership fails fast when a prod-only product already owns a
+// promoted sku or slug — the upsert-by-id would otherwise abort mid-run on
+// the unique index with a raw constraint error.
+func checkUniqueOwnership(ctx context.Context, prod *pgx.Conn, rows [][]any, cols []column) {
+	iID, iSKU, iSlug := colIndex(cols, "id"), colIndex(cols, "sku"), colIndex(cols, "slug")
+	devByID := make(map[string]bool, len(rows))
+	skus := make([]string, 0, len(rows))
+	slugs := make([]string, 0, len(rows))
+	for _, r := range rows {
+		id, _ := r[iID].(string)
+		sku, _ := r[iSKU].(string)
+		slug, _ := r[iSlug].(string)
+		devByID[id] = true
+		skus = append(skus, sku)
+		slugs = append(slugs, slug)
+	}
+	res, err := prod.Query(ctx, `SELECT id, sku, slug FROM products WHERE sku = ANY($1) OR slug = ANY($2)`, skus, slugs)
+	if err != nil {
+		log.Fatalf("preflight unique check: %v", err)
+	}
+	defer res.Close()
+	var conflicts []string
+	for res.Next() {
+		var id, sku, slug string
+		if scanErr := res.Scan(&id, &sku, &slug); scanErr != nil {
+			log.Fatalf("preflight unique check: %v", scanErr)
+		}
+		if !devByID[id] {
+			conflicts = append(conflicts, fmt.Sprintf("prod product %s owns sku=%q slug=%q", id, sku, slug))
+		}
+	}
+	if res.Err() != nil {
+		log.Fatalf("preflight unique check: %v", res.Err())
+	}
+	if len(conflicts) > 0 {
+		log.Fatalf("promotion would collide with prod-only products on unique sku/slug:\n  %s\nrename those on prod (or exclude the dev products) and retry",
+			strings.Join(conflicts, "\n  "))
+	}
+}
+
+// urlValues collects non-empty values of the named URL columns.
+func urlValues(rows [][]any, cols []column, urlCols ...string) []string {
+	var out []string
+	for _, c := range urlCols {
+		i := colIndex(cols, c)
+		for _, row := range rows {
+			if s, ok := row[i].(string); ok && s != "" {
+				out = append(out, s)
+			}
+		}
+	}
+	return out
+}
+
+// assetKeys converts dev asset URLs into object keys relative to the assets/
+// prefix, deduped, for use as s3 sync --include patterns.
+func assetKeys(devHost, region string, urlGroups ...[]string) []string {
+	prefixes := []string{
+		"https://" + devHost + "/assets/",
+		fmt.Sprintf("https://%s.s3.%s.amazonaws.com/assets/", devBucket, region),
+	}
+	seen := map[string]bool{}
+	var keys []string
+	for _, group := range urlGroups {
+		for _, u := range group {
+			for _, p := range prefixes {
+				if k, ok := strings.CutPrefix(u, p); ok && k != "" && !seen[k] {
+					seen[k] = true
+					keys = append(keys, k)
+				}
+			}
+		}
+	}
+	return keys
 }
 
 // columnsOf returns the insertable columns of a table, excluding generated
