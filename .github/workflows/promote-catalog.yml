@@ -25,19 +25,32 @@ permissions:
   id-token: write
   contents: read
 
+# Never two prod-writing runs at once (deadlocks + interleaved S3 syncs).
+concurrency:
+  group: promote-catalog
+  cancel-in-progress: false
+
 jobs:
   promote:
     name: Promote dev → prod
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: handloom-admin
+    # The branch guard below is only a courtesy message: workflow_dispatch runs
+    # the workflow file FROM THE SELECTED REF, so a branch can simply remove it.
+    # The enforceable control is this environment — configure it in repo
+    # Settings → Environments → production with a deployment branch policy of
+    # `main` and move BACKEND_ENV_PROD into its environment secrets. Runs
+    # dispatched from any other branch then fail before secrets are exposed.
+    environment: production
     steps:
       - name: Guard prod promotion from non-main branches
-        if: github.ref_name != 'main'
+        env:
+          # Via env, never inline templating — ref names can carry shell metachars.
+          REF: ${{ github.ref_name }}
         run: |
-          echo "::error::Catalog promotion must run from main. Selected ref: ${{ github.ref_name }}"
-          exit 1
+          if [ "$REF" != "main" ]; then
+            echo "::error::Catalog promotion must run from main. Selected ref: $REF"
+            exit 1
+          fi
 
       - uses: actions/checkout@v7
 
@@ -52,18 +65,21 @@ jobs:
           aws-region: ${{ vars.AWS_REGION }}
 
       - name: Promote catalog
+        working-directory: handloom-admin
         env:
           BACKEND_ENV_DEV: ${{ secrets.BACKEND_ENV_DEV }}
           BACKEND_ENV_PROD: ${{ secrets.BACKEND_ENV_PROD }}
           # Passed via env, not inline templating, so the value can't inject shell.
           PRODUCTS: ${{ inputs.products }}
         run: |
-          printf '%s\n' "$BACKEND_ENV_DEV"  > /tmp/dev.env
-          printf '%s\n' "$BACKEND_ENV_PROD" > /tmp/prod.env
-
-          dsn_from() { ( set -a; . "$1" >/dev/null 2>&1; printf '%s' "${POSTGRES_DSN:-}" ); }
-          DEV_DSN="$(dsn_from /tmp/dev.env)"
-          PROD_DSN="$(dsn_from /tmp/prod.env)"
+          # Extract POSTGRES_DSN with grep — never source the secret blob, a
+          # value containing shell metacharacters must not corrupt or execute.
+          dsn_from() {
+            printf '%s\n' "$1" | grep -m1 '^POSTGRES_DSN=' | cut -d= -f2- \
+              | sed -e "s/^['\"]//" -e "s/['\"]\$//"
+          }
+          DEV_DSN="$(dsn_from "$BACKEND_ENV_DEV")"
+          PROD_DSN="$(dsn_from "$BACKEND_ENV_PROD")"
           export DEV_DSN PROD_DSN
 
           if [ -z "$DEV_DSN" ] || [ -z "$PROD_DSN" ]; then
