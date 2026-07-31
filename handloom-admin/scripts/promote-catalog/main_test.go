@@ -12,12 +12,12 @@ func TestUpdateSetClause(t *testing.T) {
 }
 
 func TestRewriteURLs(t *testing.T) {
-	cols := []column{{"id", "text"}, {"url", "text"}}
+	cols := []column{{"id", "text"}, {colURL, "text"}}
 	rows := [][]any{
 		{"p1", "https://dev.cdn/assets/a.jpg"},
 		{"p2", nil}, // NULL url stays NULL
 	}
-	rewriteURLs(rows, cols, []string{"url"}, [][2]string{{"https://dev.cdn/", "https://prod.cdn/"}})
+	rewriteURLs(rows, cols, []string{colURL}, [][2]string{{"https://dev.cdn/", "https://prod.cdn/"}})
 	if rows[0][1] != "https://prod.cdn/assets/a.jpg" {
 		t.Errorf("url not rewritten: %v", rows[0][1])
 	}
@@ -28,13 +28,13 @@ func TestRewriteURLs(t *testing.T) {
 
 func TestProductFilter(t *testing.T) {
 	where, args, ids := productFilter("active")
-	if where != "status = 'ACTIVE'" || args != nil || ids != nil {
+	if where != whereActive || args != nil || ids != nil {
 		t.Errorf("active: got %q %v %v", where, args, ids)
 	}
 	// Keyword matching is case-insensitive so "Active" can't fall through to
 	// the id-list path and silently match nothing.
 	where, _, ids = productFilter("Active")
-	if where != "status = 'ACTIVE'" || ids != nil {
+	if where != whereActive || ids != nil {
 		t.Errorf("Active: got %q %v", where, ids)
 	}
 	where, args, ids = productFilter("id-1,id_2")

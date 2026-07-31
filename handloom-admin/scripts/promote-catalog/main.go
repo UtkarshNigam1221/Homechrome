@@ -35,6 +35,9 @@ import (
 const (
 	devBucket  = "handloom-assets-dev"
 	prodBucket = "handloom-assets-prod"
+
+	colURL      = "url" // product_images URL column
+	whereActive = "status = 'ACTIVE'"
 )
 
 var idListRe = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
@@ -118,7 +121,7 @@ func main() {
 		mediaKeys = assetKeys(devHost, region,
 			urlValues(categories, cols["categories"], "image_url"),
 			urlValues(prods, cols["products"], "video_url", "video_poster_url"),
-			urlValues(images, cols["product_images"], "url"))
+			urlValues(images, cols["product_images"], colURL))
 	}
 
 	inventoryMode := "seed missing rows only (zero reservations), prod stock untouched"
@@ -152,7 +155,7 @@ Promotion plan (dev -> prod):
 
 	rewriteURLs(categories, cols["categories"], []string{"image_url"}, urlRewrites)
 	rewriteURLs(prods, cols["products"], []string{"video_url", "video_poster_url"}, urlRewrites)
-	rewriteURLs(images, cols["product_images"], []string{"url"}, urlRewrites)
+	rewriteURLs(images, cols["product_images"], []string{colURL}, urlRewrites)
 
 	// Reservation state belongs to prod: seeded rows start with zero reserved,
 	// and the overwrite path updates stock numbers while preserving prod's
@@ -254,7 +257,7 @@ Promotion plan (dev -> prod):
 func productFilter(products string) (string, []any, []string) {
 	switch strings.ToLower(products) {
 	case "active":
-		return "status = 'ACTIVE'", nil, nil
+		return whereActive, nil, nil
 	case "all":
 		return "TRUE", nil, nil
 	default:
