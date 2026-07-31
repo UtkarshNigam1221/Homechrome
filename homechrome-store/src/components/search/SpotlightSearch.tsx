@@ -9,7 +9,7 @@ import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
 
 import HCLoader from '@/components/ui/HCLoader';
-import { searchProducts } from '@/lib/api';
+import { buildSearchURL, fetchProductsPage } from '@/lib/api';
 import { formatPrice } from '@/lib/utils';
 import { Category, Product } from '@/types';
 
@@ -30,8 +30,8 @@ export function SpotlightSearch({ categories }: SpotlightSearchProps) {
     enabled: opened && debounced.trim().length >= 2,
     staleTime: 60_000,
     queryFn: async () => {
-      const res = await searchProducts({ q: debounced.trim(), limit: 8 });
-      return res.data;
+      const { products } = await fetchProductsPage(buildSearchURL({ q: debounced.trim(), limit: 8 }));
+      return products;
     },
   });
 

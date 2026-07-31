@@ -5,8 +5,8 @@ import axios, {
 } from 'axios';
 
 import { ROUTES } from '@/lib/routes';
-import { SearchResponse } from '@/lib/semantic-search';
 import { buildVisitorHeader, VISITOR_HEADER } from '@/lib/visitor-context';
+import { Product } from '@/types';
 
 interface ApiResponse<T> {
   success: boolean;
@@ -115,6 +115,29 @@ const api = {
 
 export default api;
 
+/** One page of a catalog listing plus the cursor that fetches the next one. */
+export interface ProductsPage {
+  products: Product[];
+  nextCursor?: string;
+}
+
+/**
+ * Fetches one page of products from any listing endpoint (`/catalog/products`
+ * or `/catalog/search` — identical envelope). Raw fetch, not the shared axios
+ * client, because the response interceptor unwraps {success, data, meta} → data
+ * and would strip the `meta.next_cursor` that infinite scroll pages on.
+ *
+ * `url` may be relative (client, via Next rewrites) or absolute (SSR).
+ */
+export async function fetchProductsPage(url: string): Promise<ProductsPage> {
+  const res = await fetch(url, { headers: { Accept: 'application/json' } });
+  if (!res.ok) {
+    throw new Error(`products fetch failed: ${res.status}`);
+  }
+  const json = (await res.json()) as ApiResponse<Product[]>;
+  return { products: json.data ?? [], nextCursor: json.meta?.next_cursor || undefined };
+}
+
 export interface SearchParams {
   q?: string;
   limit?: number;
@@ -129,36 +152,7 @@ export interface SearchParams {
   attribute_filters?: Record<string, string[]>;
 }
 
-/**
- * Searches products via the embedder Lambda mounted under the existing
- * REST API at GET /api/v1/store/catalog/search. Hybrid semantic + tsvector +
- * trigram scoring backed by pgvector + HNSW. Accepts the same filters as the
- * legacy /products endpoint (category_id, min/max_price, in_stock, material,
- * color, af_*) so the storefront's useFilteredProducts hook can hit one
- * endpoint for both search-with-filters and filter-only listings.
- *
- * Uses raw fetch (not the shared axios client) because the shared response
- * interceptor unwraps {success, data, meta} → data only, which would strip
- * the SearchResponse meta block. Also keeps a single 5xx retry to absorb
- * embedder cold starts (~5–7 s).
- */
-export async function searchProducts(params: SearchParams = {}): Promise<SearchResponse> {
-  const url = buildSearchURL(params);
-  const init: RequestInit = { method: 'GET', headers: { Accept: 'application/json' } };
-
-  let res = await fetch(url, init);
-  if (!res.ok && res.status >= 500) {
-    await new Promise((r) => setTimeout(r, 1000));
-    res = await fetch(url, init);
-  }
-  if (!res.ok) {
-    throw new Error(`search failed: ${res.status}`);
-  }
-  return (await res.json()) as SearchResponse;
-}
-
-/** buildSearchURL serializes SearchParams to a query string. Exported for SSR
- *  callers that need to call the embedder via absolute URL (e.g. page.tsx). */
+/** Serializes SearchParams into a /catalog/search URL. */
 export function buildSearchURL(params: SearchParams): string {
   const qs = new URLSearchParams();
   if (params.q) qs.set('q', params.q);
