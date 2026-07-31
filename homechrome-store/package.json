@@ -46,7 +46,7 @@
     "fast-xml-parser": "5.8.0"
   },
   "devDependencies": {
-    "@opennextjs/aws": "^4.0.2",
+    "@opennextjs/aws": "4.0.3",
     "@types/node": "^25",
     "@types/react": "^19",
     "@types/react-dom": "^19",
