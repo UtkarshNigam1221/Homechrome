@@ -24,7 +24,10 @@ export function Pagination({
   perPageOptions = [10, 25, 50, 100],
   itemCount,
 }: PaginationProps) {
-  if (!hasMore && !hasPrevious) return null;
+  const canPage = hasMore || hasPrevious;
+
+  // Per-page control stays when the list fits one page — else no way back to 10.
+  if (!canPage && !(showPerPage && onPerPageChange)) return null;
 
   return (
     <div className="flex flex-col sm:flex-row items-center justify-between gap-4 py-4">
@@ -55,30 +58,32 @@ export function Pagination({
         )}
       </div>
 
-      <nav className="flex items-center gap-2">
-        <button
-          onClick={onPreviousPage}
-          disabled={!hasPrevious}
-          className={clsx(
-            'flex items-center gap-1 px-3 py-1.5 text-sm font-medium rounded-lg transition-colors',
-            !hasPrevious ? 'text-gray-300 cursor-not-allowed' : 'text-gray-600 hover:bg-gray-100'
-          )}
-        >
-          <ChevronLeft className="w-4 h-4" />
-          Previous
-        </button>
-        <button
-          onClick={onNextPage}
-          disabled={!hasMore}
-          className={clsx(
-            'flex items-center gap-1 px-3 py-1.5 text-sm font-medium rounded-lg transition-colors',
-            !hasMore ? 'text-gray-300 cursor-not-allowed' : 'text-gray-600 hover:bg-gray-100'
-          )}
-        >
-          Next
-          <ChevronRight className="w-4 h-4" />
-        </button>
-      </nav>
+      {canPage && (
+        <nav className="flex items-center gap-2">
+          <button
+            onClick={onPreviousPage}
+            disabled={!hasPrevious}
+            className={clsx(
+              'flex items-center gap-1 px-3 py-1.5 text-sm font-medium rounded-lg transition-colors',
+              !hasPrevious ? 'text-gray-300 cursor-not-allowed' : 'text-gray-600 hover:bg-gray-100'
+            )}
+          >
+            <ChevronLeft className="w-4 h-4" />
+            Previous
+          </button>
+          <button
+            onClick={onNextPage}
+            disabled={!hasMore}
+            className={clsx(
+              'flex items-center gap-1 px-3 py-1.5 text-sm font-medium rounded-lg transition-colors',
+              !hasMore ? 'text-gray-300 cursor-not-allowed' : 'text-gray-600 hover:bg-gray-100'
+            )}
+          >
+            Next
+            <ChevronRight className="w-4 h-4" />
+          </button>
+        </nav>
+      )}
     </div>
   );
 }
