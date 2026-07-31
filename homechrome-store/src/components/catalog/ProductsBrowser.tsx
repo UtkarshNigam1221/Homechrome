@@ -80,7 +80,19 @@ export function ProductsBrowser({
 
       <Flex gap="xl">
         <Box w={256} flex="none" visibleFrom="lg">
-          <Card shadow="sm" padding="md" radius="lg" pos="sticky" top={128}>
+          {/* Sticky column that scrolls on its own: capped to the space below
+              the header, so a long filter list never forces a page scroll.
+              overscrollBehavior keeps the wheel from chaining to the page once
+              the list hits its end. */}
+          <Card
+            shadow="sm"
+            padding="md"
+            radius="lg"
+            pos="sticky"
+            top={128}
+            mah="calc(100dvh - 144px)"
+            style={{ overflowY: 'auto', overscrollBehavior: 'contain' }}
+          >
             {filtersSidebar}
           </Card>
         </Box>
