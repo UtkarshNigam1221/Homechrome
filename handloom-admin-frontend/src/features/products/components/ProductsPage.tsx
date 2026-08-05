@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 
 import { categoriesApi } from '@/features/categories/api';
+import { mergeAttributeOptions } from '@/features/categories/lib/attributeOptions';
 import type { CategoryAttribute } from '@/features/categories/types';
 import { productsApi } from '@/features/products/api';
 import { getErrorMessage } from '@/shared/api/client';
@@ -123,26 +124,18 @@ export function ProductsPage() {
   const products = productsData?.items ?? [];
   const pagination = productsData?.pagination;
 
-  // Build category attributes enriched with distinct values from GSI
+  // Widen each attribute's defined options with the values actually present on
+  // products in this category, so a value that predates the definition is still
+  // filterable. Same rule the product form applies to a product's saved values.
   const categoryAttributes: CategoryAttribute[] = useMemo(() => {
     if (!categoryFilter) return [];
     const rawAttrs = categoryAttributesData?.own_attributes || [];
     const filterOptions: Record<string, string[]> = filterOptionsData || {};
 
-    return rawAttrs.map((attr: CategoryAttribute) => {
-      // If attribute already has options (SELECT/MULTI_SELECT), use them as-is
-      if (attr.options && attr.options.length > 0) return attr;
-
-      // For TEXT/NUMBER attributes without predefined options, use GSI-discovered values
-      if (!attr.searchable) return attr;
-
-      const distinctValues = filterOptions[attr.name];
-      if (!distinctValues || distinctValues.length === 0) return attr;
-
-      // Build options from GSI distinct values
-      const discoveredOptions = distinctValues.map((v) => ({ value: v, label: v }));
-      return { ...attr, options: discoveredOptions };
-    });
+    return rawAttrs.map((attr: CategoryAttribute) => ({
+      ...attr,
+      options: mergeAttributeOptions(attr, filterOptions[attr.name] || []),
+    }));
   }, [categoryFilter, categoryAttributesData, filterOptionsData]);
 
   const categories = categoriesData?.items ?? [];
