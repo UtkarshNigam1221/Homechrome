@@ -48,10 +48,11 @@ func (h *ProfileHandler) Routes() chi.Router {
 // ==================== Request Types ====================
 
 // UpdateProfileRequest contains data for updating a customer profile.
+// An empty field means "leave unchanged" — see UpdateProfile.
 type UpdateProfileRequest struct {
 	FirstName string `json:"first_name,omitempty"`
 	LastName  string `json:"last_name,omitempty"`
-	Email     string `json:"email,omitempty"`
+	Email     string `json:"email,omitempty" validate:"omitempty,email"`
 }
 
 // AddAddressRequest contains data for adding or updating an address.
@@ -96,14 +97,21 @@ func (h *ProfileHandler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Apply updates
+	// Apply updates. An empty field leaves the existing value alone, so a
+	// customer cannot clear their email through this endpoint.
 	if req.FirstName != "" {
 		customer.FirstName = req.FirstName
 	}
 	if req.LastName != "" {
 		customer.LastName = req.LastName
 	}
-	if req.Email != "" {
+	if req.Email != "" && req.Email != customer.Email {
+		// Email becomes GSI1SK on write, and nothing else enforces uniqueness
+		// on this path — CustomerService.Create checks the same way.
+		if existing, _ := h.customerRepo.GetByEmail(ctx, req.Email); existing != nil && existing.ID != customerID {
+			response.Error(w, errors.Conflict("That email is already in use"))
+			return
+		}
 		customer.Email = req.Email
 	}
 	customer.UpdatedAt = time.Now()

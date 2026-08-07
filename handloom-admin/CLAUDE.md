@@ -174,6 +174,64 @@ External service clients no longer use `IsDevelopment()` to decide dev vs real m
 - **PhonePe**: DevClient when `PHONEPE_CLIENT_ID` or `PHONEPE_CLIENT_SECRET` is empty
 - **Shiprocket**: DevClient when `SHIPROCKET_EMAIL` or `SHIPROCKET_PASSWORD` is empty
 
+## Git Workflow
+
+**Branch naming**: `fix/` (bug fixes), `feat/` (features), `chore/` (housekeeping), `docs/` (documentation only). Prefix all branches with the type.
+
+**Strategy**: Rebase before merging to main (via `git rebase main` then force-push). Squash fixup commits locally before pushing (`git rebase -i` to mark commits as `squash` or `fixup`). One logical commit per PR unless the PR is a rollup of independent changes.
+
+**Commit messages**: Conventional format — `type(scope): description` (e.g., `fix(search): match SKUs in product queries`, `feat(store): infinite scroll on catalog`). Keep the first line under 70 chars. Body details go below a blank line if needed.
+
+## Database Migrations
+
+**PostgreSQL safety**: Migrations run in `cmd/lambda/migrator/` as part of `cdk deploy`. Always test locally first:
+1. Add migration file `migrations/NNN_description.sql`
+2. Run `make teardown-local && make setup-local` to apply it
+3. Test thoroughly with integration tests (`make test-integration`)
+4. Only then commit and deploy
+
+**Rollback**: The migrator runs each migration in a transaction. If a migration fails, it rolls back and `cdk deploy` fails — this prevents partial deployments. To rollback a deployed migration, you must create a new reverse migration (e.g., `migrations/013_undo_012.sql`) and deploy it.
+
+**Schema safety**: Avoid `DROP TABLE` in migrations (data loss risk). Use `DROP TABLE IF EXISTS` with caution. For backward-compatible changes, prefer adding columns with defaults over renaming/removing. Test migrations in both directions (up + down) for complex changes.
+
+**DynamoDB**: No migrations needed — schema is implicitly defined by the code. Changes to key patterns or table structure require manual table recreation (use `make reset-db` locally; in prod, coordinate with the team to avoid data loss).
+
+## Common Debugging
+
+**LocalStack issues**: If `make deploy-local` fails, check:
+- `docker ps` — LocalStack should be running
+- `docker logs localstack_main` — view LocalStack logs
+- `curl http://localhost:4566/health` — check LocalStack health
+- `make teardown-local && make setup-local` — full reset (wipes data)
+
+**DynamoDB inspection**: Use the DynamoDB Admin UI at `http://localhost:8001` (running when `make docker-up` is active). Query items directly or inspect table structure.
+
+**PostgreSQL**: Connect locally with `psql $POSTGRES_DSN` (must have `postgres` command installed). Inspect schema: `\dt` (tables), `\d <table>` (columns), `\di` (indexes). Slow queries: enable `log_statement = 'all'` in Docker Compose and check logs.
+
+**Lambda logs locally**: `make deploy-local` logs appear in the terminal. In AWS: `aws logs tail /aws/lambda/<function-name> --follow --region ap-south-1`.
+
+**JWT debugging**: Decode tokens at https://jwt.io (copy the `access_token` cookie value). Verify expiry and claims match expectations. For custom claims, check `handler/auth.go` / `internal/service/auth_service.go`.
+
+**Race conditions**: Run tests with `-race` flag (default in `make test`). If races appear in integration tests, add `SELECT ... FOR UPDATE` in the relevant transaction or increase lock contention test coverage.
+
+## Dependency Updates
+
+**Go modules**: `go get -u <module>` updates to the latest version matching `go.mod` constraints. Always run `go mod tidy` after. Test locally with `make test` before committing.
+
+**Security patches**: Subscribe to Go security advisories (https://pkg.go.dev/vuln/). If a vulnerability is found, `go get -u <module>` and redeploy. For Lambda, this triggers a new CDK build.
+
+**Major version updates**: Test extensively in a local environment before upgrading (e.g., updating Chi router, pgx driver). Check for breaking changes in the module's changelog.
+
+## Performance Profiling
+
+**CPU profiling**: Use pprof via `http://localhost:6060/debug/pprof/` when running monolith (`make run`). Get 30-second CPU profile: `go tool pprof http://localhost:6060/debug/pprof/profile?seconds=30`. Inspect with `top`, `list <function>`.
+
+**Memory profiling**: `go tool pprof http://localhost:6060/debug/pprof/heap` — check allocations and identify leaks.
+
+**Lambda profiling**: Use CloudWatch Lambda Insights or add `log.Printf()` statements around expensive operations. Monitor cold start time with `Init Duration` metric in CloudWatch.
+
+**Database query optimization**: Check `cmd/embedder/main.go` and catalog search queries for N+1 problems. Use `EXPLAIN ANALYZE` in PostgreSQL to inspect query plans. For DynamoDB, ensure GSI scans don't exceed provisioned capacity.
+
 ## Key Conventions
 
 - **Handler validation**: Use `middleware.ValidateJSONTyped[T]` as Chi middleware, then `middleware.MustGetValidatedBody[T]` in handler

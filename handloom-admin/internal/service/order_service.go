@@ -356,10 +356,11 @@ func (s *OrderService) UpdateStatus(ctx context.Context, id string, status domai
 // AddNote adds a note to an order
 func (s *OrderService) AddNote(ctx context.Context, id string, note string, isInternal bool, createdBy string) error {
 	orderNote := domain.OrderNote{
-		ID:        uuid.New().String()[:8],
-		Note:      note,
-		CreatedAt: time.Now(),
-		CreatedBy: createdBy,
+		ID:         uuid.New().String()[:8],
+		Note:       note,
+		IsInternal: isInternal,
+		CreatedAt:  time.Now(),
+		CreatedBy:  createdBy,
 	}
 
 	if err := s.orderRepo.AddNote(ctx, id, orderNote); err != nil {
@@ -371,8 +372,8 @@ func (s *OrderService) AddNote(ctx context.Context, id string, note string, isIn
 }
 
 // UpdateTracking updates tracking information
-func (s *OrderService) UpdateTracking(ctx context.Context, id string, trackingNumber string, carrier string, updatedBy string) error {
-	if err := s.orderRepo.UpdateTracking(ctx, id, trackingNumber, carrier); err != nil {
+func (s *OrderService) UpdateTracking(ctx context.Context, id string, trackingNumber string, carrier string, trackingURL string, updatedBy string) error {
+	if err := s.orderRepo.UpdateTracking(ctx, id, trackingNumber, carrier, trackingURL); err != nil {
 		return err
 	}
 
@@ -484,9 +485,11 @@ func generateOrderNumber() string {
 }
 
 // validTransitions defines allowed order status transitions.
+// CONFIRMED may go straight to SHIPPED: fulfillment is manual, and forcing a
+// stop at PROCESSING made shipping a single order three separate updates.
 var validTransitions = map[domain.OrderStatus][]domain.OrderStatus{
 	domain.OrderStatusPending:    {domain.OrderStatusConfirmed, domain.OrderStatusCancelled},
-	domain.OrderStatusConfirmed:  {domain.OrderStatusProcessing, domain.OrderStatusCancelled},
+	domain.OrderStatusConfirmed:  {domain.OrderStatusProcessing, domain.OrderStatusShipped, domain.OrderStatusCancelled},
 	domain.OrderStatusProcessing: {domain.OrderStatusShipped, domain.OrderStatusCancelled},
 	domain.OrderStatusShipped:    {domain.OrderStatusDelivered, domain.OrderStatusReturned},
 	domain.OrderStatusDelivered:  {domain.OrderStatusReturned},

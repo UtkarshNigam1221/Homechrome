@@ -23,17 +23,22 @@ import { formatDateTime as formatDate } from '@/lib/utils';
 interface StatusHistoryEntry {
   status: string;
   timestamp: string;
-  description?: string;
+  note?: string;
+}
+
+interface ShipmentInfo {
+  awb_number?: string;
+  courier_name?: string;
+  tracking_url?: string;
+  status: string;
+  estimated_delivery?: string;
 }
 
 interface TrackingResult {
   order_number: string;
   status: string;
   status_history: StatusHistoryEntry[];
-  shipping_carrier?: string;
-  tracking_number?: string;
-  tracking_url?: string;
-  estimated_delivery?: string;
+  shipment?: ShipmentInfo;
 }
 
 export default function TrackOrderPage() {
@@ -93,35 +98,39 @@ export default function TrackOrderPage() {
                 <Text span fw={500} c="navy.7">{tracking.status}</Text>
               </Text>
 
-              {(tracking.shipping_carrier || tracking.tracking_number) && (
+              {/* The handler returns a non-nil shipment for legacy rows even
+                  when every displayable field is blank, so gate on content. */}
+              {(tracking.shipment?.courier_name ||
+                tracking.shipment?.awb_number ||
+                tracking.shipment?.tracking_url) && (
                 <Card bg="gray.0" radius="md" padding="md" withBorder={false}>
                   <Stack gap="xs">
                     <Title order={3} size="sm">Shipment Details</Title>
                     <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="md">
-                      {tracking.shipping_carrier && (
+                      {tracking.shipment.courier_name && (
                         <Stack gap={0}>
                           <Text size="xs" c="dimmed">Courier</Text>
-                          <Text size="sm" fw={500} c="navy.7">{tracking.shipping_carrier}</Text>
+                          <Text size="sm" fw={500} c="navy.7">{tracking.shipment.courier_name}</Text>
                         </Stack>
                       )}
-                      {tracking.tracking_number && (
+                      {tracking.shipment.awb_number && (
                         <Stack gap={0}>
                           <Text size="xs" c="dimmed">AWB</Text>
-                          <Text size="sm" fw={500} c="navy.7">{tracking.tracking_number}</Text>
+                          <Text size="sm" fw={500} c="navy.7">{tracking.shipment.awb_number}</Text>
                         </Stack>
                       )}
-                      {tracking.estimated_delivery && (
+                      {tracking.shipment.estimated_delivery && (
                         <Stack gap={0}>
                           <Text size="xs" c="dimmed">Est. Delivery</Text>
                           <Text size="sm" fw={500} c="navy.7">
-                            {formatDate(tracking.estimated_delivery)}
+                            {tracking.shipment.estimated_delivery}
                           </Text>
                         </Stack>
                       )}
                     </SimpleGrid>
-                    {tracking.tracking_url && (
+                    {tracking.shipment.tracking_url && (
                       <Anchor
-                        href={tracking.tracking_url}
+                        href={tracking.shipment.tracking_url}
                         target="_blank"
                         rel="noopener noreferrer"
                         size="sm"
@@ -167,8 +176,8 @@ export default function TrackOrderPage() {
                         <Stack gap={2} flex={1}>
                           <Text fw={500} c="navy.7">{entry.status}</Text>
                           <Text size="xs" c="dimmed">{formatDate(entry.timestamp)}</Text>
-                          {entry.description && (
-                            <Text size="sm" c="dimmed">{entry.description}</Text>
+                          {entry.note && (
+                            <Text size="sm" c="dimmed">{entry.note}</Text>
                           )}
                         </Stack>
                       </Group>

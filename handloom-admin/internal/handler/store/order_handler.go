@@ -3,6 +3,7 @@ package store
 import (
 	"log/slog"
 	"net/http"
+	"slices"
 
 	"github.com/go-chi/chi/v5"
 
@@ -55,10 +56,27 @@ func (h *OrderHandler) ListMyOrders(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	for _, o := range result.Orders {
+		stripInternal(o)
+	}
+
 	response.SuccessWithMeta(w, result.Orders, &response.Meta{
 		Limit:      pagination.Limit,
 		NextCursor: result.Pagination.NextCursor,
 		HasMore:    result.Pagination.HasMore,
+	})
+}
+
+// stripInternal drops the admin-only notes before an order goes out over a
+// customer-facing route, keeping the ones an admin deliberately marked as not
+// internal. domain.Order serializes the whole slice, so without this every
+// staff note would be readable by the customer.
+func stripInternal(order *domain.Order) {
+	if order == nil {
+		return
+	}
+	order.InternalNotes = slices.DeleteFunc(order.InternalNotes, func(n domain.OrderNote) bool {
+		return n.IsInternal
 	})
 }
 
@@ -80,6 +98,8 @@ func (h *OrderHandler) GetOrder(w http.ResponseWriter, r *http.Request) {
 		response.NotFound(w, "Order")
 		return
 	}
+
+	stripInternal(order)
 
 	response.Success(w, order)
 }

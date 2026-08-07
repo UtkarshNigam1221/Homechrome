@@ -52,9 +52,9 @@ func recordPurchaseAnalytics(ctx context.Context, customerRepo domain.CustomerRe
 	// First-purchase detection — atomic increment returns the new count. Two
 	// concurrent orders for the same customer get newCount==1 and ==2; only the
 	// first fires customer_first_purchase, repeat_purchase fires when > 1.
-	newCount, err := customerRepo.IncrementOrderCount(ctx, order.CustomerID)
+	newCount, err := customerRepo.RecordPurchase(ctx, order.CustomerID, order.TotalAmount)
 	if err != nil {
-		slog.WarnContext(ctx, "increment order count failed", "customer_id", order.CustomerID, "error", err)
+		slog.WarnContext(ctx, "record purchase failed", "customer_id", order.CustomerID, "error", err)
 		return
 	}
 	switch {

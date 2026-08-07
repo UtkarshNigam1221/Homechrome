@@ -129,6 +129,66 @@ domain/ (entities + interfaces) ← handler/ → service/ → repository/{dynamo
 - Lambda count: 22 in dev (12 admin + 9 store + 1 migrator)
 - Region: `ap-south-1` (Mumbai)
 
+## Environment Promotion (dev → prod)
+
+**Deployment targets**: 
+- **dev** (`ap-south-1`): lowest latency, full feature set, no SLA. Used for testing + staff access.
+- **prod** (`ap-south-1`): production traffic, SLA 99.9%, secrets in AWS Secrets Manager.
+
+**Env promotion flow**:
+1. Develop + test locally with `make setup-local` and `npm run dev`
+2. Commit to a branch (e.g., `fix/feature-name`)
+3. Create PR with full test plan; wait for CI (GitHub Actions) to pass
+4. Merge to `main`
+5. CI auto-deploys `main` to **dev** via `cdk deploy` (see `.github/workflows/deploy-*.yml`)
+6. Manual prod deployment: merge `main` to `prod` branch OR trigger `cdk deploy` for prod manually with `--context env=prod`
+
+**Secrets management**:
+- **Local dev**: `.env.local*` files (in `.gitignore`), sourced by `make setup-local`
+- **CI/CD**: GitHub Secrets injected as env vars, then passed to CDK via `.env.{env}` files
+- **Lambda (prod)**: Secrets fetched from AWS SSM at runtime (e.g., `/handloom/prod/jwt-secret`); no secrets in CDK output or Lambda environment
+
+**Database**: Separate DynamoDB + PostgreSQL instances per env (prefixed with env name: `handloom-core-dev` vs `handloom-core-prod`). Prod uses Neon PostgreSQL; dev uses local Docker.
+
+**Cross-env considerations**: Prod API URL is hardcoded in admin frontend for AWS dev deployment but points to dev backend. To test prod backend from admin frontend locally, manually set `VITE_API_URL=https://api.homechrome.in` in `.env.local-backend`.
+
+## Cross-Project Changes
+
+When backend changes affect frontends (or vice versa), coordinate carefully:
+
+**Backend API change** (e.g., new endpoint, response shape change):
+1. Make the change in `handloom-admin/`
+2. Update both frontend projects (`handloom-admin-frontend/` + `homechrome-store/`) to consume the new API in the same PR
+3. Test locally: `make run` (backend) + `npm run dev:local` (frontend) in separate terminals
+4. Ensure both frontends have tests covering the change (e.g., mock the new endpoint)
+
+**Frontend UI change that affects backend** (e.g., new form submission, different auth flow):
+1. Update the frontend in one PR
+2. If the backend's response envelope, validation, or auth strategy must change, do that in a second PR + merge to main
+3. Coordinate timing: frontend PR → merged → staged to prod, then backend PR → merged → staged to prod
+
+**Database schema change**:
+1. Add migration to `handloom-admin/migrations/`
+2. Update backend repository interfaces + implementations (`internal/repository/postgres/`)
+3. If frontends query the changed data (e.g., a product attribute is renamed), update their API client calls + UI
+4. Test migration locally: `make teardown-local && make setup-local`
+
+**Common gotcha**: Frontend dev servers cache API responses. If backend changes, restart `npm run dev` to clear React Query cache.
+
+## Monorepo Gotchas
+
+**Independence**: Each project (`handloom-admin/`, `handloom-admin-frontend/`, `homechrome-store/`) has its own package manager (Go modules vs npm), its own build process, and its own CI/CD workflows. Changes in one don't trigger rebuilds in others — you must update all affected projects in a single commit or coordinated PRs.
+
+**No shared dependencies**: There's no monorepo workspace (lerna, pnpm workspaces, or go workspaces). Common utilities are copied or reimplemented per project. Before adding a shared library, check if it's worth the coupling.
+
+**CI/CD parallelization**: GitHub Actions workflows in `.github/workflows/` run in parallel. A backend deploy doesn't wait for frontend tests. If backend + frontend are in the same PR, both merge to `main` and both CI pipelines trigger independently. For dependent changes, ensure CI passes for both before merge.
+
+**Git history**: The monorepo has a single git history, so `git log --all` shows commits from all projects. Use `git log -- handloom-admin/` to filter by project.
+
+**Deployment order**: CDK stacks have dependencies (e.g., APIStack depends on DatabaseStack). If you change multiple CDK stacks, `cdk deploy` respects the order automatically. But if changing infrastructure code in different projects, deploy backend first (creates tables, S3 buckets), then frontends.
+
+**Environment variables**: Backend, admin frontend, and storefront each have their own env var conventions (Go: SCREAMING_SNAKE_CASE; React: VITE_; Next.js: NEXT_PUBLIC_). Don't assume they're the same. Check `.env.example` files per project.
+
 ## Key Conventions
 
 - **Backend error handling**: Services return `*errors.AppError`; handlers call `response.Error(w, err)` — standard JSON envelope `{success, error: {code, message}}`

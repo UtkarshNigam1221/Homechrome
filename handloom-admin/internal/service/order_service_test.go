@@ -100,9 +100,14 @@ func TestOrderService_Create(t *testing.T) {
 			ReserveStock(gomock.Any(), "prod_123", 2, gomock.Any()).
 			Return(&domain.InventoryTransaction{}, nil)
 
+		// The order total must reach TotalSpent — it is what the admin customer
+		// view renders as lifetime spend.
 		mockCustomerRepo.EXPECT().
-			IncrementOrderCount(gomock.Any(), "cust_123").
-			Return(int64(1), nil)
+			RecordPurchase(gomock.Any(), "cust_123", gomock.Any()).
+			DoAndReturn(func(_ context.Context, _ string, amountPaise int64) (int64, error) {
+				assert.Positive(t, amountPaise)
+				return int64(1), nil
+			})
 
 		order, err := service.Create(ctx, req, "admin_123")
 
@@ -470,6 +475,9 @@ func TestOrderService_AddNote(t *testing.T) {
 			DoAndReturn(func(ctx context.Context, id string, note domain.OrderNote) error {
 				assert.Equal(t, "Test note", note.Note)
 				assert.Equal(t, "admin_123", note.CreatedBy)
+				// The admin note list highlights internal notes, so the flag has
+				// to survive the trip rather than being dropped on the floor.
+				assert.True(t, note.IsInternal)
 				return nil
 			})
 
@@ -523,21 +531,26 @@ func TestOrderService_UpdateTracking(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("successful tracking update", func(t *testing.T) {
+		// The courier URL must reach the repository — the storefront renders it
+		// as the "Track on courier website" link.
 		mockOrderRepo.EXPECT().
-			UpdateTracking(ctx, "order_123", "TRACK123456", "BlueDart").
+			UpdateTracking(ctx, "order_123", "TRACK123456", "BlueDart", "https://bluedart.example/t/TRACK123456").
 			Return(nil)
 
-		err := service.UpdateTracking(ctx, "order_123", "TRACK123456", "BlueDart", "admin_123")
+		err := service.UpdateTracking(
+			ctx, "order_123", "TRACK123456", "BlueDart",
+			"https://bluedart.example/t/TRACK123456", "admin_123",
+		)
 
 		require.NoError(t, err)
 	})
 
 	t.Run("tracking update - order not found", func(t *testing.T) {
 		mockOrderRepo.EXPECT().
-			UpdateTracking(ctx, "nonexistent", "TRACK123", "BlueDart").
+			UpdateTracking(ctx, "nonexistent", "TRACK123", "BlueDart", "").
 			Return(errors.NotFound("Order"))
 
-		err := service.UpdateTracking(ctx, "nonexistent", "TRACK123", "BlueDart", "admin_123")
+		err := service.UpdateTracking(ctx, "nonexistent", "TRACK123", "BlueDart", "", "admin_123")
 		require.Error(t, err)
 	})
 }

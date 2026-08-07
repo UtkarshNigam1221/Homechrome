@@ -7,8 +7,6 @@ export interface Customer {
   phone: string;
   phone_verified: boolean;
   status: 'ACTIVE' | 'INACTIVE' | 'BLOCKED';
-  total_orders: number;
-  total_spent: number;
   addresses: Address[];
   created_at: string;
   updated_at: string;
@@ -139,6 +137,20 @@ export interface Order {
   shipped_at?: string;
   delivered_at?: string;
   cancelled_at?: string;
+  /**
+   * Notes the shop left on this order. The backend keeps the `internal_notes`
+   * wire name (it is one shared entity with the admin) but filters out
+   * everything flagged internal before it reaches us, so anything present here
+   * was deliberately shared.
+   */
+  internal_notes?: OrderNote[];
+}
+
+export interface OrderNote {
+  id: string;
+  note: string;
+  is_internal: boolean;
+  created_at: string;
 }
 
 export type OrderStatus =

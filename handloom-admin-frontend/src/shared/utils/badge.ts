@@ -25,8 +25,8 @@ export function getStatusBadgeVariant(
     // Product statuses
     DRAFT: 'gray',
 
-    // User statuses
-    SUSPENDED: 'danger',
+    // Customer statuses
+    BLOCKED: 'danger',
 
     // Notification statuses
     UNREAD: 'info',

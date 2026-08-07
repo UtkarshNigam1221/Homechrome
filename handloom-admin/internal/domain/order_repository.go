@@ -33,7 +33,7 @@ type OrderRepository interface {
 	AddNote(ctx context.Context, id string, note OrderNote) error
 
 	// UpdateTracking updates tracking information
-	UpdateTracking(ctx context.Context, id string, trackingNumber string, carrier string) error
+	UpdateTracking(ctx context.Context, id string, trackingNumber string, carrier string, trackingURL string) error
 }
 
 // ListOrdersRequest contains parameters for listing orders
@@ -79,10 +79,12 @@ type CustomerRepository interface {
 	// Search searches customers by query
 	Search(ctx context.Context, query string, pagination PaginationRequest) (*ListCustomersResponse, error)
 
-	// IncrementOrderCount atomically increments the customer's OrderCount by 1
-	// and returns the new count. Uses DynamoDB ADD with ReturnValues=UPDATED_NEW,
-	// which initializes the attribute to 0 if absent (so first-ever increment returns 1).
-	IncrementOrderCount(ctx context.Context, customerID string) (int64, error)
+	// RecordPurchase atomically increments the customer's OrderCount by 1 and
+	// adds amountPaise to TotalSpent, returning the new count. Uses DynamoDB ADD
+	// with ReturnValues=UPDATED_NEW, which initializes the attributes to 0 if
+	// absent (so the first-ever increment returns 1). Both counters move in one
+	// UpdateItem so they cannot drift apart under concurrent orders.
+	RecordPurchase(ctx context.Context, customerID string, amountPaise int64) (int64, error)
 }
 
 // ListCustomersRequest contains parameters for listing customers
@@ -117,7 +119,7 @@ type UpdateCustomerRequest struct {
 	Phone     string         `json:"phone,omitempty"`
 	Tags      []string       `json:"tags,omitempty"`
 	Notes     string         `json:"notes,omitempty"`
-	Status    CustomerStatus `json:"status,omitempty"`
+	Status    CustomerStatus `json:"status,omitempty" validate:"omitempty,oneof=ACTIVE INACTIVE BLOCKED"`
 }
 
 // OrderService defines the interface for order operations
@@ -138,7 +140,7 @@ type OrderService interface {
 	AddNote(ctx context.Context, id string, note string, isInternal bool, createdBy string) error
 
 	// UpdateTracking updates tracking information
-	UpdateTracking(ctx context.Context, id string, trackingNumber string, carrier string, updatedBy string) error
+	UpdateTracking(ctx context.Context, id string, trackingNumber string, carrier string, trackingURL string, updatedBy string) error
 
 	// CancelOrder cancels an order
 	CancelOrder(ctx context.Context, id string, reason string, updatedBy string) error

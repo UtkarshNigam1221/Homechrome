@@ -28,6 +28,8 @@ export const ROUTES = {
     DETAIL: (id: string) => `/admin/customers/${id}`,
     ORDERS: (id: string) => `/admin/customers/${id}/orders`,
     SEARCH: '/admin/customers/search',
+    ADDRESSES: (id: string) => `/admin/customers/${id}/addresses`,
+    ADDRESS: (id: string, addressId: string) => `/admin/customers/${id}/addresses/${addressId}`,
   },
 
   INVENTORY: {

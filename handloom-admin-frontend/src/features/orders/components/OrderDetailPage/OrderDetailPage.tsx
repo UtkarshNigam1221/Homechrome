@@ -14,6 +14,7 @@ import { useState } from 'react';
 import toast from 'react-hot-toast';
 import { useNavigate, useParams } from 'react-router-dom';
 
+import { addressFullName } from '@/features/customers/lib/displayName';
 import { ordersApi } from '@/features/orders/api';
 import { getErrorMessage } from '@/shared/api/client';
 import { Badge, Button, Card, ConfirmModal, Input, Modal, Select } from '@/shared/components/ui';
@@ -21,7 +22,7 @@ import { getStatusBadgeVariant } from '@/shared/utils/badge';
 import { formatCurrency } from '@/shared/utils/currency';
 
 import type { OrderStatus, ProviderPaymentStatus } from '../../types';
-import { ORDER_STATUSES } from '../../types';
+import { ALLOWED_TRANSITIONS } from '../../types';
 import { OrderNotes } from './OrderNotes';
 import { OrderTimeline } from './OrderTimeline';
 
@@ -37,6 +38,7 @@ export function OrderDetailPage() {
   const [newStatus, setNewStatus] = useState<OrderStatus | ''>('');
   const [trackingNumber, setTrackingNumber] = useState('');
   const [carrier, setCarrier] = useState('');
+  const [trackingUrl, setTrackingUrl] = useState('');
   const [noteText, setNoteText] = useState('');
   const [noteIsInternal, setNoteIsInternal] = useState(true);
 
@@ -70,11 +72,13 @@ export function OrderDetailPage() {
       id,
       tracking_number,
       carrier,
+      tracking_url,
     }: {
       id: string;
       tracking_number: string;
       carrier: string;
-    }) => ordersApi.updateTracking(id, tracking_number, carrier),
+      tracking_url: string;
+    }) => ordersApi.updateTracking(id, tracking_number, carrier, tracking_url),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['order', id] });
       toast.success('Tracking information updated');
@@ -141,6 +145,15 @@ export function OrderDetailPage() {
   }
 
   const canCancel = ['PENDING', 'CONFIRMED'].includes(order.status);
+  const nextStatuses = ALLOWED_TRANSITIONS[order.status];
+
+  // Mirrors the backend's `http_url` validation so a bad paste is caught before
+  // the request. The scheme check matters: this URL becomes a customer-facing
+  // link, and a javascript: URL would otherwise sail through.
+  const trackingUrlError =
+    trackingUrl.trim() && !/^https?:\/\/\S+$/i.test(trackingUrl.trim())
+      ? 'Enter a URL starting with http:// or https://'
+      : undefined;
 
   return (
     <div className="space-y-6">
@@ -172,8 +185,11 @@ export function OrderDetailPage() {
         <Button
           variant="secondary"
           leftIcon={<Edit className="w-4 h-4" />}
+          disabled={nextStatuses.length === 0}
           onClick={() => {
-            setNewStatus(order.status);
+            // Seed with the first legal next status — the current one is not an
+            // option, since the backend rejects a no-op transition.
+            setNewStatus(nextStatuses[0] ?? '');
             setShowStatusModal(true);
           }}
         >
@@ -185,6 +201,7 @@ export function OrderDetailPage() {
           onClick={() => {
             setTrackingNumber(order.tracking_number || '');
             setCarrier(order.shipping_carrier || '');
+            setTrackingUrl(order.tracking_url || '');
             setShowTrackingModal(true);
           }}
         >
@@ -303,7 +320,12 @@ export function OrderDetailPage() {
                 <p className="font-medium">{order.customer_name}</p>
                 <p className="text-sm text-gray-500">{order.customer_email}</p>
               </div>
-              <Button variant="secondary" size="sm" onClick={() => navigate('/customers')}>
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={!order.customer_id}
+                onClick={() => navigate(`/customers?id=${order.customer_id}`)}
+              >
                 View Customer
               </Button>
             </div>
@@ -316,8 +338,11 @@ export function OrderDetailPage() {
               Shipping Address
             </h2>
             <div className="text-sm">
-              <p className="font-medium">{order.shipping_address?.name}</p>
-              <p className="text-gray-600">{order.shipping_address?.street}</p>
+              <p className="font-medium">{addressFullName(order.shipping_address)}</p>
+              <p className="text-gray-600">{order.shipping_address?.address_line1}</p>
+              {order.shipping_address?.address_line2 && (
+                <p className="text-gray-600">{order.shipping_address.address_line2}</p>
+              )}
               <p className="text-gray-600">
                 {order.shipping_address?.city}, {order.shipping_address?.state}{' '}
                 {order.shipping_address?.postal_code}
@@ -345,6 +370,19 @@ export function OrderDetailPage() {
                   <p className="text-sm text-gray-500">Tracking Number</p>
                   <p className="font-mono text-sm">{order.tracking_number}</p>
                 </div>
+                {order.tracking_url && (
+                  <div>
+                    <p className="text-sm text-gray-500">Tracking URL</p>
+                    <a
+                      href={order.tracking_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm text-primary-600 hover:underline break-all"
+                    >
+                      {order.tracking_url}
+                    </a>
+                  </div>
+                )}
               </div>
             </Card>
           )}
@@ -362,12 +400,18 @@ export function OrderDetailPage() {
         size="sm"
       >
         <div className="space-y-4">
-          <Select
-            label="New Status"
-            options={ORDER_STATUSES.map((s) => ({ value: s, label: s }))}
-            value={newStatus}
-            onChange={(e) => setNewStatus(e.target.value as OrderStatus)}
-          />
+          {nextStatuses.length === 0 ? (
+            <p className="text-sm text-gray-600">
+              An order that is {order.status.toLowerCase()} cannot move to another status.
+            </p>
+          ) : (
+            <Select
+              label="New Status"
+              options={nextStatuses.map((s) => ({ value: s, label: s }))}
+              value={newStatus}
+              onChange={(e) => setNewStatus(e.target.value as OrderStatus)}
+            />
+          )}
           <div className="flex justify-end gap-3 pt-4">
             <Button variant="secondary" onClick={() => setShowStatusModal(false)}>
               Cancel
@@ -375,7 +419,7 @@ export function OrderDetailPage() {
             <Button
               onClick={() => updateStatusMutation.mutate({ id: order.id, status: newStatus })}
               loading={updateStatusMutation.isPending}
-              disabled={!newStatus || newStatus === order.status || updateStatusMutation.isPending}
+              disabled={!newStatus || updateStatusMutation.isPending}
             >
               Update Status
             </Button>
@@ -403,6 +447,14 @@ export function OrderDetailPage() {
             value={trackingNumber}
             onChange={(e) => setTrackingNumber(e.target.value)}
           />
+          <Input
+            label="Tracking URL (optional)"
+            placeholder="https://carrier.example/track/123"
+            value={trackingUrl}
+            onChange={(e) => setTrackingUrl(e.target.value)}
+            error={trackingUrlError}
+            hint="Shown to the customer as a “Track on courier website” link."
+          />
           <div className="flex justify-end gap-3 pt-4">
             <Button variant="secondary" onClick={() => setShowTrackingModal(false)}>
               Cancel
@@ -413,10 +465,11 @@ export function OrderDetailPage() {
                   id: order.id,
                   tracking_number: trackingNumber,
                   carrier,
+                  tracking_url: trackingUrl.trim(),
                 })
               }
               loading={updateTrackingMutation.isPending}
-              disabled={!trackingNumber}
+              disabled={!trackingNumber || !!trackingUrlError}
             >
               Update Tracking
             </Button>
@@ -453,6 +506,11 @@ export function OrderDetailPage() {
               Internal note (only visible to staff)
             </label>
           </div>
+          {!noteIsInternal && (
+            <p className="text-sm text-yellow-700 bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+              This note will be shown to the customer on their order page.
+            </p>
+          )}
           <div className="flex justify-end gap-3 pt-4">
             <Button variant="secondary" onClick={() => setShowNoteModal(false)}>
               Cancel

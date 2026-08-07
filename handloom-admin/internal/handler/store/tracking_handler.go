@@ -117,6 +117,13 @@ func (h *TrackingHandler) TrackOrder(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// domain.Shipment carries no tracking URL (only a label URL), so the
+	// courier link always comes off the order regardless of which branch above
+	// produced the shipment info.
+	if shipmentInfo != nil && shipmentInfo.TrackingURL == "" {
+		shipmentInfo.TrackingURL = order.TrackingURL
+	}
+
 	resp := TrackingResponse{
 		OrderNumber:   order.OrderNumber,
 		Status:        order.Status,

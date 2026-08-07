@@ -114,10 +114,11 @@ type OrderItem struct {
 
 // OrderNote represents an internal note on an order
 type OrderNote struct {
-	ID        string    `json:"id" dynamodbav:"id"`
-	Note      string    `json:"note" dynamodbav:"note"`
-	CreatedBy string    `json:"created_by" dynamodbav:"created_by"`
-	CreatedAt time.Time `json:"created_at" dynamodbav:"created_at"`
+	ID         string    `json:"id" dynamodbav:"id"`
+	Note       string    `json:"note" dynamodbav:"note"`
+	IsInternal bool      `json:"is_internal" dynamodbav:"is_internal"`
+	CreatedBy  string    `json:"created_by" dynamodbav:"created_by"`
+	CreatedAt  time.Time `json:"created_at" dynamodbav:"created_at"`
 }
 
 // Address represents a shipping or billing address
@@ -189,10 +190,10 @@ type Customer struct {
 	PhoneVerified bool           `json:"phone_verified" dynamodbav:"phone_verified"`
 	Status        CustomerStatus `json:"status" dynamodbav:"status"`
 
-	// Stats
-	TotalOrders int     `json:"total_orders" dynamodbav:"total_orders"`
-	TotalSpent  float64 `json:"total_spent" dynamodbav:"total_spent"`
-	OrderCount  int     `json:"order_count" dynamodbav:"order_count"`
+	// Both maintained by CustomerRepository.RecordPurchase. TotalSpent is gross
+	// order value in paise — the stubbed refund path does not adjust it.
+	TotalSpent int64 `json:"total_spent" dynamodbav:"total_spent"`
+	OrderCount int   `json:"order_count" dynamodbav:"order_count"`
 
 	Addresses []Address `json:"addresses,omitempty" dynamodbav:"addresses,omitempty"`
 	Tags      []string  `json:"tags,omitempty" dynamodbav:"tags,omitempty"`
