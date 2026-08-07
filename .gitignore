@@ -11,7 +11,11 @@ skills-lock.json
 
 # Superpowers
 .superpowers/
-docs/superpowers/
+
+# Generated docs (stay local, not committed) — ignore all docs except superpowers
+docs/
+!docs/superpowers/
+!docs/superpowers/**
 
 # Playwright MCP session snapshots
 .playwright-mcp/
