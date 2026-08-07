@@ -7,8 +7,6 @@ export interface Customer {
   phone: string;
   phone_verified: boolean;
   status: 'ACTIVE' | 'INACTIVE' | 'BLOCKED';
-  total_orders: number;
-  total_spent: number;
   addresses: Address[];
   created_at: string;
   updated_at: string;

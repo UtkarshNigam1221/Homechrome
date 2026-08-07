@@ -30,7 +30,7 @@ import { getStatusBadgeVariant } from '@/shared/utils/badge';
 import { formatCurrency } from '@/shared/utils/currency';
 
 import type { Order, OrderStatus } from '../types';
-import { ORDER_STATUSES } from '../types';
+import { ALLOWED_TRANSITIONS, ORDER_STATUSES } from '../types';
 
 export function OrdersPage() {
   const navigate = useNavigate();
@@ -267,10 +267,13 @@ export function OrdersPage() {
                       <Button
                         variant="secondary"
                         size="sm"
+                        disabled={(ALLOWED_TRANSITIONS[order.status] ?? []).length === 0}
                         onClick={(e) => {
                           e.stopPropagation();
                           setSelectedOrder(order);
-                          setNewStatus(order.status);
+                          // Seed with the first legal next status; the current
+                          // one is not offered, the backend rejects a no-op.
+                          setNewStatus((ALLOWED_TRANSITIONS[order.status] ?? [])[0] ?? '');
                         }}
                       >
                         Update
@@ -323,7 +326,9 @@ export function OrdersPage() {
           </div>
           <Select
             label="New Status"
-            options={ORDER_STATUSES.map((s) => ({ value: s, label: s }))}
+            options={(selectedOrder ? (ALLOWED_TRANSITIONS[selectedOrder.status] ?? []) : []).map(
+              (s) => ({ value: s, label: s })
+            )}
             value={newStatus}
             onChange={(e) => setNewStatus(e.target.value as OrderStatus)}
           />
@@ -334,7 +339,7 @@ export function OrdersPage() {
             <Button
               onClick={handleUpdateStatus}
               loading={updateStatusMutation.isPending}
-              disabled={!newStatus || newStatus === selectedOrder?.status}
+              disabled={!newStatus}
             >
               Update Status
             </Button>

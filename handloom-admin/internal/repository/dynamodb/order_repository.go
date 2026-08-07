@@ -546,26 +546,29 @@ func (r *CustomerRepository) Search(ctx context.Context, query string, paginatio
 	return r.List(ctx, req)
 }
 
-// IncrementOrderCount atomically bumps the customer's OrderCount by 1 and
-// returns the new value. DynamoDB ADD initializes the attribute to 0 when it
-// does not yet exist, so the very first call always returns 1. Using
-// ReturnValues=UPDATED_NEW means callers can gate first-purchase logic on
-// newCount==1 without a separate read, closing the concurrent-payment race.
-func (r *CustomerRepository) IncrementOrderCount(ctx context.Context, customerID string) (int64, error) {
+// RecordPurchase atomically bumps the customer's OrderCount by 1 and adds
+// amountPaise to TotalSpent, returning the new count. DynamoDB ADD initializes
+// an attribute to 0 when it does not yet exist, so the very first call always
+// returns 1. Using ReturnValues=UPDATED_NEW means callers can gate
+// first-purchase logic on newCount==1 without a separate read, closing the
+// concurrent-payment race. Both counters move in the same UpdateItem so they
+// cannot diverge.
+func (r *CustomerRepository) RecordPurchase(ctx context.Context, customerID string, amountPaise int64) (int64, error) {
 	out, err := r.client.db.UpdateItem(ctx, &dynamodb.UpdateItemInput{
 		TableName: aws.String(r.client.ordersTable),
 		Key: map[string]types.AttributeValue{
 			"PK": &types.AttributeValueMemberS{Value: "CUSTOMER#" + customerID},
 			"SK": &types.AttributeValueMemberS{Value: skMetadata},
 		},
-		UpdateExpression: aws.String("ADD order_count :one"),
+		UpdateExpression: aws.String("ADD order_count :one, total_spent :amount"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":one": &types.AttributeValueMemberN{Value: "1"},
+			":one":    &types.AttributeValueMemberN{Value: "1"},
+			":amount": &types.AttributeValueMemberN{Value: strconv.FormatInt(amountPaise, 10)},
 		},
 		ReturnValues: types.ReturnValueUpdatedNew,
 	})
 	if err != nil {
-		return 0, errors.Wrap(err, "Failed to increment customer order count")
+		return 0, errors.Wrap(err, "Failed to record customer purchase")
 	}
 	raw, ok := out.Attributes["order_count"].(*types.AttributeValueMemberN)
 	if !ok {

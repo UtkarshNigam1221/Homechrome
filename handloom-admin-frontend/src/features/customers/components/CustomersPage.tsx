@@ -26,8 +26,9 @@ import { useCursorPagination, useDebounce, useDeleteWithConfirm } from '@/shared
 import { getStatusBadgeVariant } from '@/shared/utils/badge';
 import { formatCurrency } from '@/shared/utils/currency';
 
-import { addressFullName, customerDisplayName, customerInitial } from '../lib/displayName';
+import { customerDisplayName, customerInitial } from '../lib/displayName';
 import type { Customer } from '../types';
+import { CustomerAddresses } from './CustomerAddresses';
 import { CustomerFormModal } from './CustomerFormModal';
 
 export function CustomersPage() {
@@ -303,22 +304,7 @@ export function CustomersPage() {
                 </p>
               </div>
             </div>
-            {detailCustomer.addresses && detailCustomer.addresses.length > 0 && (
-              <div className="pt-4 border-t">
-                <p className="text-sm font-medium text-gray-700 mb-2">Addresses</p>
-                {detailCustomer.addresses.map((address, idx) => (
-                  <div key={idx} className="text-sm text-gray-600 p-3 bg-gray-50 rounded-lg">
-                    <p>{addressFullName(address)}</p>
-                    <p>{address.address_line1}</p>
-                    {address.address_line2 && <p>{address.address_line2}</p>}
-                    <p>
-                      {address.city}, {address.state} {address.postal_code}
-                    </p>
-                    <p>{address.country}</p>
-                  </div>
-                ))}
-              </div>
-            )}
+            <CustomerAddresses customer={detailCustomer} onChange={setSelectedCustomer} />
             <div className="flex justify-end gap-3 pt-4 border-t">
               <Button
                 variant="secondary"

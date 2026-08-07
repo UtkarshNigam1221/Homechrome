@@ -1,7 +1,7 @@
 import type { Order } from '@/features/orders/types';
 import apiClient, { normalizeListResponse } from '@/shared/api/client';
 import { ROUTES } from '@/shared/constants/routes';
-import type { ListResponse, PaginationParams } from '@/shared/types/common';
+import type { Address, ListResponse, PaginationParams } from '@/shared/types/common';
 
 import type { CreateCustomerRequest, Customer } from './types';
 
@@ -36,6 +36,25 @@ export const customersApi = {
     const response = await apiClient.get<ListResponse<Order>>(ROUTES.CUSTOMERS.ORDERS(id), {
       params,
     });
+    return response.data;
+  },
+
+  // The three address endpoints each return the full updated customer.
+  addAddress: async (id: string, address: Address) => {
+    const response = await apiClient.post<Customer>(ROUTES.CUSTOMERS.ADDRESSES(id), address);
+    return response.data;
+  },
+
+  updateAddress: async (id: string, addressId: string, address: Address) => {
+    const response = await apiClient.put<Customer>(
+      ROUTES.CUSTOMERS.ADDRESS(id, addressId),
+      address
+    );
+    return response.data;
+  },
+
+  removeAddress: async (id: string, addressId: string) => {
+    const response = await apiClient.delete<Customer>(ROUTES.CUSTOMERS.ADDRESS(id, addressId));
     return response.data;
   },
 

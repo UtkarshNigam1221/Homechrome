@@ -100,9 +100,14 @@ func TestOrderService_Create(t *testing.T) {
 			ReserveStock(gomock.Any(), "prod_123", 2, gomock.Any()).
 			Return(&domain.InventoryTransaction{}, nil)
 
+		// The order total must reach TotalSpent — it is what the admin customer
+		// view renders as lifetime spend.
 		mockCustomerRepo.EXPECT().
-			IncrementOrderCount(gomock.Any(), "cust_123").
-			Return(int64(1), nil)
+			RecordPurchase(gomock.Any(), "cust_123", gomock.Any()).
+			DoAndReturn(func(_ context.Context, _ string, amountPaise int64) (int64, error) {
+				assert.Positive(t, amountPaise)
+				return int64(1), nil
+			})
 
 		order, err := service.Create(ctx, req, "admin_123")
 

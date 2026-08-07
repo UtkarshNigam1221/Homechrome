@@ -262,16 +262,7 @@ func (s *CustomerService) RemoveAddress(ctx context.Context, customerID, address
 	return customer, nil
 }
 
-// UpdateStats updates customer statistics
-func (s *CustomerService) UpdateStats(ctx context.Context, customerID string, totalOrders int, totalSpent float64) error {
-	customer, err := s.customerRepo.GetByID(ctx, customerID)
-	if err != nil {
-		return err
-	}
-
-	customer.TotalOrders = totalOrders
-	customer.TotalSpent = totalSpent
-	customer.UpdatedAt = time.Now()
-
-	return s.customerRepo.Update(ctx, customer)
-}
+// Customer purchase stats are maintained by CustomerRepository.RecordPurchase
+// on the order paths. An UpdateStats method used to live here that overwrote
+// them wholesale; it had no callers and would have clobbered the atomic
+// counters.

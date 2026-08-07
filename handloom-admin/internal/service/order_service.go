@@ -484,9 +484,11 @@ func generateOrderNumber() string {
 }
 
 // validTransitions defines allowed order status transitions.
+// CONFIRMED may go straight to SHIPPED: fulfillment is manual, and forcing a
+// stop at PROCESSING made shipping a single order three separate updates.
 var validTransitions = map[domain.OrderStatus][]domain.OrderStatus{
 	domain.OrderStatusPending:    {domain.OrderStatusConfirmed, domain.OrderStatusCancelled},
-	domain.OrderStatusConfirmed:  {domain.OrderStatusProcessing, domain.OrderStatusCancelled},
+	domain.OrderStatusConfirmed:  {domain.OrderStatusProcessing, domain.OrderStatusShipped, domain.OrderStatusCancelled},
 	domain.OrderStatusProcessing: {domain.OrderStatusShipped, domain.OrderStatusCancelled},
 	domain.OrderStatusShipped:    {domain.OrderStatusDelivered, domain.OrderStatusReturned},
 	domain.OrderStatusDelivered:  {domain.OrderStatusReturned},

@@ -22,7 +22,7 @@ import { getStatusBadgeVariant } from '@/shared/utils/badge';
 import { formatCurrency } from '@/shared/utils/currency';
 
 import type { OrderStatus, ProviderPaymentStatus } from '../../types';
-import { ORDER_STATUSES } from '../../types';
+import { ALLOWED_TRANSITIONS } from '../../types';
 import { OrderNotes } from './OrderNotes';
 import { OrderTimeline } from './OrderTimeline';
 
@@ -145,6 +145,7 @@ export function OrderDetailPage() {
   }
 
   const canCancel = ['PENDING', 'CONFIRMED'].includes(order.status);
+  const nextStatuses = ALLOWED_TRANSITIONS[order.status] ?? [];
 
   // Mirrors the backend's `http_url` validation so a bad paste is caught before
   // the request. The scheme check matters: this URL becomes a customer-facing
@@ -192,8 +193,11 @@ export function OrderDetailPage() {
         <Button
           variant="secondary"
           leftIcon={<Edit className="w-4 h-4" />}
+          disabled={nextStatuses.length === 0}
           onClick={() => {
-            setNewStatus(order.status);
+            // Seed with the first legal next status — the current one is not an
+            // option, since the backend rejects a no-op transition.
+            setNewStatus(nextStatuses[0] ?? '');
             setShowStatusModal(true);
           }}
         >
@@ -404,12 +408,18 @@ export function OrderDetailPage() {
         size="sm"
       >
         <div className="space-y-4">
-          <Select
-            label="New Status"
-            options={ORDER_STATUSES.map((s) => ({ value: s, label: s }))}
-            value={newStatus}
-            onChange={(e) => setNewStatus(e.target.value as OrderStatus)}
-          />
+          {nextStatuses.length === 0 ? (
+            <p className="text-sm text-gray-600">
+              An order that is {order.status.toLowerCase()} cannot move to another status.
+            </p>
+          ) : (
+            <Select
+              label="New Status"
+              options={nextStatuses.map((s) => ({ value: s, label: s }))}
+              value={newStatus}
+              onChange={(e) => setNewStatus(e.target.value as OrderStatus)}
+            />
+          )}
           <div className="flex justify-end gap-3 pt-4">
             <Button variant="secondary" onClick={() => setShowStatusModal(false)}>
               Cancel
@@ -417,7 +427,7 @@ export function OrderDetailPage() {
             <Button
               onClick={() => updateStatusMutation.mutate({ id: order.id, status: newStatus })}
               loading={updateStatusMutation.isPending}
-              disabled={!newStatus || newStatus === order.status || updateStatusMutation.isPending}
+              disabled={!newStatus || updateStatusMutation.isPending}
             >
               Update Status
             </Button>

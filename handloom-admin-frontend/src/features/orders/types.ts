@@ -18,6 +18,23 @@ export const ORDER_STATUSES: OrderStatus[] = [
   'CANCELLED',
   'RETURNED',
 ];
+
+/**
+ * Mirrors validTransitions in internal/service/order_service.go. The backend
+ * rejects anything else with a 400, so offering the full status list just
+ * produced failing picks.
+ *
+ * Keep in sync with the Go map — it is the source of truth.
+ */
+export const ALLOWED_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
+  PENDING: ['CONFIRMED', 'CANCELLED'],
+  CONFIRMED: ['PROCESSING', 'SHIPPED', 'CANCELLED'],
+  PROCESSING: ['SHIPPED', 'CANCELLED'],
+  SHIPPED: ['DELIVERED', 'RETURNED'],
+  DELIVERED: ['RETURNED'],
+  CANCELLED: [],
+  RETURNED: [],
+};
 export type PaymentStatus = 'PENDING' | 'PAID' | 'FAILED' | 'REFUNDED';
 
 export interface OrderItem {

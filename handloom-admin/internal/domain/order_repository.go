@@ -79,10 +79,12 @@ type CustomerRepository interface {
 	// Search searches customers by query
 	Search(ctx context.Context, query string, pagination PaginationRequest) (*ListCustomersResponse, error)
 
-	// IncrementOrderCount atomically increments the customer's OrderCount by 1
-	// and returns the new count. Uses DynamoDB ADD with ReturnValues=UPDATED_NEW,
-	// which initializes the attribute to 0 if absent (so first-ever increment returns 1).
-	IncrementOrderCount(ctx context.Context, customerID string) (int64, error)
+	// RecordPurchase atomically increments the customer's OrderCount by 1 and
+	// adds amountPaise to TotalSpent, returning the new count. Uses DynamoDB ADD
+	// with ReturnValues=UPDATED_NEW, which initializes the attributes to 0 if
+	// absent (so the first-ever increment returns 1). Both counters move in one
+	// UpdateItem so they cannot drift apart under concurrent orders.
+	RecordPurchase(ctx context.Context, customerID string, amountPaise int64) (int64, error)
 }
 
 // ListCustomersRequest contains parameters for listing customers
