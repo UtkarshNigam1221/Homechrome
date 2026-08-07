@@ -10,13 +10,16 @@ import { useFormMutation } from '@/shared/hooks';
 import type { CreateCustomerRequest, Customer, UpdateCustomerRequest } from '../types';
 
 const customerSchema = z.object({
-  name: z.string().min(1, 'Name is required').max(100, 'Name must be less than 100 characters'),
+  first_name: z.string().min(1, 'First name is required').max(100),
+  last_name: z.string().min(1, 'Last name is required').max(100),
   email: z.string().email('Invalid email address'),
   phone: z.string().optional(),
   status: z.enum(['ACTIVE', 'INACTIVE', 'SUSPENDED']),
   // Address fields
-  address_name: z.string().optional(),
-  address_street: z.string().optional(),
+  address_first_name: z.string().optional(),
+  address_last_name: z.string().optional(),
+  address_line1: z.string().optional(),
+  address_line2: z.string().optional(),
   address_city: z.string().optional(),
   address_state: z.string().optional(),
   address_postal_code: z.string().optional(),
@@ -43,12 +46,15 @@ export function CustomerFormModal({ isOpen, onClose, customer }: CustomerFormMod
   } = useForm<CustomerFormData>({
     resolver: zodResolver(customerSchema),
     defaultValues: {
-      name: '',
+      first_name: '',
+      last_name: '',
       email: '',
       phone: '',
       status: 'ACTIVE',
-      address_name: '',
-      address_street: '',
+      address_first_name: '',
+      address_last_name: '',
+      address_line1: '',
+      address_line2: '',
       address_city: '',
       address_state: '',
       address_postal_code: '',
@@ -63,12 +69,15 @@ export function CustomerFormModal({ isOpen, onClose, customer }: CustomerFormMod
       const defaultAddress = customer?.addresses?.[0];
       if (customer?.id) {
         reset({
-          name: customer.name || `${customer.first_name || ''} ${customer.last_name || ''}`.trim(),
+          first_name: customer.first_name || '',
+          last_name: customer.last_name || '',
           email: customer.email,
           phone: customer.phone || '',
           status: customer.status,
-          address_name: defaultAddress?.name || '',
-          address_street: defaultAddress?.street || '',
+          address_first_name: defaultAddress?.first_name || '',
+          address_last_name: defaultAddress?.last_name || '',
+          address_line1: defaultAddress?.address_line1 || '',
+          address_line2: defaultAddress?.address_line2 || '',
           address_city: defaultAddress?.city || '',
           address_state: defaultAddress?.state || '',
           address_postal_code: defaultAddress?.postal_code || '',
@@ -77,12 +86,15 @@ export function CustomerFormModal({ isOpen, onClose, customer }: CustomerFormMod
         });
       } else {
         reset({
-          name: '',
+          first_name: '',
+          last_name: '',
           email: '',
           phone: '',
           status: 'ACTIVE',
-          address_name: '',
-          address_street: '',
+          address_first_name: '',
+          address_last_name: '',
+          address_line1: '',
+          address_line2: '',
           address_city: '',
           address_state: '',
           address_postal_code: '',
@@ -105,30 +117,37 @@ export function CustomerFormModal({ isOpen, onClose, customer }: CustomerFormMod
   });
 
   const onSubmit = (data: CustomerFormData) => {
-    const hasAddress = data.address_street || data.address_city;
+    const hasAddress = data.address_line1 || data.address_city;
 
     const requestData: CreateCustomerRequest = {
-      name: data.name,
+      first_name: data.first_name,
+      last_name: data.last_name,
       email: data.email,
       phone: data.phone || undefined,
-      addresses: hasAddress
-        ? [
-            {
-              type: 'shipping' as const,
-              name: data.address_name || data.name,
-              street: data.address_street || '',
-              city: data.address_city || '',
-              state: data.address_state || '',
-              postal_code: data.address_postal_code || '',
-              country: data.address_country || 'India',
-              phone: data.address_phone || data.phone,
-              is_default: true,
-            },
-          ]
+      address: hasAddress
+        ? {
+            first_name: data.address_first_name || data.first_name,
+            last_name: data.address_last_name || data.last_name,
+            address_line1: data.address_line1 || '',
+            address_line2: data.address_line2 || undefined,
+            city: data.address_city || '',
+            state: data.address_state || '',
+            postal_code: data.address_postal_code || '',
+            country: data.address_country || 'India',
+            phone: data.address_phone || data.phone,
+            is_default: true,
+          }
         : undefined,
     };
 
-    const updateData: UpdateCustomerRequest = { ...requestData, status: data.status };
+    // UpdateCustomerRequest carries no address — the backend manages those
+    // through /customers/{id}/addresses, so edits here only touch the profile.
+    const updateData: UpdateCustomerRequest = {
+      first_name: data.first_name,
+      last_name: data.last_name,
+      phone: data.phone || undefined,
+      status: data.status,
+    };
 
     submitMutation(customer?.id, requestData, updateData);
   };
@@ -146,11 +165,19 @@ export function CustomerFormModal({ isOpen, onClose, customer }: CustomerFormMod
           <h3 className="text-sm font-medium text-gray-700 mb-3">Basic Information</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Input
-              label="Full Name"
-              placeholder="e.g., John Doe"
-              error={errors.name?.message}
+              label="First Name"
+              placeholder="e.g., John"
+              error={errors.first_name?.message}
               required
-              {...register('name')}
+              {...register('first_name')}
+            />
+
+            <Input
+              label="Last Name"
+              placeholder="e.g., Doe"
+              error={errors.last_name?.message}
+              required
+              {...register('last_name')}
             />
 
             <Input
@@ -187,18 +214,32 @@ export function CustomerFormModal({ isOpen, onClose, customer }: CustomerFormMod
           <h3 className="text-sm font-medium text-gray-700 mb-3">Default Address (Optional)</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Input
-              label="Contact Name"
-              placeholder="e.g., John Doe"
-              {...register('address_name')}
+              label="Contact First Name"
+              placeholder="e.g., John"
+              {...register('address_first_name')}
+            />
+
+            <Input
+              label="Contact Last Name"
+              placeholder="e.g., Doe"
+              {...register('address_last_name')}
             />
 
             <Input label="Phone" placeholder="e.g., 9876543210" {...register('address_phone')} />
 
             <div className="md:col-span-2">
               <Input
-                label="Street Address"
-                placeholder="e.g., 123 Main Street, Apt 4B"
-                {...register('address_street')}
+                label="Address Line 1"
+                placeholder="e.g., 123 Main Street"
+                {...register('address_line1')}
+              />
+            </div>
+
+            <div className="md:col-span-2">
+              <Input
+                label="Address Line 2 (Optional)"
+                placeholder="e.g., Apt 4B, near the park"
+                {...register('address_line2')}
               />
             </div>
 

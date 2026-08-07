@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { Edit, Mail, MapPin, Phone, Plus, Search, ShoppingBag, Trash2 } from 'lucide-react';
 import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 
 import { customersApi } from '@/features/customers/api';
 import {
@@ -25,6 +26,7 @@ import { useCursorPagination, useDebounce, useDeleteWithConfirm } from '@/shared
 import { getStatusBadgeVariant } from '@/shared/utils/badge';
 import { formatCurrency } from '@/shared/utils/currency';
 
+import { addressFullName, customerDisplayName, customerInitial } from '../lib/displayName';
 import type { Customer } from '../types';
 import { CustomerFormModal } from './CustomerFormModal';
 
@@ -60,12 +62,33 @@ export function CustomersPage() {
       queryKey: 'customers',
       deleteFn: customersApi.delete,
       entityName: 'Customer',
-      getEntityName: (c) => c.name || c.email,
+      getEntityName: (c) => customerDisplayName(c) || c.email,
     }
   );
 
   const customers = customersData?.items || [];
   const pagination = customersData?.pagination;
+
+  // Deep link from elsewhere in the admin (e.g. an order's "View Customer"):
+  // /customers?id=<uuid> opens that customer's detail modal. Fetched directly
+  // rather than searched for in the list, which is paginated.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const deepLinkedId = searchParams.get('id');
+
+  const { data: deepLinkedCustomer } = useQuery({
+    queryKey: ['customer', deepLinkedId],
+    queryFn: () => customersApi.get(deepLinkedId ?? ''),
+    enabled: !!deepLinkedId,
+  });
+
+  // Derived rather than synced into state: a row click wins, otherwise show
+  // whoever the URL points at.
+  const detailCustomer = selectedCustomer ?? deepLinkedCustomer ?? null;
+
+  const closeDetail = () => {
+    setSelectedCustomer(null);
+    if (deepLinkedId) setSearchParams({}, { replace: true });
+  };
 
   const handleOpenCreate = () => {
     setEditingCustomer(null);
@@ -144,11 +167,13 @@ export function CustomersPage() {
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 bg-primary-100 rounded-full flex items-center justify-center">
                         <span className="text-primary-600 font-medium">
-                          {customer.name?.charAt(0).toUpperCase() || 'C'}
+                          {customerInitial(customer)}
                         </span>
                       </div>
                       <div>
-                        <p className="font-medium text-gray-900">{customer.name}</p>
+                        <p className="font-medium text-gray-900">
+                          {customerDisplayName(customer) || '—'}
+                        </p>
                         <p className="text-sm text-gray-500">{customer.email}</p>
                       </div>
                     </div>
@@ -234,29 +259,31 @@ export function CustomersPage() {
 
       {/* Customer Detail Modal */}
       <Modal
-        isOpen={!!selectedCustomer && !showFormModal}
-        onClose={() => setSelectedCustomer(null)}
+        isOpen={!!detailCustomer && !showFormModal}
+        onClose={closeDetail}
         title="Customer Details"
         size="md"
       >
-        {selectedCustomer && (
+        {detailCustomer && (
           <div className="space-y-4">
             <div className="flex items-center gap-4">
               <div className="w-16 h-16 bg-primary-100 rounded-full flex items-center justify-center">
                 <span className="text-primary-600 text-xl font-medium">
-                  {selectedCustomer.name?.charAt(0).toUpperCase() || 'C'}
+                  {customerInitial(detailCustomer)}
                 </span>
               </div>
               <div>
-                <h3 className="text-lg font-semibold">{selectedCustomer.name}</h3>
+                <h3 className="text-lg font-semibold">
+                  {customerDisplayName(detailCustomer) || '—'}
+                </h3>
                 <div className="flex items-center gap-2 text-gray-500">
                   <Mail className="w-4 h-4" />
-                  {selectedCustomer.email}
+                  {detailCustomer.email}
                 </div>
-                {selectedCustomer.phone && (
+                {detailCustomer.phone && (
                   <div className="flex items-center gap-2 text-gray-500">
                     <Phone className="w-4 h-4" />
-                    {selectedCustomer.phone}
+                    {detailCustomer.phone}
                   </div>
                 )}
               </div>
@@ -264,22 +291,23 @@ export function CustomersPage() {
             <div className="grid grid-cols-2 gap-4 pt-4 border-t">
               <div>
                 <p className="text-sm text-gray-500">Total Orders</p>
-                <p className="text-lg font-semibold">{selectedCustomer.order_count || 0}</p>
+                <p className="text-lg font-semibold">{detailCustomer.order_count || 0}</p>
               </div>
               <div>
                 <p className="text-sm text-gray-500">Total Spent</p>
                 <p className="text-lg font-semibold">
-                  {formatCurrency(selectedCustomer.total_spent || 0)}
+                  {formatCurrency(detailCustomer.total_spent || 0)}
                 </p>
               </div>
             </div>
-            {selectedCustomer.addresses && selectedCustomer.addresses.length > 0 && (
+            {detailCustomer.addresses && detailCustomer.addresses.length > 0 && (
               <div className="pt-4 border-t">
                 <p className="text-sm font-medium text-gray-700 mb-2">Addresses</p>
-                {selectedCustomer.addresses.map((address, idx) => (
+                {detailCustomer.addresses.map((address, idx) => (
                   <div key={idx} className="text-sm text-gray-600 p-3 bg-gray-50 rounded-lg">
-                    <p>{address.name}</p>
-                    <p>{address.street}</p>
+                    <p>{addressFullName(address)}</p>
+                    <p>{address.address_line1}</p>
+                    {address.address_line2 && <p>{address.address_line2}</p>}
                     <p>
                       {address.city}, {address.state} {address.postal_code}
                     </p>
@@ -293,7 +321,7 @@ export function CustomersPage() {
                 variant="secondary"
                 onClick={() => {
                   setSelectedCustomer(null);
-                  handleEdit(selectedCustomer);
+                  handleEdit(detailCustomer);
                 }}
               >
                 Edit Customer

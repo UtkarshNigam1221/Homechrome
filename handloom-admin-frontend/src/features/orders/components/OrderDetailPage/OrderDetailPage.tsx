@@ -14,6 +14,7 @@ import { useState } from 'react';
 import toast from 'react-hot-toast';
 import { useNavigate, useParams } from 'react-router-dom';
 
+import { addressFullName } from '@/features/customers/lib/displayName';
 import { ordersApi } from '@/features/orders/api';
 import { getErrorMessage } from '@/shared/api/client';
 import { Badge, Button, Card, ConfirmModal, Input, Modal, Select } from '@/shared/components/ui';
@@ -323,7 +324,12 @@ export function OrderDetailPage() {
                 <p className="font-medium">{order.customer_name}</p>
                 <p className="text-sm text-gray-500">{order.customer_email}</p>
               </div>
-              <Button variant="secondary" size="sm" onClick={() => navigate('/customers')}>
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={!order.customer_id}
+                onClick={() => navigate(`/customers?id=${order.customer_id}`)}
+              >
                 View Customer
               </Button>
             </div>
@@ -336,8 +342,11 @@ export function OrderDetailPage() {
               Shipping Address
             </h2>
             <div className="text-sm">
-              <p className="font-medium">{order.shipping_address?.name}</p>
-              <p className="text-gray-600">{order.shipping_address?.street}</p>
+              <p className="font-medium">{addressFullName(order.shipping_address)}</p>
+              <p className="text-gray-600">{order.shipping_address?.address_line1}</p>
+              {order.shipping_address?.address_line2 && (
+                <p className="text-gray-600">{order.shipping_address.address_line2}</p>
+              )}
               <p className="text-gray-600">
                 {order.shipping_address?.city}, {order.shipping_address?.state}{' '}
                 {order.shipping_address?.postal_code}
