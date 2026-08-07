@@ -59,6 +59,7 @@ export interface Order {
   billing_address?: Address;
   tracking_number?: string;
   shipping_carrier?: string;
+  tracking_url?: string;
   internal_notes?: OrderNote[];
   coupon_code?: string;
   created_at: string;

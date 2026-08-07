@@ -300,7 +300,7 @@ func (r *OrderRepository) AddNote(ctx context.Context, id string, note domain.Or
 }
 
 // UpdateTracking updates tracking information
-func (r *OrderRepository) UpdateTracking(ctx context.Context, id string, trackingNumber string, carrier string) error {
+func (r *OrderRepository) UpdateTracking(ctx context.Context, id string, trackingNumber string, carrier string, trackingURL string) error {
 	now := time.Now()
 
 	_, err := r.client.db.UpdateItem(ctx, &dynamodb.UpdateItemInput{
@@ -309,10 +309,11 @@ func (r *OrderRepository) UpdateTracking(ctx context.Context, id string, trackin
 			"PK": &types.AttributeValueMemberS{Value: "ORDER#" + id},
 			"SK": &types.AttributeValueMemberS{Value: skMetadata},
 		},
-		UpdateExpression: aws.String("SET tracking_number = :tracking, shipping_carrier = :carrier, updated_at = :now"),
+		UpdateExpression: aws.String("SET tracking_number = :tracking, shipping_carrier = :carrier, tracking_url = :url, updated_at = :now"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
 			":tracking": &types.AttributeValueMemberS{Value: trackingNumber},
 			":carrier":  &types.AttributeValueMemberS{Value: carrier},
+			":url":      &types.AttributeValueMemberS{Value: trackingURL},
 			exprNow:     &types.AttributeValueMemberS{Value: now.Format(time.RFC3339)},
 		},
 		ConditionExpression: aws.String("attribute_exists(PK)"),

@@ -33,7 +33,7 @@ type OrderRepository interface {
 	AddNote(ctx context.Context, id string, note OrderNote) error
 
 	// UpdateTracking updates tracking information
-	UpdateTracking(ctx context.Context, id string, trackingNumber string, carrier string) error
+	UpdateTracking(ctx context.Context, id string, trackingNumber string, carrier string, trackingURL string) error
 }
 
 // ListOrdersRequest contains parameters for listing orders
@@ -138,7 +138,7 @@ type OrderService interface {
 	AddNote(ctx context.Context, id string, note string, isInternal bool, createdBy string) error
 
 	// UpdateTracking updates tracking information
-	UpdateTracking(ctx context.Context, id string, trackingNumber string, carrier string, updatedBy string) error
+	UpdateTracking(ctx context.Context, id string, trackingNumber string, carrier string, trackingURL string, updatedBy string) error
 
 	// CancelOrder cancels an order
 	CancelOrder(ctx context.Context, id string, reason string, updatedBy string) error

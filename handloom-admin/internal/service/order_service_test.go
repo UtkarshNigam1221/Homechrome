@@ -523,21 +523,26 @@ func TestOrderService_UpdateTracking(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("successful tracking update", func(t *testing.T) {
+		// The courier URL must reach the repository — the storefront renders it
+		// as the "Track on courier website" link.
 		mockOrderRepo.EXPECT().
-			UpdateTracking(ctx, "order_123", "TRACK123456", "BlueDart").
+			UpdateTracking(ctx, "order_123", "TRACK123456", "BlueDart", "https://bluedart.example/t/TRACK123456").
 			Return(nil)
 
-		err := service.UpdateTracking(ctx, "order_123", "TRACK123456", "BlueDart", "admin_123")
+		err := service.UpdateTracking(
+			ctx, "order_123", "TRACK123456", "BlueDart",
+			"https://bluedart.example/t/TRACK123456", "admin_123",
+		)
 
 		require.NoError(t, err)
 	})
 
 	t.Run("tracking update - order not found", func(t *testing.T) {
 		mockOrderRepo.EXPECT().
-			UpdateTracking(ctx, "nonexistent", "TRACK123", "BlueDart").
+			UpdateTracking(ctx, "nonexistent", "TRACK123", "BlueDart", "").
 			Return(errors.NotFound("Order"))
 
-		err := service.UpdateTracking(ctx, "nonexistent", "TRACK123", "BlueDart", "admin_123")
+		err := service.UpdateTracking(ctx, "nonexistent", "TRACK123", "BlueDart", "", "admin_123")
 		require.Error(t, err)
 	})
 }

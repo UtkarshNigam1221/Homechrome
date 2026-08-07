@@ -37,6 +37,7 @@ export function OrderDetailPage() {
   const [newStatus, setNewStatus] = useState<OrderStatus | ''>('');
   const [trackingNumber, setTrackingNumber] = useState('');
   const [carrier, setCarrier] = useState('');
+  const [trackingUrl, setTrackingUrl] = useState('');
   const [noteText, setNoteText] = useState('');
   const [noteIsInternal, setNoteIsInternal] = useState(true);
 
@@ -70,11 +71,13 @@ export function OrderDetailPage() {
       id,
       tracking_number,
       carrier,
+      tracking_url,
     }: {
       id: string;
       tracking_number: string;
       carrier: string;
-    }) => ordersApi.updateTracking(id, tracking_number, carrier),
+      tracking_url: string;
+    }) => ordersApi.updateTracking(id, tracking_number, carrier, tracking_url),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['order', id] });
       toast.success('Tracking information updated');
@@ -142,6 +145,22 @@ export function OrderDetailPage() {
 
   const canCancel = ['PENDING', 'CONFIRMED'].includes(order.status);
 
+  // Mirrors the backend's `http_url` validation so a bad paste is caught before
+  // the request. The scheme check matters: this URL becomes a customer-facing
+  // link, and a javascript: URL would parse fine but not be safe to render.
+  const trackingUrlError = (() => {
+    const trimmed = trackingUrl.trim();
+    if (!trimmed) return undefined;
+    try {
+      const { protocol } = new URL(trimmed);
+      return protocol === 'http:' || protocol === 'https:'
+        ? undefined
+        : 'Must start with http:// or https://';
+    } catch {
+      return 'Enter a valid URL';
+    }
+  })();
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -185,6 +204,7 @@ export function OrderDetailPage() {
           onClick={() => {
             setTrackingNumber(order.tracking_number || '');
             setCarrier(order.shipping_carrier || '');
+            setTrackingUrl(order.tracking_url || '');
             setShowTrackingModal(true);
           }}
         >
@@ -345,6 +365,19 @@ export function OrderDetailPage() {
                   <p className="text-sm text-gray-500">Tracking Number</p>
                   <p className="font-mono text-sm">{order.tracking_number}</p>
                 </div>
+                {order.tracking_url && (
+                  <div>
+                    <p className="text-sm text-gray-500">Tracking URL</p>
+                    <a
+                      href={order.tracking_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm text-primary-600 hover:underline break-all"
+                    >
+                      {order.tracking_url}
+                    </a>
+                  </div>
+                )}
               </div>
             </Card>
           )}
@@ -403,6 +436,14 @@ export function OrderDetailPage() {
             value={trackingNumber}
             onChange={(e) => setTrackingNumber(e.target.value)}
           />
+          <Input
+            label="Tracking URL (optional)"
+            placeholder="https://carrier.example/track/123"
+            value={trackingUrl}
+            onChange={(e) => setTrackingUrl(e.target.value)}
+            error={trackingUrlError}
+            hint="Shown to the customer as a “Track on courier website” link."
+          />
           <div className="flex justify-end gap-3 pt-4">
             <Button variant="secondary" onClick={() => setShowTrackingModal(false)}>
               Cancel
@@ -413,10 +454,11 @@ export function OrderDetailPage() {
                   id: order.id,
                   tracking_number: trackingNumber,
                   carrier,
+                  tracking_url: trackingUrl.trim(),
                 })
               }
               loading={updateTrackingMutation.isPending}
-              disabled={!trackingNumber}
+              disabled={!trackingNumber || !!trackingUrlError}
             >
               Update Tracking
             </Button>

@@ -161,7 +161,7 @@ func (h *OrderHandler) UpdateTracking(w http.ResponseWriter, r *http.Request) {
 	req := middleware.MustGetValidatedBody[UpdateTrackingRequest](ctx)
 
 	updatedBy := getUserIDFromContext(ctx)
-	if err := h.orderService.UpdateTracking(ctx, id, req.TrackingNumber, req.Carrier, updatedBy); err != nil {
+	if err := h.orderService.UpdateTracking(ctx, id, req.TrackingNumber, req.Carrier, req.TrackingURL, updatedBy); err != nil {
 		response.Error(w, err)
 		return
 	}

@@ -34,10 +34,13 @@ type AddOrderNoteRequest struct {
 	IsInternal bool   `json:"is_internal"`
 }
 
-// UpdateTrackingRequest is the request body for updating tracking info
+// UpdateTrackingRequest is the request body for updating tracking info.
+// TrackingURL is rendered as a link on the storefront, so it is constrained to
+// http/https — `url` alone would accept a javascript: scheme.
 type UpdateTrackingRequest struct {
 	TrackingNumber string `json:"tracking_number" validate:"required"`
 	Carrier        string `json:"carrier"`
+	TrackingURL    string `json:"tracking_url" validate:"omitempty,http_url"`
 }
 
 // CancelOrderRequest is the request body for canceling an order

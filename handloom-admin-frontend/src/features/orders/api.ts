@@ -37,10 +37,16 @@ export const ordersApi = {
     await apiClient.post(ROUTES.ORDERS.NOTES(id), { note, is_internal: isInternal });
   },
 
-  updateTracking: async (id: string, trackingNumber: string, carrier?: string) => {
+  updateTracking: async (
+    id: string,
+    trackingNumber: string,
+    carrier?: string,
+    trackingUrl?: string
+  ) => {
     await apiClient.patch(ROUTES.ORDERS.TRACKING(id), {
       tracking_number: trackingNumber,
       carrier,
+      tracking_url: trackingUrl,
     });
   },
 

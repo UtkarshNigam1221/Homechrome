@@ -371,8 +371,8 @@ func (s *OrderService) AddNote(ctx context.Context, id string, note string, isIn
 }
 
 // UpdateTracking updates tracking information
-func (s *OrderService) UpdateTracking(ctx context.Context, id string, trackingNumber string, carrier string, updatedBy string) error {
-	if err := s.orderRepo.UpdateTracking(ctx, id, trackingNumber, carrier); err != nil {
+func (s *OrderService) UpdateTracking(ctx context.Context, id string, trackingNumber string, carrier string, trackingURL string, updatedBy string) error {
+	if err := s.orderRepo.UpdateTracking(ctx, id, trackingNumber, carrier, trackingURL); err != nil {
 		return err
 	}
 
