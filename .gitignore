@@ -61,6 +61,8 @@ lerna-debug.log*
 # --- Go (handloom-admin) ---
 handloom-admin/bin/
 handloom-admin/api
+handloom-admin/embedder
+handloom-admin/promote-catalog
 handloom-admin/vendor/
 handloom-admin/dynamodb-data/
 handloom-admin/tmp/
