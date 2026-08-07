@@ -281,7 +281,10 @@ func (r *OrderRepository) AddNote(ctx context.Context, id string, note domain.Or
 			"PK": &types.AttributeValueMemberS{Value: "ORDER#" + id},
 			"SK": &types.AttributeValueMemberS{Value: skMetadata},
 		},
-		UpdateExpression: aws.String("SET notes = list_append(if_not_exists(notes, :empty), :note), updated_at = :now"),
+		// Must be internal_notes — that is what Order.InternalNotes unmarshals
+		// from. Writing to a bare `notes` attribute persisted the note where
+		// nothing ever read it.
+		UpdateExpression: aws.String("SET internal_notes = list_append(if_not_exists(internal_notes, :empty), :note), updated_at = :now"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
 			":note":  &types.AttributeValueMemberL{Value: []types.AttributeValue{&types.AttributeValueMemberM{Value: noteAV}}},
 			":empty": &types.AttributeValueMemberL{Value: []types.AttributeValue{}},

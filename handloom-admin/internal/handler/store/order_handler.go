@@ -55,11 +55,24 @@ func (h *OrderHandler) ListMyOrders(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	for _, o := range result.Orders {
+		stripInternal(o)
+	}
+
 	response.SuccessWithMeta(w, result.Orders, &response.Meta{
 		Limit:      pagination.Limit,
 		NextCursor: result.Pagination.NextCursor,
 		HasMore:    result.Pagination.HasMore,
 	})
+}
+
+// stripInternal removes admin-only fields before an order goes out over a
+// customer-facing route. InternalNotes is serialized by domain.Order, so
+// without this the notes an admin writes would be readable by the customer.
+func stripInternal(order *domain.Order) {
+	if order != nil {
+		order.InternalNotes = nil
+	}
 }
 
 // GetOrder handles getting a specific order for the authenticated customer.
@@ -80,6 +93,8 @@ func (h *OrderHandler) GetOrder(w http.ResponseWriter, r *http.Request) {
 		response.NotFound(w, "Order")
 		return
 	}
+
+	stripInternal(order)
 
 	response.Success(w, order)
 }

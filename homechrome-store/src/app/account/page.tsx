@@ -1,6 +1,6 @@
 'use client';
 
-import { MapPinIcon, ShoppingBagIcon, TruckIcon } from '@heroicons/react/24/outline';
+import { MapPinIcon, ShoppingBagIcon } from '@heroicons/react/24/outline';
 import { Anchor, Card, SimpleGrid, Stack, Text, ThemeIcon } from '@mantine/core';
 import Link from 'next/link';
 
@@ -21,12 +21,6 @@ const navCards = [
     title: 'Addresses',
     description: 'Manage your saved delivery addresses',
   },
-  {
-    href: '/track',
-    icon: TruckIcon,
-    title: 'Track Order',
-    description: 'Track your order with an order number',
-  },
 ];
 
 export default function AccountPage() {
@@ -38,7 +32,7 @@ export default function AccountPage() {
     <Stack gap="lg">
       <ProfileCard customer={customer} />
 
-      <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="md">
+      <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
         {navCards.map((card) => (
           <Anchor
             key={card.href}

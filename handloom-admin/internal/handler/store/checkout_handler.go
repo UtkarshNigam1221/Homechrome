@@ -50,6 +50,8 @@ func (h *CheckoutHandler) Initiate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	stripInternal(result.Order)
+
 	response.JSON(w, http.StatusCreated, response.Response{
 		Success: true,
 		Data:    result,
@@ -67,6 +69,8 @@ func (h *CheckoutHandler) GetPaymentStatus(w http.ResponseWriter, r *http.Reques
 		response.Error(w, err)
 		return
 	}
+
+	stripInternal(result.Order)
 
 	response.Success(w, result)
 }

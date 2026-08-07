@@ -475,6 +475,9 @@ func TestOrderService_AddNote(t *testing.T) {
 			DoAndReturn(func(ctx context.Context, id string, note domain.OrderNote) error {
 				assert.Equal(t, "Test note", note.Note)
 				assert.Equal(t, "admin_123", note.CreatedBy)
+				// The admin note list highlights internal notes, so the flag has
+				// to survive the trip rather than being dropped on the floor.
+				assert.True(t, note.IsInternal)
 				return nil
 			})
 

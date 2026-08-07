@@ -114,10 +114,11 @@ type OrderItem struct {
 
 // OrderNote represents an internal note on an order
 type OrderNote struct {
-	ID        string    `json:"id" dynamodbav:"id"`
-	Note      string    `json:"note" dynamodbav:"note"`
-	CreatedBy string    `json:"created_by" dynamodbav:"created_by"`
-	CreatedAt time.Time `json:"created_at" dynamodbav:"created_at"`
+	ID         string    `json:"id" dynamodbav:"id"`
+	Note       string    `json:"note" dynamodbav:"note"`
+	IsInternal bool      `json:"is_internal" dynamodbav:"is_internal"`
+	CreatedBy  string    `json:"created_by" dynamodbav:"created_by"`
+	CreatedAt  time.Time `json:"created_at" dynamodbav:"created_at"`
 }
 
 // Address represents a shipping or billing address

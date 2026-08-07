@@ -356,10 +356,11 @@ func (s *OrderService) UpdateStatus(ctx context.Context, id string, status domai
 // AddNote adds a note to an order
 func (s *OrderService) AddNote(ctx context.Context, id string, note string, isInternal bool, createdBy string) error {
 	orderNote := domain.OrderNote{
-		ID:        uuid.New().String()[:8],
-		Note:      note,
-		CreatedAt: time.Now(),
-		CreatedBy: createdBy,
+		ID:         uuid.New().String()[:8],
+		Note:       note,
+		IsInternal: isInternal,
+		CreatedAt:  time.Now(),
+		CreatedBy:  createdBy,
 	}
 
 	if err := s.orderRepo.AddNote(ctx, id, orderNote); err != nil {
