@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
-import type { ReactNode } from 'react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { type ReactNode, useState } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { categoriesApi } from '@/features/categories/api';
@@ -62,15 +62,25 @@ function makeProduct(attributes: Record<string, unknown>): Product {
   };
 }
 
-function wrapper({ children }: { children: ReactNode }) {
-  const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
-  });
+// One client per test, not per render — the rerender-based cases below depend on
+// the cache surviving across renders.
+function Wrapper({ children }: { children: ReactNode }) {
+  const [queryClient] = useState(
+    () => new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  );
   return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
 }
 
 function colourCheckbox(label: string) {
   return screen.getByRole('checkbox', { name: label });
+}
+
+// jsdom does not perform implicit form submission from a submit-button click,
+// so dispatch the submit event on the form itself.
+function submitForm() {
+  const form = screen.getByRole('button', { name: /update product/i }).closest('form');
+  if (!form) throw new Error('product form not found');
+  fireEvent.submit(form);
 }
 
 describe('ProductFormModal — MULTI_SELECT hydration', () => {
@@ -89,7 +99,7 @@ describe('ProductFormModal — MULTI_SELECT hydration', () => {
     const product = makeProduct({ color: ['Green', 'White'] });
     vi.mocked(productsApi.get).mockResolvedValue(product);
 
-    render(<ProductFormModal isOpen onClose={() => {}} product={product} />, { wrapper });
+    render(<ProductFormModal isOpen onClose={() => {}} product={product} />, { wrapper: Wrapper });
 
     await waitFor(() => expect(colourCheckbox('Green')).toBeInTheDocument());
     expect(colourCheckbox('Green')).toBeChecked();
@@ -101,7 +111,7 @@ describe('ProductFormModal — MULTI_SELECT hydration', () => {
     const product = makeProduct({ color: 'Blue' });
     vi.mocked(productsApi.get).mockResolvedValue(product);
 
-    render(<ProductFormModal isOpen onClose={() => {}} product={product} />, { wrapper });
+    render(<ProductFormModal isOpen onClose={() => {}} product={product} />, { wrapper: Wrapper });
 
     await waitFor(() => expect(colourCheckbox('Blue')).toBeInTheDocument());
     expect(colourCheckbox('Blue')).toBeChecked();
@@ -114,7 +124,7 @@ describe('ProductFormModal — MULTI_SELECT hydration', () => {
 
     const { rerender } = render(
       <ProductFormModal isOpen={false} onClose={() => {}} product={null} />,
-      { wrapper }
+      { wrapper: Wrapper }
     );
     rerender(<ProductFormModal isOpen onClose={() => {}} product={product} />);
 
@@ -129,7 +139,9 @@ describe('ProductFormModal — MULTI_SELECT hydration', () => {
     delete (listProduct as { attributes?: unknown }).attributes;
     vi.mocked(productsApi.get).mockResolvedValue(makeProduct({ color: ['Green', 'White'] }));
 
-    render(<ProductFormModal isOpen onClose={() => {}} product={listProduct} />, { wrapper });
+    render(<ProductFormModal isOpen onClose={() => {}} product={listProduct} />, {
+      wrapper: Wrapper,
+    });
 
     await waitFor(() => expect(colourCheckbox('Green')).toBeChecked());
     expect(colourCheckbox('White')).toBeChecked();
@@ -141,10 +153,48 @@ describe('ProductFormModal — MULTI_SELECT hydration', () => {
     const product = makeProduct({ color: ['Green', 'Multicolour'] });
     vi.mocked(productsApi.get).mockResolvedValue(product);
 
-    render(<ProductFormModal isOpen onClose={() => {}} product={product} />, { wrapper });
+    render(<ProductFormModal isOpen onClose={() => {}} product={product} />, { wrapper: Wrapper });
 
     await waitFor(() => expect(colourCheckbox('Green')).toBeChecked());
     expect(colourCheckbox('Multicolour')).toBeChecked();
+  });
+
+  it('submits an off-list colour back unchanged when the form is saved untouched', async () => {
+    // The round trip is the real requirement: a value the definition does not
+    // cover must survive a save, not just render. The repo replaces every
+    // attribute row on update, so anything dropped from this payload is gone.
+    const product = makeProduct({ color: ['Green', 'Multicolour'] });
+    vi.mocked(productsApi.get).mockResolvedValue(product);
+    vi.mocked(productsApi.update).mockResolvedValue(product);
+
+    render(<ProductFormModal isOpen onClose={() => {}} product={product} />, { wrapper: Wrapper });
+
+    await waitFor(() => expect(colourCheckbox('Multicolour')).toBeChecked());
+    submitForm();
+
+    await waitFor(() => expect(productsApi.update).toHaveBeenCalled());
+    expect(productsApi.update).toHaveBeenCalledWith(
+      'prod_1',
+      expect.objectContaining({ attributes: { color: ['Green', 'Multicolour'] } })
+    );
+  });
+
+  it('submits the remaining colours when an off-list colour is unchecked', async () => {
+    const product = makeProduct({ color: ['Green', 'Multicolour'] });
+    vi.mocked(productsApi.get).mockResolvedValue(product);
+    vi.mocked(productsApi.update).mockResolvedValue(product);
+
+    render(<ProductFormModal isOpen onClose={() => {}} product={product} />, { wrapper: Wrapper });
+
+    await waitFor(() => expect(colourCheckbox('Multicolour')).toBeChecked());
+    fireEvent.click(colourCheckbox('Multicolour'));
+    submitForm();
+
+    await waitFor(() => expect(productsApi.update).toHaveBeenCalled());
+    expect(productsApi.update).toHaveBeenCalledWith(
+      'prod_1',
+      expect.objectContaining({ attributes: { color: ['Green'] } })
+    );
   });
 
   it('pre-checks colours after the create form was used first', async () => {
@@ -152,7 +202,7 @@ describe('ProductFormModal — MULTI_SELECT hydration', () => {
     vi.mocked(productsApi.get).mockResolvedValue(product);
 
     const { rerender } = render(<ProductFormModal isOpen onClose={() => {}} product={null} />, {
-      wrapper,
+      wrapper: Wrapper,
     });
     // create form open, no product; then the user closes it and edits a product
     rerender(<ProductFormModal isOpen={false} onClose={() => {}} product={null} />);

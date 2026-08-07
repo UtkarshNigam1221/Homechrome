@@ -24,6 +24,10 @@ describe('toAttributeValues', () => {
     expect(toAttributeValues(null)).toEqual([]);
     expect(toAttributeValues('')).toEqual([]);
   });
+
+  it('drops absent entries inside an array rather than stringifying them', () => {
+    expect(toAttributeValues(['Green', null, '', undefined])).toEqual(['Green']);
+  });
 });
 
 describe('mergeAttributeOptions', () => {

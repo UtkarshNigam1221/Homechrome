@@ -5,9 +5,12 @@ import type { AttributeOption, CategoryAttribute } from '../types';
  * from the API as a plain string, multi-value ones as an array.
  */
 export function toAttributeValues(value: unknown): string[] {
-  if (Array.isArray(value)) return value.map(String);
-  if (value === undefined || value === null || value === '') return [];
-  return [String(value)];
+  if (Array.isArray(value)) return value.filter(isPresent).map(String);
+  return isPresent(value) ? [String(value)] : [];
+}
+
+function isPresent(value: unknown): boolean {
+  return value !== undefined && value !== null && value !== '';
 }
 
 /**
@@ -23,6 +26,9 @@ export function toAttributeValues(value: unknown): string[] {
  * Callers supply whatever values they know about: the product form passes the
  * values saved on the product being edited, the filter sidebar passes the
  * distinct values discovered across the category.
+ *
+ * Treat the result as read-only: when nothing needs adding it returns
+ * `attr.options` itself, which is owned by the react-query cache.
  */
 export function mergeAttributeOptions(
   attr: CategoryAttribute,
