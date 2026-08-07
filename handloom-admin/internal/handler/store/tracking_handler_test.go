@@ -31,6 +31,7 @@ func TestTrackOrder_FallsBackToOrderTracking(t *testing.T) {
 		Status:          domain.OrderStatusShipped,
 		TrackingNumber:  "TRK123",
 		ShippingCarrier: "BlueDart",
+		TrackingURL:     "https://bluedart.example/track/TRK123",
 	}
 	orderRepo.EXPECT().GetByOrderNumber(gomock.Any(), "HC-123").Return(order, nil)
 	shipmentRepo.EXPECT().GetByOrderID(gomock.Any(), "order-1").Return(nil, errors.NotFound("Shipment"))
@@ -55,4 +56,10 @@ func TestTrackOrder_FallsBackToOrderTracking(t *testing.T) {
 	assert.Equal(t, "TRK123", body.Data.Shipment.AWBNumber)
 	assert.Equal(t, "BlueDart", body.Data.Shipment.CourierName)
 	assert.Equal(t, "SHIPPED", body.Data.Shipment.Status)
+	// domain.Shipment has no tracking URL, so the courier link must come off
+	// the order — the storefront reads it as shipment.tracking_url.
+	assert.Equal(t, "https://bluedart.example/track/TRK123", body.Data.Shipment.TrackingURL)
+	// The storefront timeline renders `note`; keep the wire name pinned.
+	require.NotEmpty(t, body.Data.StatusHistory)
+	assert.Equal(t, "Order placed", body.Data.StatusHistory[0].Note)
 }

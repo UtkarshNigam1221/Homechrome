@@ -211,7 +211,7 @@ export default function OrderDetailPage() {
       <Card shadow="sm" radius="lg" padding="md">
         <Stack gap="md">
           <Title order={3} size="sm">Items</Title>
-          <Stack gap="md" style={{ divider: 'true' }}>
+          <Stack gap="md">
             {order.items.map((item, idx) => (
               <Box key={item.id}>
                 {idx > 0 && <Divider mb="md" />}
