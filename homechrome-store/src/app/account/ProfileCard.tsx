@@ -20,7 +20,7 @@ import { useAuthStore } from '@/stores/auth';
 import { Customer } from '@/types';
 
 export function ProfileCard({ customer }: { customer: Customer }) {
-  const checkAuth = useAuthStore((s) => s.checkAuth);
+  const setCustomer = useAuthStore((s) => s.setCustomer);
 
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -39,7 +39,10 @@ export function ProfileCard({ customer }: { customer: Customer }) {
       last_name: (v) => (!v.trim() ? 'Last name is required' : null),
       email: (v) => {
         const trimmed = v.trim();
-        if (!trimmed) return null;
+        // PATCH /me treats an empty field as "leave unchanged", so clearing an
+        // existing email is not something this endpoint can do — reject it here
+        // rather than reporting a success that silently keeps the old value.
+        if (!trimmed) return customer.email ? 'Email cannot be removed once set' : null;
         return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed) ? null : 'Enter a valid email';
       },
     },
@@ -59,14 +62,16 @@ export function ProfileCard({ customer }: { customer: Customer }) {
     setSaving(true);
     setError(null);
     try {
-      // PATCH /me ignores empty strings server-side, so a cleared email keeps
-      // its previous value rather than being removed.
-      await api.patch(ROUTES.ME.PROFILE, {
+      // The handler returns the updated customer, so use that rather than a
+      // second checkAuth() round trip — checkAuth swallows its errors and logs
+      // the user out client-side on failure, which would blank the page after
+      // a save that actually succeeded.
+      const { data } = await api.patch<Customer>(ROUTES.ME.PROFILE, {
         first_name: values.first_name.trim(),
         last_name: values.last_name.trim(),
         email: values.email.trim(),
       });
-      await checkAuth();
+      setCustomer(data);
       setEditing(false);
     } catch {
       setError('Failed to save your profile. Please try again.');

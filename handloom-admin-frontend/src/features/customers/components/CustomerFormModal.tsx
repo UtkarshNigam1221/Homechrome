@@ -14,7 +14,7 @@ const customerSchema = z.object({
   last_name: z.string().min(1, 'Last name is required').max(100),
   email: z.string().email('Invalid email address'),
   phone: z.string().optional(),
-  status: z.enum(['ACTIVE', 'INACTIVE', 'SUSPENDED']),
+  status: z.enum(['ACTIVE', 'INACTIVE', 'BLOCKED']),
   // Address fields
   address_first_name: z.string().optional(),
   address_last_name: z.string().optional(),
@@ -201,7 +201,7 @@ export function CustomerFormModal({ isOpen, onClose, customer }: CustomerFormMod
               options={[
                 { value: 'ACTIVE', label: 'Active' },
                 { value: 'INACTIVE', label: 'Inactive' },
-                { value: 'SUSPENDED', label: 'Suspended' },
+                { value: 'BLOCKED', label: 'Blocked' },
               ]}
               required
               {...register('status')}

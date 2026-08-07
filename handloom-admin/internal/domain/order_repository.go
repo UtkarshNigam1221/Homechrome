@@ -117,7 +117,7 @@ type UpdateCustomerRequest struct {
 	Phone     string         `json:"phone,omitempty"`
 	Tags      []string       `json:"tags,omitempty"`
 	Notes     string         `json:"notes,omitempty"`
-	Status    CustomerStatus `json:"status,omitempty"`
+	Status    CustomerStatus `json:"status,omitempty" validate:"omitempty,oneof=ACTIVE INACTIVE BLOCKED"`
 }
 
 // OrderService defines the interface for order operations

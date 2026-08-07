@@ -1,6 +1,8 @@
 import type { Address } from '@/shared/types/common';
 
-export type CustomerStatus = 'ACTIVE' | 'INACTIVE' | 'SUSPENDED';
+// Mirrors domain.CustomerStatus. 'SUSPENDED' used to appear here but is not a
+// value the backend defines.
+export type CustomerStatus = 'ACTIVE' | 'INACTIVE' | 'BLOCKED';
 
 export interface Customer {
   id: string;

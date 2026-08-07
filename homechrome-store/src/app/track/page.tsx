@@ -98,7 +98,11 @@ export default function TrackOrderPage() {
                 <Text span fw={500} c="navy.7">{tracking.status}</Text>
               </Text>
 
-              {tracking.shipment && (
+              {/* The handler returns a non-nil shipment for legacy rows even
+                  when every displayable field is blank, so gate on content. */}
+              {(tracking.shipment?.courier_name ||
+                tracking.shipment?.awb_number ||
+                tracking.shipment?.tracking_url) && (
                 <Card bg="gray.0" radius="md" padding="md" withBorder={false}>
                   <Stack gap="xs">
                     <Title order={3} size="sm">Shipment Details</Title>

@@ -76,7 +76,10 @@ export function CustomersPage() {
   const deepLinkedId = searchParams.get('id');
 
   const { data: deepLinkedCustomer } = useQuery({
-    queryKey: ['customer', deepLinkedId],
+    // Keyed under 'customers' so the ['customers'] invalidation that runs after
+    // an edit refetches this too — otherwise the modal would reopen with stale
+    // pre-edit data.
+    queryKey: ['customers', 'detail', deepLinkedId],
     queryFn: () => customersApi.get(deepLinkedId ?? ''),
     enabled: !!deepLinkedId,
   });
@@ -320,8 +323,12 @@ export function CustomersPage() {
               <Button
                 variant="secondary"
                 onClick={() => {
-                  setSelectedCustomer(null);
+                  // closeDetail, not setSelectedCustomer(null): on the deep-link
+                  // path the latter is a no-op and the detail modal would pop
+                  // back open once the form closes. handleEdit has already
+                  // captured the customer.
                   handleEdit(detailCustomer);
+                  closeDetail();
                 }}
               >
                 Edit Customer
