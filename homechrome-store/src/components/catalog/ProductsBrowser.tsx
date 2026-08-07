@@ -11,7 +11,7 @@ import {
   Group,
   ScrollArea,
 } from '@mantine/core';
-import { ReactNode, useState } from 'react';
+import { ReactNode, useEffect, useState } from 'react';
 
 import ProductGrid from '@/components/catalog/ProductGrid';
 import ProductGridSkeleton from '@/components/skeleton/ProductGridSkeleton';
@@ -23,6 +23,9 @@ interface ProductsBrowserProps {
   filtersSidebar: ReactNode;
   activeFilterCount?: number;
   skeletonCount?: number;
+  /** Infinite scroll — omit both for a static list. */
+  hasMore?: boolean;
+  onLoadMore?: () => void;
 }
 
 export function ProductsBrowser({
@@ -31,8 +34,53 @@ export function ProductsBrowser({
   filtersSidebar,
   activeFilterCount = 0,
   skeletonCount = 8,
+  hasMore = false,
+  onLoadMore,
 }: ProductsBrowserProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
+  // State, not a ref, so the observer effect re-runs when the sentinel mounts
+  // (it only exists while `hasMore`, i.e. after the effect would have run).
+  const [sentinel, setSentinel] = useState<HTMLDivElement | null>(null);
+
+  // Load the next page when the sentinel nears the viewport. Re-created per page
+  // (products.length): a still-mounted target reports no *change* in
+  // intersection, and a fresh observer re-reports it, so paging continues.
+  useEffect(() => {
+    if (!sentinel || !hasMore || !onLoadMore) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) onLoadMore();
+      },
+      { rootMargin: '400px' }, // start fetching before the user hits the end
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [sentinel, hasMore, onLoadMore, products.length]);
+
+  const [sidebar, setSidebar] = useState<HTMLDivElement | null>(null);
+
+  // Publish the room left below the panel as a CSS var it reads for max-height.
+  // A fixed value can't: unscrolled, the panel sits under the breadcrumb +
+  // header (height varies with the category blurb) and ran past the fold.
+  // ponytail: plain scroll listener, no rAF — one rect read per event, and
+  // browsers already coalesce scroll to a frame.
+  useEffect(() => {
+    if (!sidebar) return;
+    const root = document.documentElement;
+    const fit = () =>
+      root.style.setProperty(
+        '--filters-max-h',
+        `${window.innerHeight - sidebar.getBoundingClientRect().top - 16}px`,
+      );
+    fit();
+    window.addEventListener('scroll', fit, { passive: true });
+    window.addEventListener('resize', fit);
+    return () => {
+      window.removeEventListener('scroll', fit);
+      window.removeEventListener('resize', fit);
+      root.style.removeProperty('--filters-max-h');
+    };
+  }, [sidebar]);
 
   return (
     <>
@@ -57,7 +105,20 @@ export function ProductsBrowser({
 
       <Flex gap="xl">
         <Box w={256} flex="none" visibleFrom="lg">
-          <Card shadow="sm" padding="md" radius="lg" pos="sticky" top={128}>
+          {/* Sticky column that scrolls on its own. The calc is the no-JS
+              fallback; the effect above narrows it to the room actually below
+              the panel. overscrollBehavior keeps the wheel from chaining to the
+              page once the list hits its end. */}
+          <Card
+            ref={setSidebar}
+            shadow="sm"
+            padding="md"
+            radius="lg"
+            pos="sticky"
+            top={128}
+            mah="var(--filters-max-h, calc(100dvh - 144px))"
+            style={{ overflowY: 'auto', overscrollBehavior: 'contain' }}
+          >
             {filtersSidebar}
           </Card>
         </Box>
@@ -77,7 +138,11 @@ export function ProductsBrowser({
           {loading ? (
             <ProductGridSkeleton count={skeletonCount} />
           ) : (
-            <ProductGrid products={products} />
+            <>
+              <ProductGrid products={products} />
+              {/* mih: a 0-height target is unreliable to observe. */}
+              {hasMore && <Box ref={setSentinel} mt="xl" mih={1} />}
+            </>
           )}
         </Box>
       </Flex>

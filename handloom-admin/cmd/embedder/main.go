@@ -85,11 +85,13 @@ func main() {
 
 	lambda.Start(func(ctx context.Context, req events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
 		resp, err := adapter.ProxyWithContext(ctx, req)
-		// Drain spans before the runtime freezes (SimpleSpanProcessor exports on
-		// Span.End, but the HTTP POST is network I/O that a freeze can cut).
+		// Drain spans + logs before the runtime freezes. 2s proved too tight
+		// under burst load and the swallowed error hid the loss — keep failures loud.
 		if tp != nil {
-			fctx, cancel := context.WithTimeout(ctx, 2*time.Second)
-			_ = tp.ForceFlush(fctx)
+			fctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			if ferr := tp.ForceFlush(fctx); ferr != nil {
+				slog.Warn("telemetry flush failed; this invocation's spans/logs may be lost", "err", ferr)
+			}
 			cancel()
 		}
 		return resp, err

@@ -98,10 +98,13 @@ WHERE p.status = 'ACTIVE'
     (p.embedding IS NOT NULL AND (1 - (p.embedding <=> qd.qvec)) > %s::float)
     OR p.search_vector @@ qd.qts
     OR p.name %% qd.qstr
+    OR p.sku %% qd.qstr
+    OR (length(qd.qstr) >= 3 AND p.sku ILIKE '%%' || qd.qstr || '%%')
   )
 `, semThresholdPlaceholder)
 		} else {
-			sb.WriteString(`  AND (p.search_vector @@ qd.qts OR p.name % qd.qstr)
+			sb.WriteString(`  AND (p.search_vector @@ qd.qts OR p.name % qd.qstr OR p.sku % qd.qstr
+    OR (length(qd.qstr) >= 3 AND p.sku ILIKE '%' || qd.qstr || '%'))
 `)
 		}
 	}
@@ -149,7 +152,10 @@ WHERE p.status = 'ACTIVE'
 	if q != "" {
 		terms := []string{
 			fmt.Sprintf(`%s::float * LEAST(COALESCE(ts_rank(p.search_vector, qd.qts), 0) * 10, 1.0)`, add(w.Keyword)),
-			fmt.Sprintf(`%s::float * similarity(p.name, qd.qstr)`, add(w.Trigram)),
+			// Partial design codes ("2228" for DBK2228) sit below the pg_trgm 0.3
+			// gate and can't tsvector-substring-match — the ILIKE arm carries them,
+			// scored as an exact-intent hit. length >= 3 keeps 1-2 char queries out.
+			fmt.Sprintf(`%s::float * GREATEST(similarity(p.name, qd.qstr), similarity(p.sku, qd.qstr), CASE WHEN length(qd.qstr) >= 3 AND p.sku ILIKE '%%' || qd.qstr || '%%' THEN 1.0 ELSE 0.0 END)`, add(w.Trigram)),
 		}
 		if hasSemantic {
 			terms = append([]string{

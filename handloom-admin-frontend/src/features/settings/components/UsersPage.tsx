@@ -336,19 +336,17 @@ export function UsersPage() {
             )}
           </TableBody>
         </Table>
-        {(pagination?.has_more || hasPrevious) && (
-          <div className="border-t border-gray-200 px-6">
-            <Pagination
-              hasMore={pagination?.has_more ?? false}
-              hasPrevious={hasPrevious}
-              perPage={limit}
-              onNextPage={() => pagination?.next_cursor && goToNextPage(pagination.next_cursor)}
-              onPreviousPage={goToPreviousPage}
-              onPerPageChange={changeLimit}
-              itemCount={users.length}
-            />
-          </div>
-        )}
+        <div className="border-t border-gray-200 px-6">
+          <Pagination
+            hasMore={pagination?.has_more ?? false}
+            hasPrevious={hasPrevious}
+            perPage={limit}
+            onNextPage={() => pagination?.next_cursor && goToNextPage(pagination.next_cursor)}
+            onPreviousPage={goToPreviousPage}
+            onPerPageChange={changeLimit}
+            itemCount={users.length}
+          />
+        </div>
       </Card>
 
       {/* User Form Modal */}

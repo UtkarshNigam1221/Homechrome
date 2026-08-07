@@ -450,6 +450,7 @@ build-lambda-backfill:
 	@echo "Building worker-embedding-backfill Lambda..."
 	@mkdir -p $(LAMBDA_OUT_DIR)/worker-embedding-backfill
 	$(LAMBDA_BUILD_FLAGS) $(GOBUILD) -ldflags="-s -w" -o $(LAMBDA_OUT_DIR)/worker-embedding-backfill/bootstrap ./cmd/lambda/worker-embedding-backfill
+	@cp infra/configs/otel-collector.yaml $(LAMBDA_OUT_DIR)/worker-embedding-backfill/otel.yaml
 
 ## CDK commands
 cdk-synth:

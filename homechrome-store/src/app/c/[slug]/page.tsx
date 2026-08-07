@@ -3,7 +3,7 @@ import { cache, Suspense } from 'react';
 
 import CategoryProductsView from './CategoryProductsView';
 
-import { API_BASE, SITE_URL } from '@/lib/constants';
+import { API_BASE, PRODUCTS_PAGE_SIZE, SITE_URL } from '@/lib/constants';
 import { safeJsonLd } from '@/lib/jsonld';
 import { ROUTES } from '@/lib/routes';
 import { Category, Product } from '@/types';
@@ -27,17 +27,20 @@ const getCategory = cache(async function getCategory(slug: string): Promise<Cate
   }
 });
 
-const getCategoryProducts = cache(async function getCategoryProducts(categoryId: string): Promise<Product[]> {
+const getCategoryProducts = cache(async function getCategoryProducts(
+  categoryId: string,
+): Promise<{ products: Product[]; nextCursor?: string }> {
   try {
     const res = await fetch(
-      `${API_BASE}${ROUTES.CATALOG.PRODUCTS}?category_id=${categoryId}`,
+      `${API_BASE}${ROUTES.CATALOG.PRODUCTS}?category_id=${categoryId}&limit=${PRODUCTS_PAGE_SIZE}`,
       { next: { revalidate: 3600 } },
     );
-    if (!res.ok) return [];
+    if (!res.ok) return { products: [] };
     const json = await res.json();
-    return json.data || [];
+    // next_cursor hands the client the offset to continue infinite scroll from.
+    return { products: json.data || [], nextCursor: json.meta?.next_cursor || undefined };
   } catch {
-    return [];
+    return { products: [] };
   }
 });
 
@@ -122,13 +125,17 @@ export default async function CategoryPage({ params }: PageProps) {
     );
   }
 
-  const products = await getCategoryProducts(category.id);
+  const { products, nextCursor } = await getCategoryProducts(category.id);
 
   return (
     <>
       <BreadcrumbJsonLd category={category} />
       <Suspense>
-        <CategoryProductsView category={category} products={products} />
+        <CategoryProductsView
+          category={category}
+          products={products}
+          initialCursor={nextCursor}
+        />
       </Suspense>
     </>
   );

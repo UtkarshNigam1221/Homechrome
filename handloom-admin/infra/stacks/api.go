@@ -323,6 +323,9 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 				"EMBEDDER_FN_NAME":        embedderFn.FunctionName(),
 				"EMBEDDER_AUTH_KEY_PARAM": jsii.String(fmt.Sprintf("/handloom/%s/embedder-auth-key", props.Environment)),
 				"EMBEDDING_MODEL_VERSION": jsii.String("l3cube-indic-sbert-nli-v1"),
+				// No OTel collector on this one-shot job; silence the SDK's
+				// localhost:4317 fallback exporter (see pkg/telemetry/init.go).
+				"OTEL_SDK_DISABLED": jsii.String("true"),
 			},
 		})
 
@@ -338,8 +341,8 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 			),
 		}))
 
-		// Attach OTel Collector layer + telemetry env to the backfill worker.
-		apiStackRef.applyTelemetry(backfillFn, "handloom-worker-embedding-backfill")
+		// No OTel layer on purpose: the backfill workflow reads this one-shot
+		// job's logs from CloudWatch, and the collector extension broke its init.
 
 		lambdas["embedding-backfill"] = &ServiceLambda{
 			Function: backfillFn,

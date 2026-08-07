@@ -46,8 +46,17 @@ jobs:
       - name: Configure AWS credentials via OIDC
         uses: aws-actions/configure-aws-credentials@v6
         with:
-          role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/gh-actions-handloom-${{ inputs.env }}
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Show deployed function config
+        env:
+          ENV: ${{ inputs.env }}
+        run: |
+          aws lambda get-function-configuration \
+            --function-name "handloom-worker-embedding-backfill-${ENV}" \
+            --query '{LastModified:LastModified,Layers:Layers[].Arn,ExecWrapper:Environment.Variables.AWS_LAMBDA_EXEC_WRAPPER,OtelConfig:Environment.Variables.OPENTELEMETRY_COLLECTOR_CONFIG_URI}' \
+            --output json
 
       - name: Loop backfill until done
         env:
@@ -71,6 +80,7 @@ jobs:
             # payload that lacks our .error/.remaining_estimate fields, which the
             # old check missed.
             META=$(aws lambda invoke \
+              --cli-read-timeout 900 --cli-connect-timeout 10 \
               --function-name "$FN" \
               --payload "$PAYLOAD" \
               --cli-binary-format raw-in-base64-out \
@@ -109,3 +119,13 @@ jobs:
               exit 1
             fi
           done
+
+      - name: Print Lambda logs
+        if: always()
+        env:
+          ENV: ${{ inputs.env }}
+        run: |
+          # Worker Lambdas share one log group; surface the last few minutes
+          # directly in the Actions console so failures are debuggable without
+          # CloudWatch access.
+          aws logs tail "/aws/lambda/handloom-workers-${ENV}" --since 15m --format short || echo "no logs available"

@@ -23,27 +23,30 @@ import { Category, CategoryAttribute, Product } from '@/types';
 interface CategoryProductsViewProps {
   category: Category;
   products: Product[];
+  initialCursor?: string;
 }
 
 export default function CategoryProductsView({
   category,
   products: initialProducts,
+  initialCursor,
 }: CategoryProductsViewProps) {
   const searchParams = useSearchParams();
   const [filterOptions, setFilterOptions] = useState<Record<string, string[]>>({});
 
-  const { filters, setFilters, products, loading } = useFilteredProducts({
-    endpoint: ROUTES.CATALOG.PRODUCTS,
-    initialProducts,
-    initialFilters: parseFiltersFromParams(searchParams),
-    skipInitialFetchWhenNoFilters: true,
-    extraParams: () => {
-      const p = new URLSearchParams();
-      p.set('category_id', category.id);
-      return p;
-    },
-    extraDeps: [category.id],
-  });
+  const { filters, setFilters, products, loading, hasMore, loadMore } =
+    useFilteredProducts({
+      endpoint: ROUTES.CATALOG.PRODUCTS,
+      initialProducts,
+      initialCursor,
+      initialFilters: parseFiltersFromParams(searchParams),
+      extraParams: () => {
+        const p = new URLSearchParams();
+        p.set('category_id', category.id);
+        return p;
+      },
+      extraDeps: [category.id],
+    });
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -87,6 +90,11 @@ export default function CategoryProductsView({
 
   const categoryAttributes: CategoryAttribute[] = category.own_attributes || [];
 
+  // Unfiltered: the category's own count is the real total (the list holds only
+  // the pages loaded so far). Filtered: what's loaded, "+" while more remain.
+  const filtered = hasActiveFilters(filters);
+  const count = filtered ? products.length : category.product_count;
+
   const activeFilterCount = hasActiveFilters(filters)
     ? Object.keys(filters.attributeFilters).length +
       (filters.minPrice !== null || filters.maxPrice !== null ? 1 : 0) +
@@ -105,12 +113,14 @@ export default function CategoryProductsView({
 
       <PageHeader
         title={category.name}
-        description={`${category.description ? category.description + ' · ' : ''}${products.length} ${products.length === 1 ? 'product' : 'products'}`}
+        description={`${category.description ? category.description + ' · ' : ''}${count}${filtered && hasMore ? '+' : ''} ${count === 1 ? 'product' : 'products'}`}
       />
 
       <ProductsBrowser
         products={products}
         loading={loading}
+        hasMore={hasMore}
+        onLoadMore={loadMore}
         activeFilterCount={activeFilterCount}
         filtersSidebar={
           <FilterSidebar

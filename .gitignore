@@ -11,7 +11,11 @@ skills-lock.json
 
 # Superpowers
 .superpowers/
-docs/superpowers/
+
+# Generated docs (stay local, not committed) — ignore all docs except superpowers
+docs/
+!docs/superpowers/
+!docs/superpowers/**
 
 # Playwright MCP session snapshots
 .playwright-mcp/
@@ -61,6 +65,8 @@ lerna-debug.log*
 # --- Go (handloom-admin) ---
 handloom-admin/bin/
 handloom-admin/api
+handloom-admin/embedder
+handloom-admin/promote-catalog
 handloom-admin/vendor/
 handloom-admin/dynamodb-data/
 handloom-admin/tmp/
@@ -110,3 +116,4 @@ build/
 
 # TypeScript
 next-env.d.ts
+backups/

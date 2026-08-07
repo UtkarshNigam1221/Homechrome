@@ -1,12 +1,12 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 
 import { track } from '@/lib/analytics';
 import { FilterValues } from '@/components/catalog/FilterSidebar';
-import api from '@/lib/api';
-import { ROUTES } from '@/lib/routes';
+import { fetchProductsPage } from '@/lib/api';
+import { PRODUCTS_PAGE_SIZE } from '@/lib/constants';
 import { Product } from '@/types';
 
 /**
@@ -107,15 +107,12 @@ export interface UseFilteredProductsOptions {
    * These are merged with the filter params before each fetch.
    */
   extraParams?: () => URLSearchParams;
-  /** Initial product list (from SSR). */
+  /** First page of products (from SSR). */
   initialProducts: Product[];
+  /** `meta.next_cursor` of that SSR page — omitted when it was the last page. */
+  initialCursor?: string;
   /** Initial filter state (parsed from URL on the server or client). */
   initialFilters: FilterValues;
-  /**
-   * When true, the hook uses initialProducts as placeholder data when no filters
-   * are active. Use this when SSR already returned unfiltered products.
-   */
-  skipInitialFetchWhenNoFilters?: boolean;
   /**
    * Additional params that should trigger a re-fetch when they change
    * (e.g. searchQuery in ProductsView). The caller must include them in
@@ -127,24 +124,28 @@ export interface UseFilteredProductsOptions {
 export interface UseFilteredProductsResult {
   filters: FilterValues;
   setFilters: React.Dispatch<React.SetStateAction<FilterValues>>;
+  /** Every page loaded so far, flattened. */
   products: Product[];
   loading: boolean;
+  /** True while a further page exists — drive the scroll sentinel off this. */
+  hasMore: boolean;
+  loadMore: () => void;
 }
 
 /**
  * Shared hook that encapsulates:
- * - React Query–backed product fetch with caching and deduplication
+ * - React Query–backed cursor-paginated product fetch (infinite scroll)
  * - Popstate listener to sync filter state on browser back/forward
  *
  * Both ProductsView and CategoryProductsView use this hook; they differ only
- * in the fetch endpoint, extra params, and whether the initial fetch is skipped.
+ * in the fetch endpoint and extra params.
  */
 export function useFilteredProducts({
   endpoint,
   extraParams,
   initialProducts,
+  initialCursor,
   initialFilters,
-  skipInitialFetchWhenNoFilters = false,
   extraDeps = [],
 }: UseFilteredProductsOptions): UseFilteredProductsResult {
   const [filters, setFilters] = useState<FilterValues>(initialFilters);
@@ -197,38 +198,43 @@ export function useFilteredProducts({
   }, []);
 
   const queryString = buildQueryString(debouncedFilters, extraParams);
-  const filtersActive = hasActiveFilters(debouncedFilters) || debouncedExtraDepsKey !== JSON.stringify([]);
 
-  // Use initialProducts as placeholder data when no filters are active and
-  // skipInitialFetchWhenNoFilters is set (avoids refetching what SSR provided).
-  const useInitialData = skipInitialFetchWhenNoFilters && !filtersActive;
+  // The SSR page is a valid page 1 only for the request the server made: no
+  // filters, extra deps still at mount values. Seed it then, else fetch it.
+  const [mountExtraDepsKey] = useState(extraDepsKey);
+  const canSeedSSR =
+    !hasActiveFilters(debouncedFilters) && debouncedExtraDepsKey === mountExtraDepsKey;
 
-  // Search-aware routing: when the caller's extraParams includes a non-empty
-  // `q` we hit the embedder /search endpoint (semantic + filters); otherwise
-  // we hit the legacy /products endpoint (filters only). Both return the
-  // same JSON envelope so the response handling below is identical.
-  const params = new URLSearchParams(queryString);
-  const hasSearchQuery = params.get('q') !== null && params.get('q')!.trim() !== '';
-  const targetEndpoint = hasSearchQuery ? ROUTES.CATALOG.SEARCH : endpoint;
-
-  const { data, isFetching } = useQuery<Product[]>({
-    queryKey: ['filtered-products', targetEndpoint, queryString, debouncedExtraDepsKey],
-    queryFn: async () => {
-      const { data } = await api.get<Product[]>(`${targetEndpoint}?${queryString}`);
-      return Array.isArray(data) ? data : [];
+  const { data, isFetching, isFetchingNextPage, hasNextPage, fetchNextPage } = useInfiniteQuery({
+    queryKey: ['filtered-products', endpoint, queryString, debouncedExtraDepsKey],
+    queryFn: ({ pageParam }) => {
+      const params = new URLSearchParams(queryString);
+      params.set('limit', String(PRODUCTS_PAGE_SIZE));
+      if (pageParam) params.set('cursor', pageParam);
+      return fetchProductsPage(`${endpoint}?${params.toString()}`);
     },
-    placeholderData: (prev) => prev ?? initialProducts,
-    enabled: !useInitialData,
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) => lastPage.nextCursor,
+    initialData: canSeedSSR
+      ? {
+          pages: [{ products: initialProducts, nextCursor: initialCursor }],
+          pageParams: [undefined],
+        }
+      : undefined,
     staleTime: 2 * 60 * 1000, // 2 minutes — same filters return cached results
     gcTime: 5 * 60 * 1000,
   });
 
-  const products = useInitialData ? initialProducts : (data ?? initialProducts);
+  const products = data?.pages.flatMap((page) => page.products) ?? initialProducts;
 
   return {
     filters,
     setFilters,
     products,
-    loading: isFetching && !useInitialData,
+    // Skeleton only when there is nothing to show — appending a page, and the
+    // background refetch that freshens the SSR snapshot, keep the list up.
+    loading: isFetching && !isFetchingNextPage && products.length === 0,
+    hasMore: hasNextPage,
+    loadMore: fetchNextPage,
   };
 }

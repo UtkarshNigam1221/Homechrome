@@ -20,28 +20,34 @@ import { Product } from '@/types';
 
 interface ProductsViewProps {
   products: Product[];
+  initialCursor?: string;
   initialSearch: string;
 }
 
-export default function ProductsView({ products: initialProducts, initialSearch }: ProductsViewProps) {
+export default function ProductsView({
+  products: initialProducts,
+  initialCursor,
+  initialSearch,
+}: ProductsViewProps) {
   const searchParams = useSearchParams();
   const currentSearch = searchParams.get('search') ?? initialSearch;
 
-  const { filters, setFilters, products, loading } = useFilteredProducts({
-    endpoint: ROUTES.CATALOG.PRODUCTS,
-    initialProducts,
-    initialFilters: parseFiltersFromParams(searchParams),
-    skipInitialFetchWhenNoFilters: false,
-    extraParams: () => {
-      const p = new URLSearchParams();
-      // `q` (not `search`) — the hook routes to /search when q is present;
-      // both /search and the legacy /products fall back to identical
-      // behavior for empty q, so this works for both filtered + unfiltered.
-      if (currentSearch.trim()) p.set('q', currentSearch.trim());
-      return p;
-    },
-    extraDeps: [currentSearch],
-  });
+  const { filters, setFilters, products, loading, hasMore, loadMore } =
+    useFilteredProducts({
+      // Same endpoint SSR used, so its next_cursor offsets line up with the
+      // pages fetched from here. /search covers both the empty-q listing and
+      // the semantic search.
+      endpoint: ROUTES.CATALOG.SEARCH,
+      initialProducts,
+      initialCursor,
+      initialFilters: parseFiltersFromParams(searchParams),
+      extraParams: () => {
+        const p = new URLSearchParams();
+        if (currentSearch.trim()) p.set('q', currentSearch.trim());
+        return p;
+      },
+      extraDeps: [currentSearch],
+    });
 
   useEffect(() => {
     track('page_view', {
@@ -74,12 +80,14 @@ export default function ProductsView({ products: initialProducts, initialSearch 
 
       <PageHeader
         title={currentSearch ? `Results for "${currentSearch}"` : 'All Products'}
-        description={`${products.length} ${products.length === 1 ? 'product' : 'products'}${currentSearch ? ' found' : ''}`}
+        description={`${products.length}${hasMore ? '+' : ''} ${products.length === 1 && !hasMore ? 'product' : 'products'}${currentSearch ? ' found' : ''}`}
       />
 
       <ProductsBrowser
         products={products}
         loading={loading}
+        hasMore={hasMore}
+        onLoadMore={loadMore}
         filtersSidebar={<FilterSidebar filters={filters} onFiltersChange={handleFiltersChange} />}
       />
     </Container>

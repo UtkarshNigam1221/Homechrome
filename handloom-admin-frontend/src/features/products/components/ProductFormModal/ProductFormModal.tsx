@@ -1,6 +1,6 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
 import { z } from 'zod';
@@ -14,35 +14,43 @@ import { Button, ImageUpload, Input, Modal, Select } from '@/shared/components/u
 import type { CreateProductRequest, Product } from '../../types';
 import { AttributeFields } from './AttributeFields';
 
-const productSchema = z.object({
-  name: z.string().min(1, 'Name is required').max(200, 'Name must be less than 200 characters'),
-  sku: z.string().min(1, 'SKU is required').max(50, 'SKU must be less than 50 characters'),
-  description: z.string().optional(),
-  category_id: z.string().min(1, 'Category is required'),
-  base_price: z.number().min(0, 'Base price must be positive'),
-  selling_price: z.number().min(0, 'Selling price must be positive'),
-  cost_price: z.number().min(0, 'Cost price must be positive').optional(),
-  material: z.string().optional(),
-  color: z.string().optional(),
-  weave_type: z.string().optional(),
-  origin: z.string().optional(),
-  craft_type: z.string().optional(),
-  weight: z.number().min(0).optional(),
-  length: z.number().min(0).optional(),
-  width: z.number().min(0).optional(),
-  height: z.number().min(0).optional(),
-  dimension_unit: z.string().optional(),
-  initial_stock: z.number().min(0, 'Initial stock must be positive').optional(),
-  stock_quantity: z.number().min(0, 'Stock must be positive').optional(),
-  low_stock_threshold: z.number().min(0, 'Threshold must be positive'),
-  status: z.enum(['ACTIVE', 'INACTIVE', 'DRAFT']),
-  tags: z.string().optional(),
-  images: z.array(z.string()).optional(),
-  video_url: z.string().optional().or(z.literal('')),
-  video_poster_url: z.string().optional().or(z.literal('')),
-});
+// The SKU pattern applies on create only: the field is locked when editing,
+// and legacy products with nonconforming SKUs must stay editable.
+const makeProductSchema = (isEditing: boolean) =>
+  z.object({
+    name: z.string().min(1, 'Name is required').max(200, 'Name must be less than 200 characters'),
+    sku: isEditing
+      ? z.string()
+      : z
+          .string()
+          .min(1, 'SKU is required')
+          .max(50, 'SKU must be less than 50 characters')
+          .regex(/^[A-Za-z0-9-]+$/, 'Letters, numbers and dashes only — no spaces'),
+    description: z.string().optional(),
+    category_id: z.string().min(1, 'Category is required'),
+    base_price: z.number().min(0, 'Base price must be positive'),
+    selling_price: z.number().min(0, 'Selling price must be positive'),
+    cost_price: z.number().min(0, 'Cost price must be positive').optional(),
+    material: z.string().optional(),
+    weave_type: z.string().optional(),
+    origin: z.string().optional(),
+    craft_type: z.string().optional(),
+    weight: z.number().min(0).optional(),
+    length: z.number().min(0).optional(),
+    width: z.number().min(0).optional(),
+    height: z.number().min(0).optional(),
+    dimension_unit: z.string().optional(),
+    initial_stock: z.number().min(0, 'Initial stock must be positive').optional(),
+    stock_quantity: z.number().min(0, 'Stock must be positive').optional(),
+    low_stock_threshold: z.number().min(0, 'Threshold must be positive'),
+    status: z.enum(['ACTIVE', 'INACTIVE', 'DRAFT']),
+    tags: z.string().optional(),
+    images: z.array(z.string()).optional(),
+    video_url: z.string().optional().or(z.literal('')),
+    video_poster_url: z.string().optional().or(z.literal('')),
+  });
 
-type ProductFormData = z.infer<typeof productSchema>;
+type ProductFormData = z.infer<ReturnType<typeof makeProductSchema>>;
 
 interface ProductFormModalProps {
   isOpen: boolean;
@@ -56,6 +64,13 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
 
   // Dynamic category attribute values (managed outside of Zod since schema is dynamic)
   const [attributeValues, setAttributeValues] = useState<Record<string, unknown>>({});
+
+  // Latches once the user has ever typed in the SKU field. dirtyFields alone
+  // is not enough: clearing the field back to '' un-dirties it and would
+  // re-arm the auto-generator over a value the user is retyping.
+  const skuEdited = useRef(false);
+
+  const schema = useMemo(() => makeProductSchema(!!product?.id), [product?.id]);
 
   // Fetch categories (flat list - no hierarchy)
   const { data: categoriesData } = useQuery({
@@ -81,9 +96,9 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
     watch,
     setValue,
     control,
-    formState: { errors },
+    formState: { errors, dirtyFields },
   } = useForm<ProductFormData>({
-    resolver: zodResolver(productSchema),
+    resolver: zodResolver(schema),
     defaultValues: {
       name: '',
       sku: '',
@@ -94,7 +109,6 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
       selling_price: 0,
       cost_price: 0,
       material: '',
-      color: '',
       weave_type: '',
       origin: '',
       craft_type: '',
@@ -136,9 +150,13 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
     }
   }, [selectedCategoryId, isEditing]);
 
-  // Auto-generate SKU from name
+  // Auto-generate SKU from name, but only until the user types their own —
+  // a manually entered design code (e.g. DBK2228) must never be overwritten.
   useEffect(() => {
-    if (!isEditing && name) {
+    if (dirtyFields.sku) {
+      skuEdited.current = true;
+    }
+    if (!isEditing && name && !skuEdited.current) {
       const sku =
         name
           .toUpperCase()
@@ -149,11 +167,12 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
         Math.random().toString(36).substring(2, 6).toUpperCase();
       setValue('sku', sku);
     }
-  }, [name, isEditing, setValue]);
+  }, [name, isEditing, setValue, dirtyFields.sku]);
 
   // Reset form when modal opens/closes or product changes
   useEffect(() => {
     if (isOpen) {
+      skuEdited.current = isEditing; // fresh create form re-arms auto-generation
       if (product?.id) {
         reset({
           name: product.name,
@@ -164,7 +183,6 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
           selling_price: product.selling_price / 100,
           cost_price: product.cost_price ? product.cost_price / 100 : 0,
           material: product.material || '',
-          color: product.color || '',
           weave_type: product.weave_type || '',
           origin: product.origin || '',
           craft_type: product.craft_type || '',
@@ -192,7 +210,6 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
           selling_price: 0,
           cost_price: 0,
           material: '',
-          color: '',
           weave_type: '',
           origin: '',
           craft_type: '',
@@ -211,7 +228,7 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
         });
       }
     }
-  }, [isOpen, product, reset]);
+  }, [isOpen, product, reset, isEditing]);
 
   // Hydrate dynamic attribute values when editing. Tracks both the list-level
   // product (immediate) and the full product detail (async, includes attributes
@@ -227,7 +244,6 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
     const src = (fullProduct ?? product) as Product;
     const hardcoded: Record<string, unknown> = {};
     if (src.material) hardcoded.material = src.material;
-    if (src.color) hardcoded.color = src.color;
     if (src.weave_type) hardcoded.weave_type = src.weave_type;
     if (src.origin) hardcoded.origin = src.origin;
     if (src.craft_type) hardcoded.craft_type = src.craft_type;
@@ -284,7 +300,9 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
   // Handle multi-select toggle
   const handleMultiSelectToggle = (attrName: string, optionValue: string) => {
     setAttributeValues((prev) => {
-      const current = (prev[attrName] as string[]) || [];
+      const raw = prev[attrName];
+      // Normalize: single-value attributes load as a plain string.
+      const current = Array.isArray(raw) ? (raw as string[]) : raw ? [String(raw)] : [];
       const newValues = current.includes(optionValue)
         ? current.filter((v) => v !== optionValue)
         : [...current, optionValue];
@@ -329,7 +347,6 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
       selling_price: Math.round(data.selling_price * 100),
       cost_price: data.cost_price ? Math.round(data.cost_price * 100) : undefined,
       material: data.material || undefined,
-      color: data.color || undefined,
       weave_type: data.weave_type || undefined,
       origin: data.origin || undefined,
       craft_type: data.craft_type || undefined,
@@ -408,11 +425,15 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
 
             <Input
               label="SKU"
-              placeholder="e.g., SILK-BS-001"
+              placeholder="Design code, e.g. DBK2228"
               error={errors.sku?.message}
               required
               disabled={isEditing}
-              hint={isEditing ? 'SKU cannot be changed after creation' : undefined}
+              hint={
+                isEditing
+                  ? 'SKU cannot be changed after creation'
+                  : 'Type the supplier design code — auto-filled from name until you do'
+              }
               {...register('sku')}
             />
 
@@ -547,8 +568,6 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
           <h3 className="text-sm font-medium text-gray-700 mb-3">Product Details</h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <Input label="Material" placeholder="e.g., Silk, Cotton" {...register('material')} />
-
-            <Input label="Color" placeholder="e.g., Red, Blue" {...register('color')} />
 
             <Input
               label="Weave Type"

@@ -1,14 +1,7 @@
-// Types + warmer for the embedder Lambda. The actual search call lives in
-// api.ts (searchProducts) and goes through the existing REST API.
+// Warmer for the embedder Lambda. The search call itself lives in api.ts
+// (fetchProductsPage) and goes through the existing REST API.
 
 import { ROUTES } from '@/lib/routes';
-import { Product } from '@/types';
-
-export type SearchResponse = {
-  success: boolean;
-  data: Product[];
-  meta: { limit: number; next_cursor?: string; has_more: boolean };
-};
 
 /**
  * Best-effort warmup of the embedder Lambda. Called on page mount by
