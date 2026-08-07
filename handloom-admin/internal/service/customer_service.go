@@ -263,6 +263,4 @@ func (s *CustomerService) RemoveAddress(ctx context.Context, customerID, address
 }
 
 // Customer purchase stats are maintained by CustomerRepository.RecordPurchase
-// on the order paths. An UpdateStats method used to live here that overwrote
-// them wholesale; it had no callers and would have clobbered the atomic
-// counters.
+// on the order paths, not from here.

@@ -190,10 +190,8 @@ type Customer struct {
 	PhoneVerified bool           `json:"phone_verified" dynamodbav:"phone_verified"`
 	Status        CustomerStatus `json:"status" dynamodbav:"status"`
 
-	// Stats, both maintained by CustomerRepository.RecordPurchase. TotalSpent
-	// is gross order value in paise — the stubbed refund path does not adjust
-	// it. A separate TotalOrders field used to sit here with no writer at all;
-	// OrderCount is the live counter.
+	// Both maintained by CustomerRepository.RecordPurchase. TotalSpent is gross
+	// order value in paise — the stubbed refund path does not adjust it.
 	TotalSpent int64 `json:"total_spent" dynamodbav:"total_spent"`
 	OrderCount int   `json:"order_count" dynamodbav:"order_count"`
 

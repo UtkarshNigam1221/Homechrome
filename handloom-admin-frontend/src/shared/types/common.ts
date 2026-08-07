@@ -29,9 +29,7 @@ export interface ListResponse<T> {
 }
 
 // Shared across orders + customers
-// Mirrors domain.Address on the backend. The previous shape used `name` and
-// `street`, which are not fields the API sends — every read of them rendered
-// blank.
+// Mirrors domain.Address on the backend.
 export interface Address {
   id?: string;
   first_name: string;

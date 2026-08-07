@@ -145,23 +145,15 @@ export function OrderDetailPage() {
   }
 
   const canCancel = ['PENDING', 'CONFIRMED'].includes(order.status);
-  const nextStatuses = ALLOWED_TRANSITIONS[order.status] ?? [];
+  const nextStatuses = ALLOWED_TRANSITIONS[order.status];
 
   // Mirrors the backend's `http_url` validation so a bad paste is caught before
   // the request. The scheme check matters: this URL becomes a customer-facing
-  // link, and a javascript: URL would parse fine but not be safe to render.
-  const trackingUrlError = (() => {
-    const trimmed = trackingUrl.trim();
-    if (!trimmed) return undefined;
-    try {
-      const { protocol } = new URL(trimmed);
-      return protocol === 'http:' || protocol === 'https:'
-        ? undefined
-        : 'Must start with http:// or https://';
-    } catch {
-      return 'Enter a valid URL';
-    }
-  })();
+  // link, and a javascript: URL would otherwise sail through.
+  const trackingUrlError =
+    trackingUrl.trim() && !/^https?:\/\/\S+$/i.test(trackingUrl.trim())
+      ? 'Enter a URL starting with http:// or https://'
+      : undefined;
 
   return (
     <div className="space-y-6">

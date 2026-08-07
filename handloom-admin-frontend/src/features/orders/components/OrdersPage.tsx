@@ -267,13 +267,13 @@ export function OrdersPage() {
                       <Button
                         variant="secondary"
                         size="sm"
-                        disabled={(ALLOWED_TRANSITIONS[order.status] ?? []).length === 0}
+                        disabled={ALLOWED_TRANSITIONS[order.status].length === 0}
                         onClick={(e) => {
                           e.stopPropagation();
                           setSelectedOrder(order);
                           // Seed with the first legal next status; the current
                           // one is not offered, the backend rejects a no-op.
-                          setNewStatus((ALLOWED_TRANSITIONS[order.status] ?? [])[0] ?? '');
+                          setNewStatus(ALLOWED_TRANSITIONS[order.status][0] ?? '');
                         }}
                       >
                         Update
@@ -326,9 +326,10 @@ export function OrdersPage() {
           </div>
           <Select
             label="New Status"
-            options={(selectedOrder ? (ALLOWED_TRANSITIONS[selectedOrder.status] ?? []) : []).map(
-              (s) => ({ value: s, label: s })
-            )}
+            options={(selectedOrder ? ALLOWED_TRANSITIONS[selectedOrder.status] : []).map((s) => ({
+              value: s,
+              label: s,
+            }))}
             value={newStatus}
             onChange={(e) => setNewStatus(e.target.value as OrderStatus)}
           />

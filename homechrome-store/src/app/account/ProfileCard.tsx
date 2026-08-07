@@ -28,12 +28,14 @@ export function ProfileCard({ customer }: { customer: Customer }) {
 
   const addressCount = customer.addresses?.length ?? 0;
 
+  const initialValues = {
+    first_name: customer.first_name || '',
+    last_name: customer.last_name || '',
+    email: customer.email || '',
+  };
+
   const form = useForm({
-    initialValues: {
-      first_name: customer.first_name || '',
-      last_name: customer.last_name || '',
-      email: customer.email || '',
-    },
+    initialValues,
     validate: {
       first_name: (v) => (!v.trim() ? 'First name is required' : null),
       last_name: (v) => (!v.trim() ? 'Last name is required' : null),
@@ -49,11 +51,7 @@ export function ProfileCard({ customer }: { customer: Customer }) {
   });
 
   const startEditing = () => {
-    form.setValues({
-      first_name: customer.first_name || '',
-      last_name: customer.last_name || '',
-      email: customer.email || '',
-    });
+    form.setValues(initialValues);
     setError(null);
     setEditing(true);
   };

@@ -26,13 +26,17 @@ export function CustomerAddresses({ customer, onChange }: CustomerAddressesProps
 
   const addresses = customer.addresses ?? [];
 
+  const closeForm = () => {
+    setDraft(null);
+    setEditingId(null);
+    setError(null);
+  };
+
   const done = (updated: Customer, message: string) => {
     onChange(updated);
     queryClient.invalidateQueries({ queryKey: ['customers'] });
     toast.success(message);
-    setDraft(null);
-    setEditingId(null);
-    setError(null);
+    closeForm();
   };
 
   const saveMutation = useMutation({
@@ -173,15 +177,7 @@ export function CustomerAddresses({ customer, onChange }: CustomerAddressesProps
             Set as default address
           </label>
           <div className="flex justify-end gap-2">
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => {
-                setDraft(null);
-                setEditingId(null);
-                setError(null);
-              }}
-            >
+            <Button variant="secondary" size="sm" onClick={closeForm}>
               Cancel
             </Button>
             <Button size="sm" loading={saveMutation.isPending} onClick={handleSave}>
