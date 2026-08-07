@@ -208,6 +208,24 @@ export default function OrderDetailPage() {
         </Card>
       )}
 
+      {/* Notes the shop chose to share. The backend filters out everything
+          flagged internal, so whatever arrives here is meant for the customer. */}
+      {order.internal_notes && order.internal_notes.length > 0 && (
+        <Card shadow="sm" radius="lg" padding="md">
+          <Stack gap="md">
+            <Title order={3} size="sm">Updates from Homechrome</Title>
+            <Stack gap="sm">
+              {order.internal_notes.map((note) => (
+                <Stack key={note.id} gap={2}>
+                  <Text size="sm" c="navy.7">{note.note}</Text>
+                  <Text size="xs" c="dimmed">{formatDate(note.created_at)}</Text>
+                </Stack>
+              ))}
+            </Stack>
+          </Stack>
+        </Card>
+      )}
+
       <Card shadow="sm" radius="lg" padding="md">
         <Stack gap="md">
           <Title order={3} size="sm">Items</Title>

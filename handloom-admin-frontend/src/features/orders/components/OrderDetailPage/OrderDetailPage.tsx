@@ -514,6 +514,11 @@ export function OrderDetailPage() {
               Internal note (only visible to staff)
             </label>
           </div>
+          {!noteIsInternal && (
+            <p className="text-sm text-yellow-700 bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+              This note will be shown to the customer on their order page.
+            </p>
+          )}
           <div className="flex justify-end gap-3 pt-4">
             <Button variant="secondary" onClick={() => setShowNoteModal(false)}>
               Cancel
