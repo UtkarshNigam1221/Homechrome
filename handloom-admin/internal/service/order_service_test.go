@@ -506,6 +506,25 @@ func TestOrderService_UpdateStatus_Inventory(t *testing.T) {
 		err := service.UpdateStatus(ctx, "order_789", domain.OrderStatusDelivered, "admin_123")
 		require.NoError(t, err)
 	})
+
+	t.Run("return restocks every item", func(t *testing.T) {
+		order := &domain.Order{
+			ID:     "order_ret",
+			Status: domain.OrderStatusDelivered,
+			Items: []domain.OrderItem{
+				{ProductID: "prod_123", Quantity: 2},
+			},
+		}
+
+		mockOrderRepo.EXPECT().GetByID(gomock.Any(), "order_ret").Return(order, nil)
+		mockOrderRepo.EXPECT().Update(gomock.Any(), gomock.Any()).Return(nil)
+		mockInventoryRepo.EXPECT().
+			AddStock(gomock.Any(), "prod_123", 2, "RETURN order_ret", "admin_123").
+			Return(&domain.InventoryTransaction{}, nil)
+
+		err := service.UpdateStatus(ctx, "order_ret", domain.OrderStatusReturned, "admin_123")
+		require.NoError(t, err)
+	})
 }
 
 func TestOrderService_AddNote(t *testing.T) {

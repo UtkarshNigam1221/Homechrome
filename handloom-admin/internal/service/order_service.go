@@ -347,6 +347,16 @@ func (s *OrderService) UpdateStatus(ctx context.Context, id string, status domai
 			metrics.LabelReason:  "status_update",
 			metrics.LabelGateway: gatewayPhonePe,
 		})
+	case domain.OrderStatusReturned:
+		// Goods are back. RETURNED is reachable only from SHIPPED/DELIVERED,
+		// both post-commit, so quantity returns to its pre-dispatch value and
+		// reserved_qty is already clear.
+		for _, item := range order.Items {
+			reason := fmt.Sprintf("RETURN %s", order.ID)
+			if _, addErr := s.inventoryRepo.AddStock(ctx, item.ProductID, item.Quantity, reason, updatedBy); addErr != nil {
+				slog.ErrorContext(ctx, "Failed to restock returned item", keyProductID, item.ProductID, "error", addErr)
+			}
+		}
 	}
 
 	if err := s.orderRepo.Update(ctx, order); err != nil {
