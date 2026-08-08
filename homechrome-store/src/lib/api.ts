@@ -44,6 +44,24 @@ const BASE_BACKOFF_MS = 1000;
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+// The backend rotates refresh tokens: /auth/refresh mints a new pair and
+// revokes the one it was handed. Two requests 401-ing together (a page load
+// fires /me + /cart + /orders at once, all with the same expired access
+// token) would each post their own refresh; the loser presents an
+// already-revoked token, and the handler answers 401 *and* clears both auth
+// cookies — deleting the session the winner just established. So all callers
+// share one in-flight refresh.
+let refreshInFlight: Promise<unknown> | null = null;
+
+function refreshOnce(): Promise<unknown> {
+  refreshInFlight ??= client
+    .post(ROUTES.AUTH.REFRESH)
+    .finally(() => {
+      refreshInFlight = null;
+    });
+  return refreshInFlight;
+}
+
 // Response interceptor to unwrap envelope
 client.interceptors.response.use(
   (response) => {
@@ -83,7 +101,7 @@ client.interceptors.response.use(
     if (error.response?.status === 401 && !originalRequest._retry && !isRefreshRequest) {
       originalRequest._retry = true;
       try {
-        await client.post(ROUTES.AUTH.REFRESH);
+        await refreshOnce();
         return client(originalRequest);
       } catch {
         // Refresh failed — redirect to login unless on auth-check, login, or confirmation page

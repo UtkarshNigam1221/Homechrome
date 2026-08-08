@@ -27,6 +27,24 @@ const (
 	otpMaxAttempts           = 3
 	otpCodeUpperBound        = 1000000
 
+	// How long a rotated refresh token stays usable. Refreshes overlap: a
+	// second browser tab, or a retry, presents the same token while the
+	// first rotation is still in flight. Deleting it outright answers the
+	// straggler with a 401, and the handler clears both auth cookies on
+	// that path — logging the customer out mid-session. Observed refresh
+	// handler durations reach ~3.2s on a cold Lambda, so the window has to
+	// clear that comfortably.
+	//
+	// The window cannot extend a token past its natural life: RefreshToken
+	// validates the JWT's exp claim before it ever consults the store, so
+	// bumping the DB TTL on a nearly-expired token is inert.
+	//
+	// Note for anyone adding token-reuse detection later: this makes it
+	// harder. Distinguishing a benign grace-window replay from a genuine
+	// stolen-token replay needs the rotated row to carry its successor's
+	// hash, so only a post-grace presentation raises the alarm.
+	refreshGracePeriod = 30 * time.Second
+
 	// JWT standard claim keys (RFC 7519).
 	claimSub  = "sub"
 	claimType = "type"
@@ -190,7 +208,14 @@ func (s *CustomerAuthService) RefreshToken(ctx context.Context, refreshToken str
 
 	oldHash := hashSHA256(refreshToken)
 	valid, err := s.tokenStore.ValidateToken(ctx, customerID, oldHash)
-	if err != nil || !valid {
+	if err != nil {
+		// A throttled or timed-out lookup says nothing about the token. Folding
+		// it into ErrCodeInvalidToken would answer 401, and the handler clears
+		// both auth cookies on that path — a transient blip would end the
+		// session outright.
+		return nil, nil, err
+	}
+	if !valid {
 		return nil, nil, errors.New(errors.ErrCodeInvalidToken, "Refresh token has been revoked")
 	}
 
@@ -212,17 +237,37 @@ func (s *CustomerAuthService) RefreshToken(ctx context.Context, refreshToken str
 		return nil, nil, err
 	}
 
-	if err := s.tokenStore.RevokeToken(ctx, customerID, oldHash); err != nil {
-		slog.WarnContext(ctx, "Failed to revoke old customer refresh token", "error", err)
+	// Expire the old token on a grace window rather than deleting it, so an
+	// overlapping refresh still succeeds. ValidateToken treats ttl < now as
+	// invalid, so expiry is exact regardless of when DynamoDB's TTL sweeper
+	// gets to the row.
+	graceTTL := time.Now().Add(refreshGracePeriod).Unix()
+	if err := s.tokenStore.StoreToken(ctx, customerID, oldHash, graceTTL); err != nil {
+		slog.WarnContext(ctx, "Failed to expire old customer refresh token", "error", err)
 	}
 
 	return customer, tokens, nil
 }
 
-// Logout revokes a customer's refresh token
+// Logout revokes the presented refresh token and sweeps any grace-window
+// predecessor left behind by a recent rotation — but nothing else.
+//
+// Rotation keeps the pre-rotation token alive for refreshGracePeriod so an
+// overlapping refresh still succeeds, and the caller here only ever holds the
+// successor. Revoking just that would leave the predecessor usable for up to
+// 30 seconds after the customer asked to be logged out. RevokeTokensExpiringBefore
+// with a cutoff of "now + refreshGracePeriod" reaches exactly that predecessor
+// and nothing on another device: every live session's TTL is the full 7-day
+// refresh lifetime, far past this cutoff, so logging out on one device leaves
+// the customer's other sessions untouched.
 func (s *CustomerAuthService) Logout(ctx context.Context, customerID, refreshToken string) error {
 	if err := s.tokenStore.RevokeToken(ctx, customerID, hashSHA256(refreshToken)); err != nil {
 		return err
+	}
+
+	cutoff := time.Now().Add(refreshGracePeriod).Unix()
+	if err := s.tokenStore.RevokeTokensExpiringBefore(ctx, customerID, cutoff); err != nil {
+		slog.WarnContext(ctx, "Failed to sweep grace-window predecessor on logout", "error", err)
 	}
 
 	slog.InfoContext(ctx, "Customer logged out", "customer_id", customerID)

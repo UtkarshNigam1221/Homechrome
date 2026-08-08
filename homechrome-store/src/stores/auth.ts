@@ -1,3 +1,6 @@
+'use client';
+
+import { isAxiosError } from 'axios';
 import { create } from 'zustand';
 
 import api from '@/lib/api';
@@ -53,9 +56,19 @@ export const useAuthStore = create<AuthState>((set) => ({
     try {
       const { data } = await api.get<Customer>(ROUTES.ME.PROFILE);
       set({ customer: data, isAuthenticated: true, isLoading: false });
-    } catch {
-      set({ customer: null, isAuthenticated: false, isLoading: false });
-      document.cookie = 'hc_session=; path=/; max-age=0';
+    } catch (e) {
+      set({ isLoading: false });
+
+      // Only a 401 means the session is actually gone. Clearing on any error
+      // is worse than it looks: dropping hc_session stops AuthInit from ever
+      // calling checkAuth again (providers.tsx gates on that cookie), so one
+      // network blip or 5xx leaves the header logged out for good while
+      // store_token/store_refresh are still valid and middleware.ts still
+      // admits the customer to /account.
+      if (isAxiosError(e) && e.response?.status === 401) {
+        set({ customer: null, isAuthenticated: false });
+        document.cookie = 'hc_session=; path=/; max-age=0';
+      }
     }
   },
 }));

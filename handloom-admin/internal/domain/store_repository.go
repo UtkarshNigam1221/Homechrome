@@ -42,4 +42,10 @@ type CustomerTokenStore interface {
 	ValidateToken(ctx context.Context, customerID, tokenHash string) (bool, error)
 	RevokeToken(ctx context.Context, customerID, tokenHash string) error
 	RevokeAllTokens(ctx context.Context, customerID string) error
+	// RevokeTokensExpiringBefore deletes every one of the customer's tokens
+	// whose TTL is at or before cutoff, leaving tokens with a later TTL
+	// untouched. A live session's TTL is always days out, so with a
+	// near-future cutoff this reaches only rotation's short-lived grace-window
+	// predecessors — never a session on another device.
+	RevokeTokensExpiringBefore(ctx context.Context, customerID string, cutoff int64) error
 }
