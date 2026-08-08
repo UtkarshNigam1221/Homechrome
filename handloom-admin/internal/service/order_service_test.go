@@ -744,6 +744,63 @@ func TestOrderService_CancelOrder(t *testing.T) {
 	})
 }
 
+// TestOrderService_CancelOrder_Inventory covers the PROCESSING widening: the
+// validTransitions table already allowed PROCESSING -> CANCELLED, but
+// CancelOrder rejected it. These subtests pin CancelOrder's accepted statuses
+// to match that table, and confirm SHIPPED (post-commit) still stays out of
+// reach.
+func TestOrderService_CancelOrder_Inventory(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockOrderRepo := mocks.NewMockOrderRepository(ctrl)
+	mockCustomerRepo := mocks.NewMockCustomerRepository(ctrl)
+	mockProductRepo := mocks.NewMockProductRepository(ctrl)
+	mockInventoryRepo := mocks.NewMockInventoryRepository(ctrl)
+	mockPriceQuoteRepo := mocks.NewMockPriceQuoteRepository(ctrl)
+	mockPricingService := mocks.NewMockPricingService(ctrl)
+
+	service := NewOrderService(
+		mockOrderRepo,
+		mockCustomerRepo,
+		mockProductRepo,
+		mockInventoryRepo,
+		mockPriceQuoteRepo,
+		mockPricingService,
+	)
+	ctx := context.Background()
+
+	t.Run("canceling a processing order releases stock", func(t *testing.T) {
+		order := &domain.Order{
+			ID:     "order_proc",
+			Status: domain.OrderStatusProcessing,
+			Items:  []domain.OrderItem{{ProductID: "prod_123", Quantity: 3}},
+		}
+
+		mockOrderRepo.EXPECT().GetByID(gomock.Any(), "order_proc").Return(order, nil)
+		mockOrderRepo.EXPECT().Update(gomock.Any(), gomock.Any()).Return(nil)
+		mockInventoryRepo.EXPECT().
+			ReleaseStock(gomock.Any(), "prod_123", 3, "order_proc").
+			Return(&domain.InventoryTransaction{}, nil)
+
+		err := service.CancelOrder(ctx, "order_proc", "out of stock", "admin_123")
+		require.NoError(t, err)
+	})
+
+	t.Run("canceling a shipped order is rejected", func(t *testing.T) {
+		order := &domain.Order{
+			ID:     "order_ship",
+			Status: domain.OrderStatusShipped,
+			Items:  []domain.OrderItem{{ProductID: "prod_123", Quantity: 1}},
+		}
+
+		mockOrderRepo.EXPECT().GetByID(gomock.Any(), "order_ship").Return(order, nil)
+
+		err := service.CancelOrder(ctx, "order_ship", "too late", "admin_123")
+		require.Error(t, err)
+	})
+}
+
 func TestOrderService_RefundOrder(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()

@@ -410,8 +410,12 @@ func (s *OrderService) CancelOrder(ctx context.Context, id string, reason string
 		return err
 	}
 
-	// Can only cancel pending or confirmed orders
-	if order.Status != domain.OrderStatusPending && order.Status != domain.OrderStatusConfirmed {
+	// Cancellable up to dispatch. Mirrors validTransitions, which allows
+	// PENDING/CONFIRMED/PROCESSING -> CANCELLED; the two paths previously
+	// disagreed about PROCESSING.
+	if order.Status != domain.OrderStatusPending &&
+		order.Status != domain.OrderStatusConfirmed &&
+		order.Status != domain.OrderStatusProcessing {
 		cancelErr := errors.BadRequest("Order cannot be canceled in current status")
 		span.EndWithError(cancelErr)
 		return cancelErr
