@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	pgvecpgx "github.com/pgvector/pgvector-go/pgx"
 	"github.com/stretchr/testify/require"
@@ -33,9 +32,7 @@ func newTestPool(t *testing.T) *pgxpool.Pool {
 	}
 	// vector(N) columns cannot be scanned without the pgvector codec; the
 	// production pool registers it in NewPool and tests must match.
-	cfg.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
-		return pgvecpgx.RegisterTypes(ctx, conn)
-	}
+	cfg.AfterConnect = pgvecpgx.RegisterTypes
 
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
