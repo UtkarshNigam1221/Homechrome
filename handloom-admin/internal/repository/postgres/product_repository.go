@@ -48,14 +48,14 @@ func NewProductRepository(pool *pgxpool.Pool) *ProductRepository {
 // pgvector embedding column which requires a pgvector.Vector scan target.
 type productRow struct {
 	domain.Product
-	DimLength          *float64        `db:"dim_length"`
-	DimWidth           *float64        `db:"dim_width"`
-	DimHeight          *float64        `db:"dim_height"`
-	DimUnit            string          `db:"dim_unit"`
-	VideoURL           *string         `db:"video_url"`
-	VideoPosterURL     *string         `db:"video_poster_url"`
-	EmbeddingVec       pgvector.Vector `db:"embedding"`
-	EmbeddingUpdatedAt *time.Time      `db:"embedding_updated_at"`
+	DimLength          *float64         `db:"dim_length"`
+	DimWidth           *float64         `db:"dim_width"`
+	DimHeight          *float64         `db:"dim_height"`
+	DimUnit            string           `db:"dim_unit"`
+	VideoURL           *string          `db:"video_url"`
+	VideoPosterURL     *string          `db:"video_poster_url"`
+	EmbeddingVec       *pgvector.Vector `db:"embedding"`
+	EmbeddingUpdatedAt *time.Time       `db:"embedding_updated_at"`
 }
 
 // toProduct converts a productRow into a *domain.Product, reconstructing
@@ -83,8 +83,10 @@ func (r *productRow) toProduct() *domain.Product {
 	if r.VideoPosterURL != nil {
 		p.VideoPosterURL = *r.VideoPosterURL
 	}
-	if slice := r.EmbeddingVec.Slice(); len(slice) > 0 {
-		p.Embedding = slice
+	if r.EmbeddingVec != nil {
+		if slice := r.EmbeddingVec.Slice(); len(slice) > 0 {
+			p.Embedding = slice
+		}
 	}
 	if r.EmbeddingUpdatedAt != nil {
 		p.EmbeddingUpdatedAt = r.EmbeddingUpdatedAt
