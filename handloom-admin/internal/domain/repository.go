@@ -259,6 +259,11 @@ type InventoryRepository interface {
 	// ReleaseStock releases reserved stock
 	ReleaseStock(ctx context.Context, productID string, quantity int, orderID string) (*InventoryTransaction, error)
 
+	// CommitStock converts a reservation into a dispatch. The goods have left
+	// the warehouse, so quantity and reserved_qty both drop by the same amount
+	// and available_qty is unchanged.
+	CommitStock(ctx context.Context, productID string, quantity int, orderID string) (*InventoryTransaction, error)
+
 	// AdjustStock adjusts stock to a specific quantity
 	AdjustStock(ctx context.Context, productID string, newQuantity int, reason string, userID string) (*InventoryTransaction, error)
 
