@@ -8,7 +8,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	pgvecpgx "github.com/pgvector/pgvector-go/pgx"
 	"github.com/stretchr/testify/require"
 
 	"github.com/handloom/admin/internal/domain"
@@ -25,7 +27,17 @@ func newTestPool(t *testing.T) *pgxpool.Pool {
 	}
 
 	ctx := context.Background()
-	pool, err := pgxpool.New(ctx, dsn)
+	cfg, err := pgxpool.ParseConfig(dsn)
+	if err != nil {
+		t.Skipf("postgres not available (parse dsn): %v", err)
+	}
+	// vector(N) columns cannot be scanned without the pgvector codec; the
+	// production pool registers it in NewPool and tests must match.
+	cfg.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
+		return pgvecpgx.RegisterTypes(ctx, conn)
+	}
+
+	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
 		t.Skipf("postgres not available (pool create): %v", err)
 	}
