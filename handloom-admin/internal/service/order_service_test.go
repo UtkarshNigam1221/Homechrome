@@ -448,6 +448,66 @@ func TestOrderService_UpdateStatus(t *testing.T) {
 	})
 }
 
+func TestOrderService_UpdateStatus_Inventory(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockOrderRepo := mocks.NewMockOrderRepository(ctrl)
+	mockCustomerRepo := mocks.NewMockCustomerRepository(ctrl)
+	mockProductRepo := mocks.NewMockProductRepository(ctrl)
+	mockInventoryRepo := mocks.NewMockInventoryRepository(ctrl)
+	mockPriceQuoteRepo := mocks.NewMockPriceQuoteRepository(ctrl)
+	mockPricingService := mocks.NewMockPricingService(ctrl)
+
+	service := NewOrderService(
+		mockOrderRepo,
+		mockCustomerRepo,
+		mockProductRepo,
+		mockInventoryRepo,
+		mockPriceQuoteRepo,
+		mockPricingService,
+	)
+	ctx := context.Background()
+
+	t.Run("shipping commits stock for every item", func(t *testing.T) {
+		order := &domain.Order{
+			ID:     "order_123",
+			Status: domain.OrderStatusConfirmed,
+			Items: []domain.OrderItem{
+				{ProductID: "prod_123", Quantity: 2},
+				{ProductID: "prod_456", Quantity: 1},
+			},
+		}
+
+		mockOrderRepo.EXPECT().GetByID(gomock.Any(), "order_123").Return(order, nil)
+		mockOrderRepo.EXPECT().Update(gomock.Any(), gomock.Any()).Return(nil)
+		mockInventoryRepo.EXPECT().
+			CommitStock(gomock.Any(), "prod_123", 2, "order_123").
+			Return(&domain.InventoryTransaction{}, nil)
+		mockInventoryRepo.EXPECT().
+			CommitStock(gomock.Any(), "prod_456", 1, "order_123").
+			Return(&domain.InventoryTransaction{}, nil)
+
+		err := service.UpdateStatus(ctx, "order_123", domain.OrderStatusShipped, "admin_123")
+		require.NoError(t, err)
+	})
+
+	t.Run("delivery has no inventory effect", func(t *testing.T) {
+		order := &domain.Order{
+			ID:     "order_789",
+			Status: domain.OrderStatusShipped,
+			Items:  []domain.OrderItem{{ProductID: "prod_123", Quantity: 2}},
+		}
+
+		mockOrderRepo.EXPECT().GetByID(gomock.Any(), "order_789").Return(order, nil)
+		mockOrderRepo.EXPECT().Update(gomock.Any(), gomock.Any()).Return(nil)
+		// No inventory expectation: gomock fails the test on any unexpected call.
+
+		err := service.UpdateStatus(ctx, "order_789", domain.OrderStatusDelivered, "admin_123")
+		require.NoError(t, err)
+	})
+}
+
 func TestOrderService_AddNote(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()

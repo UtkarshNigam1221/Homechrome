@@ -321,14 +321,20 @@ func (s *OrderService) UpdateStatus(ctx context.Context, id string, status domai
 	// Handle status-specific logic before persisting
 	switch status {
 	case domain.OrderStatusShipped:
-		// Update shipped date
 		now := time.Now()
 		order.ShippedAt = &now
+		// Goods have left the warehouse: convert each reservation into a
+		// dispatch. available_qty is unaffected — these units were already
+		// unavailable while reserved.
+		for _, item := range order.Items {
+			if _, commitErr := s.inventoryRepo.CommitStock(ctx, item.ProductID, item.Quantity, order.ID); commitErr != nil {
+				slog.ErrorContext(ctx, "Failed to commit stock", keyProductID, item.ProductID, "error", commitErr)
+			}
+		}
 	case domain.OrderStatusDelivered:
 		now := time.Now()
 		order.DeliveredAt = &now
-		// Release reserved stock (it's now sold)
-		// In real app, this would decrement actual stock
+		// No inventory effect: stock was committed at dispatch.
 	case domain.OrderStatusCancelled:
 		// Release reserved stock
 		for _, item := range order.Items {
