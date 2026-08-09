@@ -223,6 +223,7 @@ func (s *OrderService) Create(ctx context.Context, req domain.CreateOrderRequest
 				"quantity", item.Quantity,
 				"error", err,
 			)
+			metrics.Record(ctx, "inventory_mutation_failed", metrics.L{metrics.LabelReason: "reserve"})
 			reservationFailures = append(reservationFailures, item.ProductID)
 		}
 	}
