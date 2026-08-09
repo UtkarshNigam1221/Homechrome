@@ -525,6 +525,29 @@ func TestOrderService_UpdateStatus_Inventory(t *testing.T) {
 		err := service.UpdateStatus(ctx, "order_ret", domain.OrderStatusReturned, "admin_123")
 		require.NoError(t, err)
 	})
+
+	t.Run("canceling via status update sets CancelledAt", func(t *testing.T) {
+		order := &domain.Order{
+			ID:     "order_cancel_update",
+			Status: domain.OrderStatusConfirmed,
+			Items:  []domain.OrderItem{{ProductID: "prod_123", Quantity: 2}},
+		}
+
+		mockOrderRepo.EXPECT().GetByID(gomock.Any(), "order_cancel_update").Return(order, nil)
+		mockOrderRepo.EXPECT().
+			Update(gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, order *domain.Order) error {
+				assert.NotNil(t, order.CancelledAt)
+				return nil
+			})
+		mockInventoryRepo.EXPECT().
+			ReleaseStock(gomock.Any(), "prod_123", 2, "order_cancel_update").
+			Return(&domain.InventoryTransaction{}, nil)
+
+		err := service.UpdateStatus(ctx, "order_cancel_update", domain.OrderStatusCancelled, "admin_123")
+		require.NoError(t, err)
+		assert.NotNil(t, order.CancelledAt)
+	})
 }
 
 func TestOrderService_AddNote(t *testing.T) {

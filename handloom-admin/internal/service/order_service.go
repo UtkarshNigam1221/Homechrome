@@ -316,12 +316,12 @@ func (s *OrderService) UpdateStatus(ctx context.Context, id string, status domai
 	// Update status
 	order.Status = status
 	order.UpdatedBy = updatedBy
-	order.UpdatedAt = time.Now()
+	now := time.Now()
+	order.UpdatedAt = now
 
 	// Handle status-specific logic before persisting
 	switch status {
 	case domain.OrderStatusShipped:
-		now := time.Now()
 		order.ShippedAt = &now
 		// Goods have left the warehouse: convert each reservation into a
 		// dispatch. available_qty is unaffected — these units were already
@@ -332,10 +332,14 @@ func (s *OrderService) UpdateStatus(ctx context.Context, id string, status domai
 			}
 		}
 	case domain.OrderStatusDelivered:
-		now := time.Now()
 		order.DeliveredAt = &now
 		// No inventory effect: stock was committed at dispatch.
 	case domain.OrderStatusCancelled:
+		// CancelledAt mirrors CancelOrder, so tracking_handler's timeline
+		// (which gates the "cancelled" entry on CancelledAt != nil) shows a
+		// cancellation regardless of which path set it. Reuses the UpdatedAt
+		// timestamp above rather than calling time.Now() again.
+		order.CancelledAt = &now
 		// Release reserved stock
 		for _, item := range order.Items {
 			if _, releaseErr := s.inventoryRepo.ReleaseStock(ctx, item.ProductID, item.Quantity, order.ID); releaseErr != nil {
