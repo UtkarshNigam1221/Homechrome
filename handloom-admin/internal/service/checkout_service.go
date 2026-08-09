@@ -281,6 +281,7 @@ func (s *CheckoutService) releaseReservedItems(ctx context.Context, orderID stri
 		_, err := s.inventoryRepo.ReleaseStock(ctx, item.ProductID, item.Quantity, orderID)
 		if err != nil {
 			slog.ErrorContext(ctx, "Failed to release reserved stock", keyProductID, item.ProductID, "error", err)
+			metrics.Record(ctx, "inventory_mutation_failed", metrics.L{metrics.LabelReason: "release"})
 			// Continue releasing other items even if one fails
 		}
 	}

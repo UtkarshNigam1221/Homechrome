@@ -329,6 +329,7 @@ func (s *OrderService) UpdateStatus(ctx context.Context, id string, status domai
 		for _, item := range order.Items {
 			if _, commitErr := s.inventoryRepo.CommitStock(ctx, item.ProductID, item.Quantity, order.ID); commitErr != nil {
 				slog.ErrorContext(ctx, "Failed to commit stock", keyProductID, item.ProductID, "error", commitErr)
+				metrics.Record(ctx, "inventory_mutation_failed", metrics.L{metrics.LabelReason: "commit"})
 			}
 		}
 	case domain.OrderStatusDelivered:
@@ -344,6 +345,7 @@ func (s *OrderService) UpdateStatus(ctx context.Context, id string, status domai
 		for _, item := range order.Items {
 			if _, releaseErr := s.inventoryRepo.ReleaseStock(ctx, item.ProductID, item.Quantity, order.ID); releaseErr != nil {
 				slog.ErrorContext(ctx, "Failed to release stock", keyProductID, item.ProductID, "error", releaseErr)
+				metrics.Record(ctx, "inventory_mutation_failed", metrics.L{metrics.LabelReason: "release"})
 			}
 		}
 		// order_cancelled — status-transition path, no admin reason text.
@@ -359,6 +361,7 @@ func (s *OrderService) UpdateStatus(ctx context.Context, id string, status domai
 			reason := fmt.Sprintf("RETURN %s", order.ID)
 			if _, addErr := s.inventoryRepo.AddStock(ctx, item.ProductID, item.Quantity, reason, updatedBy); addErr != nil {
 				slog.ErrorContext(ctx, "Failed to restock returned item", keyProductID, item.ProductID, "error", addErr)
+				metrics.Record(ctx, "inventory_mutation_failed", metrics.L{metrics.LabelReason: "restock"})
 			}
 		}
 	}
@@ -441,6 +444,7 @@ func (s *OrderService) CancelOrder(ctx context.Context, id string, reason string
 		_, err := s.inventoryRepo.ReleaseStock(ctx, item.ProductID, item.Quantity, order.ID)
 		if err != nil {
 			slog.ErrorContext(ctx, "Failed to release stock", keyProductID, item.ProductID, "error", err)
+			metrics.Record(ctx, "inventory_mutation_failed", metrics.L{metrics.LabelReason: "release"})
 		}
 	}
 

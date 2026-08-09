@@ -548,6 +548,24 @@ func TestOrderService_UpdateStatus_Inventory(t *testing.T) {
 		require.NoError(t, err)
 		assert.NotNil(t, order.CancelledAt)
 	})
+
+	t.Run("a failed commit does not fail the shipment", func(t *testing.T) {
+		order := &domain.Order{
+			ID:     "order_fail",
+			Status: domain.OrderStatusConfirmed,
+			Items:  []domain.OrderItem{{ProductID: "prod_123", Quantity: 2}},
+		}
+
+		mockOrderRepo.EXPECT().GetByID(gomock.Any(), "order_fail").Return(order, nil)
+		mockOrderRepo.EXPECT().Update(gomock.Any(), gomock.Any()).Return(nil)
+		mockInventoryRepo.EXPECT().
+			CommitStock(gomock.Any(), "prod_123", 2, "order_fail").
+			Return(nil, errors.New(errors.ErrCodeInsufficientStock, "insufficient stock"))
+
+		err := service.UpdateStatus(ctx, "order_fail", domain.OrderStatusShipped, "admin_123")
+		require.NoError(t, err, "inventory failure must not block the status change")
+		require.Equal(t, domain.OrderStatusShipped, order.Status)
+	})
 }
 
 func TestOrderService_AddNote(t *testing.T) {
