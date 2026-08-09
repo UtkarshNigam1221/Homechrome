@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -566,6 +567,63 @@ func TestOrderService_UpdateStatus_Inventory(t *testing.T) {
 		require.NoError(t, err, "inventory failure must not block the status change")
 		require.Equal(t, domain.OrderStatusShipped, order.Status)
 	})
+
+	t.Run("orderRepo.Update failure prevents any inventory mutation", func(t *testing.T) {
+		// Regression test: inventory mutations must run AFTER the status is
+		// persisted, not before. Registering no CommitStock/AddStock/
+		// ReleaseStock expectation means gomock fails this test the moment an
+		// unexpected call happens — which is exactly what the old ordering
+		// (mutate inventory, then persist) would have done here despite the
+		// persist failing.
+		order := &domain.Order{
+			ID:     "order_updatefail",
+			Status: domain.OrderStatusConfirmed,
+			Items:  []domain.OrderItem{{ProductID: "prod_123", Quantity: 2}},
+		}
+
+		mockOrderRepo.EXPECT().GetByID(gomock.Any(), "order_updatefail").Return(order, nil)
+		mockOrderRepo.EXPECT().
+			Update(gomock.Any(), gomock.Any()).
+			Return(errors.New(errors.ErrCodeInternal, "db write failed"))
+
+		err := service.UpdateStatus(ctx, "order_updatefail", domain.OrderStatusShipped, "admin_123")
+		require.Error(t, err, "a persist failure must propagate")
+	})
+}
+
+// TestReleaseFailureReason pins the inventory_mutation_failed reason label
+// chosen for a ReleaseStock failure: insufficient-stock (the reservation was
+// already zeroed by an earlier release, e.g. a failed-payment rollback) maps
+// to "release_unreserved" so it doesn't get counted as a real leak signal.
+// Any other error keeps the default "release" reason.
+func TestReleaseFailureReason(t *testing.T) {
+	tests := []struct {
+		name     string
+		err      error
+		expected string
+	}{
+		{
+			name:     "insufficient stock maps to release_unreserved",
+			err:      errors.New(errors.ErrCodeInsufficientStock, "insufficient stock"),
+			expected: "release_unreserved",
+		},
+		{
+			name:     "other AppError keeps release",
+			err:      errors.New(errors.ErrCodeNotFound, "Inventory not found"),
+			expected: "release",
+		},
+		{
+			name:     "non-AppError keeps release",
+			err:      fmt.Errorf("connection reset"),
+			expected: "release",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, releaseFailureReason(tt.err))
+		})
+	}
 }
 
 func TestOrderService_AddNote(t *testing.T) {

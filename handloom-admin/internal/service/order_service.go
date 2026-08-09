@@ -212,7 +212,15 @@ func (s *OrderService) Create(ctx context.Context, req domain.CreateOrderRequest
 		utmSource: labelUnknown,
 	})
 
-	// Reserve inventory — track failures for visibility
+	// Reserve inventory — track failures for visibility.
+	//
+	// inventory_mutation_failed metering rule: every swallowed inventory
+	// failure is metered, and only those. A site that instead propagates its
+	// error to the caller (e.g. checkout_service.go's initial ReserveStock
+	// loop) is deliberately NOT metered here — the caller already sees the
+	// failure via the returned error, so metering it too would double-count.
+	// The four reason values in use (reserve, commit, release, restock) each
+	// correspond to exactly one swallowed-failure call site.
 	var reservationFailures []string
 	for _, item := range items {
 		_, err := s.inventoryRepo.ReserveStock(ctx, item.ProductID, item.Quantity, order.ID)
@@ -320,10 +328,38 @@ func (s *OrderService) UpdateStatus(ctx context.Context, id string, status domai
 	now := time.Now()
 	order.UpdatedAt = now
 
-	// Handle status-specific logic before persisting
+	// Set status-specific timestamp fields before persisting — these are part
+	// of the write below, so they must land on `order` first.
 	switch status {
 	case domain.OrderStatusShipped:
 		order.ShippedAt = &now
+	case domain.OrderStatusDelivered:
+		order.DeliveredAt = &now
+	case domain.OrderStatusCancelled:
+		// CancelledAt mirrors CancelOrder, so tracking_handler's timeline
+		// (which gates the "cancelled" entry on CancelledAt != nil) shows a
+		// cancellation regardless of which path set it. Reuses the UpdatedAt
+		// timestamp above rather than calling time.Now() again.
+		order.CancelledAt = &now
+	}
+
+	if err := s.orderRepo.Update(ctx, order); err != nil {
+		span.EndWithError(err)
+		return err
+	}
+
+	// Inventory mutations run AFTER the status write, deliberately: the
+	// persisted status is the source of truth, not the inventory side effect.
+	// If Update above fails, none of these have run yet, so a retry starts
+	// clean. If one of these fails, the status is already durable, the
+	// failure is metered (rule documented where inventory_mutation_failed is
+	// first emitted, in Create above), and a retry is correctly rejected by
+	// isValidStatusTransition — the same conservative failure mode CancelOrder
+	// already has. This matters most for RETURNED: AddStock has no
+	// idempotency guard, so it must never run before the status write it
+	// depends on to prevent a retry from double-adding stock.
+	switch status {
+	case domain.OrderStatusShipped:
 		// Goods have left the warehouse: convert each reservation into a
 		// dispatch. available_qty is unaffected — these units were already
 		// unavailable while reserved.
@@ -333,20 +369,12 @@ func (s *OrderService) UpdateStatus(ctx context.Context, id string, status domai
 				metrics.Record(ctx, "inventory_mutation_failed", metrics.L{metrics.LabelReason: "commit"})
 			}
 		}
-	case domain.OrderStatusDelivered:
-		order.DeliveredAt = &now
-		// No inventory effect: stock was committed at dispatch.
 	case domain.OrderStatusCancelled:
-		// CancelledAt mirrors CancelOrder, so tracking_handler's timeline
-		// (which gates the "cancelled" entry on CancelledAt != nil) shows a
-		// cancellation regardless of which path set it. Reuses the UpdatedAt
-		// timestamp above rather than calling time.Now() again.
-		order.CancelledAt = &now
 		// Release reserved stock
 		for _, item := range order.Items {
 			if _, releaseErr := s.inventoryRepo.ReleaseStock(ctx, item.ProductID, item.Quantity, order.ID); releaseErr != nil {
 				slog.ErrorContext(ctx, "Failed to release stock", keyProductID, item.ProductID, "error", releaseErr)
-				metrics.Record(ctx, "inventory_mutation_failed", metrics.L{metrics.LabelReason: "release"})
+				metrics.Record(ctx, "inventory_mutation_failed", metrics.L{metrics.LabelReason: releaseFailureReason(releaseErr)})
 			}
 		}
 		// order_cancelled — status-transition path, no admin reason text.
@@ -366,11 +394,8 @@ func (s *OrderService) UpdateStatus(ctx context.Context, id string, status domai
 			}
 		}
 	}
-
-	if err := s.orderRepo.Update(ctx, order); err != nil {
-		span.EndWithError(err)
-		return err
-	}
+	// domain.OrderStatusDelivered: no inventory effect — stock was committed
+	// at dispatch. No case needed above.
 
 	slog.InfoContext(ctx, "Updated order status", "order_id", id, "status", status)
 	span.End()
@@ -442,10 +467,10 @@ func (s *OrderService) CancelOrder(ctx context.Context, id string, reason string
 
 	// Release reserved stock
 	for _, item := range order.Items {
-		_, err := s.inventoryRepo.ReleaseStock(ctx, item.ProductID, item.Quantity, order.ID)
-		if err != nil {
-			slog.ErrorContext(ctx, "Failed to release stock", keyProductID, item.ProductID, "error", err)
-			metrics.Record(ctx, "inventory_mutation_failed", metrics.L{metrics.LabelReason: "release"})
+		_, releaseErr := s.inventoryRepo.ReleaseStock(ctx, item.ProductID, item.Quantity, order.ID)
+		if releaseErr != nil {
+			slog.ErrorContext(ctx, "Failed to release stock", keyProductID, item.ProductID, "error", releaseErr)
+			metrics.Record(ctx, "inventory_mutation_failed", metrics.L{metrics.LabelReason: releaseFailureReason(releaseErr)})
 		}
 	}
 
@@ -460,6 +485,24 @@ func (s *OrderService) CancelOrder(ctx context.Context, id string, reason string
 	slog.InfoContext(ctx, "Canceled order", "order_id", id)
 	span.End()
 	return nil
+}
+
+// releaseFailureReason maps a ReleaseStock failure to the metric reason label
+// for inventory_mutation_failed. A release that fails with insufficient-stock
+// means the reservation was already zeroed out by an earlier release — most
+// commonly HandlePaymentFailure's rollback (payment_service.go) or the
+// checkout rollback (checkout_service.go), both of which leave the order in
+// PENDING, still cancellable by customer or admin. That later cancel finding
+// nothing left to release is benign and expected, not a leak, so it's
+// counted separately as "release_unreserved" rather than "release" — see the
+// runbook's "Ongoing drift check" section for why on-call should not treat it
+// as a page-worthy signal. Any other error keeps the "release" reason, which
+// does indicate a real problem.
+func releaseFailureReason(err error) string {
+	if appErr, ok := errors.AsAppError(err); ok && appErr.Code == errors.ErrCodeInsufficientStock {
+		return "release_unreserved"
+	}
+	return "release"
 }
 
 // normaliseCancelReason maps free-text reasons to a bounded label set.
