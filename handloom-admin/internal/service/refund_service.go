@@ -70,7 +70,22 @@ func (s *RefundService) Create(ctx context.Context, orderID string, req domain.C
 		return nil, errors.BadRequest("Order has not been paid")
 	}
 
-	breakdown, err := deriveRefundAmount(order, req.Items, payment.RefundAmount)
+	// What every refund that has not failed already claims — settled or still in
+	// flight. Bounding on the settled figures alone left a window, between
+	// creating a refund and its webhook landing, in which the same units could go
+	// back a second time and real money left twice.
+	existing, err := s.refundRepo.ListByOrder(ctx, order.ID)
+	if err != nil {
+		return nil, err
+	}
+	claimed, claimedAmount := claimedByLive(existing)
+	if claimedAmount < payment.RefundAmount {
+		// The payment total is authoritative for money; a refund whose settlement
+		// half-completed can leave it ahead of the rows.
+		claimedAmount = payment.RefundAmount
+	}
+
+	breakdown, err := deriveRefundAmount(order, req.Items, claimed, claimedAmount)
 	if err != nil {
 		return nil, err
 	}
@@ -126,14 +141,39 @@ func (s *RefundService) Create(ctx context.Context, orderID string, req domain.C
 	return refund, nil
 }
 
-// applyInventoryEffect moves stock for a refund, and only before dispatch.
+// claimedByLive totals what refunds that have not failed already account for,
+// per line and in money. A failed refund returns nothing, so its units are free
+// again.
+func claimedByLive(refunds []*domain.Refund) (map[string]int, int64) {
+	claimed := make(map[string]int)
+	var amount int64
+
+	for _, refund := range refunds {
+		if refund.Status == domain.RefundStatusFailed {
+			continue
+		}
+		amount += refund.Amount
+		for _, item := range refund.Items {
+			claimed[item.OrderItemID] += item.Quantity
+		}
+	}
+
+	return claimed, amount
+}
+
+// applyInventoryEffect moves stock for a refund, and only while the order still
+// holds a reservation to move.
 //
-// Dispatch is the dividing line because CommitStock consumes the reservation at
-// SHIPPED. After that, RETURNED owns restocking — letting a refund restock too
-// would count the same goods back twice.
+// Dispatch is one dividing line: CommitStock consumes the reservation at
+// SHIPPED, and RETURNED owns restocking from there, so a refund moving stock too
+// would count the same goods back twice. Cancellation is the other: the release
+// already happened, the units are back on sale, and a refund that tried to
+// release them again would be refused by the outstanding-reservation guard and
+// fire inventory_mutation_failed on what is a perfectly ordinary flow.
 func (s *RefundService) applyInventoryEffect(ctx context.Context, order *domain.Order, refund *domain.Refund) {
-	if order.Status == domain.OrderStatusShipped || order.Status == domain.OrderStatusDelivered ||
-		order.Status == domain.OrderStatusReturned {
+	switch order.Status {
+	case domain.OrderStatusShipped, domain.OrderStatusDelivered,
+		domain.OrderStatusReturned, domain.OrderStatusCancelled:
 		return
 	}
 

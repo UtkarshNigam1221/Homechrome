@@ -144,9 +144,13 @@ func TestInventoryRepository_OrderScopedIdempotency(t *testing.T) {
 	// commits twice. The second commit passes the total-only guard and eats Y's
 	// reservation, leaving Y unable to ship.
 	t.Run("repeat commit does not consume another order's reservation", func(t *testing.T) {
-		productID := newProduct(t, 10, 5) // X holds 2, Y holds 3
+		productID := newProduct(t, 10, 0)
+		_, err := repo.ReserveStock(ctx, productID, 2, "order_X")
+		require.NoError(t, err)
+		_, err = repo.ReserveStock(ctx, productID, 3, "order_Y")
+		require.NoError(t, err)
 
-		_, err := repo.CommitStock(ctx, productID, 2, "order_X")
+		_, err = repo.CommitStock(ctx, productID, 2, "order_X")
 		require.NoError(t, err)
 
 		_, err = repo.CommitStock(ctx, productID, 2, "order_X")
@@ -511,6 +515,40 @@ func TestInventoryRepository_OrderOutstandingReservation(t *testing.T) {
 		require.Equal(t, 4, reserved, "order_y's reservation must survive order_x's cancel")
 	})
 
+	// The admin Create path takes items straight from the request, so one product
+	// can appear on two lines. Reserving per line meant 013's dedup swallowed the
+	// second one: the order held less than it sold, and the product oversold.
+	t.Run("reserves the whole order when one product appears on two lines", func(t *testing.T) {
+		productID := newProduct(t, 100, 0)
+
+		require.NoError(t, repo.ReserveOrderStock(ctx, "order_dup", map[string]int{productID: 5}))
+
+		_, reserved, available := readInventory(t, pool, productID)
+		require.Equal(t, 5, reserved, "2 + 3 units, not just the first line")
+		require.Equal(t, 95, available)
+	})
+
+	t.Run("a repeated reserve for one order is still a no-op", func(t *testing.T) {
+		productID := newProduct(t, 100, 0)
+
+		require.NoError(t, repo.ReserveOrderStock(ctx, "order_dup_twice", map[string]int{productID: 2}))
+		require.NoError(t, repo.ReserveOrderStock(ctx, "order_dup_twice", map[string]int{productID: 2}))
+
+		_, reserved, _ := readInventory(t, pool, productID)
+		require.Equal(t, 2, reserved)
+	})
+
+	t.Run("reserves every line of an order or none of them", func(t *testing.T) {
+		a := newProduct(t, 100, 0)
+		b := newProduct(t, 1, 0)
+
+		err := repo.ReserveOrderStock(ctx, "order_partial", map[string]int{a: 2, b: 5})
+		require.Error(t, err, "b cannot cover 5")
+
+		_, reservedA, _ := readInventory(t, pool, a)
+		require.Equal(t, 0, reservedA, "a must roll back with b")
+	})
+
 	t.Run("a dispatch commits only what its own order still holds", func(t *testing.T) {
 		productID := newProduct(t, 100, 0)
 
@@ -526,6 +564,34 @@ func TestInventoryRepository_OrderOutstandingReservation(t *testing.T) {
 		qty, reserved, _ := readInventory(t, pool, productID)
 		require.Equal(t, 5, reserved, "order_d keeps its reservation")
 		require.Equal(t, 98, qty, "one unit written off, one dispatched")
+	})
+
+	// The one arm with no coverage until now. An order that never reserved cannot
+	// release: OrderService.Create writes the order before the reservation and
+	// swallows a failure, so "order exists, reserved nothing" is reachable, and
+	// releasing its ordered quantity would come out of another order's holding.
+	t.Run("an order that never reserved releases nothing", func(t *testing.T) {
+		productID := newProduct(t, 100, 0)
+
+		_, err := repo.ReserveStock(ctx, productID, 4, "order_holder")
+		require.NoError(t, err)
+
+		// order_ghost has no ledger history against this product at all.
+		require.NoError(t, repo.ReleaseOrderStock(ctx, "order_ghost", map[string]int{productID: 3}))
+
+		_, reserved, _ := readInventory(t, pool, productID)
+		require.Equal(t, 4, reserved, "order_holder keeps everything it reserved")
+	})
+
+	// The fallback exists for reserved_qty set through UpdateInventory, which
+	// writes no ledger row. That is a property of the product, not of one order.
+	t.Run("still guards only on the product total when the ledger knows nothing", func(t *testing.T) {
+		productID := newProduct(t, 100, 6)
+
+		require.NoError(t, repo.ReleaseOrderStock(ctx, "order_admin", map[string]int{productID: 2}))
+
+		_, reserved, _ := readInventory(t, pool, productID)
+		require.Equal(t, 4, reserved, "an administratively set reservation is still releasable")
 	})
 
 	// A refund asking for more than the order holds is the caller being wrong,
@@ -583,9 +649,11 @@ func TestInventoryRepository_ReleaseRefundedStock(t *testing.T) {
 	})
 
 	t.Run("counts two refunds against the same order and product", func(t *testing.T) {
-		id := productID(t, 100, 10)
+		id := productID(t, 100, 6)
+		_, err := repo.ReserveStock(ctx, id, 4, "order_rr_two")
+		require.NoError(t, err)
 
-		_, err := repo.ReleaseRefundedStock(ctx, id, 2, "order_rr_two", "refund_a")
+		_, err = repo.ReleaseRefundedStock(ctx, id, 2, "order_rr_two", "refund_a")
 		require.NoError(t, err)
 		_, err = repo.ReleaseRefundedStock(ctx, id, 2, "order_rr_two", "refund_b")
 		require.NoError(t, err)
@@ -686,9 +754,11 @@ func TestInventoryRepository_WriteOffStock(t *testing.T) {
 	// the order alone deduped the second refund into the first: the money went
 	// back and the stock never moved.
 	t.Run("moves stock for a second refund against the same order and product", func(t *testing.T) {
-		productID := newProduct(t, 100, 10)
+		productID := newProduct(t, 100, 8)
+		_, err := repo.ReserveStock(ctx, productID, 2, "order_wo_two")
+		require.NoError(t, err)
 
-		_, err := repo.WriteOffStock(ctx, productID, 1, "order_wo_two", "refund_one")
+		_, err = repo.WriteOffStock(ctx, productID, 1, "order_wo_two", "refund_one")
 		require.NoError(t, err)
 		_, err = repo.WriteOffStock(ctx, productID, 1, "order_wo_two", "refund_two")
 		require.NoError(t, err)

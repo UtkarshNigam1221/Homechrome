@@ -221,26 +221,16 @@ func (s *OrderService) Create(ctx context.Context, req domain.CreateOrderRequest
 	// failure via the returned error, so metering it too would double-count.
 	// The reason values are named in constants.go; each swallowed-failure call
 	// site emits exactly one of them.
-	var reservationFailures []string
-	for _, item := range items {
-		_, err := s.inventoryRepo.ReserveStock(ctx, item.ProductID, item.Quantity, order.ID)
-		if err != nil {
-			slog.ErrorContext(ctx, "Failed to reserve stock",
-				keyProductID, item.ProductID,
-				"order_id", order.ID,
-				"quantity", item.Quantity,
-				"error", err,
-			)
-			metrics.Record(ctx, "inventory_mutation_failed", metrics.L{metrics.LabelReason: reasonReserve})
-			reservationFailures = append(reservationFailures, item.ProductID)
-		}
-	}
-
-	if len(reservationFailures) > 0 {
-		slog.WarnContext(ctx, "Order created with inventory reservation failures",
-			"order_id", order.ID,
-			"failed_products", reservationFailures,
-		)
+	// Aggregated and all-or-nothing, like the commit and release paths. One
+	// product can appear on two lines here, and reserving per line let the
+	// order-scoped guard dedup the second away — the order then held less than it
+	// sold. All-or-nothing also means a failure leaves no partial reservation to
+	// reconcile.
+	if reserveErr := s.inventoryRepo.ReserveOrderStock(ctx, order.ID, orderQuantities(order.Items)); reserveErr != nil {
+		slog.ErrorContext(ctx, "Failed to reserve stock",
+			"order_id", order.ID, "error", reserveErr)
+		metrics.Record(ctx, "inventory_mutation_failed", metrics.L{metrics.LabelReason: reasonReserve})
+		slog.WarnContext(ctx, "Order created with no inventory reservation", "order_id", order.ID)
 	}
 
 	slog.InfoContext(ctx, "Created order", "order_id", order.ID)

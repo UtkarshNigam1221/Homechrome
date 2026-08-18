@@ -75,6 +75,7 @@ func newRefundHarness(t *testing.T) *refundHarness {
 		},
 	}
 	h.svc = NewRefundService(h.refunds, h.orders, h.payments, h.inventory, h.users, h.gateway)
+
 	return h
 }
 
@@ -109,6 +110,7 @@ func TestRefundService_Create(t *testing.T) {
 		h := newRefundHarness(t)
 		h.orders.EXPECT().GetByID(gomock.Any(), "order_1").Return(paidOrder(domain.OrderStatusConfirmed), nil)
 		h.payments.EXPECT().GetByOrderID(gomock.Any(), "order_1").Return(paidPayment(), nil)
+		h.refunds.EXPECT().ListByOrder(gomock.Any(), "order_1").Return(nil, nil)
 
 		// Written first: a refund that reaches the provider with no local row
 		// cannot be reconciled.
@@ -138,6 +140,7 @@ func TestRefundService_Create(t *testing.T) {
 
 		h.orders.EXPECT().GetByID(gomock.Any(), "order_1").Return(paidOrder(domain.OrderStatusConfirmed), nil)
 		h.payments.EXPECT().GetByOrderID(gomock.Any(), "order_1").Return(paidPayment(), nil)
+		h.refunds.EXPECT().ListByOrder(gomock.Any(), "order_1").Return(nil, nil)
 		h.refunds.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
 		h.refunds.EXPECT().Settle(gomock.Any(), gomock.Any(), domain.RefundStatusFailed,
 			gomock.Any(), "INITIATION_FAILED", gomock.Any()).Return(nil)
@@ -151,6 +154,7 @@ func TestRefundService_Create(t *testing.T) {
 		h := newRefundHarness(t)
 		h.orders.EXPECT().GetByID(gomock.Any(), "order_1").Return(paidOrder(domain.OrderStatusConfirmed), nil)
 		h.payments.EXPECT().GetByOrderID(gomock.Any(), "order_1").Return(paidPayment(), nil)
+		h.refunds.EXPECT().ListByOrder(gomock.Any(), "order_1").Return(nil, nil)
 		h.refunds.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
 		h.refunds.EXPECT().SetProviderRefundID(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 		h.inventory.EXPECT().ReleaseRefundedStock(gomock.Any(), "prod_a", 1, "order_1", gomock.Not("")).
@@ -166,6 +170,7 @@ func TestRefundService_Create(t *testing.T) {
 		h := newRefundHarness(t)
 		h.orders.EXPECT().GetByID(gomock.Any(), "order_1").Return(paidOrder(domain.OrderStatusShipped), nil)
 		h.payments.EXPECT().GetByOrderID(gomock.Any(), "order_1").Return(paidPayment(), nil)
+		h.refunds.EXPECT().ListByOrder(gomock.Any(), "order_1").Return(nil, nil)
 		h.refunds.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
 		h.refunds.EXPECT().SetProviderRefundID(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 
@@ -188,6 +193,7 @@ func TestRefundService_Create(t *testing.T) {
 		h := newRefundHarness(t)
 		h.orders.EXPECT().GetByID(gomock.Any(), "order_1").Return(paidOrder(domain.OrderStatusConfirmed), nil)
 		h.payments.EXPECT().GetByOrderID(gomock.Any(), "order_1").Return(paidPayment(), nil)
+		h.refunds.EXPECT().ListByOrder(gomock.Any(), "order_1").Return(nil, nil)
 
 		_, err := h.svc.Create(ctx, "order_1", oneLine(5, false), "admin_1")
 		require.Error(t, err)
@@ -426,5 +432,67 @@ func TestRefundService_ListByOrder_ResolvesActorNames(t *testing.T) {
 
 		require.NoError(t, err)
 		require.Empty(t, got[0].CreatedByName)
+	})
+}
+
+// A refund is PENDING from creation until the provider's webhook lands. Bounding
+// the next one on settled figures alone meant the same units could go back
+// twice inside that window, and real money left twice.
+func TestRefundService_Create_CountsRefundsStillInFlight(t *testing.T) {
+	ctx := context.Background()
+
+	inFlight := func(qty int, amount int64) []*domain.Refund {
+		return []*domain.Refund{{
+			ID: "refund_prior", Status: domain.RefundStatusPending, Amount: amount,
+			Items: []domain.RefundItem{{OrderItemID: "item_a", Quantity: qty, Amount: amount}},
+		}}
+	}
+
+	t.Run("refuses units a pending refund already claimed", func(t *testing.T) {
+		h := newRefundHarness(t)
+		h.orders.EXPECT().GetByID(gomock.Any(), "order_1").Return(paidOrder(domain.OrderStatusConfirmed), nil)
+		h.payments.EXPECT().GetByOrderID(gomock.Any(), "order_1").Return(paidPayment(), nil)
+		// The order has 2 units; one is already going back and has not settled.
+		h.refunds.EXPECT().ListByOrder(gomock.Any(), "order_1").Return(inFlight(2, 20000), nil)
+		// No Create, no gateway call: gomock fails the test if money moves.
+
+		_, err := h.svc.Create(ctx, "order_1", oneLine(1, false), "admin_1")
+
+		require.Error(t, err)
+	})
+
+	t.Run("allows what a pending refund leaves", func(t *testing.T) {
+		h := newRefundHarness(t)
+		h.orders.EXPECT().GetByID(gomock.Any(), "order_1").Return(paidOrder(domain.OrderStatusConfirmed), nil)
+		h.payments.EXPECT().GetByOrderID(gomock.Any(), "order_1").Return(paidPayment(), nil)
+		h.refunds.EXPECT().ListByOrder(gomock.Any(), "order_1").Return(inFlight(1, 10000), nil)
+		h.refunds.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
+		h.refunds.EXPECT().SetProviderRefundID(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		h.inventory.EXPECT().WriteOffStock(gomock.Any(), "prod_a", 1, "order_1", gomock.Not("")).
+			Return(&domain.InventoryTransaction{}, nil)
+
+		refund, err := h.svc.Create(ctx, "order_1", oneLine(1, false), "admin_1")
+
+		require.NoError(t, err)
+		require.Equal(t, int64(10000), refund.Amount, "the remaining unit, and the order is now clear")
+	})
+
+	// A failed refund returned nothing, so its units are free again.
+	t.Run("frees the units of a refund that failed", func(t *testing.T) {
+		h := newRefundHarness(t)
+		h.orders.EXPECT().GetByID(gomock.Any(), "order_1").Return(paidOrder(domain.OrderStatusConfirmed), nil)
+		h.payments.EXPECT().GetByOrderID(gomock.Any(), "order_1").Return(paidPayment(), nil)
+		h.refunds.EXPECT().ListByOrder(gomock.Any(), "order_1").Return([]*domain.Refund{{
+			ID: "refund_dead", Status: domain.RefundStatusFailed, Amount: 20000,
+			Items: []domain.RefundItem{{OrderItemID: "item_a", Quantity: 2, Amount: 20000}},
+		}}, nil)
+		h.refunds.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
+		h.refunds.EXPECT().SetProviderRefundID(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		h.inventory.EXPECT().WriteOffStock(gomock.Any(), "prod_a", 2, "order_1", gomock.Not("")).
+			Return(&domain.InventoryTransaction{}, nil)
+
+		_, err := h.svc.Create(ctx, "order_1", oneLine(2, false), "admin_1")
+
+		require.NoError(t, err)
 	})
 }

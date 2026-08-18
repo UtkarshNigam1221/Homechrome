@@ -287,35 +287,40 @@ func existingOrderMovement(ctx context.Context, tx pgx.Tx, productID, orderID, s
 // refunded away. Derived from the ledger because nothing else records it — the
 // inventory row only knows the product-wide total.
 //
-// known is false when the ledger holds no reservation for this order at all.
-// reserved_qty can also be set administratively through UpdateInventory, which
-// writes no ledger row, and refusing to release stock the ledger cannot explain
-// would strand it. In that case the product-level guard stays the only check,
-// exactly as before.
+// known reports whether the ledger can account for this product's reservations
+// at all — that is, whether the product has any order-scoped history. It is
+// deliberately a property of the product rather than of this order: an order
+// with no RESERVE row of its own holds nothing and must release nothing, which
+// is reachable because OrderService.Create writes the order before reserving and
+// swallows a failure.
+//
+// The fallback exists only for reserved_qty set through UpdateInventory, which
+// writes no ledger row. Refusing to release stock the ledger has never seen
+// would strand it, so there the product-level guard stays the only check.
 func orderOutstandingReservation(ctx context.Context, tx pgx.Tx, productID, orderID string) (outstanding int, known bool, err error) {
-	var reservedRows int
+	var productRows int
 	err = tx.QueryRow(ctx,
 		`SELECT COALESCE(SUM(CASE
-		          WHEN type = $3 THEN quantity
-		          WHEN type IN ($4, $5, $6) THEN -quantity
+		          WHEN reference_id = $2 AND type = $3 THEN quantity
+		          WHEN reference_id = $2 AND type IN ($4, $5, $6) THEN -quantity
 		          ELSE 0 END), 0),
-		        COUNT(*) FILTER (WHERE type = $3)
+		        COUNT(*)
 		 FROM inventory_transactions
-		 WHERE product_id = $1 AND reference_id = $2 AND reference_type = $7`,
+		 WHERE product_id = $1 AND reference_type = $7`,
 		productID, orderID,
 		string(domain.InventoryTransactionTypeReserve),
 		string(domain.InventoryTransactionTypeRelease),
 		string(domain.InventoryTransactionTypeCommit),
 		string(domain.InventoryTransactionTypeWriteOff),
 		inventoryRefTypeOrder,
-	).Scan(&outstanding, &reservedRows)
+	).Scan(&outstanding, &productRows)
 	if err != nil {
 		return 0, false, errors.Wrap(err, "failed to read the order's outstanding reservation")
 	}
 	if outstanding < 0 {
 		outstanding = 0
 	}
-	return outstanding, reservedRows > 0, nil
+	return outstanding, productRows > 0, nil
 }
 
 // applyOrderMovement performs one product's stock movement for an order inside an
@@ -475,6 +480,17 @@ func (r *InventoryRepository) orderMovementAll(ctx context.Context, m orderMovem
 		}
 		return nil
 	})
+}
+
+// ReserveOrderStock reserves every line of an order at once, all or nothing.
+//
+// Quantities are aggregated by product before they get here, which matters: the
+// admin create path takes items straight from the request, so one product can
+// appear on two lines, and the order-scoped uniqueness guard would dedup the
+// second reservation into the first — leaving the order holding less than it
+// sold.
+func (r *InventoryRepository) ReserveOrderStock(ctx context.Context, orderID string, quantities map[string]int) error {
+	return r.orderMovementAll(ctx, movementReserve, orderID, quantities)
 }
 
 // CommitOrderStock commits every line of an order at once, all or nothing.
