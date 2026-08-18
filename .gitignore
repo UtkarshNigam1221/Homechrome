@@ -12,8 +12,10 @@ skills-lock.json
 # Superpowers
 .superpowers/
 
-# Generated docs (stay local, not committed) — ignore all docs except superpowers
-docs/
+# Generated docs (stay local, not committed) — ignore all docs except superpowers.
+# Must be `docs/*`, not `docs/`: git does not descend into an excluded directory,
+# so a negation under `docs/` would never be reached.
+docs/*
 !docs/superpowers/
 !docs/superpowers/**
 
