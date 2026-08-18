@@ -37,25 +37,43 @@ func (r *CustomerRepository) Create(ctx context.Context, customer *domain.Custom
 		return errors.Internal("Failed to marshal customer")
 	}
 
-	_, err = r.client.db.PutItem(ctx, &dynamodb.PutItemInput{
-		TableName:           aws.String(r.client.ordersTable),
-		Item:                av,
-		ConditionExpression: aws.String("attribute_not_exists(PK)"),
-	})
-	if err != nil {
-		if isConditionalCheckFailed(err) {
-			return errors.New(errors.ErrCodeAlreadyExists, "Customer already exists")
-		}
-		return errors.Wrap(err, "Failed to create customer")
+	// The customer and its email pointer go in one transaction, as users have
+	// always done. Written separately, a failure on the second leaves a customer
+	// GetByEmail can never find — a hole in the very guard the pointer exists to
+	// provide.
+	writes := []types.TransactWriteItem{
+		{
+			Put: &types.Put{
+				TableName:           aws.String(r.client.ordersTable),
+				Item:                av,
+				ConditionExpression: aws.String("attribute_not_exists(PK)"),
+			},
+		},
 	}
 
-	// Write the email pointer. Unlike the phone index this refuses a duplicate:
-	// two customers sharing an address made GetByEmail return whichever the
-	// index happened to yield.
 	if customer.Email != "" {
-		if err := r.putEmailIndex(ctx, customer.Email, customer.ID); err != nil {
-			return err
+		emailAV, marshalErr := marshalEmailIndex(customer.Email, customer.ID)
+		if marshalErr != nil {
+			return marshalErr
 		}
+		writes = append(writes, types.TransactWriteItem{
+			Put: &types.Put{
+				TableName:           aws.String(r.client.ordersTable),
+				Item:                emailAV,
+				ConditionExpression: aws.String("attribute_not_exists(PK)"),
+			},
+		})
+	}
+
+	if _, err = r.client.db.TransactWriteItems(ctx, &dynamodb.TransactWriteItemsInput{
+		TransactItems: writes,
+	}); err != nil {
+		if isTransactionCanceled(err) {
+			// Either the customer id is taken or the address is. Both mean the
+			// caller must pick something else.
+			return errors.New(errors.ErrCodeAlreadyExists, "Customer or email already exists")
+		}
+		return errors.Wrap(err, "Failed to create customer")
 	}
 
 	// Write phone index for lookup
@@ -155,24 +173,9 @@ func (r *CustomerRepository) Update(ctx context.Context, customer *domain.Custom
 	customer.UpdatedAt = time.Now()
 	customer.SetKeys()
 
-	// The pointer is a separate item, so an address change has to move it.
-	// Claim the new one first: if it belongs to somebody else the update is
-	// refused before the customer record has been touched.
 	existing, err := r.GetByID(ctx, customer.ID)
 	if err != nil {
 		return err
-	}
-	if existing.Email != customer.Email {
-		if customer.Email != "" {
-			if claimErr := r.putEmailIndex(ctx, customer.Email, customer.ID); claimErr != nil {
-				return claimErr
-			}
-		}
-		if existing.Email != "" {
-			if releaseErr := r.deleteEmailIndex(ctx, existing.Email); releaseErr != nil {
-				return releaseErr
-			}
-		}
 	}
 
 	av, err := attributevalue.MarshalMap(customer)
@@ -180,14 +183,55 @@ func (r *CustomerRepository) Update(ctx context.Context, customer *domain.Custom
 		return errors.Internal("Failed to marshal customer")
 	}
 
-	_, err = r.client.db.PutItem(ctx, &dynamodb.PutItemInput{
-		TableName:           aws.String(r.client.ordersTable),
-		Item:                av,
-		ConditionExpression: aws.String("attribute_exists(PK)"),
-	})
-	if err != nil {
-		if isConditionalCheckFailed(err) {
-			return errors.NotFound("Customer not found")
+	writes := []types.TransactWriteItem{
+		{
+			Put: &types.Put{
+				TableName:           aws.String(r.client.ordersTable),
+				Item:                av,
+				ConditionExpression: aws.String("attribute_exists(PK)"),
+			},
+		},
+	}
+
+	// Moving an address is three writes that have to agree: claim the new
+	// pointer, release the old, and save the record. Done separately, a failure
+	// between them leaves the customer findable at an address they no longer
+	// hold, or at none.
+	if existing.Email != customer.Email {
+		if customer.Email != "" {
+			emailAV, marshalErr := marshalEmailIndex(customer.Email, customer.ID)
+			if marshalErr != nil {
+				return marshalErr
+			}
+			writes = append(writes, types.TransactWriteItem{
+				Put: &types.Put{
+					TableName:           aws.String(r.client.ordersTable),
+					Item:                emailAV,
+					ConditionExpression: aws.String("attribute_not_exists(PK) OR customer_id = :id"),
+					ExpressionAttributeValues: map[string]types.AttributeValue{
+						":id": &types.AttributeValueMemberS{Value: customer.ID},
+					},
+				},
+			})
+		}
+		if existing.Email != "" {
+			writes = append(writes, types.TransactWriteItem{
+				Delete: &types.Delete{
+					TableName: aws.String(r.client.ordersTable),
+					Key: map[string]types.AttributeValue{
+						"PK": &types.AttributeValueMemberS{Value: "CUSTOMER_EMAIL#" + existing.Email},
+						"SK": &types.AttributeValueMemberS{Value: skMetadata},
+					},
+				},
+			})
+		}
+	}
+
+	if _, err = r.client.db.TransactWriteItems(ctx, &dynamodb.TransactWriteItemsInput{
+		TransactItems: writes,
+	}); err != nil {
+		if isTransactionCanceled(err) {
+			return errors.New(errors.ErrCodeAlreadyExists, "Email already in use")
 		}
 		return errors.Wrap(err, "Failed to update customer")
 	}
@@ -195,46 +239,17 @@ func (r *CustomerRepository) Update(ctx context.Context, customer *domain.Custom
 	return nil
 }
 
-// putEmailIndex claims an address for a customer, refusing one already taken.
-func (r *CustomerRepository) putEmailIndex(ctx context.Context, email, customerID string) error {
+// marshalEmailIndex builds the pointer item that both finds a customer by
+// address and, through its condition, keeps that address unique.
+func marshalEmailIndex(email, customerID string) (map[string]types.AttributeValue, error) {
 	idx := &domain.CustomerEmailIndex{CustomerID: customerID}
 	idx.SetKeys(email)
 
 	av, err := attributevalue.MarshalMap(idx)
 	if err != nil {
-		return errors.Internal("Failed to marshal email index")
+		return nil, errors.Internal("Failed to marshal email index")
 	}
-
-	_, err = r.client.db.PutItem(ctx, &dynamodb.PutItemInput{
-		TableName:           aws.String(r.client.ordersTable),
-		Item:                av,
-		ConditionExpression: aws.String("attribute_not_exists(PK) OR customer_id = :id"),
-		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":id": &types.AttributeValueMemberS{Value: customerID},
-		},
-	})
-	if err != nil {
-		if isConditionalCheckFailed(err) {
-			return errors.New(errors.ErrCodeAlreadyExists, "Email already in use")
-		}
-		return errors.Wrap(err, "Failed to write email index")
-	}
-	return nil
-}
-
-// deleteEmailIndex releases an address the customer no longer uses.
-func (r *CustomerRepository) deleteEmailIndex(ctx context.Context, email string) error {
-	_, err := r.client.db.DeleteItem(ctx, &dynamodb.DeleteItemInput{
-		TableName: aws.String(r.client.ordersTable),
-		Key: map[string]types.AttributeValue{
-			"PK": &types.AttributeValueMemberS{Value: "CUSTOMER_EMAIL#" + email},
-			"SK": &types.AttributeValueMemberS{Value: skMetadata},
-		},
-	})
-	if err != nil {
-		return errors.Wrap(err, "Failed to remove email index")
-	}
-	return nil
+	return av, nil
 }
 
 // List retrieves customers with filters
