@@ -191,14 +191,9 @@ func (r *PricingRuleRepository) List(ctx context.Context, req domain.ListPricing
 		input.ExpressionAttributeNames = exprAttrNames
 	}
 
-	result, err := r.client.db.Query(ctx, input)
+	rules, err := QueryAll[domain.PricingRule](ctx, r.client.db, input, "Failed to list pricing rules")
 	if err != nil {
-		return nil, errors.Internal(err)
-	}
-
-	var rules []*domain.PricingRule
-	if err := attributevalue.UnmarshalListOfMaps(result.Items, &rules); err != nil {
-		return nil, errors.Internal(err)
+		return nil, err
 	}
 
 	// Filter by search if provided
@@ -212,7 +207,8 @@ func (r *PricingRuleRepository) List(ctx context.Context, req domain.ListPricing
 		rules = filtered
 	}
 
-	// TODO: migrate to real DynamoDB cursor-based pagination
+	// Paginated in memory because the search above is applied in Go: a cursor
+	// would page the unfiltered index and hand back short, uneven pages.
 	paged, pg := InMemoryPaginate(rules, req.PaginationRequest)
 
 	return &domain.ListPricingRulesResponse{

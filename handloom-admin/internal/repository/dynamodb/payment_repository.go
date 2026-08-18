@@ -117,10 +117,9 @@ func (r *PaymentRepository) GetByMerchantTxnID(ctx context.Context, merchantTxnI
 	result, err := r.client.db.Query(ctx, &dynamodb.QueryInput{
 		TableName:              aws.String(r.client.ordersTable),
 		IndexName:              aws.String("GSI2"),
-		KeyConditionExpression: aws.String("GSI2PK = :pk AND GSI2SK = :sk"),
+		KeyConditionExpression: aws.String("GSI2PK = :pk"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
-			exprPK: &types.AttributeValueMemberS{Value: "PAYMENT_TXN"},
-			exprSK: &types.AttributeValueMemberS{Value: merchantTxnID},
+			exprPK: &types.AttributeValueMemberS{Value: "MERCHANT_TXN#" + merchantTxnID},
 		},
 		Limit: aws.Int32(1),
 	})

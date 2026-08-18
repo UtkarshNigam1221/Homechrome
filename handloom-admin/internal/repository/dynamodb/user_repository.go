@@ -192,34 +192,18 @@ func (r *UserRepository) Delete(ctx context.Context, id string) error {
 // List retrieves users with in-memory filtering, sorting, and cursor-based pagination.
 // Fetches all users from GSI1, applies Go-level filters, sorts, and paginates.
 func (r *UserRepository) List(ctx context.Context, req domain.ListUsersRequest) (*domain.ListUsersResponse, error) {
-	// Fetch all users from GSI1
-	var allUsers []*domain.User
-	var exclusiveStartKey map[string]types.AttributeValue
-
-	for {
-		result, err := r.client.db.Query(ctx, &dynamodb.QueryInput{
-			TableName:              aws.String(r.client.coreTable),
-			IndexName:              aws.String("GSI1"),
-			KeyConditionExpression: aws.String("GSI1PK = :pk"),
-			ExpressionAttributeValues: map[string]types.AttributeValue{
-				exprPK: &types.AttributeValueMemberS{Value: "USER_EMAIL"},
-			},
-			ExclusiveStartKey: exclusiveStartKey,
-		})
-		if err != nil {
-			return nil, errors.Wrap(err, "Failed to list users")
-		}
-
-		var batch []*domain.User
-		if err := attributevalue.UnmarshalListOfMaps(result.Items, &batch); err != nil {
-			return nil, errors.Internal("Failed to unmarshal users")
-		}
-		allUsers = append(allUsers, batch...)
-
-		if result.LastEvaluatedKey == nil {
-			break
-		}
-		exclusiveStartKey = result.LastEvaluatedKey
+	// Read every user: the sort below is applied in Go, so a cursor would only
+	// order the page it returned rather than the whole list.
+	allUsers, err := QueryAll[domain.User](ctx, r.client.db, &dynamodb.QueryInput{
+		TableName:              aws.String(r.client.coreTable),
+		IndexName:              aws.String("GSI1"),
+		KeyConditionExpression: aws.String("GSI1PK = :pk"),
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			exprPK: &types.AttributeValueMemberS{Value: "USER_EMAIL"},
+		},
+	}, "Failed to list users")
+	if err != nil {
+		return nil, err
 	}
 
 	// Filter in memory
@@ -271,7 +255,7 @@ func (r *UserRepository) List(ctx context.Context, req domain.ListUsersRequest) 
 		return less
 	})
 
-	// Paginate using offset-based in-memory cursor
+	// Paginated in memory because the sort above is applied in Go.
 	page, pagination := InMemoryPaginate(filtered, req.PaginationRequest)
 
 	return &domain.ListUsersResponse{
