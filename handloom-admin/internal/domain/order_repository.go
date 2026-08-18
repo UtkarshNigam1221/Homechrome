@@ -144,9 +144,6 @@ type OrderService interface {
 
 	// CancelOrder cancels an order
 	CancelOrder(ctx context.Context, id string, reason string, updatedBy string) error
-
-	// RefundOrder initiates a refund for an order
-	RefundOrder(ctx context.Context, id string, amount int64, reason string, updatedBy string) error
 }
 
 // CreateOrderRequest contains data for creating an order

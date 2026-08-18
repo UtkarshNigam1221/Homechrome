@@ -48,12 +48,6 @@ type CancelOrderRequest struct {
 	Reason string `json:"reason" validate:"required"`
 }
 
-// RefundOrderRequest is the request body for refunding an order
-type RefundOrderRequest struct {
-	Amount int64  `json:"amount" validate:"required,gt=0"`
-	Reason string `json:"reason" validate:"required"`
-}
-
 // Coupon request types
 
 // ValidateCouponRequest is the request body for validating a coupon

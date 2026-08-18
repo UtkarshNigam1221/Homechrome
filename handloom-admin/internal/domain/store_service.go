@@ -75,7 +75,6 @@ type PaymentService interface {
 	GetByOrderID(ctx context.Context, orderID string) (*Payment, error)
 	GetByMerchantTxnID(ctx context.Context, merchantTxnID string) (*Payment, error)
 	CheckProviderStatus(ctx context.Context, orderID string) (*ProviderPaymentStatus, error)
-	RefundPayment(ctx context.Context, paymentID string, amount int64, reason string) error
 }
 
 // ProviderPaymentStatus contains payment status from the payment provider

@@ -521,32 +521,6 @@ func normaliseCancelReason(reason string) string {
 	}
 }
 
-// RefundOrder initiates a refund for an order
-func (s *OrderService) RefundOrder(ctx context.Context, id string, amount int64, reason string, updatedBy string) error {
-	order, err := s.orderRepo.GetByID(ctx, id)
-	if err != nil {
-		return err
-	}
-
-	// Validate refund amount
-	if amount > order.TotalAmount {
-		return errors.Validation("Refund amount cannot exceed order total")
-	}
-
-	// Update payment status
-	order.PaymentStatus = domain.PaymentStatusRefunded
-	order.UpdatedBy = updatedBy
-
-	if err := s.orderRepo.Update(ctx, order); err != nil {
-		return err
-	}
-
-	// TODO: Integrate with payment gateway for actual refund
-
-	slog.InfoContext(ctx, "Initiated refund", "order_id", id, "amount", amount)
-	return nil
-}
-
 // generateOrderNumber generates a unique order number
 func generateOrderNumber() string {
 	now := time.Now()

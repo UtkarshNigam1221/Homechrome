@@ -94,6 +94,14 @@ type WebhookOrder struct {
 	Amount          int64           `json:"amount"`
 	ExpireAt        int64           `json:"expireAt"`
 	PaymentDetails  []PaymentDetail `json:"paymentDetails"`
+
+	// Present on pg.refund.* only. The payload identifies a refund by PhonePe's
+	// refundId and never echoes our merchantRefundId, which is why refunds are
+	// indexed by the provider's id.
+	RefundID                string `json:"refundId,omitempty"`
+	OriginalMerchantOrderID string `json:"originalMerchantOrderId,omitempty"`
+	ErrorCode               string `json:"errorCode,omitempty"`
+	DetailedErrorCode       string `json:"detailedErrorCode,omitempty"`
 }
 
 // RefundResponse is what PhonePe returns when a refund is accepted for

@@ -19,6 +19,12 @@ type PaymentRepository interface {
 	GetByOrderID(ctx context.Context, orderID string) (*Payment, error)
 	GetByMerchantTxnID(ctx context.Context, merchantTxnID string) (*Payment, error)
 	UpdateStatus(ctx context.Context, id string, status PaymentStatus, updates map[string]interface{}) error
+
+	// AddRefundAmount increases the running refunded total and returns the new
+	// value. An ADD rather than a read-modify-write because two refunds against
+	// one payment can settle at the same moment, and a lost increment here is
+	// money the books do not know went back.
+	AddRefundAmount(ctx context.Context, id string, amount int64) (int64, error)
 }
 
 // ShipmentRepository defines shipment data access operations
