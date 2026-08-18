@@ -110,6 +110,10 @@ type OrderItem struct {
 	UnitPrice  int64 `json:"unit_price" dynamodbav:"unit_price"`
 	Quantity   int   `json:"quantity" dynamodbav:"quantity"`
 	TotalPrice int64 `json:"total_price" dynamodbav:"total_price"`
+
+	// RefundedQuantity is how much of this line has already gone back. Refunds
+	// are per line and repeatable, so the remainder is what bounds the next one.
+	RefundedQuantity int `json:"refunded_quantity" dynamodbav:"refunded_quantity"`
 }
 
 // OrderNote represents an internal note on an order

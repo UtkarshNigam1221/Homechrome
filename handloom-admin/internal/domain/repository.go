@@ -273,6 +273,12 @@ type InventoryRepository interface {
 	CommitOrderStock(ctx context.Context, orderID string, quantities map[string]int) error
 	ReleaseOrderStock(ctx context.Context, orderID string, quantities map[string]int) error
 
+	// WriteOffStock is a refunded line whose goods are gone: the reservation is
+	// released and on-hand falls with it, in one transaction. Doing it as a
+	// release followed by a remove is not atomic — a crash between them puts the
+	// units back on sale, the opposite of a write-off.
+	WriteOffStock(ctx context.Context, productID string, quantity int, orderID string) (*InventoryTransaction, error)
+
 	// FindOrphanReservations lists reservations with no dispatch or release,
 	// older than minAge. The age bound keeps checkouts that are simply still in
 	// flight out of the result — a reservation seconds old is not yet drift.

@@ -242,6 +242,10 @@ var (
 	movementRelease = orderMovement{domain.InventoryTransactionTypeRelease, 0, -1}
 	movementCommit  = orderMovement{domain.InventoryTransactionTypeCommit, -1, -1}
 	movementReturn  = orderMovement{domain.InventoryTransactionTypeReturn, +1, 0}
+
+	// Arithmetically a dispatch — both counters fall, available_qty holds — but
+	// the ledger has to say the goods were written off, not shipped.
+	movementWriteOff = orderMovement{domain.InventoryTransactionTypeWriteOff, -1, -1}
 )
 
 // existingOrderMovement returns the movement this order already recorded for the
@@ -403,6 +407,12 @@ func (r *InventoryRepository) CommitOrderStock(ctx context.Context, orderID stri
 // ReleaseOrderStock releases every line of an order at once, all or nothing.
 func (r *InventoryRepository) ReleaseOrderStock(ctx context.Context, orderID string, quantities map[string]int) error {
 	return r.orderMovementAll(ctx, movementRelease, orderID, quantities)
+}
+
+// WriteOffStock implements domain.InventoryRepository. Idempotent per
+// (product, order), like every other order-scoped movement.
+func (r *InventoryRepository) WriteOffStock(ctx context.Context, productID string, quantity int, orderID string) (*domain.InventoryTransaction, error) {
+	return r.singleOrderMovement(ctx, movementWriteOff, productID, quantity, orderID)
 }
 
 // RestockOrderStock returns an order's goods to stock on a return.

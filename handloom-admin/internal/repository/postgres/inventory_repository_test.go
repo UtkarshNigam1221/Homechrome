@@ -454,3 +454,77 @@ func TestInventoryRepository_FindOrphanReservations(t *testing.T) {
 		require.Equal(t, "order_a", found[0].OrderID)
 	})
 }
+
+// A write-off is a refunded line whose goods are gone: the reservation goes and
+// the stock goes with it. Same arithmetic as a dispatch, different meaning, and
+// the ledger has to say which.
+func TestInventoryRepository_WriteOffStock(t *testing.T) {
+	pool := newTestPool(t)
+	repo := postgres.NewInventoryRepository(pool)
+	ctx := context.Background()
+	category := seedCategory(t, pool)
+
+	newProduct := func(t *testing.T, quantity, reserved int) string {
+		t.Helper()
+		p := newTestProduct(category.ID)
+		require.NoError(t, postgres.NewProductRepository(pool).Create(ctx, p, nil))
+		t.Cleanup(func() {
+			_, _ = pool.Exec(ctx, `DELETE FROM products WHERE id = $1`, p.ID)
+		})
+		_, err := pool.Exec(ctx, `DELETE FROM inventory WHERE product_id = $1`, p.ID)
+		require.NoError(t, err)
+		seedInventory(t, pool, p.ID, quantity, reserved)
+		return p.ID
+	}
+
+	t.Run("drops on hand and reserved together, leaving available alone", func(t *testing.T) {
+		productID := newProduct(t, 100, 10)
+
+		txn, err := repo.WriteOffStock(ctx, productID, 4, "order_wo")
+		require.NoError(t, err)
+		require.Equal(t, domain.InventoryTransactionTypeWriteOff, txn.Type)
+
+		qty, reserved, available := readInventory(t, pool, productID)
+		require.Equal(t, 96, qty)
+		require.Equal(t, 6, reserved)
+		require.Equal(t, 90, available, "the units were already unavailable while reserved")
+	})
+
+	t.Run("refuses to write off more than the order reserved", func(t *testing.T) {
+		productID := newProduct(t, 100, 2)
+
+		_, err := repo.WriteOffStock(ctx, productID, 5, "order_wo_over")
+		require.Error(t, err)
+
+		qty, reserved, _ := readInventory(t, pool, productID)
+		require.Equal(t, 100, qty, "a refused write-off changes nothing")
+		require.Equal(t, 2, reserved)
+	})
+
+	t.Run("is idempotent per order", func(t *testing.T) {
+		productID := newProduct(t, 100, 10)
+
+		_, err := repo.WriteOffStock(ctx, productID, 3, "order_wo_twice")
+		require.NoError(t, err)
+		_, err = repo.WriteOffStock(ctx, productID, 3, "order_wo_twice")
+		require.NoError(t, err, "a replay must be a no-op, not an error")
+
+		qty, reserved, _ := readInventory(t, pool, productID)
+		require.Equal(t, 97, qty)
+		require.Equal(t, 7, reserved)
+	})
+
+	// A dispatch and a write-off move the same numbers, so only the type tells
+	// an auditor what happened to the goods.
+	t.Run("records itself as a write-off, not a dispatch", func(t *testing.T) {
+		productID := newProduct(t, 100, 10)
+		_, err := repo.WriteOffStock(ctx, productID, 2, "order_wo_type")
+		require.NoError(t, err)
+
+		var typ string
+		require.NoError(t, pool.QueryRow(ctx,
+			`SELECT type FROM inventory_transactions WHERE product_id = $1 AND reference_id = $2`,
+			productID, "order_wo_type").Scan(&typ))
+		require.Equal(t, "WRITE_OFF", typ)
+	})
+}
