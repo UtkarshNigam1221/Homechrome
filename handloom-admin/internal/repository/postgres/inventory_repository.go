@@ -521,6 +521,51 @@ func (r *InventoryRepository) RestockOrderStock(ctx context.Context, orderID, cr
 	})
 }
 
+// FindOrphanReservations implements domain.InventoryRepository.
+//
+// The drift signature is a RESERVE with no COMMIT and no RELEASE for the same
+// product and order. Everything else settles: a dispatch consumes the
+// reservation, a cancel or payment failure gives it back. What is left is stock
+// held against an order that did neither, which no reachable transition frees.
+func (r *InventoryRepository) FindOrphanReservations(ctx context.Context, minAge time.Duration, limit int) ([]*domain.OrphanReservation, error) {
+	const query = `
+		SELECT res.product_id,
+		       p.name  AS product_name,
+		       p.sku   AS sku,
+		       res.reference_id AS order_id,
+		       res.quantity,
+		       res.created_at   AS reserved_at
+		FROM inventory_transactions res
+		JOIN products p ON p.id = res.product_id
+		WHERE res.reference_type = $1
+		  AND res.type = $2
+		  AND res.created_at < $3
+		  AND NOT EXISTS (
+		      SELECT 1 FROM inventory_transactions settled
+		      WHERE settled.product_id = res.product_id
+		        AND settled.reference_id = res.reference_id
+		        AND settled.reference_type = $1
+		        AND settled.type IN ($4, $5)
+		  )
+		ORDER BY res.created_at
+		LIMIT $6`
+
+	var orphans []*domain.OrphanReservation
+	err := pgxscan.Select(ctx, r.pool, &orphans, query,
+		inventoryRefTypeOrder,
+		string(domain.InventoryTransactionTypeReserve),
+		time.Now().Add(-minAge),
+		string(domain.InventoryTransactionTypeCommit),
+		string(domain.InventoryTransactionTypeRelease),
+		limit,
+	)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to find orphan reservations")
+	}
+
+	return orphans, nil
+}
+
 // AdjustStock sets the inventory quantity to an absolute value within a transaction.
 func (r *InventoryRepository) AdjustStock(ctx context.Context, productID string, newQuantity int, reason string, userID string) (*domain.InventoryTransaction, error) {
 	var txn *domain.InventoryTransaction

@@ -2,6 +2,7 @@ package domain
 
 import (
 	"context"
+	"time"
 )
 
 //go:generate mockgen -source=repository.go -destination=../mocks/repository_mock.go -package=mocks
@@ -262,6 +263,10 @@ type InventoryRepository interface {
 	ReserveOrderStock(ctx context.Context, orderID string, quantities map[string]int) error
 	CommitOrderStock(ctx context.Context, orderID string, quantities map[string]int) error
 	ReleaseOrderStock(ctx context.Context, orderID string, quantities map[string]int) error
+
+	// FindOrphanReservations lists reservations with no dispatch or release,
+	// older than minAge. A reservation seconds old is still in flight, not drift.
+	FindOrphanReservations(ctx context.Context, minAge time.Duration, limit int) ([]*OrphanReservation, error)
 
 	// RestockOrderStock returns an order's goods on a return. Quantities come from its
 	// COMMIT ledger rows: a line that never committed was never decremented.
