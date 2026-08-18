@@ -24,9 +24,9 @@ type DynamicUpdate struct {
 func buildDynamicUpdate(status string, updates map[string]interface{}) (*DynamicUpdate, error) {
 	now := time.Now()
 	expr := "SET #status = :status, updated_at = :now"
-	names := map[string]string{"#status": attrStatus}
+	names := map[string]string{nameStatus: attrStatus}
 	values := map[string]types.AttributeValue{
-		":status": &types.AttributeValueMemberS{Value: status},
+		valStatus: &types.AttributeValueMemberS{Value: status},
 		exprNow:   &types.AttributeValueMemberS{Value: now.Format(time.RFC3339)},
 	}
 

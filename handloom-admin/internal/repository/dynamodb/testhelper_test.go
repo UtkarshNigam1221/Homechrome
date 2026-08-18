@@ -64,6 +64,8 @@ func setupTestTable(t *testing.T, client *dynamodb.Client, tableName string) {
 			{AttributeName: aws.String("SK"), AttributeType: types.ScalarAttributeTypeS},
 			{AttributeName: aws.String("GSI1PK"), AttributeType: types.ScalarAttributeTypeS},
 			{AttributeName: aws.String("GSI1SK"), AttributeType: types.ScalarAttributeTypeS},
+			{AttributeName: aws.String("GSI2PK"), AttributeType: types.ScalarAttributeTypeS},
+			{AttributeName: aws.String("GSI2SK"), AttributeType: types.ScalarAttributeTypeS},
 		},
 		GlobalSecondaryIndexes: []types.GlobalSecondaryIndex{
 			{
@@ -71,6 +73,23 @@ func setupTestTable(t *testing.T, client *dynamodb.Client, tableName string) {
 				KeySchema: []types.KeySchemaElement{
 					{AttributeName: aws.String("GSI1PK"), KeyType: types.KeyTypeHash},
 					{AttributeName: aws.String("GSI1SK"), KeyType: types.KeyTypeRange},
+				},
+				Projection: &types.Projection{
+					ProjectionType: types.ProjectionTypeAll,
+				},
+				ProvisionedThroughput: &types.ProvisionedThroughput{
+					ReadCapacityUnits:  aws.Int64(5),
+					WriteCapacityUnits: aws.Int64(5),
+				},
+			},
+			// The real tables carry GSI2 as well. Without it here, anything that
+			// reads through it — payment by transaction id, refund by provider id —
+			// passes its unit tests and fails against a real table.
+			{
+				IndexName: aws.String("GSI2"),
+				KeySchema: []types.KeySchemaElement{
+					{AttributeName: aws.String("GSI2PK"), KeyType: types.KeyTypeHash},
+					{AttributeName: aws.String("GSI2SK"), KeyType: types.KeyTypeRange},
 				},
 				Projection: &types.Projection{
 					ProjectionType: types.ProjectionTypeAll,

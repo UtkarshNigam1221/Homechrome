@@ -95,3 +95,31 @@ type WebhookOrder struct {
 	ExpireAt        int64           `json:"expireAt"`
 	PaymentDetails  []PaymentDetail `json:"paymentDetails"`
 }
+
+// RefundResponse is what PhonePe returns when a refund is accepted for
+// processing. State is PENDING: there is no "accepted" event, a refund goes
+// PENDING then settles, so RefundID is the only handle on it until it does.
+type RefundResponse struct {
+	RefundID string `json:"refundId"`
+	Amount   int64  `json:"amount"`
+	State    string `json:"state"`
+}
+
+// RefundStatusResponse is the provider's current view of a refund, used when a
+// webhook never arrived or its initiation response was lost.
+type RefundStatusResponse struct {
+	OriginalMerchantOrderID string `json:"originalMerchantOrderId"`
+	RefundID                string `json:"refundId"`
+	Amount                  int64  `json:"amount"`
+	State                   string `json:"state"`
+	ErrorCode               string `json:"errorCode,omitempty"`
+	DetailedErrorCode       string `json:"detailedErrorCode,omitempty"`
+}
+
+// Refund states PhonePe reports.
+const (
+	RefundStatePending   = "PENDING"
+	RefundStateCompleted = "COMPLETED"
+	RefundStateConfirmed = "CONFIRMED"
+	RefundStateFailed    = "FAILED"
+)

@@ -62,6 +62,8 @@ type RefundItem struct {
 // refunded several times, line by line. Payment.RefundAmount becomes the
 // running total across them.
 type Refund struct {
+	refundKeys
+
 	ID         string `json:"id" dynamodbav:"id"`
 	OrderID    string `json:"order_id" dynamodbav:"order_id"`
 	PaymentID  string `json:"payment_id" dynamodbav:"payment_id"`
@@ -85,6 +87,42 @@ type Refund struct {
 	InitiatedAt time.Time  `json:"initiated_at" dynamodbav:"initiated_at"`
 	CompletedAt *time.Time `json:"completed_at,omitempty" dynamodbav:"completed_at,omitempty"`
 	CreatedBy   string     `json:"created_by" dynamodbav:"created_by"`
+}
+
+// DynamoDB keys. Refunds live in the orders table alongside payments.
+//
+// GSI2 carries two shapes rather than one: the status re-check keys on our
+// merchantRefundID, but the pg.refund.* webhook carries only PhonePe's refundId
+// and never echoes ours. Splitting the partition instead of sharing a constant
+// one lets both lookups sit on the same index — and avoids the hot partition
+// PAYMENT_TXN used to have.
+type refundKeys struct {
+	PK     string `json:"-" dynamodbav:"PK"`
+	SK     string `json:"-" dynamodbav:"SK"`
+	GSI1PK string `json:"-" dynamodbav:"GSI1PK"`
+	GSI1SK string `json:"-" dynamodbav:"GSI1SK"`
+
+	// Omitted until initiation returns: DynamoDB rejects an empty string on an
+	// indexed key attribute, so a half-written refund must carry no GSI2 keys
+	// at all rather than blank ones.
+	GSI2PK string `json:"-" dynamodbav:"GSI2PK,omitempty"`
+	GSI2SK string `json:"-" dynamodbav:"GSI2SK,omitempty"`
+
+	EntityType string `json:"-" dynamodbav:"entity_type"`
+}
+
+// SetKeys fills the DynamoDB keys for a refund.
+func (r *Refund) SetKeys() {
+	r.PK = "REFUND#" + r.ID
+	r.SK = SKMetadata
+	r.GSI1PK = "ORDER#" + r.OrderID
+	r.GSI1SK = "REFUND#" + r.InitiatedAt.Format("2006-01-02T15:04:05Z")
+	r.EntityType = "REFUND"
+
+	if r.ProviderRefundID != "" {
+		r.GSI2PK = "REFUND_PROVIDER#" + r.ProviderRefundID
+		r.GSI2SK = SKMetadata
+	}
 }
 
 // IsTerminal reports whether the refund has settled either way.
