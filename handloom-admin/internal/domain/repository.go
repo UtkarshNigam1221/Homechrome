@@ -272,6 +272,12 @@ type InventoryRepository interface {
 	CommitOrderStock(ctx context.Context, orderID string, quantities map[string]int) error
 	ReleaseOrderStock(ctx context.Context, orderID string, quantities map[string]int) error
 
+	// RestockOrderStock returns an order's goods to stock on a return. It takes
+	// no quantities: they come from the order's COMMIT ledger rows, because a
+	// line that never committed was never decremented and adding it back would
+	// inflate stock.
+	RestockOrderStock(ctx context.Context, orderID string) error
+
 	// AdjustStock adjusts stock to a specific quantity
 	AdjustStock(ctx context.Context, productID string, newQuantity int, reason string, userID string) (*InventoryTransaction, error)
 

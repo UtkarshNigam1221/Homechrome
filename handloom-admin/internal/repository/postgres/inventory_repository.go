@@ -241,6 +241,7 @@ var (
 	movementReserve = orderMovement{domain.InventoryTransactionTypeReserve, 0, +1}
 	movementRelease = orderMovement{domain.InventoryTransactionTypeRelease, 0, -1}
 	movementCommit  = orderMovement{domain.InventoryTransactionTypeCommit, -1, -1}
+	movementReturn  = orderMovement{domain.InventoryTransactionTypeReturn, +1, 0}
 )
 
 // existingOrderMovement returns the movement this order already recorded for the
@@ -270,10 +271,10 @@ func existingOrderMovement(ctx context.Context, tx pgx.Tx, productID, orderID st
 // existing transaction. A movement this order already recorded is returned
 // unchanged rather than applied twice.
 func applyOrderMovement(ctx context.Context, tx pgx.Tx, m orderMovement, productID string, quantity int, orderID string) (*domain.InventoryTransaction, error) {
-	if existing, err := existingOrderMovement(ctx, tx, productID, orderID, m.typ); err != nil || existing != nil {
-		return existing, err
-	}
-
+	// Lock before checking the ledger, not after. Two concurrent duplicates
+	// would otherwise both read "not yet applied", and the second would reach
+	// the insert and trip the unique index — an error where a no-op is correct.
+	// Holding the row lock first serializes the check as well as the write.
 	var currentQty, reservedQty int
 	err := tx.QueryRow(ctx,
 		`SELECT quantity, reserved_qty FROM inventory WHERE product_id = $1 FOR UPDATE`,
@@ -284,6 +285,10 @@ func applyOrderMovement(ctx context.Context, tx pgx.Tx, m orderMovement, product
 			return nil, errors.NotFound("Inventory not found")
 		}
 		return nil, errors.Wrap(err, "failed to lock inventory row")
+	}
+
+	if existing, err := existingOrderMovement(ctx, tx, productID, orderID, m.typ); err != nil || existing != nil {
+		return existing, err
 	}
 
 	newQty := currentQty + m.deltaQty*quantity
@@ -398,6 +403,54 @@ func (r *InventoryRepository) CommitOrderStock(ctx context.Context, orderID stri
 // ReleaseOrderStock releases every line of an order at once, all or nothing.
 func (r *InventoryRepository) ReleaseOrderStock(ctx context.Context, orderID string, quantities map[string]int) error {
 	return r.orderMovementAll(ctx, movementRelease, orderID, quantities)
+}
+
+// RestockOrderStock returns an order's goods to stock on a return.
+//
+// Quantities come from the order's COMMIT ledger rows rather than its lines.
+// Committing is best-effort, so reaching SHIPPED does not prove the stock ever
+// left: adding back a line that never committed inflates quantity and oversells.
+// A line with no COMMIT row therefore restocks nothing, which is correct — there
+// was no decrement to undo.
+//
+// Recorded as its own RETURN type rather than through AddStock: a customer
+// return is not a supplier replenishment, and AddStock stamps last_restock_at.
+func (r *InventoryRepository) RestockOrderStock(ctx context.Context, orderID string) error {
+	return pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
+		rows, err := tx.Query(ctx,
+			`SELECT product_id, quantity FROM inventory_transactions
+			 WHERE reference_id = $1 AND reference_type = $2 AND type = $3
+			 ORDER BY product_id`,
+			orderID, inventoryRefTypeOrder, string(domain.InventoryTransactionTypeCommit),
+		)
+		if err != nil {
+			return errors.Wrap(err, "failed to read committed lines")
+		}
+
+		committed := map[string]int{}
+		productIDs := []string{}
+		for rows.Next() {
+			var productID string
+			var quantity int
+			if err := rows.Scan(&productID, &quantity); err != nil {
+				rows.Close()
+				return errors.Wrap(err, "failed to scan committed line")
+			}
+			committed[productID] = quantity
+			productIDs = append(productIDs, productID)
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return errors.Wrap(err, "failed to read committed lines")
+		}
+
+		for _, productID := range productIDs {
+			if _, err := applyOrderMovement(ctx, tx, movementReturn, productID, committed[productID], orderID); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 // AdjustStock sets the inventory quantity to an absolute value within a transaction.

@@ -388,15 +388,13 @@ func (s *OrderService) applyInventoryEffect(ctx context.Context, order *domain.O
 			metrics.LabelGateway: gatewayPhonePe,
 		})
 	case domain.OrderStatusReturned:
-		// Goods are back. RETURNED is reachable only from SHIPPED/DELIVERED,
-		// both post-commit, so quantity returns to its pre-dispatch value and
-		// reserved_qty is already clear.
-		for _, item := range order.Items {
-			reason := fmt.Sprintf("RETURN %s", order.ID)
-			if _, addErr := s.inventoryRepo.AddStock(ctx, item.ProductID, item.Quantity, reason, updatedBy); addErr != nil {
-				slog.ErrorContext(ctx, "Failed to restock returned item", keyProductID, item.ProductID, "error", addErr)
-				metrics.Record(ctx, "inventory_mutation_failed", metrics.L{metrics.LabelReason: reasonRestock})
-			}
+		// Goods are back. The repository restocks what the order actually
+		// committed, not what it ordered: RETURNED is reachable from SHIPPED,
+		// but the commit at dispatch is best-effort, so a line that failed to
+		// commit was never decremented and must not be added back.
+		if restockErr := s.inventoryRepo.RestockOrderStock(ctx, order.ID); restockErr != nil {
+			slog.ErrorContext(ctx, "Failed to restock returned order", keyOrderID, order.ID, "error", restockErr)
+			metrics.Record(ctx, "inventory_mutation_failed", metrics.L{metrics.LabelReason: reasonRestock})
 		}
 	}
 	// domain.OrderStatusDelivered: no inventory effect — stock was committed

@@ -511,7 +511,10 @@ func TestOrderService_UpdateStatus_Inventory(t *testing.T) {
 		require.NoError(t, err)
 	})
 
-	t.Run("return restocks every item", func(t *testing.T) {
+	// The order lines are deliberately not passed: the repository restocks what
+	// the order committed, read from its COMMIT ledger rows. A line that never
+	// committed was never decremented, so adding it back would inflate stock.
+	t.Run("return restocks the order, not its lines", func(t *testing.T) {
 		order := &domain.Order{
 			ID:     "order_ret",
 			Status: domain.OrderStatusDelivered,
@@ -523,11 +526,29 @@ func TestOrderService_UpdateStatus_Inventory(t *testing.T) {
 		mockOrderRepo.EXPECT().GetByID(gomock.Any(), "order_ret").Return(order, nil)
 		mockOrderRepo.EXPECT().Update(gomock.Any(), gomock.Any()).Return(nil)
 		mockInventoryRepo.EXPECT().
-			AddStock(gomock.Any(), "prod_123", 2, "RETURN order_ret", "admin_123").
-			Return(&domain.InventoryTransaction{}, nil)
+			RestockOrderStock(gomock.Any(), "order_ret").
+			Return(nil)
 
 		err := service.UpdateStatus(ctx, "order_ret", domain.OrderStatusReturned, "admin_123")
 		require.NoError(t, err)
+	})
+
+	t.Run("a failed restock does not fail the return", func(t *testing.T) {
+		order := &domain.Order{
+			ID:     "order_ret_fail",
+			Status: domain.OrderStatusDelivered,
+			Items:  []domain.OrderItem{{ProductID: "prod_123", Quantity: 2}},
+		}
+
+		mockOrderRepo.EXPECT().GetByID(gomock.Any(), "order_ret_fail").Return(order, nil)
+		mockOrderRepo.EXPECT().Update(gomock.Any(), gomock.Any()).Return(nil)
+		mockInventoryRepo.EXPECT().
+			RestockOrderStock(gomock.Any(), "order_ret_fail").
+			Return(errors.New(errors.ErrCodeInternal, "boom"))
+
+		err := service.UpdateStatus(ctx, "order_ret_fail", domain.OrderStatusReturned, "admin_123")
+		require.NoError(t, err, "inventory failure must not block the status change")
+		require.Equal(t, domain.OrderStatusReturned, order.Status)
 	})
 
 	t.Run("canceling via status update sets CancelledAt", func(t *testing.T) {
@@ -573,7 +594,7 @@ func TestOrderService_UpdateStatus_Inventory(t *testing.T) {
 
 	t.Run("orderRepo.Update failure prevents any inventory mutation", func(t *testing.T) {
 		// Regression test: inventory mutations must run AFTER the status is
-		// persisted, not before. Registering no CommitOrderStock/AddStock/
+		// persisted, not before. Registering no CommitOrderStock/RestockOrderStock/
 		// ReleaseOrderStock expectation means gomock fails this test the moment an
 		// unexpected call happens — which is exactly what the old ordering
 		// (mutate inventory, then persist) would have done here despite the

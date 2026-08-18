@@ -341,11 +341,14 @@ func (s *PaymentService) releaseOrderInventory(ctx context.Context, orderID stri
 		slog.ErrorContext(ctx, "Failed to get order for inventory release", "order_id", orderID, "error", err)
 		return
 	}
+	quantities := make(map[string]int, len(order.Items))
 	for _, item := range order.Items {
-		if _, err := s.inventoryRepo.ReleaseStock(ctx, item.ProductID, item.Quantity, orderID); err != nil {
-			slog.ErrorContext(ctx, "Failed to release inventory", keyProductID, item.ProductID, "order_id", orderID, "error", err)
-			metrics.Record(ctx, "inventory_mutation_failed", metrics.L{metrics.LabelReason: reasonRelease})
-		}
+		quantities[item.ProductID] += item.Quantity
+	}
+
+	if err := s.inventoryRepo.ReleaseOrderStock(ctx, orderID, quantities); err != nil {
+		slog.ErrorContext(ctx, "Failed to release inventory", keyOrderID, orderID, "error", err)
+		metrics.Record(ctx, "inventory_mutation_failed", metrics.L{metrics.LabelReason: reasonRelease})
 	}
 }
 

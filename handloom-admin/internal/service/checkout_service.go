@@ -277,13 +277,14 @@ func cartItemsToOrderItems(items []domain.CartItem) []domain.OrderItem {
 
 // releaseReservedItems releases inventory for items that were previously reserved
 func (s *CheckoutService) releaseReservedItems(ctx context.Context, orderID string, items []domain.CartItem) {
+	quantities := make(map[string]int, len(items))
 	for _, item := range items {
-		_, err := s.inventoryRepo.ReleaseStock(ctx, item.ProductID, item.Quantity, orderID)
-		if err != nil {
-			slog.ErrorContext(ctx, "Failed to release reserved stock", keyProductID, item.ProductID, "error", err)
-			metrics.Record(ctx, "inventory_mutation_failed", metrics.L{metrics.LabelReason: reasonRelease})
-			// Continue releasing other items even if one fails
-		}
+		quantities[item.ProductID] += item.Quantity
+	}
+
+	if err := s.inventoryRepo.ReleaseOrderStock(ctx, orderID, quantities); err != nil {
+		slog.ErrorContext(ctx, "Failed to release reserved stock", keyOrderID, orderID, "error", err)
+		metrics.Record(ctx, "inventory_mutation_failed", metrics.L{metrics.LabelReason: reasonRelease})
 	}
 }
 
