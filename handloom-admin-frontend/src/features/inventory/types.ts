@@ -27,6 +27,7 @@ export interface InventoryTransaction {
   previous_qty: number;
   new_qty: number;
   reason?: string;
+  reference_type?: string;
   reference_id?: string;
   created_by: string;
   created_at: string;

@@ -1,5 +1,12 @@
 import { useQuery } from '@tanstack/react-query';
-import { AlertTriangle, ArrowDownCircle, ArrowUpCircle, Package, Search } from 'lucide-react';
+import {
+  AlertTriangle,
+  ArrowDownCircle,
+  ArrowUpCircle,
+  History,
+  Package,
+  Search,
+} from 'lucide-react';
 import { useState } from 'react';
 
 import { inventoryApi } from '@/features/inventory/api';
@@ -24,6 +31,7 @@ import {
 } from '@/shared/components/ui';
 import { useCursorPagination, useDebounce } from '@/shared/hooks';
 
+import { InventoryLedgerModal } from './InventoryLedgerModal';
 import { StockAdjustmentModal } from './StockAdjustmentModal';
 
 export function InventoryPage() {
@@ -41,6 +49,7 @@ export function InventoryPage() {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [adjustmentType, setAdjustmentType] = useState<'ADD' | 'REMOVE' | 'ADJUST'>('ADD');
   const [showAdjustmentModal, setShowAdjustmentModal] = useState(false);
+  const [ledgerProduct, setLedgerProduct] = useState<Product | null>(null);
 
   const { data: lowStockData } = useQuery({
     queryKey: ['low-stock', { limit, cursor }],
@@ -204,6 +213,14 @@ export function InventoryPage() {
                         >
                           <ArrowDownCircle className="w-4 h-4" />
                         </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          title="Stock history"
+                          onClick={() => setLedgerProduct(product)}
+                        >
+                          <History className="w-4 h-4" />
+                        </Button>
                       </div>
                     </TableCell>
                   </TableRow>
@@ -234,6 +251,12 @@ export function InventoryPage() {
         }}
         product={selectedProduct}
         adjustmentType={adjustmentType}
+      />
+
+      <InventoryLedgerModal
+        isOpen={ledgerProduct !== null}
+        onClose={() => setLedgerProduct(null)}
+        product={ledgerProduct}
       />
     </div>
   );
