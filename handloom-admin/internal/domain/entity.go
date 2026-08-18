@@ -120,6 +120,18 @@ const (
 	PaymentStatusSuccess   PaymentStatus = "SUCCESS"
 )
 
+// OrphanReservation is stock a reserve took and nothing gave back: no dispatch
+// and no release ever followed for that order. Those units are unsellable until
+// someone intervenes, and nothing in the order lifecycle will free them.
+type OrphanReservation struct {
+	ProductID   string    `json:"product_id" db:"product_id"`
+	ProductName string    `json:"product_name" db:"product_name"`
+	SKU         string    `json:"sku" db:"sku"`
+	OrderID     string    `json:"order_id" db:"order_id"`
+	Quantity    int       `json:"quantity" db:"quantity"`
+	ReservedAt  time.Time `json:"reserved_at" db:"reserved_at"`
+}
+
 // InventoryTransactionType defines the type of inventory transaction
 type InventoryTransactionType string
 

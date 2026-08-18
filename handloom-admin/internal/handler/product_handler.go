@@ -4,11 +4,14 @@ package handler
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/internal/middleware"
+	"github.com/handloom/admin/pkg/errors"
 	"github.com/handloom/admin/pkg/response"
 )
 
@@ -279,11 +282,57 @@ func (h *InventoryHandler) Routes() chi.Router {
 	r := chi.NewRouter()
 
 	r.Get("/low-stock", h.GetLowStock)
+	r.Get("/reconciliation", h.GetOrphanReservations)
 
 	return r
 }
 
 // GetLowStock handles getting low stock products
+// GetOrphanReservations reports stock held against orders that never dispatched
+// or cancelled — the reservations no order transition will ever free.
+func (h *InventoryHandler) GetOrphanReservations(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	// Zero lets the service apply its own bounds rather than trusting a caller
+	// to pick a sensible age or page size.
+	var minAge time.Duration
+	if raw := r.URL.Query().Get("min_age"); raw != "" {
+		parsed, err := time.ParseDuration(raw)
+		if err != nil {
+			response.Error(w, errors.BadRequest("min_age must be a duration, for example 24h"))
+			return
+		}
+		minAge = parsed
+	}
+
+	limit := 0
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil {
+			response.Error(w, errors.BadRequest("limit must be a number"))
+			return
+		}
+		limit = parsed
+	}
+
+	orphans, err := h.inventoryService.FindOrphanReservations(ctx, minAge, limit)
+	if err != nil {
+		response.Error(w, err)
+		return
+	}
+
+	units := 0
+	for _, orphan := range orphans {
+		units += orphan.Quantity
+	}
+
+	response.JSON(w, http.StatusOK, map[string]interface{}{
+		"reservations":   orphans,
+		"order_count":    len(orphans),
+		"stranded_units": units,
+	})
+}
+
 func (h *InventoryHandler) GetLowStock(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 

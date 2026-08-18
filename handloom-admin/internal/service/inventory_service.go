@@ -5,6 +5,7 @@ import (
 	"context"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/pkg/metrics"
@@ -155,6 +156,52 @@ func (s *InventoryService) resolveActorNames(ctx context.Context, txns []*domain
 
 		txn.CreatedByName = name
 	}
+}
+
+// orphanReservationMinAge keeps checkouts that are merely still in flight out of
+// the reconciliation. A reservation seconds old is a customer mid-payment, not
+// drift; one still unsettled a day later is nobody's live order.
+const orphanReservationMinAge = 24 * time.Hour
+
+// orphanReservationLimit bounds a report meant to be read. Hitting it means the
+// drift is systemic, which the log line says outright rather than leaving the
+// reader to notice a suspiciously round number.
+const orphanReservationLimit = 500
+
+// FindOrphanReservations reports stock held against orders that never dispatched
+// or cancelled, and meters the count.
+//
+// inventory_mutation_failed says a movement failed but not what it stranded;
+// this is the other half — what is actually stuck right now, whether or not the
+// failure that caused it was ever observed. The gauge is what makes it
+// alertable; the rows are what make it fixable.
+func (s *InventoryService) FindOrphanReservations(ctx context.Context, minAge time.Duration, limit int) ([]*domain.OrphanReservation, error) {
+	if minAge <= 0 {
+		minAge = orphanReservationMinAge
+	}
+	if limit <= 0 || limit > orphanReservationLimit {
+		limit = orphanReservationLimit
+	}
+
+	orphans, err := s.inventoryRepo.FindOrphanReservations(ctx, minAge, limit)
+	if err != nil {
+		return nil, err
+	}
+
+	stranded := 0
+	for _, orphan := range orphans {
+		stranded += orphan.Quantity
+	}
+
+	metrics.RecordSum(ctx, "inventory_orphan_reserved_units", int64(stranded), metrics.L{})
+
+	if len(orphans) > 0 {
+		slog.WarnContext(ctx, "Reservations held with no dispatch or release",
+			"orders", len(orphans), "units", stranded,
+			"truncated", len(orphans) == limit)
+	}
+
+	return orphans, nil
 }
 
 // GetLowStockProducts retrieves products with low stock

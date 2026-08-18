@@ -349,3 +349,108 @@ func TestInventoryRepository_RestockOrderStock(t *testing.T) {
 		require.Equal(t, 10, qtyNever, "the uncommitted line was never decremented, so nothing to add")
 	})
 }
+
+// The drift signature: a reservation with no dispatch and no release. Every
+// other pairing settles, so what this returns is stock no order transition will
+// ever free.
+func TestInventoryRepository_FindOrphanReservations(t *testing.T) {
+	pool := newTestPool(t)
+	repo := postgres.NewInventoryRepository(pool)
+	ctx := context.Background()
+	category := seedCategory(t, pool)
+
+	newProduct := func(t *testing.T, quantity, reserved int) string {
+		t.Helper()
+		p := newTestProduct(category.ID)
+		require.NoError(t, postgres.NewProductRepository(pool).Create(ctx, p, nil))
+		t.Cleanup(func() {
+			_, _ = pool.Exec(ctx, `DELETE FROM products WHERE id = $1`, p.ID)
+		})
+		_, err := pool.Exec(ctx, `DELETE FROM inventory WHERE product_id = $1`, p.ID)
+		require.NoError(t, err)
+		seedInventory(t, pool, p.ID, quantity, reserved)
+		return p.ID
+	}
+
+	// Backdate so the age bound does not filter the fixtures out.
+	age := func(t *testing.T, productID, orderID string) {
+		t.Helper()
+		_, err := pool.Exec(ctx,
+			`UPDATE inventory_transactions SET created_at = NOW() - INTERVAL '48 hours'
+			 WHERE product_id = $1 AND reference_id = $2`, productID, orderID)
+		require.NoError(t, err)
+	}
+
+	findFor := func(t *testing.T, productID string) []*domain.OrphanReservation {
+		t.Helper()
+		all, err := repo.FindOrphanReservations(ctx, time.Hour, 100)
+		require.NoError(t, err)
+
+		var mine []*domain.OrphanReservation
+		for _, o := range all {
+			if o.ProductID == productID {
+				mine = append(mine, o)
+			}
+		}
+		return mine
+	}
+
+	t.Run("reports a reservation nothing settled", func(t *testing.T) {
+		productID := newProduct(t, 10, 0)
+		_, err := repo.ReserveStock(ctx, productID, 3, "order_stuck")
+		require.NoError(t, err)
+		age(t, productID, "order_stuck")
+
+		found := findFor(t, productID)
+		require.Len(t, found, 1)
+		require.Equal(t, "order_stuck", found[0].OrderID)
+		require.Equal(t, 3, found[0].Quantity)
+		require.NotEmpty(t, found[0].SKU, "the report has to name the product, not just its id")
+	})
+
+	t.Run("ignores a reservation the order dispatched", func(t *testing.T) {
+		productID := newProduct(t, 10, 0)
+		_, err := repo.ReserveStock(ctx, productID, 3, "order_shipped")
+		require.NoError(t, err)
+		require.NoError(t, repo.CommitOrderStock(ctx, "order_shipped", map[string]int{productID: 3}))
+		age(t, productID, "order_shipped")
+
+		require.Empty(t, findFor(t, productID))
+	})
+
+	t.Run("ignores a reservation the order released", func(t *testing.T) {
+		productID := newProduct(t, 10, 0)
+		_, err := repo.ReserveStock(ctx, productID, 3, "order_cancelled")
+		require.NoError(t, err)
+		require.NoError(t, repo.ReleaseOrderStock(ctx, "order_cancelled", map[string]int{productID: 3}))
+		age(t, productID, "order_cancelled")
+
+		require.Empty(t, findFor(t, productID))
+	})
+
+	// A checkout mid-payment holds a reservation legitimately; only an old one
+	// is drift.
+	t.Run("ignores a reservation younger than the age bound", func(t *testing.T) {
+		productID := newProduct(t, 10, 0)
+		_, err := repo.ReserveStock(ctx, productID, 3, "order_in_flight")
+		require.NoError(t, err)
+
+		require.Empty(t, findFor(t, productID), "a fresh reservation is a live checkout")
+	})
+
+	// Another order settling its own reservation must not clear this one.
+	t.Run("does not let one order settle another", func(t *testing.T) {
+		productID := newProduct(t, 20, 0)
+		_, err := repo.ReserveStock(ctx, productID, 2, "order_a")
+		require.NoError(t, err)
+		_, err = repo.ReserveStock(ctx, productID, 5, "order_b")
+		require.NoError(t, err)
+		require.NoError(t, repo.CommitOrderStock(ctx, "order_b", map[string]int{productID: 5}))
+		age(t, productID, "order_a")
+		age(t, productID, "order_b")
+
+		found := findFor(t, productID)
+		require.Len(t, found, 1)
+		require.Equal(t, "order_a", found[0].OrderID)
+	})
+}
