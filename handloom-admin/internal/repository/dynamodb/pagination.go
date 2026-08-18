@@ -1,9 +1,13 @@
 package dynamodb
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 
 	"github.com/handloom/admin/internal/domain"
@@ -112,8 +116,12 @@ func encodeOffsetCursor(offset int) string {
 	return base64.URLEncoding.EncodeToString(data)
 }
 
-// InMemoryPaginate applies cursor-based pagination to an in-memory slice.
-// TODO: migrate callers to real DynamoDB cursor-based pagination
+// InMemoryPaginate slices an already-complete result set.
+//
+// Correct only on the output of QueryAll, never on a single Query response —
+// that combination is what silently truncated these lists at DynamoDB's 1 MB
+// response cap. Use QueryPage unless the caller sorts or filters in Go, where
+// paging the index would order or count only the page it returned.
 func InMemoryPaginate[T any](items []T, req domain.PaginationRequest) ([]T, domain.PaginationResponse) {
 	limit := DefaultLimit(req.Limit)
 	offset := decodeOffsetCursor(req.Cursor)
@@ -138,4 +146,113 @@ func InMemoryPaginate[T any](items []T, req domain.PaginationRequest) ([]T, doma
 		NextCursor: nextCursor,
 		HasMore:    hasMore,
 	}
+}
+
+// maxQueryPageRoundTrips bounds how hard QueryPage works to fill one page.
+// A selective FilterExpression can make DynamoDB read many items and return
+// few, and without a bound a rare filter would walk the whole index in one
+// request. Stopping early is safe: the caller gets a short page and a cursor,
+// and asking again continues from there.
+const maxQueryPageRoundTrips = 10
+
+// QueryPage runs a paginated Query and returns one page plus a real cursor.
+//
+// It exists because reading a single Query response and slicing it in Go — what
+// every list here used to do — silently truncates. A Query returns at most 1 MB
+// and reports success, so past that the list stops early and looks complete.
+// That is a wrong answer, not a slow one.
+//
+// Limit bounds items *scanned*, not returned, so a filtered query can come back
+// short. This loops until the page is full or the index is exhausted, and never
+// overshoots: asking for exactly the shortfall each time means the last
+// evaluated key always lines up with the last item returned, so resuming from
+// the cursor cannot skip or repeat.
+func QueryPage[T any](
+	ctx context.Context,
+	db *dynamodb.Client,
+	input *dynamodb.QueryInput,
+	req domain.PaginationRequest,
+	failure string,
+) ([]*T, domain.PaginationResponse, error) {
+	limit := DefaultLimit(req.Limit)
+
+	startKey, err := DecodeCursor(req.Cursor)
+	if err != nil {
+		return nil, domain.PaginationResponse{}, err
+	}
+
+	items := make([]*T, 0, limit)
+	var lastKey map[string]types.AttributeValue
+
+	for range maxQueryPageRoundTrips {
+		input.ExclusiveStartKey = startKey
+		// DefaultLimit clamps to [1,100], so the shortfall cannot overflow.
+		//nolint:gosec // G115: bounded by DefaultLimit
+		input.Limit = aws.Int32(int32(limit - len(items)))
+
+		result, queryErr := db.Query(ctx, input)
+		if queryErr != nil {
+			return nil, domain.PaginationResponse{}, errors.Wrap(queryErr, failure)
+		}
+
+		var page []*T
+		if unmarshalErr := attributevalue.UnmarshalListOfMaps(result.Items, &page); unmarshalErr != nil {
+			return nil, domain.PaginationResponse{}, errors.Internal(failure)
+		}
+		items = append(items, page...)
+
+		startKey = result.LastEvaluatedKey
+		lastKey = result.LastEvaluatedKey
+
+		// No further key means the index is exhausted, not that the page is full.
+		if len(startKey) == 0 || len(items) >= limit {
+			break
+		}
+	}
+
+	return items, BuildPaginationResponse(limit, lastKey), nil
+}
+
+// maxQueryAllRoundTrips bounds QueryAll. Reaching it means the dataset has
+// outgrown listing it in memory, which is the signal to give that endpoint real
+// cursors rather than to raise this number.
+const maxQueryAllRoundTrips = 50
+
+// QueryAll reads every matching item, following LastEvaluatedKey to the end.
+//
+// For the lists that sort or filter in Go: a cursor can only order the page it
+// returns, so switching them to QueryPage would quietly turn a global sort into
+// a per-page one. Reading everything keeps the semantics and still fixes the
+// truncation, which is the actual defect — the old code read one 1 MB response
+// and reported success as though it had seen the whole index.
+func QueryAll[T any](
+	ctx context.Context,
+	db *dynamodb.Client,
+	input *dynamodb.QueryInput,
+	failure string,
+) ([]*T, error) {
+	var items []*T
+	var startKey map[string]types.AttributeValue
+
+	for range maxQueryAllRoundTrips {
+		input.ExclusiveStartKey = startKey
+
+		result, err := db.Query(ctx, input)
+		if err != nil {
+			return nil, errors.Wrap(err, failure)
+		}
+
+		var page []*T
+		if unmarshalErr := attributevalue.UnmarshalListOfMaps(result.Items, &page); unmarshalErr != nil {
+			return nil, errors.Internal(failure)
+		}
+		items = append(items, page...)
+
+		startKey = result.LastEvaluatedKey
+		if len(startKey) == 0 {
+			break
+		}
+	}
+
+	return items, nil
 }

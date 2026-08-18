@@ -178,11 +178,12 @@ const (
 
 // Customer represents a customer
 type Customer struct {
-	ID         string `json:"id" dynamodbav:"id"`
-	PK         string `json:"-" dynamodbav:"PK"`
-	SK         string `json:"-" dynamodbav:"SK"`
-	GSI1PK     string `json:"-" dynamodbav:"GSI1PK"`
-	GSI1SK     string `json:"-" dynamodbav:"GSI1SK"`
+	ID string `json:"id" dynamodbav:"id"`
+	PK string `json:"-" dynamodbav:"PK"`
+	SK string `json:"-" dynamodbav:"SK"`
+	// No GSI1: email is a CustomerEmailIndex pointer item. The fields cannot
+	// simply sit unused — DynamoDB rejects an empty string on an indexed key
+	// attribute, so leaving them declared fails every customer write.
 	GSI2PK     string `json:"-" dynamodbav:"GSI2PK"`
 	GSI2SK     string `json:"-" dynamodbav:"GSI2SK"`
 	EntityType string `json:"-" dynamodbav:"entity_type"`
@@ -215,12 +216,10 @@ func (c *Customer) TableName() string {
 func (c *Customer) SetKeys() {
 	c.PK = "CUSTOMER#" + c.ID
 	c.SK = SKMetadata
-	c.GSI1PK = "CUSTOMER_EMAIL"
-	if c.Email != "" {
-		c.GSI1SK = c.Email
-	} else {
-		c.GSI1SK = "NONE#" + c.ID
-	}
+	// No GSI1: email lookup is a CustomerEmailIndex pointer item. The old shape
+	// needed a NONE#<id> placeholder so customers without an email still landed
+	// in the index — and since storefront signup is phone-OTP, that was most of
+	// them, paying for index entries nothing ever read.
 	c.GSI2PK = "CUSTOMER#ALL"
 	c.GSI2SK = c.CreatedAt.Format("2006-01-02T15:04:05Z")
 	c.EntityType = "CUSTOMER"
@@ -256,4 +255,24 @@ func (c *CustomerPhoneIndex) SetKeys(phone string) {
 	c.PK = "CUSTOMER_PHONE#" + phone
 	c.SK = SKMetadata
 	c.EntityType = "CUSTOMER_PHONE_INDEX"
+}
+
+// CustomerEmailIndex is a lookup item for finding customers by email, and the
+// guard that makes an address unique.
+//
+// Email used to be a GSI on the customer itself, which could neither enforce
+// uniqueness nor avoid putting every customer in one partition. A pointer item
+// does both, and matches how phone has always worked.
+type CustomerEmailIndex struct {
+	PK         string `json:"-" dynamodbav:"PK"`
+	SK         string `json:"-" dynamodbav:"SK"`
+	EntityType string `json:"-" dynamodbav:"entity_type"`
+	CustomerID string `json:"customer_id" dynamodbav:"customer_id"`
+}
+
+// SetKeys sets the DynamoDB keys for CustomerEmailIndex.
+func (c *CustomerEmailIndex) SetKeys(email string) {
+	c.PK = "CUSTOMER_EMAIL#" + email
+	c.SK = SKMetadata
+	c.EntityType = "CUSTOMER_EMAIL_INDEX"
 }

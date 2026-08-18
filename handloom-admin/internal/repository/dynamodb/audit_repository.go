@@ -137,20 +137,16 @@ func (r *AuditRepository) List(ctx context.Context, req domain.ListAuditLogsRequ
 			input.ExpressionAttributeNames = exprAttrNames
 		}
 
-		result, err := r.client.db.Query(ctx, input)
+		// Read each day whole: the page is assembled across partitions, so a
+		// cursor into any single day cannot express where the page ended.
+		logs, err := QueryAll[domain.AuditLog](ctx, r.client.db, input, "Failed to query audit logs for date "+dateStr)
 		if err != nil {
-			return nil, errors.Wrap(err, "Failed to query audit logs for date "+dateStr)
-		}
-
-		var logs []*domain.AuditLog
-		if err := attributevalue.UnmarshalListOfMaps(result.Items, &logs); err != nil {
-			return nil, errors.Internal("Failed to unmarshal audit logs")
+			return nil, err
 		}
 
 		allLogs = append(allLogs, logs...)
 	}
 
-	// TODO: migrate to real DynamoDB cursor-based pagination
 	paged, pg := InMemoryPaginate(allLogs, req.PaginationRequest)
 
 	return &domain.ListAuditLogsResponse{
@@ -161,7 +157,7 @@ func (r *AuditRepository) List(ctx context.Context, req domain.ListAuditLogsRequ
 
 // GetByEntity retrieves audit logs for a specific entity
 func (r *AuditRepository) GetByEntity(ctx context.Context, entityType string, entityID string, pagination domain.PaginationRequest) (*domain.ListAuditLogsResponse, error) {
-	result, err := r.client.db.Query(ctx, &dynamodb.QueryInput{
+	input := &dynamodb.QueryInput{
 		TableName:              aws.String(r.client.auditTable),
 		IndexName:              aws.String("GSI1"),
 		KeyConditionExpression: aws.String("GSI1PK = :pk"),
@@ -169,28 +165,22 @@ func (r *AuditRepository) GetByEntity(ctx context.Context, entityType string, en
 			exprPK: &types.AttributeValueMemberS{Value: entityType + "#" + entityID},
 		},
 		ScanIndexForward: aws.Bool(false),
-	})
+	}
+
+	logs, pg, err := QueryPage[domain.AuditLog](ctx, r.client.db, input, pagination, "Failed to query audit logs by entity")
 	if err != nil {
-		return nil, errors.Wrap(err, "Failed to query audit logs by entity")
+		return nil, err
 	}
-
-	var logs []*domain.AuditLog
-	if err := attributevalue.UnmarshalListOfMaps(result.Items, &logs); err != nil {
-		return nil, errors.Internal("Failed to unmarshal audit logs")
-	}
-
-	// TODO: migrate to real DynamoDB cursor-based pagination
-	paged, pg := InMemoryPaginate(logs, pagination)
 
 	return &domain.ListAuditLogsResponse{
-		Logs:       paged,
+		Logs:       logs,
 		Pagination: pg,
 	}, nil
 }
 
 // GetByUser retrieves audit logs for a specific user
 func (r *AuditRepository) GetByUser(ctx context.Context, userID string, pagination domain.PaginationRequest) (*domain.ListAuditLogsResponse, error) {
-	result, err := r.client.db.Query(ctx, &dynamodb.QueryInput{
+	input := &dynamodb.QueryInput{
 		TableName:              aws.String(r.client.auditTable),
 		IndexName:              aws.String("GSI2"),
 		KeyConditionExpression: aws.String("GSI2PK = :pk"),
@@ -198,21 +188,15 @@ func (r *AuditRepository) GetByUser(ctx context.Context, userID string, paginati
 			exprPK: &types.AttributeValueMemberS{Value: "USER#" + userID},
 		},
 		ScanIndexForward: aws.Bool(false),
-	})
+	}
+
+	logs, pg, err := QueryPage[domain.AuditLog](ctx, r.client.db, input, pagination, "Failed to query audit logs by user")
 	if err != nil {
-		return nil, errors.Wrap(err, "Failed to query audit logs by user")
+		return nil, err
 	}
-
-	var logs []*domain.AuditLog
-	if err := attributevalue.UnmarshalListOfMaps(result.Items, &logs); err != nil {
-		return nil, errors.Internal("Failed to unmarshal audit logs")
-	}
-
-	// TODO: migrate to real DynamoDB cursor-based pagination
-	paged, pg := InMemoryPaginate(logs, pagination)
 
 	return &domain.ListAuditLogsResponse{
-		Logs:       paged,
+		Logs:       logs,
 		Pagination: pg,
 	}, nil
 }
