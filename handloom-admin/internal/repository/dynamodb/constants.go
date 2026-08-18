@@ -13,6 +13,16 @@ const (
 	attrStatus = "status"
 	attrTTL    = "ttl"
 
+	// nameTTL aliases attrTTL inside expressions.
+	nameTTL = "#ttl"
+
+	// attrSuccessorHash names the token that replaced this one. Its presence is
+	// the condition that lets one concurrent refresh claim the rotation.
+	attrSuccessorHash = "successor_hash"
+
+	// nameSuccessor aliases attrSuccessorHash inside expressions.
+	nameSuccessor = "#successor"
+
 	// skMetadata aliases domain.SKMetadata so dynamodb-layer reads short.
 	skMetadata = domain.SKMetadata
 )

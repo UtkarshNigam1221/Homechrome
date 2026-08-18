@@ -2,6 +2,7 @@
 package store
 
 import (
+	stderrors "errors"
 	"log/slog"
 	"net/http"
 	"time"
@@ -50,6 +51,12 @@ func (h *AuthHandler) Routes(authenticate func(http.Handler) http.Handler) chi.R
 	return r
 }
 
+// Cookie names the store's auth flow reads, writes, and clears by name.
+const (
+	cookieStoreToken   = "store_token"
+	cookieStoreRefresh = "store_refresh"
+)
+
 func (h *AuthHandler) setStoreCookies(w http.ResponseWriter, tokens *domain.TokenPair) {
 	secure, sameSite, domain := middleware.AuthCookieSettings()
 
@@ -57,7 +64,7 @@ func (h *AuthHandler) setStoreCookies(w http.ResponseWriter, tokens *domain.Toke
 	// the custom domain / Lambda URL. HttpOnly + SameSite are always set.
 	//nolint:gosec // G124: Secure flag is environment-conditional, not omitted.
 	http.SetCookie(w, &http.Cookie{
-		Name:     "store_token",
+		Name:     cookieStoreToken,
 		Value:    tokens.AccessToken,
 		Path:     "/",
 		Domain:   domain,
@@ -67,9 +74,15 @@ func (h *AuthHandler) setStoreCookies(w http.ResponseWriter, tokens *domain.Toke
 		MaxAge:   int(15 * time.Minute / time.Second),
 	})
 
+	// A grace-window straggler gets no refresh token; writing an empty value
+	// here would delete the cookie the rotation winner just set.
+	if tokens.RefreshToken == "" {
+		return
+	}
+
 	//nolint:gosec // G124: Secure flag is environment-conditional, not omitted.
 	http.SetCookie(w, &http.Cookie{
-		Name:     "store_refresh",
+		Name:     cookieStoreRefresh,
 		Value:    tokens.RefreshToken,
 		Path:     "/",
 		Domain:   domain,
@@ -80,12 +93,30 @@ func (h *AuthHandler) setStoreCookies(w http.ResponseWriter, tokens *domain.Toke
 	})
 }
 
+// isTerminalAuthError reports whether an error means the customer's credential
+// is spent — a malformed or revoked token, or a deactivated account — as
+// opposed to an infrastructure failure that leaves the token's status unknown.
+// Only the former justifies clearing the auth cookies.
+func isTerminalAuthError(err error) bool {
+	var appErr *errors.AppError
+	if !stderrors.As(err, &appErr) {
+		return false
+	}
+	switch appErr.Code {
+	case errors.ErrCodeInvalidToken, errors.ErrCodeTokenExpired, errors.ErrCodeTokenInvalid,
+		errors.ErrCodeInvalidCredentials, errors.ErrCodeUnauthorized, errors.ErrCodeUserInactive:
+		return true
+	default:
+		return false
+	}
+}
+
 func (h *AuthHandler) clearStoreCookies(w http.ResponseWriter) {
 	secure, sameSite, domain := middleware.AuthCookieSettings()
 
 	//nolint:gosec // G124: Secure flag is environment-conditional, not omitted.
 	http.SetCookie(w, &http.Cookie{
-		Name:     "store_token",
+		Name:     cookieStoreToken,
 		Value:    "",
 		Path:     "/",
 		Domain:   domain,
@@ -97,7 +128,7 @@ func (h *AuthHandler) clearStoreCookies(w http.ResponseWriter) {
 
 	//nolint:gosec // G124: Secure flag is environment-conditional, not omitted.
 	http.SetCookie(w, &http.Cookie{
-		Name:     "store_refresh",
+		Name:     cookieStoreRefresh,
 		Value:    "",
 		Path:     "/",
 		Domain:   domain,
@@ -169,7 +200,7 @@ func (h *AuthHandler) RefreshToken(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	// Read refresh token from cookie
-	cookie, err := r.Cookie("store_refresh")
+	cookie, err := r.Cookie(cookieStoreRefresh)
 	if err != nil || cookie.Value == "" {
 		response.Unauthorized(w, "Refresh token required")
 		return
@@ -177,7 +208,13 @@ func (h *AuthHandler) RefreshToken(w http.ResponseWriter, r *http.Request) {
 
 	customer, tokens, err := h.customerAuthService.RefreshToken(ctx, cookie.Value)
 	if err != nil {
-		h.clearStoreCookies(w)
+		// Only drop the session when the credential itself is finished. A
+		// throttled DynamoDB read or any other 5xx says nothing about the
+		// token, and clearing cookies on those turns a transient blip into a
+		// logout the customer has to recover from by signing in again.
+		if isTerminalAuthError(err) {
+			h.clearStoreCookies(w)
+		}
 		response.Error(w, err)
 		return
 	}
@@ -202,7 +239,7 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 
 	// Get refresh token from cookie to revoke it
 	var refreshToken string
-	if cookie, err := r.Cookie("store_refresh"); err == nil && cookie.Value != "" {
+	if cookie, err := r.Cookie(cookieStoreRefresh); err == nil && cookie.Value != "" {
 		refreshToken = cookie.Value
 	}
 

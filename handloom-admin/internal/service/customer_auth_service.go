@@ -27,6 +27,22 @@ const (
 	otpMaxAttempts           = 3
 	otpCodeUpperBound        = 1000000
 
+	// How long a rotated refresh token stays usable. Refreshes overlap: a
+	// second browser tab, or a retry, presents the same token while the
+	// first rotation is still in flight. Deleting it outright answers the
+	// straggler with a 401, and the handler clears both auth cookies on
+	// that path — logging the customer out mid-session. Observed refresh
+	// handler durations reach ~3.2s on a cold Lambda, so the window has to
+	// clear that comfortably.
+	//
+	// The window cannot extend a token past its natural life: RefreshToken
+	// validates the JWT's exp claim before it ever consults the store, so
+	// bumping the DB TTL on a nearly-expired token is inert.
+	//
+	// For token-reuse detection later: the rotated row carries its successor's
+	// hash, so a presentation after the window lapses is the signal to alarm on.
+	refreshGracePeriod = 30 * time.Second
+
 	// JWT standard claim keys (RFC 7519).
 	claimSub  = "sub"
 	claimType = "type"
@@ -190,7 +206,14 @@ func (s *CustomerAuthService) RefreshToken(ctx context.Context, refreshToken str
 
 	oldHash := hashSHA256(refreshToken)
 	valid, err := s.tokenStore.ValidateToken(ctx, customerID, oldHash)
-	if err != nil || !valid {
+	if err != nil {
+		// A throttled or timed-out lookup says nothing about the token. Folding
+		// it into ErrCodeInvalidToken would answer 401, and the handler clears
+		// both auth cookies on that path — a transient blip would end the
+		// session outright.
+		return nil, nil, err
+	}
+	if !valid {
 		return nil, nil, errors.New(errors.ErrCodeInvalidToken, "Refresh token has been revoked")
 	}
 
@@ -208,21 +231,50 @@ func (s *CustomerAuthService) RefreshToken(ctx context.Context, refreshToken str
 		return nil, nil, err
 	}
 
-	if err := s.storeRefreshToken(ctx, customer.ID, tokens.RefreshToken); err != nil {
+	// Claim before storing the successor. This also puts the presented token on
+	// the grace window instead of deleting it, so an overlapping refresh validates.
+	graceTTL := time.Now().Add(refreshGracePeriod).Unix()
+	claimed, err := s.tokenStore.ClaimRotation(ctx, customerID, oldHash, hashSHA256(tokens.RefreshToken), graceTTL)
+	if err != nil {
 		return nil, nil, err
 	}
 
-	if err := s.tokenStore.RevokeToken(ctx, customerID, oldHash); err != nil {
-		slog.WarnContext(ctx, "Failed to revoke old customer refresh token", "error", err)
+	if !claimed {
+		// Storing the pair minted above would orphan a full-life token nobody holds
+		// and Logout's grace-cutoff sweep never reaches. Access token only.
+		access, err := s.generateAccessToken(customer)
+		if err != nil {
+			return nil, nil, err
+		}
+		return customer, access, nil
+	}
+
+	if err := s.storeRefreshToken(ctx, customer.ID, tokens.RefreshToken); err != nil {
+		return nil, nil, err
 	}
 
 	return customer, tokens, nil
 }
 
-// Logout revokes a customer's refresh token
+// Logout revokes the presented refresh token and sweeps any grace-window
+// predecessor left behind by a recent rotation — but nothing else.
+//
+// Rotation keeps the pre-rotation token alive for refreshGracePeriod so an
+// overlapping refresh still succeeds, and the caller here only ever holds the
+// successor. Revoking just that would leave the predecessor usable for up to
+// 30 seconds after the customer asked to be logged out. RevokeTokensExpiringBefore
+// with a cutoff of "now + refreshGracePeriod" reaches exactly that predecessor
+// and nothing on another device: every live session's TTL is the full 7-day
+// refresh lifetime, far past this cutoff, so logging out on one device leaves
+// the customer's other sessions untouched.
 func (s *CustomerAuthService) Logout(ctx context.Context, customerID, refreshToken string) error {
 	if err := s.tokenStore.RevokeToken(ctx, customerID, hashSHA256(refreshToken)); err != nil {
 		return err
+	}
+
+	cutoff := time.Now().Add(refreshGracePeriod).Unix()
+	if err := s.tokenStore.RevokeTokensExpiringBefore(ctx, customerID, cutoff); err != nil {
+		slog.WarnContext(ctx, "Failed to sweep grace-window predecessor on logout", "error", err)
 	}
 
 	slog.InfoContext(ctx, "Customer logged out", "customer_id", customerID)
@@ -316,25 +368,13 @@ func (s *CustomerAuthService) parseJWTClaims(tokenString, expectedType string) (
 
 // generateTokenPair generates access and refresh JWT tokens for a customer.
 func (s *CustomerAuthService) generateTokenPair(customer *domain.Customer) (*domain.TokenPair, error) {
-	now := time.Now()
-	accessExpiry := now.Add(s.config.AccessTokenDuration)
-	refreshExpiry := now.Add(s.config.RefreshTokenDuration)
-
-	accessClaims := jwt.MapClaims{
-		claimSub:  customer.ID,
-		"phone":   customer.Phone,
-		"email":   customer.Email,
-		claimType: tokenTypeCustomer,
-		claimIat:  now.Unix(),
-		claimExp:  accessExpiry.Unix(),
-		claimIss:  s.config.Issuer,
-		claimJti:  uuid.New().String(),
-	}
-
-	accessTokenString, err := jwt.NewWithClaims(jwt.SigningMethodHS256, accessClaims).SignedString(s.jwtSecret)
+	accessTokenString, accessExpiry, err := s.signAccessToken(customer)
 	if err != nil {
-		return nil, errors.Internal("Failed to generate customer access token")
+		return nil, err
 	}
+
+	now := time.Now()
+	refreshExpiry := now.Add(s.config.RefreshTokenDuration)
 
 	refreshClaims := jwt.MapClaims{
 		claimSub:  customer.ID,
@@ -354,6 +394,44 @@ func (s *CustomerAuthService) generateTokenPair(customer *domain.Customer) (*dom
 		AccessToken:  accessTokenString,
 		RefreshToken: refreshTokenString,
 		ExpiresAt:    accessExpiry,
+	}, nil
+}
+
+// signAccessToken mints a customer access token and reports when it expires.
+func (s *CustomerAuthService) signAccessToken(customer *domain.Customer) (string, time.Time, error) {
+	now := time.Now()
+	accessExpiry := now.Add(s.config.AccessTokenDuration)
+
+	accessClaims := jwt.MapClaims{
+		claimSub:  customer.ID,
+		"phone":   customer.Phone,
+		"email":   customer.Email,
+		claimType: tokenTypeCustomer,
+		claimIat:  now.Unix(),
+		claimExp:  accessExpiry.Unix(),
+		claimIss:  s.config.Issuer,
+		claimJti:  uuid.New().String(),
+	}
+
+	accessTokenString, err := jwt.NewWithClaims(jwt.SigningMethodHS256, accessClaims).SignedString(s.jwtSecret)
+	if err != nil {
+		return "", time.Time{}, errors.Internal("Failed to generate customer access token")
+	}
+
+	return accessTokenString, accessExpiry, nil
+}
+
+// generateAccessToken mints an access token and no refresh token, for the
+// grace-window straggler path.
+func (s *CustomerAuthService) generateAccessToken(customer *domain.Customer) (*domain.TokenPair, error) {
+	accessTokenString, accessExpiry, err := s.signAccessToken(customer)
+	if err != nil {
+		return nil, err
+	}
+
+	return &domain.TokenPair{
+		AccessToken: accessTokenString,
+		ExpiresAt:   accessExpiry,
 	}, nil
 }
 
