@@ -212,7 +212,15 @@ func (s *OrderService) Create(ctx context.Context, req domain.CreateOrderRequest
 		utmSource: labelUnknown,
 	})
 
-	// Reserve inventory — track failures for visibility
+	// Reserve inventory — track failures for visibility.
+	//
+	// inventory_mutation_failed metering rule: every swallowed inventory
+	// failure is metered, and only those. A site that instead propagates its
+	// error to the caller (e.g. checkout_service.go's initial ReserveStock
+	// loop) is deliberately NOT metered here — the caller already sees the
+	// failure via the returned error, so metering it too would double-count.
+	// The reason values are named in constants.go; each swallowed-failure call
+	// site emits exactly one of them.
 	var reservationFailures []string
 	for _, item := range items {
 		_, err := s.inventoryRepo.ReserveStock(ctx, item.ProductID, item.Quantity, order.ID)
@@ -223,6 +231,7 @@ func (s *OrderService) Create(ctx context.Context, req domain.CreateOrderRequest
 				"quantity", item.Quantity,
 				"error", err,
 			)
+			metrics.Record(ctx, "inventory_mutation_failed", metrics.L{metrics.LabelReason: reasonReserve})
 			reservationFailures = append(reservationFailures, item.ProductID)
 		}
 	}
@@ -316,31 +325,22 @@ func (s *OrderService) UpdateStatus(ctx context.Context, id string, status domai
 	// Update status
 	order.Status = status
 	order.UpdatedBy = updatedBy
-	order.UpdatedAt = time.Now()
+	now := time.Now()
+	order.UpdatedAt = now
 
-	// Handle status-specific logic before persisting
+	// Set status-specific timestamp fields before persisting — these are part
+	// of the write below, so they must land on `order` first.
 	switch status {
 	case domain.OrderStatusShipped:
-		// Update shipped date
-		now := time.Now()
 		order.ShippedAt = &now
 	case domain.OrderStatusDelivered:
-		now := time.Now()
 		order.DeliveredAt = &now
-		// Release reserved stock (it's now sold)
-		// In real app, this would decrement actual stock
 	case domain.OrderStatusCancelled:
-		// Release reserved stock
-		for _, item := range order.Items {
-			if _, releaseErr := s.inventoryRepo.ReleaseStock(ctx, item.ProductID, item.Quantity, order.ID); releaseErr != nil {
-				slog.ErrorContext(ctx, "Failed to release stock", keyProductID, item.ProductID, "error", releaseErr)
-			}
-		}
-		// order_cancelled — status-transition path, no admin reason text.
-		metrics.Record(ctx, "order_cancelled", metrics.L{
-			metrics.LabelReason:  "status_update",
-			metrics.LabelGateway: gatewayPhonePe,
-		})
+		// CancelledAt mirrors CancelOrder, so tracking_handler's timeline
+		// (which gates the "cancelled" entry on CancelledAt != nil) shows a
+		// cancellation regardless of which path set it. Reuses the UpdatedAt
+		// timestamp above rather than calling time.Now() again.
+		order.CancelledAt = &now
 	}
 
 	if err := s.orderRepo.Update(ctx, order); err != nil {
@@ -348,9 +348,54 @@ func (s *OrderService) UpdateStatus(ctx context.Context, id string, status domai
 		return err
 	}
 
+	s.applyInventoryEffect(ctx, order, status, updatedBy)
+
 	slog.InfoContext(ctx, "Updated order status", "order_id", id, "status", status)
 	span.End()
 	return nil
+}
+
+// applyInventoryEffect moves stock for a status change, only after the order
+// write succeeds: AddStock has no idempotency guard, so a retry would double-add.
+func (s *OrderService) applyInventoryEffect(ctx context.Context, order *domain.Order, status domain.OrderStatus, updatedBy string) {
+	switch status {
+	case domain.OrderStatusShipped:
+		// Goods have left the warehouse: convert each reservation into a
+		// dispatch. available_qty is unaffected — these units were already
+		// unavailable while reserved.
+		for _, item := range order.Items {
+			if _, commitErr := s.inventoryRepo.CommitStock(ctx, item.ProductID, item.Quantity, order.ID); commitErr != nil {
+				slog.ErrorContext(ctx, "Failed to commit stock", keyProductID, item.ProductID, "error", commitErr)
+				metrics.Record(ctx, "inventory_mutation_failed", metrics.L{metrics.LabelReason: reasonCommit})
+			}
+		}
+	case domain.OrderStatusCancelled:
+		// Release reserved stock
+		for _, item := range order.Items {
+			if _, releaseErr := s.inventoryRepo.ReleaseStock(ctx, item.ProductID, item.Quantity, order.ID); releaseErr != nil {
+				slog.ErrorContext(ctx, "Failed to release stock", keyProductID, item.ProductID, "error", releaseErr)
+				metrics.Record(ctx, "inventory_mutation_failed", metrics.L{metrics.LabelReason: releaseFailureReason(releaseErr)})
+			}
+		}
+		// order_cancelled — status-transition path, no admin reason text.
+		metrics.Record(ctx, "order_cancelled", metrics.L{
+			metrics.LabelReason:  "status_update",
+			metrics.LabelGateway: gatewayPhonePe,
+		})
+	case domain.OrderStatusReturned:
+		// Goods are back. RETURNED is reachable only from SHIPPED/DELIVERED,
+		// both post-commit, so quantity returns to its pre-dispatch value and
+		// reserved_qty is already clear.
+		for _, item := range order.Items {
+			reason := fmt.Sprintf("RETURN %s", order.ID)
+			if _, addErr := s.inventoryRepo.AddStock(ctx, item.ProductID, item.Quantity, reason, updatedBy); addErr != nil {
+				slog.ErrorContext(ctx, "Failed to restock returned item", keyProductID, item.ProductID, "error", addErr)
+				metrics.Record(ctx, "inventory_mutation_failed", metrics.L{metrics.LabelReason: reasonRestock})
+			}
+		}
+	}
+	// domain.OrderStatusDelivered: no inventory effect — stock was committed
+	// at dispatch. No case needed above.
 }
 
 // AddNote adds a note to an order
@@ -394,8 +439,12 @@ func (s *OrderService) CancelOrder(ctx context.Context, id string, reason string
 		return err
 	}
 
-	// Can only cancel pending or confirmed orders
-	if order.Status != domain.OrderStatusPending && order.Status != domain.OrderStatusConfirmed {
+	// Cancellable up to dispatch. Mirrors validTransitions, which allows
+	// PENDING/CONFIRMED/PROCESSING -> CANCELLED; the two paths previously
+	// disagreed about PROCESSING.
+	if order.Status != domain.OrderStatusPending &&
+		order.Status != domain.OrderStatusConfirmed &&
+		order.Status != domain.OrderStatusProcessing {
 		cancelErr := errors.BadRequest("Order cannot be canceled in current status")
 		span.EndWithError(cancelErr)
 		return cancelErr
@@ -414,9 +463,10 @@ func (s *OrderService) CancelOrder(ctx context.Context, id string, reason string
 
 	// Release reserved stock
 	for _, item := range order.Items {
-		_, err := s.inventoryRepo.ReleaseStock(ctx, item.ProductID, item.Quantity, order.ID)
-		if err != nil {
-			slog.ErrorContext(ctx, "Failed to release stock", keyProductID, item.ProductID, "error", err)
+		_, releaseErr := s.inventoryRepo.ReleaseStock(ctx, item.ProductID, item.Quantity, order.ID)
+		if releaseErr != nil {
+			slog.ErrorContext(ctx, "Failed to release stock", keyProductID, item.ProductID, "error", releaseErr)
+			metrics.Record(ctx, "inventory_mutation_failed", metrics.L{metrics.LabelReason: releaseFailureReason(releaseErr)})
 		}
 	}
 
@@ -431,6 +481,24 @@ func (s *OrderService) CancelOrder(ctx context.Context, id string, reason string
 	slog.InfoContext(ctx, "Canceled order", "order_id", id)
 	span.End()
 	return nil
+}
+
+// releaseFailureReason maps a ReleaseStock failure to the metric reason label
+// for inventory_mutation_failed. A release that fails with insufficient-stock
+// means the reservation was already zeroed out by an earlier release — most
+// commonly HandlePaymentFailure's rollback (payment_service.go) or the
+// checkout rollback (checkout_service.go), both of which leave the order in
+// PENDING, still cancellable by customer or admin. That later cancel finding
+// nothing left to release is benign and expected, not a leak, so it's
+// counted separately as "release_unreserved" rather than "release" — see the
+// runbook's "Ongoing drift check" section for why on-call should not treat it
+// as a page-worthy signal. Any other error keeps the "release" reason, which
+// does indicate a real problem.
+func releaseFailureReason(err error) string {
+	if appErr, ok := errors.AsAppError(err); ok && appErr.Code == errors.ErrCodeInsufficientStock {
+		return reasonReleaseUnreserved
+	}
+	return reasonRelease
 }
 
 // normaliseCancelReason maps free-text reasons to a bounded label set.

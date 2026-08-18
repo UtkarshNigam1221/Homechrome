@@ -81,13 +81,17 @@ func (s *CheckoutService) Initiate(ctx context.Context, customerID string, req d
 		return nil, emptyErr
 	}
 
+	// Generated up front so the reservation ledger rows carry the order ID and
+	// can be joined against their matching release.
+	orderID := uuid.New().String()
+
 	// 5. Reserve inventory for each item
 	reservedItems := make([]domain.CartItem, 0, len(cart.Items))
 	for _, item := range cart.Items {
-		_, reserveErr := s.inventoryRepo.ReserveStock(ctx, item.ProductID, item.Quantity, "checkout")
+		_, reserveErr := s.inventoryRepo.ReserveStock(ctx, item.ProductID, item.Quantity, orderID)
 		if reserveErr != nil {
 			// Rollback: release all previously reserved items
-			s.releaseReservedItems(ctx, reservedItems)
+			s.releaseReservedItems(ctx, orderID, reservedItems)
 			slog.ErrorContext(ctx, "Failed to reserve stock", keyProductID, item.ProductID, "error", reserveErr)
 			stockErr := errors.Wrap(reserveErr, fmt.Sprintf("Failed to reserve stock for product %s", item.ProductID))
 			span.EndWithError(stockErr)
@@ -114,7 +118,7 @@ func (s *CheckoutService) Initiate(ctx context.Context, customerID string, req d
 	// 9. Create order
 	now := time.Now()
 	order := &domain.Order{
-		ID:              uuid.New().String(),
+		ID:              orderID,
 		OrderNumber:     orderNumber,
 		CustomerID:      customer.ID,
 		CustomerName:    customer.FirstName + " " + customer.LastName,
@@ -144,7 +148,7 @@ func (s *CheckoutService) Initiate(ctx context.Context, customerID string, req d
 
 	// 10. Save order (repository also writes the order number index)
 	if err = s.orderRepo.Create(ctx, order); err != nil {
-		s.releaseReservedItems(ctx, reservedItems)
+		s.releaseReservedItems(ctx, orderID, reservedItems)
 		slog.ErrorContext(ctx, "Failed to create order", "error", err)
 		createErr := errors.Wrap(err, "Failed to create order")
 		span.EndWithError(createErr)
@@ -174,7 +178,7 @@ func (s *CheckoutService) Initiate(ctx context.Context, customerID string, req d
 		Phone:      customer.Phone,
 	})
 	if err != nil {
-		s.releaseReservedItems(ctx, reservedItems)
+		s.releaseReservedItems(ctx, orderID, reservedItems)
 		slog.ErrorContext(ctx, "Failed to initiate payment", "error", err)
 		payErr := errors.Wrap(err, "Failed to initiate payment")
 		span.EndWithError(payErr)
@@ -272,11 +276,12 @@ func cartItemsToOrderItems(items []domain.CartItem) []domain.OrderItem {
 }
 
 // releaseReservedItems releases inventory for items that were previously reserved
-func (s *CheckoutService) releaseReservedItems(ctx context.Context, items []domain.CartItem) {
+func (s *CheckoutService) releaseReservedItems(ctx context.Context, orderID string, items []domain.CartItem) {
 	for _, item := range items {
-		_, err := s.inventoryRepo.ReleaseStock(ctx, item.ProductID, item.Quantity, "checkout")
+		_, err := s.inventoryRepo.ReleaseStock(ctx, item.ProductID, item.Quantity, orderID)
 		if err != nil {
 			slog.ErrorContext(ctx, "Failed to release reserved stock", keyProductID, item.ProductID, "error", err)
+			metrics.Record(ctx, "inventory_mutation_failed", metrics.L{metrics.LabelReason: reasonRelease})
 			// Continue releasing other items even if one fails
 		}
 	}

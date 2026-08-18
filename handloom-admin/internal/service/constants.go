@@ -11,3 +11,13 @@ const (
 	labelOther     = "other"
 	gatewayPhonePe = "phonepe"
 )
+
+// Reason labels for inventory_mutation_failed. One per swallowed-failure call
+// site; release_unreserved marks the benign already-released case.
+const (
+	reasonReserve           = "reserve"
+	reasonCommit            = "commit"
+	reasonRelease           = "release"
+	reasonReleaseUnreserved = "release_unreserved"
+	reasonRestock           = "restock"
+)

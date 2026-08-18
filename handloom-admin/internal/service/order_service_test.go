@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -448,6 +449,183 @@ func TestOrderService_UpdateStatus(t *testing.T) {
 	})
 }
 
+func TestOrderService_UpdateStatus_Inventory(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockOrderRepo := mocks.NewMockOrderRepository(ctrl)
+	mockCustomerRepo := mocks.NewMockCustomerRepository(ctrl)
+	mockProductRepo := mocks.NewMockProductRepository(ctrl)
+	mockInventoryRepo := mocks.NewMockInventoryRepository(ctrl)
+	mockPriceQuoteRepo := mocks.NewMockPriceQuoteRepository(ctrl)
+	mockPricingService := mocks.NewMockPricingService(ctrl)
+
+	service := NewOrderService(
+		mockOrderRepo,
+		mockCustomerRepo,
+		mockProductRepo,
+		mockInventoryRepo,
+		mockPriceQuoteRepo,
+		mockPricingService,
+	)
+	ctx := context.Background()
+
+	t.Run("shipping commits stock for every item", func(t *testing.T) {
+		order := &domain.Order{
+			ID:     "order_123",
+			Status: domain.OrderStatusConfirmed,
+			Items: []domain.OrderItem{
+				{ProductID: "prod_123", Quantity: 2},
+				{ProductID: "prod_456", Quantity: 1},
+			},
+		}
+
+		mockOrderRepo.EXPECT().GetByID(gomock.Any(), "order_123").Return(order, nil)
+		mockOrderRepo.EXPECT().Update(gomock.Any(), gomock.Any()).Return(nil)
+		mockInventoryRepo.EXPECT().
+			CommitStock(gomock.Any(), "prod_123", 2, "order_123").
+			Return(&domain.InventoryTransaction{}, nil)
+		mockInventoryRepo.EXPECT().
+			CommitStock(gomock.Any(), "prod_456", 1, "order_123").
+			Return(&domain.InventoryTransaction{}, nil)
+
+		err := service.UpdateStatus(ctx, "order_123", domain.OrderStatusShipped, "admin_123")
+		require.NoError(t, err)
+	})
+
+	t.Run("delivery has no inventory effect", func(t *testing.T) {
+		order := &domain.Order{
+			ID:     "order_789",
+			Status: domain.OrderStatusShipped,
+			Items:  []domain.OrderItem{{ProductID: "prod_123", Quantity: 2}},
+		}
+
+		mockOrderRepo.EXPECT().GetByID(gomock.Any(), "order_789").Return(order, nil)
+		mockOrderRepo.EXPECT().Update(gomock.Any(), gomock.Any()).Return(nil)
+		// No inventory expectation: gomock fails the test on any unexpected call.
+
+		err := service.UpdateStatus(ctx, "order_789", domain.OrderStatusDelivered, "admin_123")
+		require.NoError(t, err)
+	})
+
+	t.Run("return restocks every item", func(t *testing.T) {
+		order := &domain.Order{
+			ID:     "order_ret",
+			Status: domain.OrderStatusDelivered,
+			Items: []domain.OrderItem{
+				{ProductID: "prod_123", Quantity: 2},
+			},
+		}
+
+		mockOrderRepo.EXPECT().GetByID(gomock.Any(), "order_ret").Return(order, nil)
+		mockOrderRepo.EXPECT().Update(gomock.Any(), gomock.Any()).Return(nil)
+		mockInventoryRepo.EXPECT().
+			AddStock(gomock.Any(), "prod_123", 2, "RETURN order_ret", "admin_123").
+			Return(&domain.InventoryTransaction{}, nil)
+
+		err := service.UpdateStatus(ctx, "order_ret", domain.OrderStatusReturned, "admin_123")
+		require.NoError(t, err)
+	})
+
+	t.Run("canceling via status update sets CancelledAt", func(t *testing.T) {
+		order := &domain.Order{
+			ID:     "order_cancel_update",
+			Status: domain.OrderStatusConfirmed,
+			Items:  []domain.OrderItem{{ProductID: "prod_123", Quantity: 2}},
+		}
+
+		mockOrderRepo.EXPECT().GetByID(gomock.Any(), "order_cancel_update").Return(order, nil)
+		mockOrderRepo.EXPECT().
+			Update(gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, order *domain.Order) error {
+				assert.NotNil(t, order.CancelledAt)
+				return nil
+			})
+		mockInventoryRepo.EXPECT().
+			ReleaseStock(gomock.Any(), "prod_123", 2, "order_cancel_update").
+			Return(&domain.InventoryTransaction{}, nil)
+
+		err := service.UpdateStatus(ctx, "order_cancel_update", domain.OrderStatusCancelled, "admin_123")
+		require.NoError(t, err)
+		assert.NotNil(t, order.CancelledAt)
+	})
+
+	t.Run("a failed commit does not fail the shipment", func(t *testing.T) {
+		order := &domain.Order{
+			ID:     "order_fail",
+			Status: domain.OrderStatusConfirmed,
+			Items:  []domain.OrderItem{{ProductID: "prod_123", Quantity: 2}},
+		}
+
+		mockOrderRepo.EXPECT().GetByID(gomock.Any(), "order_fail").Return(order, nil)
+		mockOrderRepo.EXPECT().Update(gomock.Any(), gomock.Any()).Return(nil)
+		mockInventoryRepo.EXPECT().
+			CommitStock(gomock.Any(), "prod_123", 2, "order_fail").
+			Return(nil, errors.New(errors.ErrCodeInsufficientStock, "insufficient stock"))
+
+		err := service.UpdateStatus(ctx, "order_fail", domain.OrderStatusShipped, "admin_123")
+		require.NoError(t, err, "inventory failure must not block the status change")
+		require.Equal(t, domain.OrderStatusShipped, order.Status)
+	})
+
+	t.Run("orderRepo.Update failure prevents any inventory mutation", func(t *testing.T) {
+		// Regression test: inventory mutations must run AFTER the status is
+		// persisted, not before. Registering no CommitStock/AddStock/
+		// ReleaseStock expectation means gomock fails this test the moment an
+		// unexpected call happens — which is exactly what the old ordering
+		// (mutate inventory, then persist) would have done here despite the
+		// persist failing.
+		order := &domain.Order{
+			ID:     "order_updatefail",
+			Status: domain.OrderStatusConfirmed,
+			Items:  []domain.OrderItem{{ProductID: "prod_123", Quantity: 2}},
+		}
+
+		mockOrderRepo.EXPECT().GetByID(gomock.Any(), "order_updatefail").Return(order, nil)
+		mockOrderRepo.EXPECT().
+			Update(gomock.Any(), gomock.Any()).
+			Return(errors.New(errors.ErrCodeInternal, "db write failed"))
+
+		err := service.UpdateStatus(ctx, "order_updatefail", domain.OrderStatusShipped, "admin_123")
+		require.Error(t, err, "a persist failure must propagate")
+	})
+}
+
+// TestReleaseFailureReason pins the inventory_mutation_failed reason label
+// chosen for a ReleaseStock failure: insufficient-stock (the reservation was
+// already zeroed by an earlier release, e.g. a failed-payment rollback) maps
+// to "release_unreserved" so it doesn't get counted as a real leak signal.
+// Any other error keeps the default "release" reason.
+func TestReleaseFailureReason(t *testing.T) {
+	tests := []struct {
+		name     string
+		err      error
+		expected string
+	}{
+		{
+			name:     "insufficient stock maps to release_unreserved",
+			err:      errors.New(errors.ErrCodeInsufficientStock, "insufficient stock"),
+			expected: reasonReleaseUnreserved,
+		},
+		{
+			name:     "other AppError keeps release",
+			err:      errors.New(errors.ErrCodeNotFound, "Inventory not found"),
+			expected: reasonRelease,
+		},
+		{
+			name:     "non-AppError keeps release",
+			err:      fmt.Errorf("connection reset"),
+			expected: reasonRelease,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, releaseFailureReason(tt.err))
+		})
+	}
+}
+
 func TestOrderService_AddNote(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
@@ -662,6 +840,63 @@ func TestOrderService_CancelOrder(t *testing.T) {
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "cannot be canceled")
+	})
+}
+
+// TestOrderService_CancelOrder_Inventory covers the PROCESSING widening: the
+// validTransitions table already allowed PROCESSING -> CANCELLED, but
+// CancelOrder rejected it. These subtests pin CancelOrder's accepted statuses
+// to match that table, and confirm SHIPPED (post-commit) still stays out of
+// reach.
+func TestOrderService_CancelOrder_Inventory(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockOrderRepo := mocks.NewMockOrderRepository(ctrl)
+	mockCustomerRepo := mocks.NewMockCustomerRepository(ctrl)
+	mockProductRepo := mocks.NewMockProductRepository(ctrl)
+	mockInventoryRepo := mocks.NewMockInventoryRepository(ctrl)
+	mockPriceQuoteRepo := mocks.NewMockPriceQuoteRepository(ctrl)
+	mockPricingService := mocks.NewMockPricingService(ctrl)
+
+	service := NewOrderService(
+		mockOrderRepo,
+		mockCustomerRepo,
+		mockProductRepo,
+		mockInventoryRepo,
+		mockPriceQuoteRepo,
+		mockPricingService,
+	)
+	ctx := context.Background()
+
+	t.Run("canceling a processing order releases stock", func(t *testing.T) {
+		order := &domain.Order{
+			ID:     "order_proc",
+			Status: domain.OrderStatusProcessing,
+			Items:  []domain.OrderItem{{ProductID: "prod_123", Quantity: 3}},
+		}
+
+		mockOrderRepo.EXPECT().GetByID(gomock.Any(), "order_proc").Return(order, nil)
+		mockOrderRepo.EXPECT().Update(gomock.Any(), gomock.Any()).Return(nil)
+		mockInventoryRepo.EXPECT().
+			ReleaseStock(gomock.Any(), "prod_123", 3, "order_proc").
+			Return(&domain.InventoryTransaction{}, nil)
+
+		err := service.CancelOrder(ctx, "order_proc", "out of stock", "admin_123")
+		require.NoError(t, err)
+	})
+
+	t.Run("canceling a shipped order is rejected", func(t *testing.T) {
+		order := &domain.Order{
+			ID:     "order_ship",
+			Status: domain.OrderStatusShipped,
+			Items:  []domain.OrderItem{{ProductID: "prod_123", Quantity: 1}},
+		}
+
+		mockOrderRepo.EXPECT().GetByID(gomock.Any(), "order_ship").Return(order, nil)
+
+		err := service.CancelOrder(ctx, "order_ship", "too late", "admin_123")
+		require.Error(t, err)
 	})
 }
 

@@ -354,6 +354,72 @@ func (r *InventoryRepository) ReleaseStock(ctx context.Context, productID string
 	return txn, nil
 }
 
+// CommitStock converts a reservation into a dispatch within a transaction.
+// Both quantity and reserved_qty drop by the same amount, so available_qty is
+// unchanged: the units were already unavailable when reserved, and are now
+// physically gone as well.
+func (r *InventoryRepository) CommitStock(ctx context.Context, productID string, quantity int, orderID string) (*domain.InventoryTransaction, error) {
+	var txn *domain.InventoryTransaction
+
+	err := pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
+		var currentQty, reservedQty int
+		err := tx.QueryRow(ctx,
+			`SELECT quantity, reserved_qty FROM inventory WHERE product_id = $1 FOR UPDATE`,
+			productID,
+		).Scan(&currentQty, &reservedQty)
+		if err != nil {
+			if err == pgx.ErrNoRows {
+				return errors.NotFound("Inventory not found")
+			}
+			return errors.Wrap(err, "failed to lock inventory row")
+		}
+
+		// Both guards matter. reservedQty is the real invariant, but a row
+		// corrupted by the historical leak can violate reservedQty <= quantity,
+		// and driving quantity negative would be worse than refusing.
+		if reservedQty < quantity || currentQty < quantity {
+			return errors.New(errors.ErrCodeInsufficientStock, "insufficient stock")
+		}
+
+		now := time.Now()
+		newQty := currentQty - quantity
+		newReserved := reservedQty - quantity
+		newAvailable := newQty - newReserved
+
+		updQB := querybuilder.Update("inventory").
+			Set(ColQuantity, newQty).
+			Set(ColReservedQty, newReserved).
+			Set(ColAvailableQty, newAvailable).
+			Set(ColUpdatedAt, now).
+			Where(ColProductID, productID)
+
+		updSQL, updArgs := updQB.Build()
+		_, err = tx.Exec(ctx, updSQL, updArgs...)
+		if err != nil {
+			return errors.Wrap(err, "failed to update inventory")
+		}
+
+		txn = &domain.InventoryTransaction{
+			ID:            "inv_txn_" + uuid.New().String()[:8],
+			ProductID:     productID,
+			Type:          domain.InventoryTransactionTypeCommit,
+			Quantity:      quantity,
+			PreviousQty:   currentQty,
+			NewQty:        newQty,
+			Reason:        fmt.Sprintf("ORDER %s", orderID),
+			ReferenceType: inventoryRefTypeOrder,
+			ReferenceID:   orderID,
+			CreatedAt:     now,
+		}
+
+		return insertInventoryTransaction(ctx, tx, txn)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return txn, nil
+}
+
 // AdjustStock sets the inventory quantity to an absolute value within a transaction.
 func (r *InventoryRepository) AdjustStock(ctx context.Context, productID string, newQuantity int, reason string, userID string) (*domain.InventoryTransaction, error) {
 	var txn *domain.InventoryTransaction
