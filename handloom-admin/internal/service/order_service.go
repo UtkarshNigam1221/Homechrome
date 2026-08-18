@@ -355,27 +355,32 @@ func (s *OrderService) UpdateStatus(ctx context.Context, id string, status domai
 	return nil
 }
 
+// orderQuantities aggregates an order's lines by product. The admin Create path
+// takes items straight from the request, so one product can appear on two lines.
+func orderQuantities(items []domain.OrderItem) map[string]int {
+	quantities := make(map[string]int, len(items))
+	for _, item := range items {
+		quantities[item.ProductID] += item.Quantity
+	}
+	return quantities
+}
+
 // applyInventoryEffect moves stock for a status change, only after the order
 // write succeeds: AddStock has no idempotency guard, so a retry would double-add.
 func (s *OrderService) applyInventoryEffect(ctx context.Context, order *domain.Order, status domain.OrderStatus, updatedBy string) {
 	switch status {
 	case domain.OrderStatusShipped:
-		// Goods have left the warehouse: convert each reservation into a
+		// Goods have left the warehouse: convert the reservations into a
 		// dispatch. available_qty is unaffected — these units were already
 		// unavailable while reserved.
-		for _, item := range order.Items {
-			if _, commitErr := s.inventoryRepo.CommitStock(ctx, item.ProductID, item.Quantity, order.ID); commitErr != nil {
-				slog.ErrorContext(ctx, "Failed to commit stock", keyProductID, item.ProductID, "error", commitErr)
-				metrics.Record(ctx, "inventory_mutation_failed", metrics.L{metrics.LabelReason: reasonCommit})
-			}
+		if commitErr := s.inventoryRepo.CommitOrderStock(ctx, order.ID, orderQuantities(order.Items)); commitErr != nil {
+			slog.ErrorContext(ctx, "Failed to commit stock", keyOrderID, order.ID, "error", commitErr)
+			metrics.Record(ctx, "inventory_mutation_failed", metrics.L{metrics.LabelReason: reasonCommit})
 		}
 	case domain.OrderStatusCancelled:
-		// Release reserved stock
-		for _, item := range order.Items {
-			if _, releaseErr := s.inventoryRepo.ReleaseStock(ctx, item.ProductID, item.Quantity, order.ID); releaseErr != nil {
-				slog.ErrorContext(ctx, "Failed to release stock", keyProductID, item.ProductID, "error", releaseErr)
-				metrics.Record(ctx, "inventory_mutation_failed", metrics.L{metrics.LabelReason: releaseFailureReason(releaseErr)})
-			}
+		if releaseErr := s.inventoryRepo.ReleaseOrderStock(ctx, order.ID, orderQuantities(order.Items)); releaseErr != nil {
+			slog.ErrorContext(ctx, "Failed to release stock", keyOrderID, order.ID, "error", releaseErr)
+			metrics.Record(ctx, "inventory_mutation_failed", metrics.L{metrics.LabelReason: releaseFailureReason(releaseErr)})
 		}
 		// order_cancelled — status-transition path, no admin reason text.
 		metrics.Record(ctx, "order_cancelled", metrics.L{
@@ -461,13 +466,9 @@ func (s *OrderService) CancelOrder(ctx context.Context, id string, reason string
 		return err
 	}
 
-	// Release reserved stock
-	for _, item := range order.Items {
-		_, releaseErr := s.inventoryRepo.ReleaseStock(ctx, item.ProductID, item.Quantity, order.ID)
-		if releaseErr != nil {
-			slog.ErrorContext(ctx, "Failed to release stock", keyProductID, item.ProductID, "error", releaseErr)
-			metrics.Record(ctx, "inventory_mutation_failed", metrics.L{metrics.LabelReason: releaseFailureReason(releaseErr)})
-		}
+	if releaseErr := s.inventoryRepo.ReleaseOrderStock(ctx, order.ID, orderQuantities(order.Items)); releaseErr != nil {
+		slog.ErrorContext(ctx, "Failed to release stock", keyOrderID, order.ID, "error", releaseErr)
+		metrics.Record(ctx, "inventory_mutation_failed", metrics.L{metrics.LabelReason: releaseFailureReason(releaseErr)})
 	}
 
 	// order_cancelled — reason label is bounded (admin-supplied free text is

@@ -264,6 +264,14 @@ type InventoryRepository interface {
 	// and available_qty is unchanged.
 	CommitStock(ctx context.Context, productID string, quantity int, orderID string) (*InventoryTransaction, error)
 
+	// CommitOrderStock commits every line of an order in one transaction, and
+	// ReleaseOrderStock releases them. quantities maps product ID to amount, so
+	// two lines for the same product are one movement. All-or-nothing: a line
+	// that cannot be applied rolls back the ones before it, which per-item calls
+	// could not do — they left an order half-committed with no way back.
+	CommitOrderStock(ctx context.Context, orderID string, quantities map[string]int) error
+	ReleaseOrderStock(ctx context.Context, orderID string, quantities map[string]int) error
+
 	// AdjustStock adjusts stock to a specific quantity
 	AdjustStock(ctx context.Context, productID string, newQuantity int, reason string, userID string) (*InventoryTransaction, error)
 

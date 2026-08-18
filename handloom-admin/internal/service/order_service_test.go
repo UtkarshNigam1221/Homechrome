@@ -390,6 +390,12 @@ func TestOrderService_UpdateStatus(t *testing.T) {
 			Update(gomock.Any(), gomock.Any()).
 			Return(nil)
 
+		// No items, so the batch call carries an empty map rather than not
+		// happening at all — the repository short-circuits it.
+		mockInventoryRepo.EXPECT().
+			CommitOrderStock(gomock.Any(), "order_123", map[string]int{}).
+			Return(nil)
+
 		err := service.UpdateStatus(ctx, "order_123", domain.OrderStatusShipped, "admin_123")
 		require.NoError(t, err)
 	})
@@ -440,8 +446,8 @@ func TestOrderService_UpdateStatus(t *testing.T) {
 			Return(nil)
 
 		mockInventoryRepo.EXPECT().
-			ReleaseStock(gomock.Any(), "prod_123", 2, "order_123").
-			Return(&domain.InventoryTransaction{}, nil)
+			ReleaseOrderStock(gomock.Any(), "order_123", map[string]int{"prod_123": 2}).
+			Return(nil)
 
 		err := service.UpdateStatus(ctx, "order_123", domain.OrderStatusCancelled, "admin_123")
 
@@ -483,11 +489,8 @@ func TestOrderService_UpdateStatus_Inventory(t *testing.T) {
 		mockOrderRepo.EXPECT().GetByID(gomock.Any(), "order_123").Return(order, nil)
 		mockOrderRepo.EXPECT().Update(gomock.Any(), gomock.Any()).Return(nil)
 		mockInventoryRepo.EXPECT().
-			CommitStock(gomock.Any(), "prod_123", 2, "order_123").
-			Return(&domain.InventoryTransaction{}, nil)
-		mockInventoryRepo.EXPECT().
-			CommitStock(gomock.Any(), "prod_456", 1, "order_123").
-			Return(&domain.InventoryTransaction{}, nil)
+			CommitOrderStock(gomock.Any(), "order_123", map[string]int{"prod_123": 2, "prod_456": 1}).
+			Return(nil)
 
 		err := service.UpdateStatus(ctx, "order_123", domain.OrderStatusShipped, "admin_123")
 		require.NoError(t, err)
@@ -542,8 +545,8 @@ func TestOrderService_UpdateStatus_Inventory(t *testing.T) {
 				return nil
 			})
 		mockInventoryRepo.EXPECT().
-			ReleaseStock(gomock.Any(), "prod_123", 2, "order_cancel_update").
-			Return(&domain.InventoryTransaction{}, nil)
+			ReleaseOrderStock(gomock.Any(), "order_cancel_update", map[string]int{"prod_123": 2}).
+			Return(nil)
 
 		err := service.UpdateStatus(ctx, "order_cancel_update", domain.OrderStatusCancelled, "admin_123")
 		require.NoError(t, err)
@@ -560,8 +563,8 @@ func TestOrderService_UpdateStatus_Inventory(t *testing.T) {
 		mockOrderRepo.EXPECT().GetByID(gomock.Any(), "order_fail").Return(order, nil)
 		mockOrderRepo.EXPECT().Update(gomock.Any(), gomock.Any()).Return(nil)
 		mockInventoryRepo.EXPECT().
-			CommitStock(gomock.Any(), "prod_123", 2, "order_fail").
-			Return(nil, errors.New(errors.ErrCodeInsufficientStock, "insufficient stock"))
+			CommitOrderStock(gomock.Any(), "order_fail", map[string]int{"prod_123": 2}).
+			Return(errors.New(errors.ErrCodeInsufficientStock, "insufficient stock"))
 
 		err := service.UpdateStatus(ctx, "order_fail", domain.OrderStatusShipped, "admin_123")
 		require.NoError(t, err, "inventory failure must not block the status change")
@@ -570,8 +573,8 @@ func TestOrderService_UpdateStatus_Inventory(t *testing.T) {
 
 	t.Run("orderRepo.Update failure prevents any inventory mutation", func(t *testing.T) {
 		// Regression test: inventory mutations must run AFTER the status is
-		// persisted, not before. Registering no CommitStock/AddStock/
-		// ReleaseStock expectation means gomock fails this test the moment an
+		// persisted, not before. Registering no CommitOrderStock/AddStock/
+		// ReleaseOrderStock expectation means gomock fails this test the moment an
 		// unexpected call happens — which is exactly what the old ordering
 		// (mutate inventory, then persist) would have done here despite the
 		// persist failing.
@@ -592,7 +595,7 @@ func TestOrderService_UpdateStatus_Inventory(t *testing.T) {
 }
 
 // TestReleaseFailureReason pins the inventory_mutation_failed reason label
-// chosen for a ReleaseStock failure: insufficient-stock (the reservation was
+// chosen for a ReleaseOrderStock failure: insufficient-stock (the reservation was
 // already zeroed by an earlier release, e.g. a failed-payment rollback) maps
 // to "release_unreserved" so it doesn't get counted as a real leak signal.
 // Any other error keeps the default "release" reason.
@@ -777,12 +780,8 @@ func TestOrderService_CancelOrder(t *testing.T) {
 			})
 
 		mockInventoryRepo.EXPECT().
-			ReleaseStock(gomock.Any(), "prod_123", 2, "order_123").
-			Return(&domain.InventoryTransaction{}, nil)
-
-		mockInventoryRepo.EXPECT().
-			ReleaseStock(gomock.Any(), "prod_456", 1, "order_123").
-			Return(&domain.InventoryTransaction{}, nil)
+			ReleaseOrderStock(gomock.Any(), "order_123", map[string]int{"prod_123": 2, "prod_456": 1}).
+			Return(nil)
 
 		err := service.CancelOrder(ctx, "order_123", "Customer requested", "admin_123")
 
@@ -810,8 +809,8 @@ func TestOrderService_CancelOrder(t *testing.T) {
 			})
 
 		mockInventoryRepo.EXPECT().
-			ReleaseStock(gomock.Any(), "prod_123", 1, "order_456").
-			Return(&domain.InventoryTransaction{}, nil)
+			ReleaseOrderStock(gomock.Any(), "order_456", map[string]int{"prod_123": 1}).
+			Return(nil)
 
 		err := service.CancelOrder(ctx, "order_456", "Changed mind", "admin_123")
 		require.NoError(t, err)
@@ -879,8 +878,8 @@ func TestOrderService_CancelOrder_Inventory(t *testing.T) {
 		mockOrderRepo.EXPECT().GetByID(gomock.Any(), "order_proc").Return(order, nil)
 		mockOrderRepo.EXPECT().Update(gomock.Any(), gomock.Any()).Return(nil)
 		mockInventoryRepo.EXPECT().
-			ReleaseStock(gomock.Any(), "prod_123", 3, "order_proc").
-			Return(&domain.InventoryTransaction{}, nil)
+			ReleaseOrderStock(gomock.Any(), "order_proc", map[string]int{"prod_123": 3}).
+			Return(nil)
 
 		err := service.CancelOrder(ctx, "order_proc", "out of stock", "admin_123")
 		require.NoError(t, err)
