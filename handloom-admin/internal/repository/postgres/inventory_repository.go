@@ -244,6 +244,10 @@ var (
 	movementRelease = orderMovement{domain.InventoryTransactionTypeRelease, 0, -1}
 	movementCommit  = orderMovement{domain.InventoryTransactionTypeCommit, -1, -1}
 	movementReturn  = orderMovement{domain.InventoryTransactionTypeReturn, +1, 0}
+
+	// Arithmetically a dispatch — both counters fall, available_qty holds — but
+	// the ledger has to say the goods were written off, not shipped.
+	movementWriteOff = orderMovement{domain.InventoryTransactionTypeWriteOff, -1, -1}
 )
 
 // existingOrderMovement returns this order's already-recorded movement for the
@@ -429,6 +433,12 @@ func (r *InventoryRepository) ReleaseOrderStock(ctx context.Context, orderID str
 	// Every failure, not just the first: these are the only leak signal an operator
 	// gets, and they need to know which products to reconcile.
 	return stderrors.Join(failures...)
+}
+
+// WriteOffStock implements domain.InventoryRepository. Idempotent per
+// (product, order), like every other order-scoped movement.
+func (r *InventoryRepository) WriteOffStock(ctx context.Context, productID string, quantity int, orderID string) (*domain.InventoryTransaction, error) {
+	return r.singleOrderMovement(ctx, movementWriteOff, productID, quantity, orderID)
 }
 
 // ledgerLine is one (product_id, quantity) ledger row, in query order.

@@ -1,0 +1,148 @@
+package domain
+
+import (
+	"context"
+	"time"
+)
+
+//go:generate mockgen -source=refund.go -destination=../mocks/refund_mock.go -package=mocks
+
+// RefundStatus tracks a refund from initiation to a terminal outcome. PhonePe
+// has no intermediate "accepted" state: a refund goes PENDING then settles.
+type RefundStatus string
+
+const (
+	RefundStatusPending   RefundStatus = "PENDING"
+	RefundStatusCompleted RefundStatus = "COMPLETED"
+	RefundStatusFailed    RefundStatus = "FAILED"
+)
+
+// RefundReason is bounded so it can label a metric without unbounded
+// cardinality. Anything that needs explaining belongs in an order note.
+type RefundReason string
+
+const (
+	RefundReasonOutOfStock      RefundReason = "OUT_OF_STOCK"
+	RefundReasonDamaged         RefundReason = "DAMAGED"
+	RefundReasonCustomerRequest RefundReason = "CUSTOMER_REQUEST"
+	RefundReasonPricingError    RefundReason = "PRICING_ERROR"
+	RefundReasonOther           RefundReason = "OTHER"
+)
+
+// IsValid reports whether the reason is one this system recognizes.
+func (r RefundReason) IsValid() bool {
+	switch r {
+	case RefundReasonOutOfStock, RefundReasonDamaged, RefundReasonCustomerRequest,
+		RefundReasonPricingError, RefundReasonOther:
+		return true
+	default:
+		return false
+	}
+}
+
+// RefundItem is one order line going back, in whole units.
+type RefundItem struct {
+	OrderItemID string `json:"order_item_id" dynamodbav:"order_item_id"`
+	ProductID   string `json:"product_id" dynamodbav:"product_id"`
+	ProductName string `json:"product_name" dynamodbav:"product_name"`
+	Quantity    int    `json:"quantity" dynamodbav:"quantity"`
+
+	// Amount is this line's share of the refund: its own value less its
+	// prorated share of the order discount and tax.
+	Amount int64 `json:"amount" dynamodbav:"amount"`
+
+	// Restock returns the units to sale. False writes them off, which is the
+	// default: "cannot serve" usually means the goods are not there.
+	Restock bool `json:"restock" dynamodbav:"restock"`
+}
+
+// Refund is one attempt to send money back for part or all of an order.
+//
+// A separate entity rather than fields on Payment because an order can be
+// refunded several times, line by line. Payment.RefundAmount becomes the
+// running total across them.
+type Refund struct {
+	ID         string `json:"id" dynamodbav:"id"`
+	OrderID    string `json:"order_id" dynamodbav:"order_id"`
+	PaymentID  string `json:"payment_id" dynamodbav:"payment_id"`
+	CustomerID string `json:"customer_id" dynamodbav:"customer_id"`
+
+	Amount int64        `json:"amount" dynamodbav:"amount"` // paise, derived server-side
+	Status RefundStatus `json:"status" dynamodbav:"status"`
+	Reason RefundReason `json:"reason" dynamodbav:"reason"`
+	Items  []RefundItem `json:"items" dynamodbav:"items"`
+
+	// MerchantRefundID is ours and unique per attempt; it is the key the status
+	// endpoint accepts. ProviderRefundID is PhonePe's, and stays empty until
+	// initiation returns — webhooks identify a refund by it, which is why a lost
+	// initiation response has to be recovered through the status endpoint.
+	MerchantRefundID string `json:"merchant_refund_id" dynamodbav:"merchant_refund_id"`
+	ProviderRefundID string `json:"provider_refund_id,omitempty" dynamodbav:"provider_refund_id,omitempty"`
+
+	ErrorCode         string `json:"error_code,omitempty" dynamodbav:"error_code,omitempty"`
+	DetailedErrorCode string `json:"detailed_error_code,omitempty" dynamodbav:"detailed_error_code,omitempty"`
+
+	InitiatedAt time.Time  `json:"initiated_at" dynamodbav:"initiated_at"`
+	CompletedAt *time.Time `json:"completed_at,omitempty" dynamodbav:"completed_at,omitempty"`
+	CreatedBy   string     `json:"created_by" dynamodbav:"created_by"`
+}
+
+// IsTerminal reports whether the refund has settled either way.
+func (r *Refund) IsTerminal() bool {
+	return r.Status == RefundStatusCompleted || r.Status == RefundStatusFailed
+}
+
+// CreateRefundItemRequest is one requested line. Quantity only — the server
+// derives the money.
+type CreateRefundItemRequest struct {
+	OrderItemID string `json:"order_item_id" validate:"required"`
+	Quantity    int    `json:"quantity" validate:"required,min=1"`
+	Restock     bool   `json:"restock"`
+}
+
+// CreateRefundRequest carries what to refund, never how much. A client-supplied
+// amount is not accepted: money is not a client input.
+type CreateRefundRequest struct {
+	Reason RefundReason              `json:"reason" validate:"required"`
+	Items  []CreateRefundItemRequest `json:"items" validate:"required,min=1,dive"`
+}
+
+// RefundRepository persists refunds.
+type RefundRepository interface {
+	Create(ctx context.Context, refund *Refund) error
+	GetByID(ctx context.Context, id string) (*Refund, error)
+
+	// ListByOrder returns an order's refunds, oldest first.
+	ListByOrder(ctx context.Context, orderID string) ([]*Refund, error)
+
+	// GetByProviderRefundID finds the refund a webhook is about. Webhooks carry
+	// PhonePe's id, not ours, and an order can have several refunds, so the
+	// order id alone cannot identify one.
+	GetByProviderRefundID(ctx context.Context, providerRefundID string) (*Refund, error)
+
+	// SetProviderRefundID records PhonePe's id once initiation returns.
+	SetProviderRefundID(ctx context.Context, id, providerRefundID string) error
+
+	// Settle moves a refund to a terminal state, but only from PENDING. The
+	// condition is the single gate the whole settlement hangs off: PhonePe
+	// retries webhooks and Lambda can process two deliveries at once, so of two
+	// concurrent settlements exactly one wins here and the other is refused.
+	// Every downstream effect runs only for the winner.
+	Settle(ctx context.Context, id string, status RefundStatus, completedAt time.Time, errorCode, detailedErrorCode string) error
+}
+
+// RefundService owns the refund lifecycle.
+type RefundService interface {
+	Create(ctx context.Context, orderID string, req CreateRefundRequest, createdBy string) (*Refund, error)
+	ListByOrder(ctx context.Context, orderID string) ([]*Refund, error)
+
+	// HandleRefundCompleted and HandleRefundFailed settle a refund from a
+	// provider webhook, keyed by PhonePe's refund id.
+	HandleRefundCompleted(ctx context.Context, providerRefundID string) error
+	HandleRefundFailed(ctx context.Context, providerRefundID, errorCode, detailedErrorCode string) error
+
+	// RecheckStatus asks the provider directly. The escape hatch for a webhook
+	// that never arrived, and the only recovery when the initiation response was
+	// lost and no provider id was ever stored.
+	RecheckStatus(ctx context.Context, refundID string) (*Refund, error)
+}
