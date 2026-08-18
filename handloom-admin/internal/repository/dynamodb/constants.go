@@ -13,6 +13,11 @@ const (
 	attrStatus = "status"
 	attrTTL    = "ttl"
 
+	// attrSuccessorHash marks a refresh-token row as rotated and names the
+	// token that replaced it. Its presence is the condition that lets exactly
+	// one of several concurrent refreshes claim the rotation.
+	attrSuccessorHash = "successor_hash"
+
 	// skMetadata aliases domain.SKMetadata so dynamodb-layer reads short.
 	skMetadata = domain.SKMetadata
 )

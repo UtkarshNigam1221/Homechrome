@@ -68,6 +68,13 @@ func (h *AuthHandler) setStoreCookies(w http.ResponseWriter, tokens *domain.Toke
 		MaxAge:   int(15 * time.Minute / time.Second),
 	})
 
+	// A grace-window straggler is answered with an access token and no refresh
+	// token: the refresh that won the rotation already set the current one, and
+	// writing an empty value here would delete it.
+	if tokens.RefreshToken == "" {
+		return
+	}
+
 	//nolint:gosec // G124: Secure flag is environment-conditional, not omitted.
 	http.SetCookie(w, &http.Cookie{
 		Name:     "store_refresh",

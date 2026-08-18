@@ -2,6 +2,7 @@ package dynamodb
 
 import (
 	"context"
+	stderrors "errors"
 	"strconv"
 	"time"
 
@@ -69,6 +70,46 @@ func (s *CustomerTokenStore) ValidateToken(ctx context.Context, customerID, toke
 		if ttl < time.Now().Unix() {
 			return false, nil
 		}
+	}
+
+	return true, nil
+}
+
+// ClaimRotation implements domain.CustomerTokenStore. The conditional update is
+// what serializes concurrent refreshes: DynamoDB evaluates the condition and
+// applies the write as one atomic operation per item, so the second refresh to
+// arrive finds successor_hash already set and loses the claim.
+func (s *CustomerTokenStore) ClaimRotation(ctx context.Context, customerID, tokenHash, successorHash string, graceTTL int64) (bool, error) {
+	_, err := s.client.db.UpdateItem(ctx, &dynamodb.UpdateItemInput{
+		TableName: aws.String(s.client.sessionsTable),
+		Key: map[string]types.AttributeValue{
+			"PK": &types.AttributeValueMemberS{Value: "CUST_TOKEN#" + customerID},
+			"SK": &types.AttributeValueMemberS{Value: "REFRESH_TOKEN#" + tokenHash},
+		},
+		UpdateExpression:    aws.String("SET #successor = :successor, #ttl = :ttl"),
+		ConditionExpression: aws.String("attribute_exists(PK) AND attribute_not_exists(#successor)"),
+		ExpressionAttributeNames: map[string]string{
+			"#successor": attrSuccessorHash,
+			"#ttl":       attrTTL,
+		},
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":successor": &types.AttributeValueMemberS{Value: successorHash},
+			":ttl":       &types.AttributeValueMemberN{Value: strconv.FormatInt(graceTTL, 10)},
+		},
+		// Returning the offending item is what separates the two ways the
+		// condition can fail: a row that is present was already rotated, a row
+		// that is absent was revoked.
+		ReturnValuesOnConditionCheckFailure: types.ReturnValuesOnConditionCheckFailureAllOld,
+	})
+	if err != nil {
+		var conditionFailed *types.ConditionalCheckFailedException
+		if stderrors.As(err, &conditionFailed) {
+			if conditionFailed.Item == nil {
+				return false, errors.New(errors.ErrCodeInvalidToken, "Refresh token has been revoked")
+			}
+			return false, nil
+		}
+		return false, errors.Wrap(err, "Failed to claim customer token rotation")
 	}
 
 	return true, nil

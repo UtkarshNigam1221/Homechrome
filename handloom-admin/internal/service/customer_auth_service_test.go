@@ -21,6 +21,15 @@ import (
 type fakeCustomerTokenStore struct {
 	ttls map[string]int64 // customerID#tokenHash -> unix expiry
 
+	// successors mirrors the successor_hash attribute the real store writes
+	// when it claims a rotation. Its presence is what makes ClaimRotation
+	// succeed for exactly one of several concurrent refreshes.
+	successors map[string]string // customerID#tokenHash -> successor token hash
+
+	// onClaim fires at the top of ClaimRotation so a test can interleave
+	// another operation between validation and the claim.
+	onClaim func()
+
 	// validateErr stands in for a throttled or timed-out GetItem. The real
 	// store returns (false, wrapped-err) there, and callers must not read
 	// that as "token revoked".
@@ -28,7 +37,7 @@ type fakeCustomerTokenStore struct {
 }
 
 func newFakeCustomerTokenStore() *fakeCustomerTokenStore {
-	return &fakeCustomerTokenStore{ttls: map[string]int64{}}
+	return &fakeCustomerTokenStore{ttls: map[string]int64{}, successors: map[string]string{}}
 }
 
 // rowKey mirrors the real store's PK/SK pair (PK=CUST_TOKEN#<id>, SK=REFRESH_TOKEN#<hash>).
@@ -50,8 +59,27 @@ func (f *fakeCustomerTokenStore) ValidateToken(_ context.Context, customerID, to
 	return ttl >= time.Now().Unix(), nil
 }
 
+func (f *fakeCustomerTokenStore) ClaimRotation(_ context.Context, customerID, tokenHash, successorHash string, graceTTL int64) (bool, error) {
+	if f.onClaim != nil {
+		f.onClaim()
+	}
+
+	key := rowKey(customerID, tokenHash)
+	if _, ok := f.ttls[key]; !ok {
+		return false, errors.New(errors.ErrCodeInvalidToken, "Refresh token has been revoked")
+	}
+	if _, claimed := f.successors[key]; claimed {
+		return false, nil
+	}
+
+	f.successors[key] = successorHash
+	f.ttls[key] = graceTTL
+	return true, nil
+}
+
 func (f *fakeCustomerTokenStore) RevokeToken(_ context.Context, customerID, tokenHash string) error {
 	delete(f.ttls, rowKey(customerID, tokenHash))
+	delete(f.successors, rowKey(customerID, tokenHash))
 	return nil
 }
 
@@ -59,6 +87,7 @@ func (f *fakeCustomerTokenStore) RevokeAllTokens(_ context.Context, customerID s
 	for k := range f.ttls {
 		if strings.HasPrefix(k, customerID+"#") {
 			delete(f.ttls, k)
+			delete(f.successors, k)
 		}
 	}
 	return nil
@@ -69,6 +98,7 @@ func (f *fakeCustomerTokenStore) RevokeTokensExpiringBefore(_ context.Context, c
 	for k, ttl := range f.ttls {
 		if strings.HasPrefix(k, prefix) && ttl <= cutoff {
 			delete(f.ttls, k)
+			delete(f.successors, k)
 		}
 	}
 	return nil
@@ -126,7 +156,7 @@ func TestCustomerAuthService_RefreshToken_RotatedTokenValidInGraceWindow(t *test
 	// Straggler still holding the pre-rotation token.
 	_, second, err := svc.RefreshToken(ctx, tokens.RefreshToken)
 	require.NoError(t, err, "overlapping refresh must not be rejected inside the grace window")
-	require.NotEmpty(t, second.RefreshToken)
+	require.NotEmpty(t, second.AccessToken)
 
 	// The rotated token is on a short leash, not kept for the full 7 days.
 	oldTTL, ok := store.ttls[rowKey(customer.ID, hashSHA256(tokens.RefreshToken))]
@@ -247,4 +277,82 @@ func TestCustomerAuthService_RefreshToken_StoreErrorIsNotRevocation(t *testing.T
 	store.validateErr = nil
 	_, _, err = svc.RefreshToken(ctx, tokens.RefreshToken)
 	require.NoError(t, err)
+}
+
+// A grace-window straggler must not be handed a refresh token of its own. Two
+// tabs racing on the same pre-rotation token both pass validation; if both mint
+// and store a full-life refresh token, only one can land in the cookie jar and
+// the other is an orphan — valid for the full 7-day refresh lifetime, held by
+// nobody, and out of reach of the grace-cutoff sweep Logout uses.
+func TestCustomerAuthService_RefreshToken_StragglerMintsNoRivalRefreshToken(t *testing.T) {
+	svc, store, customer := newCustomerAuthServiceForTest(t)
+	ctx := context.Background()
+
+	original, err := svc.generateTokenPair(customer)
+	require.NoError(t, err)
+	require.NoError(t, svc.storeRefreshToken(ctx, customer.ID, original.RefreshToken))
+
+	_, winner, err := svc.RefreshToken(ctx, original.RefreshToken)
+	require.NoError(t, err)
+	require.NotEmpty(t, winner.RefreshToken, "the refresh that claims the rotation owns the new credential")
+
+	_, straggler, err := svc.RefreshToken(ctx, original.RefreshToken)
+	require.NoError(t, err, "overlapping refresh must not be rejected inside the grace window")
+	require.NotEmpty(t, straggler.AccessToken, "the straggler still needs a usable access token")
+	require.Empty(t, straggler.RefreshToken, "the straggler must not mint a rival refresh token")
+
+	// Two rows only: the winner's successor and the pre-rotation token serving
+	// out its grace TTL. A third row would be the orphan.
+	require.Len(t, store.ttls, 2)
+	require.Contains(t, store.ttls, rowKey(customer.ID, hashSHA256(winner.RefreshToken)))
+	require.Contains(t, store.ttls, rowKey(customer.ID, hashSHA256(original.RefreshToken)))
+}
+
+// Logout sweeps the grace predecessor by TTL cutoff, which by design never
+// reaches a full-life token. A rival minted during a racing refresh is
+// full-life, so it would outlive the logout by the whole refresh lifetime.
+func TestCustomerAuthService_Logout_LeavesNothingAfterRacingRefresh(t *testing.T) {
+	svc, store, customer := newCustomerAuthServiceForTest(t)
+	ctx := context.Background()
+
+	original, err := svc.generateTokenPair(customer)
+	require.NoError(t, err)
+	require.NoError(t, svc.storeRefreshToken(ctx, customer.ID, original.RefreshToken))
+
+	_, winner, err := svc.RefreshToken(ctx, original.RefreshToken)
+	require.NoError(t, err)
+
+	// A second tab races on the same pre-rotation token.
+	_, _, err = svc.RefreshToken(ctx, original.RefreshToken)
+	require.NoError(t, err)
+
+	// The customer holds the winner's token and logs out.
+	require.NoError(t, svc.Logout(ctx, customer.ID, winner.RefreshToken))
+
+	require.Empty(t, store.ttls, "logout must leave nothing usable, including a rival from a racing refresh")
+}
+
+// A logout landing between validation and the claim must not be papered over.
+// Treating the vanished row as "someone else rotated it" would mint an access
+// token for a session the customer just ended.
+func TestCustomerAuthService_RefreshToken_RevokedDuringClaimIsRejected(t *testing.T) {
+	svc, store, customer := newCustomerAuthServiceForTest(t)
+	ctx := context.Background()
+
+	original, err := svc.generateTokenPair(customer)
+	require.NoError(t, err)
+	require.NoError(t, svc.storeRefreshToken(ctx, customer.ID, original.RefreshToken))
+
+	store.onClaim = func() {
+		store.onClaim = nil
+		delete(store.ttls, rowKey(customer.ID, hashSHA256(original.RefreshToken)))
+	}
+
+	_, tokens, err := svc.RefreshToken(ctx, original.RefreshToken)
+	require.Error(t, err, "a token revoked mid-refresh must not yield a session")
+	require.Nil(t, tokens)
+
+	var appErr *errors.AppError
+	require.True(t, stderrors.As(err, &appErr))
+	require.Equal(t, errors.ErrCodeInvalidToken, appErr.Code)
 }
