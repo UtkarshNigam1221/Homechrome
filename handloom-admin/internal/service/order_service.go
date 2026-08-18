@@ -348,16 +348,16 @@ func (s *OrderService) UpdateStatus(ctx context.Context, id string, status domai
 		return err
 	}
 
-	// Inventory mutations run AFTER the status write, deliberately: the
-	// persisted status is the source of truth, not the inventory side effect.
-	// If Update above fails, none of these have run yet, so a retry starts
-	// clean. If one of these fails, the status is already durable, the
-	// failure is metered (rule documented where inventory_mutation_failed is
-	// first emitted, in Create above), and a retry is correctly rejected by
-	// isValidStatusTransition — the same conservative failure mode CancelOrder
-	// already has. This matters most for RETURNED: AddStock has no
-	// idempotency guard, so it must never run before the status write it
-	// depends on to prevent a retry from double-adding stock.
+	s.applyInventoryEffect(ctx, order, status, updatedBy)
+
+	slog.InfoContext(ctx, "Updated order status", "order_id", id, "status", status)
+	span.End()
+	return nil
+}
+
+// applyInventoryEffect moves stock for a status change, only after the order
+// write succeeds: AddStock has no idempotency guard, so a retry would double-add.
+func (s *OrderService) applyInventoryEffect(ctx context.Context, order *domain.Order, status domain.OrderStatus, updatedBy string) {
 	switch status {
 	case domain.OrderStatusShipped:
 		// Goods have left the warehouse: convert each reservation into a
@@ -396,10 +396,6 @@ func (s *OrderService) UpdateStatus(ctx context.Context, id string, status domai
 	}
 	// domain.OrderStatusDelivered: no inventory effect — stock was committed
 	// at dispatch. No case needed above.
-
-	slog.InfoContext(ctx, "Updated order status", "order_id", id, "status", status)
-	span.End()
-	return nil
 }
 
 // AddNote adds a note to an order
