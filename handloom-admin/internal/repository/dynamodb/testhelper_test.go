@@ -118,11 +118,17 @@ func testWrappedClient(t *testing.T) (*Client, *dynamodb.Client) {
 	return wrapped, raw
 }
 
-// skipIfNoLocal skips the test if DynamoDB Local is not available
+// skipIfNoLocal skips when DynamoDB Local is unreachable so `go test ./...`
+// stays usable without Docker. Under CI it fails instead: a skipped test still
+// reports ok, so a missing container would silently stop verifying this layer.
 func skipIfNoLocal(t *testing.T, client *dynamodb.Client) {
+	t.Helper()
+
 	ctx := context.Background()
-	_, err := client.ListTables(ctx, &dynamodb.ListTablesInput{})
-	if err != nil {
-		t.Skip("DynamoDB Local not available, skipping integration test")
+	if _, err := client.ListTables(ctx, &dynamodb.ListTablesInput{}); err != nil {
+		if os.Getenv("CI") != "" {
+			t.Fatalf("DynamoDB Local not available: %v", err)
+		}
+		t.Skipf("DynamoDB Local not available: %v", err)
 	}
 }
