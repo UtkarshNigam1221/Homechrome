@@ -48,12 +48,14 @@ func NewProductRepository(pool *pgxpool.Pool) *ProductRepository {
 // pgvector embedding column which requires a pgvector.Vector scan target.
 type productRow struct {
 	domain.Product
-	DimLength          *float64         `db:"dim_length"`
-	DimWidth           *float64         `db:"dim_width"`
-	DimHeight          *float64         `db:"dim_height"`
-	DimUnit            string           `db:"dim_unit"`
-	VideoURL           *string          `db:"video_url"`
-	VideoPosterURL     *string          `db:"video_poster_url"`
+	DimLength      *float64 `db:"dim_length"`
+	DimWidth       *float64 `db:"dim_width"`
+	DimHeight      *float64 `db:"dim_height"`
+	DimUnit        string   `db:"dim_unit"`
+	VideoURL       *string  `db:"video_url"`
+	VideoPosterURL *string  `db:"video_poster_url"`
+	// Pointer, not a value: a NULL embedding cannot be represented by
+	// pgvector.Vector, and DecodeBinary panics on the zero-length buffer.
 	EmbeddingVec       *pgvector.Vector `db:"embedding"`
 	EmbeddingUpdatedAt *time.Time       `db:"embedding_updated_at"`
 }

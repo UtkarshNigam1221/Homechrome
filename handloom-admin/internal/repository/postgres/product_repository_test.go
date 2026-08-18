@@ -17,7 +17,10 @@ import (
 )
 
 // newTestPool creates a pgxpool.Pool connected to the test database.
-// It reads POSTGRES_DSN from the environment and skips if it's unset or unreachable.
+// It reads POSTGRES_DSN from the environment. Locally it skips when no database
+// is reachable, so `go test ./...` stays usable without Docker. Under CI it
+// fails instead: `go test` reports ok for a skipped test, so a misconfigured
+// runner would silently stop verifying every repository query on a green gate.
 func newTestPool(t *testing.T) *pgxpool.Pool {
 	t.Helper()
 	dsn := os.Getenv("POSTGRES_DSN")
@@ -25,22 +28,36 @@ func newTestPool(t *testing.T) *pgxpool.Pool {
 		dsn = "postgres://postgres:postgres@localhost:5432/handloom?sslmode=disable"
 	}
 
-	ctx := context.Background()
+	unavailable := func(format string, args ...any) {
+		t.Helper()
+		if os.Getenv("CI") != "" {
+			t.Fatalf(format, args...)
+		}
+		t.Skipf(format, args...)
+	}
+
 	cfg, err := pgxpool.ParseConfig(dsn)
 	if err != nil {
-		t.Skipf("postgres not available (parse dsn): %v", err)
+		unavailable("postgres DSN unparseable: %v", err)
+		return nil
 	}
-	// vector(N) columns cannot be scanned without the pgvector codec; the
-	// production pool registers it in NewPool and tests must match.
+
+	// Match NewPool (client.go): register the pgvector codec on every
+	// connection, or scanning the products.embedding column fails with
+	// "unsupported data type". Without this the test pool does not behave
+	// like the pool every caller actually uses.
 	cfg.AfterConnect = pgvecpgx.RegisterTypes
 
+	ctx := context.Background()
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
-		t.Skipf("postgres not available (pool create): %v", err)
+		unavailable("postgres not available (pool create): %v", err)
+		return nil
 	}
 	if err := pool.Ping(ctx); err != nil {
 		pool.Close()
-		t.Skipf("postgres not available (ping): %v", err)
+		unavailable("postgres not available (ping): %v", err)
+		return nil
 	}
 	t.Cleanup(pool.Close)
 	return pool

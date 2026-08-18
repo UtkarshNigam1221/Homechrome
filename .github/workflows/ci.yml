@@ -46,6 +46,27 @@ jobs:
     defaults:
       run:
         working-directory: handloom-admin
+    # Repository tests connect to a real PostgreSQL. Without one they call
+    # t.Skipf and `go test` still reports ok, so the catalog + inventory SQL
+    # would go completely unverified on a green gate.
+    services:
+      postgres:
+        # Same image as docker-compose.yml: migration 005 needs the `vector`
+        # extension, which stock postgres:16 does not ship.
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: handloom
+          POSTGRES_PASSWORD: handloom
+          POSTGRES_DB: handloom
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      POSTGRES_DSN: postgres://handloom:handloom@localhost:5432/handloom?sslmode=disable
     steps:
       - uses: actions/checkout@v7
 
@@ -69,6 +90,15 @@ jobs:
         with:
           version: latest
           working-directory: handloom-admin
+
+      # Same files the migrator Lambda embeds and docker-compose mounts into
+      # docker-entrypoint-initdb.d, applied in filename order.
+      - name: Apply migrations
+        run: |
+          for f in migrations/*.sql; do
+            echo "applying $f"
+            psql "$POSTGRES_DSN" -v ON_ERROR_STOP=1 -f "$f"
+          done
 
       - name: Test
         run: make test
