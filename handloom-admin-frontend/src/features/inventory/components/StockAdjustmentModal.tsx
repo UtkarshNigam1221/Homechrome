@@ -1,6 +1,7 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowDownCircle, ArrowUpCircle } from 'lucide-react';
+import { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
 import { z } from 'zod';
@@ -52,6 +53,15 @@ export function StockAdjustmentModal({
   });
 
   const type = watch('type');
+
+  // defaultValues are read once, when the form first mounts, and this modal stays
+  // mounted between openings. Without this the type stays on whichever action
+  // opened it first, so picking Remove stock after Add stock submitted an add.
+  useEffect(() => {
+    if (isOpen) {
+      reset({ type: adjustmentType, quantity: 1, reason: '' });
+    }
+  }, [isOpen, adjustmentType, reset]);
 
   // Add stock mutation
   const addStockMutation = useMutation({
