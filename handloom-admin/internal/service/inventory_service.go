@@ -4,6 +4,7 @@ package service
 import (
 	"context"
 	"log/slog"
+	"strings"
 
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/pkg/metrics"
@@ -12,14 +13,20 @@ import (
 // InventoryService implements domain.InventoryService
 type InventoryService struct {
 	inventoryRepo domain.InventoryRepository
+	userRepo      domain.UserRepository
 }
 
-// NewInventoryService creates a new InventoryService
+// NewInventoryService creates a new InventoryService. userRepo may be nil: the
+// storefront builds this service for stock levels alone and never reads the
+// ledger, so it wires no user directory rather than pulling an admin repository
+// into a customer-facing Lambda.
 func NewInventoryService(
 	inventoryRepo domain.InventoryRepository,
+	userRepo domain.UserRepository,
 ) *InventoryService {
 	return &InventoryService{
 		inventoryRepo: inventoryRepo,
+		userRepo:      userRepo,
 	}
 }
 
@@ -106,7 +113,48 @@ func (s *InventoryService) AdjustStock(ctx context.Context, productID string, re
 
 // GetTransactions retrieves inventory transactions
 func (s *InventoryService) GetTransactions(ctx context.Context, productID string, pagination domain.PaginationRequest) (*domain.ListInventoryTransactionsResponse, error) {
-	return s.inventoryRepo.GetTransactions(ctx, productID, pagination)
+	result, err := s.inventoryRepo.GetTransactions(ctx, productID, pagination)
+	if err != nil {
+		return nil, err
+	}
+
+	s.resolveActorNames(ctx, result.Transactions)
+	return result, nil
+}
+
+// resolveActorNames fills in CreatedByName for the movements an admin made.
+// One lookup per distinct user, not per row: a page of stocktake corrections is
+// usually one person. A name that cannot be resolved is left empty rather than
+// failing the read — the history is still worth showing without it.
+func (s *InventoryService) resolveActorNames(ctx context.Context, txns []*domain.InventoryTransaction) {
+	if s.userRepo == nil {
+		return
+	}
+
+	names := make(map[string]string)
+
+	for _, txn := range txns {
+		if txn.CreatedBy == "" {
+			continue
+		}
+
+		name, seen := names[txn.CreatedBy]
+		if !seen {
+			user, err := s.userRepo.GetByID(ctx, txn.CreatedBy)
+			if err != nil {
+				slog.WarnContext(ctx, "Failed to resolve inventory actor",
+					"user_id", txn.CreatedBy, "error", err)
+			} else if user != nil {
+				name = strings.TrimSpace(user.FirstName + " " + user.LastName)
+				if name == "" {
+					name = user.Email
+				}
+			}
+			names[txn.CreatedBy] = name
+		}
+
+		txn.CreatedByName = name
+	}
 }
 
 // GetLowStockProducts retrieves products with low stock

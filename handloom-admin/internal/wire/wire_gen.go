@@ -90,13 +90,13 @@ func InitializeCatalogDeps(ctx context.Context, cfg *config.Config) (*CatalogDep
 		return nil, err
 	}
 	productService := ProvideProductService(productRepository, categoryRepository, inventoryRepository, assetService, client)
-	inventoryService := ProvideInventoryService(inventoryRepository)
-	productHandler := ProvideProductHandler(productService, inventoryService, validation)
 	dynamodbClient, err := ProvideDynamoDBClient(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}
 	userRepository := ProvideUserRepository(dynamodbClient)
+	inventoryService := ProvideInventoryService(inventoryRepository, userRepository)
+	productHandler := ProvideProductHandler(productService, inventoryService, validation)
 	tokenStore := ProvideTokenStore(dynamodbClient)
 	authService := ProvideAuthService(userRepository, tokenStore, cfg)
 	auth := ProvideAuthMiddleware(authService)
@@ -189,13 +189,13 @@ func InitializeInventoryDeps(ctx context.Context, cfg *config.Config) (*Inventor
 		return nil, err
 	}
 	inventoryRepository := ProvideInventoryRepository(pool)
-	inventoryService := ProvideInventoryService(inventoryRepository)
-	inventoryHandler := ProvideInventoryHandler(inventoryService)
 	client, err := ProvideDynamoDBClient(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}
 	userRepository := ProvideUserRepository(client)
+	inventoryService := ProvideInventoryService(inventoryRepository, userRepository)
+	inventoryHandler := ProvideInventoryHandler(inventoryService)
 	tokenStore := ProvideTokenStore(client)
 	authService := ProvideAuthService(userRepository, tokenStore, cfg)
 	auth := ProvideAuthMiddleware(authService)
@@ -318,12 +318,12 @@ func InitializeReportDeps(ctx context.Context, cfg *config.Config) (*ReportDeps,
 	}
 	productService := ProvideProductService(productRepository, categoryRepository, inventoryRepository, assetService, embedderClient)
 	customerService := ProvideCustomerService(customerRepository, orderRepository)
-	inventoryService := ProvideInventoryService(inventoryRepository)
+	userRepository := ProvideUserRepository(client)
+	inventoryService := ProvideInventoryService(inventoryRepository, userRepository)
 	reportService := ProvideReportService(reportRepository, orderService, productService, customerService, inventoryService)
 	service := ProvideValidator()
 	validation := ProvideValidation(service)
 	reportHandler := ProvideReportHandler(reportService, validation)
-	userRepository := ProvideUserRepository(client)
 	tokenStore := ProvideTokenStore(client)
 	authService := ProvideAuthService(userRepository, tokenStore, cfg)
 	auth := ProvideAuthMiddleware(authService)
@@ -410,7 +410,7 @@ func InitializeStoreCatalogDeps(ctx context.Context, cfg *config.Config) (*Store
 	}
 	productService := ProvideProductService(productRepository, categoryRepository, inventoryRepository, assetService, client)
 	categoryService := ProvideCategoryService(categoryRepository, productRepository, assetService)
-	inventoryService := ProvideInventoryService(inventoryRepository)
+	inventoryService := ProvideStoreInventoryService(inventoryRepository)
 	catalogHandler := ProvideStoreCatalogHandler(productService, categoryService, inventoryService)
 	storeCatalogDeps := &StoreCatalogDeps{
 		Config:  cfg,
@@ -638,7 +638,7 @@ func InitializeMonolithDeps(ctx context.Context, cfg *config.Config) (*MonolithD
 		return nil, err
 	}
 	productService := ProvideProductService(productRepository, categoryRepository, inventoryRepository, assetService, embedderClient)
-	inventoryService := ProvideInventoryService(inventoryRepository)
+	inventoryService := ProvideInventoryService(inventoryRepository, userRepository)
 	productHandler := ProvideProductHandler(productService, inventoryService, validation)
 	inventoryHandler := ProvideInventoryHandler(inventoryService)
 	pricingRuleRepository := ProvidePricingRuleRepository(client)
