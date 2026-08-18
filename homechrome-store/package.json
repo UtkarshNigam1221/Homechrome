@@ -56,6 +56,6 @@
     "eslint-config-next": "16.2.11",
     "postcss-preset-mantine": "^1.18.0",
     "postcss-simple-vars": "^7.0.1",
-    "typescript": "^6"
+    "typescript": "^7"
   }
 }
