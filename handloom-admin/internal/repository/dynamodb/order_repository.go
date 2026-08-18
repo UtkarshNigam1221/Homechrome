@@ -163,8 +163,8 @@ func (r *OrderRepository) List(ctx context.Context, req domain.ListOrdersRequest
 
 	if req.Status != nil {
 		filters = append(filters, "#status = :status")
-		input.ExpressionAttributeValues[":status"] = &types.AttributeValueMemberS{Value: string(*req.Status)}
-		exprAttrNames["#status"] = attrStatus
+		input.ExpressionAttributeValues[valStatus] = &types.AttributeValueMemberS{Value: string(*req.Status)}
+		exprAttrNames[nameStatus] = attrStatus
 	}
 
 	if req.PaymentStatus != nil {
@@ -233,10 +233,10 @@ func (r *OrderRepository) UpdateStatus(ctx context.Context, id string, status do
 		},
 		UpdateExpression: aws.String("SET #status = :status, updated_at = :now, updated_by = :by"),
 		ExpressionAttributeNames: map[string]string{
-			"#status": attrStatus,
+			nameStatus: attrStatus,
 		},
 		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":status": &types.AttributeValueMemberS{Value: string(status)},
+			valStatus: &types.AttributeValueMemberS{Value: string(status)},
 			exprNow:   &types.AttributeValueMemberS{Value: now.Format(time.RFC3339)},
 			":by":     &types.AttributeValueMemberS{Value: updatedBy},
 		},

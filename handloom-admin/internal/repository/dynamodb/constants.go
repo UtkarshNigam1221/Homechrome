@@ -11,6 +11,11 @@ const (
 	exprNow = ":now"
 
 	attrStatus = "status"
+
+	// Expression placeholders for the status attribute, which is reserved in
+	// DynamoDB and so always aliased.
+	nameStatus = "#status"
+	valStatus  = ":status"
 	attrTTL    = "ttl"
 
 	// nameTTL aliases attrTTL inside expressions.
