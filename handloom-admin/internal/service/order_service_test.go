@@ -605,17 +605,17 @@ func TestReleaseFailureReason(t *testing.T) {
 		{
 			name:     "insufficient stock maps to release_unreserved",
 			err:      errors.New(errors.ErrCodeInsufficientStock, "insufficient stock"),
-			expected: "release_unreserved",
+			expected: reasonReleaseUnreserved,
 		},
 		{
 			name:     "other AppError keeps release",
 			err:      errors.New(errors.ErrCodeNotFound, "Inventory not found"),
-			expected: "release",
+			expected: reasonRelease,
 		},
 		{
 			name:     "non-AppError keeps release",
 			err:      fmt.Errorf("connection reset"),
-			expected: "release",
+			expected: reasonRelease,
 		},
 	}
 

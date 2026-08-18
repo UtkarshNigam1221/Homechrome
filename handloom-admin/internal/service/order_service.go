@@ -219,8 +219,8 @@ func (s *OrderService) Create(ctx context.Context, req domain.CreateOrderRequest
 	// error to the caller (e.g. checkout_service.go's initial ReserveStock
 	// loop) is deliberately NOT metered here — the caller already sees the
 	// failure via the returned error, so metering it too would double-count.
-	// The four reason values in use (reserve, commit, release, restock) each
-	// correspond to exactly one swallowed-failure call site.
+	// The reason values are named in constants.go; each swallowed-failure call
+	// site emits exactly one of them.
 	var reservationFailures []string
 	for _, item := range items {
 		_, err := s.inventoryRepo.ReserveStock(ctx, item.ProductID, item.Quantity, order.ID)
@@ -231,7 +231,7 @@ func (s *OrderService) Create(ctx context.Context, req domain.CreateOrderRequest
 				"quantity", item.Quantity,
 				"error", err,
 			)
-			metrics.Record(ctx, "inventory_mutation_failed", metrics.L{metrics.LabelReason: "reserve"})
+			metrics.Record(ctx, "inventory_mutation_failed", metrics.L{metrics.LabelReason: reasonReserve})
 			reservationFailures = append(reservationFailures, item.ProductID)
 		}
 	}
@@ -366,7 +366,7 @@ func (s *OrderService) applyInventoryEffect(ctx context.Context, order *domain.O
 		for _, item := range order.Items {
 			if _, commitErr := s.inventoryRepo.CommitStock(ctx, item.ProductID, item.Quantity, order.ID); commitErr != nil {
 				slog.ErrorContext(ctx, "Failed to commit stock", keyProductID, item.ProductID, "error", commitErr)
-				metrics.Record(ctx, "inventory_mutation_failed", metrics.L{metrics.LabelReason: "commit"})
+				metrics.Record(ctx, "inventory_mutation_failed", metrics.L{metrics.LabelReason: reasonCommit})
 			}
 		}
 	case domain.OrderStatusCancelled:
@@ -390,7 +390,7 @@ func (s *OrderService) applyInventoryEffect(ctx context.Context, order *domain.O
 			reason := fmt.Sprintf("RETURN %s", order.ID)
 			if _, addErr := s.inventoryRepo.AddStock(ctx, item.ProductID, item.Quantity, reason, updatedBy); addErr != nil {
 				slog.ErrorContext(ctx, "Failed to restock returned item", keyProductID, item.ProductID, "error", addErr)
-				metrics.Record(ctx, "inventory_mutation_failed", metrics.L{metrics.LabelReason: "restock"})
+				metrics.Record(ctx, "inventory_mutation_failed", metrics.L{metrics.LabelReason: reasonRestock})
 			}
 		}
 	}
@@ -496,9 +496,9 @@ func (s *OrderService) CancelOrder(ctx context.Context, id string, reason string
 // does indicate a real problem.
 func releaseFailureReason(err error) string {
 	if appErr, ok := errors.AsAppError(err); ok && appErr.Code == errors.ErrCodeInsufficientStock {
-		return "release_unreserved"
+		return reasonReleaseUnreserved
 	}
-	return "release"
+	return reasonRelease
 }
 
 // normaliseCancelReason maps free-text reasons to a bounded label set.
