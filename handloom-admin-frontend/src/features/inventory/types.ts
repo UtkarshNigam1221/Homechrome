@@ -5,7 +5,8 @@ export type TransactionType =
   | 'RELEASE'
   | 'ADJUST'
   | 'COMMIT'
-  | 'RETURN';
+  | 'RETURN'
+  | 'WRITE_OFF';
 
 export interface Inventory {
   product_id: string;

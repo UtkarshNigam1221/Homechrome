@@ -169,7 +169,8 @@ export type PaymentStatus =
   | 'PAID'
   | 'SUCCESS'
   | 'FAILED'
-  | 'REFUNDED';
+  | 'REFUNDED'
+  | 'PARTIALLY_REFUNDED';
 
 export interface OrderItem {
   id: string;
