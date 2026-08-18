@@ -51,6 +51,13 @@ func (h *AuthHandler) Routes(authenticate func(http.Handler) http.Handler) chi.R
 	return r
 }
 
+// Cookie names the store's auth flow reads and writes. The refresh cookie is
+// also cleared by name on logout, so a rename has to happen in one place.
+const (
+	cookieStoreToken   = "store_token"
+	cookieStoreRefresh = "store_refresh"
+)
+
 func (h *AuthHandler) setStoreCookies(w http.ResponseWriter, tokens *domain.TokenPair) {
 	secure, sameSite, domain := middleware.AuthCookieSettings()
 
@@ -58,7 +65,7 @@ func (h *AuthHandler) setStoreCookies(w http.ResponseWriter, tokens *domain.Toke
 	// the custom domain / Lambda URL. HttpOnly + SameSite are always set.
 	//nolint:gosec // G124: Secure flag is environment-conditional, not omitted.
 	http.SetCookie(w, &http.Cookie{
-		Name:     "store_token",
+		Name:     cookieStoreToken,
 		Value:    tokens.AccessToken,
 		Path:     "/",
 		Domain:   domain,
@@ -77,7 +84,7 @@ func (h *AuthHandler) setStoreCookies(w http.ResponseWriter, tokens *domain.Toke
 
 	//nolint:gosec // G124: Secure flag is environment-conditional, not omitted.
 	http.SetCookie(w, &http.Cookie{
-		Name:     "store_refresh",
+		Name:     cookieStoreRefresh,
 		Value:    tokens.RefreshToken,
 		Path:     "/",
 		Domain:   domain,
@@ -111,7 +118,7 @@ func (h *AuthHandler) clearStoreCookies(w http.ResponseWriter) {
 
 	//nolint:gosec // G124: Secure flag is environment-conditional, not omitted.
 	http.SetCookie(w, &http.Cookie{
-		Name:     "store_token",
+		Name:     cookieStoreToken,
 		Value:    "",
 		Path:     "/",
 		Domain:   domain,
@@ -123,7 +130,7 @@ func (h *AuthHandler) clearStoreCookies(w http.ResponseWriter) {
 
 	//nolint:gosec // G124: Secure flag is environment-conditional, not omitted.
 	http.SetCookie(w, &http.Cookie{
-		Name:     "store_refresh",
+		Name:     cookieStoreRefresh,
 		Value:    "",
 		Path:     "/",
 		Domain:   domain,
@@ -195,7 +202,7 @@ func (h *AuthHandler) RefreshToken(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	// Read refresh token from cookie
-	cookie, err := r.Cookie("store_refresh")
+	cookie, err := r.Cookie(cookieStoreRefresh)
 	if err != nil || cookie.Value == "" {
 		response.Unauthorized(w, "Refresh token required")
 		return
@@ -234,7 +241,7 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 
 	// Get refresh token from cookie to revoke it
 	var refreshToken string
-	if cookie, err := r.Cookie("store_refresh"); err == nil && cookie.Value != "" {
+	if cookie, err := r.Cookie(cookieStoreRefresh); err == nil && cookie.Value != "" {
 		refreshToken = cookie.Value
 	}
 

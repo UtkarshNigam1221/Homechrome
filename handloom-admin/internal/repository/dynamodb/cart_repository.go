@@ -114,7 +114,7 @@ func (r *CartRepository) UpdateCartItem(ctx context.Context, cartPK, productID s
 		},
 		UpdateExpression: aws.String("SET quantity = :qty, total_price = :tp, #ttl = :ttl"),
 		ExpressionAttributeNames: map[string]string{
-			"#ttl": attrTTL,
+			nameTTL: attrTTL,
 		},
 		ExpressionAttributeValues: map[string]types.AttributeValue{
 			":qty": &types.AttributeValueMemberN{Value: strconv.Itoa(quantity)},

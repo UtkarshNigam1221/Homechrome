@@ -86,11 +86,11 @@ func (s *CustomerTokenStore) ClaimRotation(ctx context.Context, customerID, toke
 			"PK": &types.AttributeValueMemberS{Value: "CUST_TOKEN#" + customerID},
 			"SK": &types.AttributeValueMemberS{Value: "REFRESH_TOKEN#" + tokenHash},
 		},
-		UpdateExpression:    aws.String("SET #successor = :successor, #ttl = :ttl"),
-		ConditionExpression: aws.String("attribute_exists(PK) AND attribute_not_exists(#successor)"),
+		UpdateExpression:    aws.String("SET " + nameSuccessor + " = :successor, " + nameTTL + " = :ttl"),
+		ConditionExpression: aws.String("attribute_exists(PK) AND attribute_not_exists(" + nameSuccessor + ")"),
 		ExpressionAttributeNames: map[string]string{
-			"#successor": attrSuccessorHash,
-			"#ttl":       attrTTL,
+			nameSuccessor: attrSuccessorHash,
+			nameTTL:       attrTTL,
 		},
 		ExpressionAttributeValues: map[string]types.AttributeValue{
 			":successor": &types.AttributeValueMemberS{Value: successorHash},
@@ -145,7 +145,7 @@ func (s *CustomerTokenStore) queryTokenRows(ctx context.Context, customerID stri
 				exprPK: &types.AttributeValueMemberS{Value: "CUST_TOKEN#" + customerID},
 				exprSK: &types.AttributeValueMemberS{Value: "REFRESH_TOKEN#"},
 			},
-			ExpressionAttributeNames: map[string]string{"#ttl": attrTTL},
+			ExpressionAttributeNames: map[string]string{nameTTL: attrTTL},
 			ProjectionExpression:     aws.String("PK, SK, #ttl"),
 			ExclusiveStartKey:        exclusiveStartKey,
 		})

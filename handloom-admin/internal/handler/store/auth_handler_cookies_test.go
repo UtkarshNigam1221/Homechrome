@@ -13,7 +13,7 @@ func refreshCookieValue(t *testing.T, rec *httptest.ResponseRecorder) (string, b
 	t.Helper()
 
 	for _, c := range rec.Result().Cookies() {
-		if c.Name == "store_refresh" {
+		if c.Name == cookieStoreRefresh {
 			return c.Value, true
 		}
 	}
@@ -35,7 +35,7 @@ func TestSetStoreCookies_LeavesRefreshCookieAloneWhenNoRefreshTokenIssued(t *tes
 
 	var access string
 	for _, c := range rec.Result().Cookies() {
-		if c.Name == "store_token" {
+		if c.Name == cookieStoreToken {
 			access = c.Value
 		}
 	}
