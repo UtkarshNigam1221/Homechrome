@@ -2,7 +2,13 @@ import apiClient, { normalizeListResponse } from '@/shared/api/client';
 import { ROUTES } from '@/shared/constants/routes';
 import type { ListResponse, PaginationParams } from '@/shared/types/common';
 
-import type { CreateOrderRequest, Order, ProviderPaymentStatus } from './types';
+import type {
+  CreateOrderRequest,
+  CreateRefundRequest,
+  Order,
+  ProviderPaymentStatus,
+  Refund,
+} from './types';
 
 export const ordersApi = {
   list: async (
@@ -54,8 +60,20 @@ export const ordersApi = {
     await apiClient.post(ROUTES.ORDERS.CANCEL(id), { reason });
   },
 
-  refund: async (id: string, amount: number, reason?: string) => {
-    await apiClient.post(ROUTES.ORDERS.REFUND(id), { amount, reason });
+  listRefunds: async (id: string): Promise<Refund[]> => {
+    const response = await apiClient.get(ROUTES.ORDERS.REFUNDS(id));
+    return normalizeListResponse<Refund>(response.data as Record<string, unknown>, 'refunds').items;
+  },
+
+  createRefund: async (id: string, data: CreateRefundRequest): Promise<Refund> => {
+    const response = await apiClient.post<Refund>(ROUTES.ORDERS.REFUNDS(id), data);
+    return response.data;
+  },
+
+  // Asks the provider directly. The escape hatch for a webhook that never came.
+  recheckRefund: async (id: string, refundId: string): Promise<Refund> => {
+    const response = await apiClient.post<Refund>(ROUTES.ORDERS.REFUND_RECHECK(id, refundId));
+    return response.data;
   },
 
   checkPaymentStatus: async (id: string): Promise<ProviderPaymentStatus> => {

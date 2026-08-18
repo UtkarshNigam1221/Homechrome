@@ -31,6 +31,10 @@ export function movementEffect(row: InventoryTransaction): MovementEffect {
       return { label: 'Released', variant: 'info', reserved: -q };
     case 'COMMIT':
       return { label: 'Dispatched', variant: 'primary', onHand: -q, reserved: -q };
+    case 'WRITE_OFF':
+      // Same arithmetic as a dispatch — both counters fall, available holds —
+      // but the goods went nowhere, so the ledger must not say "shipped".
+      return { label: 'Written off', variant: 'danger', onHand: -q, reserved: -q };
   }
 }
 

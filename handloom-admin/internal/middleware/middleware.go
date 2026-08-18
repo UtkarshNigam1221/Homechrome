@@ -172,6 +172,13 @@ func (a *Auth) RequirePermission(permission string) func(next http.Handler) http
 
 // RequireRole creates a middleware that requires a specific role
 func (a *Auth) RequireRole(roles ...domain.UserRole) func(next http.Handler) http.Handler {
+	return RequireRole(roles...)
+}
+
+// RequireRole refuses anyone whose role is not listed. Package-level because it
+// reads nothing but the request context: a handler can then gate its own routes
+// instead of every mount site having to remember to.
+func RequireRole(roles ...domain.UserRole) func(next http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			user, ok := r.Context().Value(UserKey).(*domain.User)

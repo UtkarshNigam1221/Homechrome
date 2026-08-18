@@ -45,11 +45,21 @@ describe('movementEffect', () => {
     expect(movementEffect(row('ADJUST', 2, 48, 50)).onHand).toBe(2);
   });
 
+  // A write-off moves the same two counters a dispatch does, so the only thing
+  // separating them in the ledger is the label.
+  it('reports a write-off against both counters, but never calls it a dispatch', () => {
+    const effect = movementEffect(row('WRITE_OFF', 2, 50, 48));
+
+    expect(effect).toMatchObject({ onHand: -2, reserved: -2 });
+    expect(effect.label).toBe('Written off');
+  });
+
   it('names the counter the recorded before/after pair belongs to', () => {
     expect(recordedCounter('RESERVE')).toBe('reserved');
     expect(recordedCounter('RELEASE')).toBe('reserved');
     expect(recordedCounter('COMMIT')).toBe('onHand');
     expect(recordedCounter('ADD')).toBe('onHand');
+    expect(recordedCounter('WRITE_OFF')).toBe('onHand');
   });
 });
 
