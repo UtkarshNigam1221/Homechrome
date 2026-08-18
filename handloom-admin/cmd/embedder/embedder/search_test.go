@@ -1,3 +1,5 @@
+//go:build integration
+
 package embedder
 
 import (
@@ -11,8 +13,8 @@ import (
 	"github.com/handloom/admin/internal/repository/postgres"
 )
 
-// TestSearcher_Hybrid_ReturnsKnownProduct is an integration test against a
-// real Postgres with pgvector + migrations applied. Skipped when no DSN.
+// TestSearcher_Hybrid_ReturnsKnownProduct needs a Postgres already seeded with
+// an embedded product; migrations alone are not enough, hence the build tag.
 func TestSearcher_Hybrid_ReturnsKnownProduct(t *testing.T) {
 	dsn := os.Getenv("POSTGRES_DSN")
 	if dsn == "" {
