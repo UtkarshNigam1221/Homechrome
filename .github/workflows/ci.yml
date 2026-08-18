@@ -65,6 +65,13 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+      # The dynamodb repository tests create and drop their own handloom-*-test
+      # tables, so no migration or seed step is needed — only a reachable
+      # endpoint. testClient defaults to :8000, which is this image's port.
+      dynamodb:
+        image: amazon/dynamodb-local
+        ports:
+          - 8000:8000
     env:
       POSTGRES_DSN: postgres://handloom:handloom@localhost:5432/handloom?sslmode=disable
     steps:
