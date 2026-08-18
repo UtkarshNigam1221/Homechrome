@@ -54,6 +54,24 @@ func TestCustomerRepository_EmailIndex(t *testing.T) {
 		require.Empty(t, found.Email)
 	})
 
+	// The customer and its pointer are one transaction. A refused address must
+	// leave no customer behind, or the guard has a hole in the case it exists
+	// for: a record nothing can find by email.
+	t.Run("creates neither the customer nor the pointer when the address is taken", func(t *testing.T) {
+		require.NoError(t, repo.Create(ctx, newCustomer("cust_x", "shared@example.com", "+9120")))
+
+		err := repo.Create(ctx, newCustomer("cust_y", "shared@example.com", "+9121"))
+		require.Error(t, err)
+
+		_, err = repo.GetByID(ctx, "cust_y")
+		require.Error(t, err, "the rejected customer must not exist at all")
+
+		// And the address still belongs to whoever held it.
+		found, err := repo.GetByEmail(ctx, "shared@example.com")
+		require.NoError(t, err)
+		require.Equal(t, "cust_x", found.ID)
+	})
+
 	t.Run("reports no customer for an unknown address", func(t *testing.T) {
 		_, err := repo.GetByEmail(ctx, "nobody@example.com")
 		require.Error(t, err)
