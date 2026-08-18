@@ -23,7 +23,7 @@
     "@heroicons/react": "^2.2.0",
     "@mantine/carousel": "^9.2.1",
     "@mantine/core": "^9.4.1",
-    "@mantine/dates": "^9.2.1",
+    "@mantine/dates": "^9.5.1",
     "@mantine/form": "^9.4.1",
     "@mantine/hooks": "^9.2.1",
     "@mantine/modals": "^9.2.1",
