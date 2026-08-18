@@ -5,6 +5,10 @@ package service
 // (metrics.Label*); this stays here because it doubles as a log key.
 const keyProductID = "product_id"
 
+// keyOrderID is the slog field for order-scoped inventory movements, which are
+// reported per order rather than per product.
+const keyOrderID = "order_id"
+
 // Common metric-label fallback / value strings, de-duplicated across the package.
 const (
 	labelUnknown   = "unknown"
