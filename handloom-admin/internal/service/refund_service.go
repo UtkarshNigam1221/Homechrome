@@ -23,6 +23,7 @@ type RefundService struct {
 	orderRepo     domain.OrderRepository
 	paymentRepo   domain.PaymentRepository
 	inventoryRepo domain.InventoryRepository
+	userRepo      domain.UserRepository
 	gateway       phonepe.Gateway
 }
 
@@ -32,6 +33,7 @@ func NewRefundService(
 	orderRepo domain.OrderRepository,
 	paymentRepo domain.PaymentRepository,
 	inventoryRepo domain.InventoryRepository,
+	userRepo domain.UserRepository,
 	gateway phonepe.Gateway,
 ) *RefundService {
 	return &RefundService{
@@ -39,6 +41,7 @@ func NewRefundService(
 		orderRepo:     orderRepo,
 		paymentRepo:   paymentRepo,
 		inventoryRepo: inventoryRepo,
+		userRepo:      userRepo,
 		gateway:       gateway,
 	}
 }
@@ -160,9 +163,24 @@ func refundInventoryReason(restock bool) string {
 	return reasonWriteOff
 }
 
-// ListByOrder returns an order's refunds.
+// ListByOrder returns an order's refunds, with the admin behind each one named.
 func (s *RefundService) ListByOrder(ctx context.Context, orderID string) ([]*domain.Refund, error) {
-	return s.refundRepo.ListByOrder(ctx, orderID)
+	refunds, err := s.refundRepo.ListByOrder(ctx, orderID)
+	if err != nil {
+		return nil, err
+	}
+
+	ids := make([]string, 0, len(refunds))
+	for _, refund := range refunds {
+		ids = append(ids, refund.CreatedBy)
+	}
+
+	names := resolveActorNames(ctx, s.userRepo, ids)
+	for _, refund := range refunds {
+		refund.CreatedByName = names[refund.CreatedBy]
+	}
+
+	return refunds, nil
 }
 
 // HandleRefundCompleted settles a refund from a pg.refund.completed webhook.

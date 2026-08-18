@@ -56,6 +56,7 @@ type refundHarness struct {
 	orders    *mocks.MockOrderRepository
 	payments  *mocks.MockPaymentRepository
 	inventory *mocks.MockInventoryRepository
+	users     *mocks.MockUserRepository
 	gateway   *fakeRefundGateway
 }
 
@@ -68,11 +69,12 @@ func newRefundHarness(t *testing.T) *refundHarness {
 		orders:    mocks.NewMockOrderRepository(ctrl),
 		payments:  mocks.NewMockPaymentRepository(ctrl),
 		inventory: mocks.NewMockInventoryRepository(ctrl),
+		users:     mocks.NewMockUserRepository(ctrl),
 		gateway: &fakeRefundGateway{
 			initiateResp: &phonepe.RefundResponse{RefundID: "OMR1", State: phonepe.RefundStatePending},
 		},
 	}
-	h.svc = NewRefundService(h.refunds, h.orders, h.payments, h.inventory, h.gateway)
+	h.svc = NewRefundService(h.refunds, h.orders, h.payments, h.inventory, h.users, h.gateway)
 	return h
 }
 
@@ -342,5 +344,87 @@ func TestRefundService_RecheckStatus(t *testing.T) {
 		got, err := h.svc.RecheckStatus(ctx, "refund_1")
 		require.NoError(t, err)
 		require.Equal(t, domain.RefundStatusCompleted, got.Status)
+	})
+}
+
+// A refund is a money movement, so the record has to say who raised it. created_by
+// holds an opaque user id, which is accurate and useless to whoever reads the
+// list back.
+func TestRefundService_ListByOrder_ResolvesActorNames(t *testing.T) {
+	ctx := context.Background()
+
+	refundsBy := func(ids ...string) []*domain.Refund {
+		out := make([]*domain.Refund, 0, len(ids))
+		for i, id := range ids {
+			out = append(out, &domain.Refund{ID: "refund_" + id, CreatedBy: id, Amount: int64(i + 1)})
+		}
+		return out
+	}
+
+	t.Run("names the admin behind each refund", func(t *testing.T) {
+		h := newRefundHarness(t)
+		h.refunds.EXPECT().ListByOrder(gomock.Any(), "order_1").Return(refundsBy("usr_1"), nil)
+		h.users.EXPECT().GetByID(gomock.Any(), "usr_1").
+			Return(&domain.User{ID: "usr_1", FirstName: "Asha", LastName: "Rao"}, nil)
+
+		got, err := h.svc.ListByOrder(ctx, "order_1")
+
+		require.NoError(t, err)
+		require.Equal(t, "Asha Rao", got[0].CreatedByName)
+	})
+
+	// One lookup per distinct admin, not per row: a run of refunds on one order
+	// is usually one person working through it.
+	t.Run("looks each admin up once", func(t *testing.T) {
+		h := newRefundHarness(t)
+		h.refunds.EXPECT().ListByOrder(gomock.Any(), "order_1").
+			Return(refundsBy("usr_1", "usr_1", "usr_1"), nil)
+		h.users.EXPECT().GetByID(gomock.Any(), "usr_1").
+			Return(&domain.User{ID: "usr_1", FirstName: "Asha", LastName: "Rao"}, nil).Times(1)
+
+		got, err := h.svc.ListByOrder(ctx, "order_1")
+
+		require.NoError(t, err)
+		for _, r := range got {
+			require.Equal(t, "Asha Rao", r.CreatedByName)
+		}
+	})
+
+	t.Run("falls back to the email when a user has no name", func(t *testing.T) {
+		h := newRefundHarness(t)
+		h.refunds.EXPECT().ListByOrder(gomock.Any(), "order_1").Return(refundsBy("usr_2"), nil)
+		h.users.EXPECT().GetByID(gomock.Any(), "usr_2").
+			Return(&domain.User{ID: "usr_2", Email: "ops@handloom.com"}, nil)
+
+		got, err := h.svc.ListByOrder(ctx, "order_1")
+
+		require.NoError(t, err)
+		require.Equal(t, "ops@handloom.com", got[0].CreatedByName)
+	})
+
+	// The refunds are worth showing without the names attached.
+	t.Run("still returns the refunds when the directory fails", func(t *testing.T) {
+		h := newRefundHarness(t)
+		h.refunds.EXPECT().ListByOrder(gomock.Any(), "order_1").Return(refundsBy("usr_3"), nil)
+		h.users.EXPECT().GetByID(gomock.Any(), "usr_3").Return(nil, stderrors.New("dynamo down"))
+
+		got, err := h.svc.ListByOrder(ctx, "order_1")
+
+		require.NoError(t, err)
+		require.Len(t, got, 1)
+		require.Empty(t, got[0].CreatedByName)
+	})
+
+	// Webhook-driven settlement has no admin behind it, so there is nothing to
+	// look up and no reason to spend a read finding that out.
+	t.Run("looks nothing up for a refund with no actor", func(t *testing.T) {
+		h := newRefundHarness(t)
+		h.refunds.EXPECT().ListByOrder(gomock.Any(), "order_1").
+			Return([]*domain.Refund{{ID: "refund_x"}}, nil)
+
+		got, err := h.svc.ListByOrder(ctx, "order_1")
+
+		require.NoError(t, err)
+		require.Empty(t, got[0].CreatedByName)
 	})
 }

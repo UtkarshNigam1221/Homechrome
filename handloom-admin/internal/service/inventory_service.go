@@ -4,7 +4,6 @@ package service
 import (
 	"context"
 	"log/slog"
-	"strings"
 	"time"
 
 	"github.com/handloom/admin/internal/domain"
@@ -124,37 +123,15 @@ func (s *InventoryService) GetTransactions(ctx context.Context, productID string
 }
 
 // resolveActorNames fills in CreatedByName for the movements an admin made.
-// One lookup per distinct user, not per row: a page of stocktake corrections is
-// usually one person. A name that cannot be resolved is left empty rather than
-// failing the read — the history is still worth showing without it.
 func (s *InventoryService) resolveActorNames(ctx context.Context, txns []*domain.InventoryTransaction) {
-	if s.userRepo == nil {
-		return
+	ids := make([]string, 0, len(txns))
+	for _, txn := range txns {
+		ids = append(ids, txn.CreatedBy)
 	}
 
-	names := make(map[string]string)
-
+	names := resolveActorNames(ctx, s.userRepo, ids)
 	for _, txn := range txns {
-		if txn.CreatedBy == "" {
-			continue
-		}
-
-		name, seen := names[txn.CreatedBy]
-		if !seen {
-			user, err := s.userRepo.GetByID(ctx, txn.CreatedBy)
-			if err != nil {
-				slog.WarnContext(ctx, "Failed to resolve inventory actor",
-					"user_id", txn.CreatedBy, "error", err)
-			} else if user != nil {
-				name = strings.TrimSpace(user.FirstName + " " + user.LastName)
-				if name == "" {
-					name = user.Email
-				}
-			}
-			names[txn.CreatedBy] = name
-		}
-
-		txn.CreatedByName = name
+		txn.CreatedByName = names[txn.CreatedBy]
 	}
 }
 

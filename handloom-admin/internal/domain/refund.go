@@ -87,6 +87,11 @@ type Refund struct {
 	InitiatedAt time.Time  `json:"initiated_at" dynamodbav:"initiated_at"`
 	CompletedAt *time.Time `json:"completed_at,omitempty" dynamodbav:"completed_at,omitempty"`
 	CreatedBy   string     `json:"created_by" dynamodbav:"created_by"`
+
+	// CreatedByName is resolved when the list is read, not stored: created_by
+	// holds an opaque user id, which is no use to whoever reads back who sent
+	// money out. Empty for a refund no admin raised.
+	CreatedByName string `json:"created_by_name,omitempty" dynamodbav:"-"`
 }
 
 // DynamoDB keys. Refunds live in the orders table alongside payments.
