@@ -20,6 +20,11 @@ updates:
       interval: weekly
     labels: [dependencies, npm]
     open-pull-requests-limit: 5
+    ignore:
+      # @vercel/otel peers the otel SDK at <2.0.0, so core 2.x is unreachable
+      # and its PR blocks this directory's security-group slot. See #177, #203.
+      - dependency-name: "@opentelemetry/core"
+        versions: [">=2.0.0"]
 
   - package-ecosystem: github-actions
     directory: /
