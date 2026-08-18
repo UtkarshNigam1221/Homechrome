@@ -548,7 +548,10 @@ func (r *InventoryRepository) GetTransactions(ctx context.Context, productID str
 	qb := querybuilder.Select(inventoryTxnColumns...).
 		From("inventory_transactions").
 		Where(ColProductID, productID).
-		OrderBy(ColCreatedAt + " DESC").
+		// id breaks ties: movements a second apart are common, and an unstable
+		// order both scrambles the history and can repeat or skip a row across
+		// offset-paginated pages.
+		OrderBy(ColCreatedAt + " DESC, " + ColID + " DESC").
 		Limit(limit + 1).
 		Offset(offset)
 

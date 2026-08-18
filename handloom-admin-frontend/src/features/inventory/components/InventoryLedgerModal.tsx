@@ -3,8 +3,12 @@ import { ExternalLink } from 'lucide-react';
 import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 
+import {
+  balancesAfter,
+  movementEffect,
+  recordedCounter,
+} from '@/features/inventory/lib/movementEffects';
 import { openReservationIDs } from '@/features/inventory/lib/openReservations';
-import type { TransactionType } from '@/features/inventory/types';
 import { productsApi } from '@/features/products/api';
 import type { Product } from '@/features/products/types';
 import {
@@ -20,7 +24,6 @@ import {
   TableLoading,
   TableRow,
 } from '@/shared/components/ui';
-import { ROUTES } from '@/shared/constants/routes';
 import { useCursorPagination } from '@/shared/hooks';
 
 export interface InventoryLedgerModalProps {
@@ -29,24 +32,6 @@ export interface InventoryLedgerModalProps {
   product: Product | null;
 }
 
-type BadgeVariant = 'success' | 'warning' | 'danger' | 'info' | 'gray' | 'primary';
-
-// previous_qty/new_qty track reserved_qty for RESERVE and RELEASE, but quantity
-// for every other type. One "Before → After" header would mean two things, so
-// each row names its own counter.
-const MOVEMENTS: Record<
-  TransactionType,
-  { label: string; variant: BadgeVariant; counter: string }
-> = {
-  ADD: { label: 'Restocked', variant: 'success', counter: 'on hand' },
-  REMOVE: { label: 'Removed', variant: 'danger', counter: 'on hand' },
-  ADJUST: { label: 'Recounted', variant: 'gray', counter: 'on hand' },
-  RESERVE: { label: 'Reserved', variant: 'warning', counter: 'reserved' },
-  RELEASE: { label: 'Released', variant: 'info', counter: 'reserved' },
-  COMMIT: { label: 'Dispatched', variant: 'primary', counter: 'on hand' },
-  RETURN: { label: 'Returned', variant: 'success', counter: 'on hand' },
-};
-
 function formatWhen(iso: string): string {
   return new Date(iso).toLocaleString(undefined, {
     day: 'numeric',
@@ -54,6 +39,23 @@ function formatWhen(iso: string): string {
     hour: '2-digit',
     minute: '2-digit',
   });
+}
+
+// A signed count, coloured by direction, so a row reads as stock in or out
+// without decoding the movement name first.
+function Delta({ value }: { value: number | undefined }) {
+  if (value === undefined) {
+    return <span className="text-gray-300">—</span>;
+  }
+
+  return (
+    <span
+      className={`font-mono text-sm font-medium ${value < 0 ? 'text-red-600' : 'text-emerald-600'}`}
+    >
+      {value > 0 ? '+' : '−'}
+      {Math.abs(value)}
+    </span>
+  );
 }
 
 export function InventoryLedgerModal({ isOpen, onClose, product }: InventoryLedgerModalProps) {
@@ -70,6 +72,14 @@ export function InventoryLedgerModal({ isOpen, onClose, product }: InventoryLedg
 
   const rows = useMemo(() => data?.items ?? [], [data]);
   const openReservations = useMemo(() => openReservationIDs(rows), [rows]);
+  const balances = useMemo(
+    () =>
+      balancesAfter(rows, {
+        onHand: product?.quantity ?? 0,
+        reserved: product?.reserved_qty ?? 0,
+      }),
+    [rows, product]
+  );
   const pagination = data?.pagination;
 
   if (!product) return null;
@@ -79,18 +89,18 @@ export function InventoryLedgerModal({ isOpen, onClose, product }: InventoryLedg
       isOpen={isOpen}
       onClose={onClose}
       title={`Stock history — ${product.name}`}
-      description={`Every movement recorded for ${product.sku}, newest first.`}
-      size="xl"
+      description={`${product.sku} · on hand ${product.quantity ?? 0}, of which ${product.reserved_qty ?? 0} reserved`}
+      size="full"
     >
       <Table>
         <TableHeader>
           <TableRow>
             <TableHead>When</TableHead>
             <TableHead>Movement</TableHead>
-            <TableHead>Change</TableHead>
-            <TableHead>Before → after</TableHead>
-            <TableHead>Reference</TableHead>
-            <TableHead>By</TableHead>
+            <TableHead>On hand</TableHead>
+            <TableHead>Reserved</TableHead>
+            <TableHead>Balance after</TableHead>
+            <TableHead>Why</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -103,8 +113,10 @@ export function InventoryLedgerModal({ isOpen, onClose, product }: InventoryLedg
               description="Reservations, dispatches and restocks appear here as they happen."
             />
           ) : (
-            rows.map((row) => {
-              const movement = MOVEMENTS[row.type];
+            rows.map((row, index) => {
+              const effect = movementEffect(row);
+              const balance = balances[index];
+              const counter = recordedCounter(row.type);
               const orderID = row.reference_type === 'ORDER' ? row.reference_id : undefined;
               const isOpenReservation =
                 row.type === 'RESERVE' && row.reference_id
@@ -120,7 +132,7 @@ export function InventoryLedgerModal({ isOpen, onClose, product }: InventoryLedg
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2">
-                      <Badge variant={movement.variant}>{movement.label}</Badge>
+                      <Badge variant={effect.variant}>{effect.label}</Badge>
                       {isOpenReservation && (
                         <Badge variant="warning" dot>
                           Still held
@@ -129,29 +141,51 @@ export function InventoryLedgerModal({ isOpen, onClose, product }: InventoryLedg
                     </div>
                   </TableCell>
                   <TableCell>
-                    <span className="font-mono text-sm">{row.quantity}</span>
+                    <Delta value={effect.onHand} />
                   </TableCell>
                   <TableCell>
-                    <span className="font-mono text-sm">
-                      {row.previous_qty} → {row.new_qty}
-                    </span>
-                    <span className="ml-2 text-xs text-gray-500">{movement.counter}</span>
+                    <Delta value={effect.reserved} />
+                  </TableCell>
+                  <TableCell>
+                    {balance ? (
+                      <div className="space-y-0.5">
+                        <div className="flex items-baseline gap-2">
+                          <span className="w-8 text-right font-mono text-sm">{balance.onHand}</span>
+                          <span className="text-xs text-gray-500">on hand</span>
+                        </div>
+                        <div className="flex items-baseline gap-2">
+                          <span className="w-8 text-right font-mono text-sm text-gray-600">
+                            {balance.reserved}
+                          </span>
+                          <span className="text-xs text-gray-500">reserved</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-baseline gap-2">
+                        <span className="w-8 text-right font-mono text-sm">{row.new_qty}</span>
+                        <span className="text-xs text-gray-500">
+                          {counter === 'reserved' ? 'reserved' : 'on hand'}
+                        </span>
+                      </div>
+                    )}
                   </TableCell>
                   <TableCell>
                     {orderID ? (
                       <Link
-                        to={ROUTES.ORDERS.DETAIL(orderID)}
+                        to={`/orders/${orderID}`}
                         className="inline-flex items-center gap-1 font-mono text-sm text-blue-600 hover:underline"
                       >
                         {orderID}
                         <ExternalLink className="h-3 w-3" />
                       </Link>
                     ) : (
-                      <span className="text-sm text-gray-600">{row.reason || '—'}</span>
+                      <div>
+                        <p className="text-sm text-gray-700">{row.reason || '—'}</p>
+                        {row.created_by && (
+                          <p className="text-xs text-gray-500">{row.created_by}</p>
+                        )}
+                      </div>
                     )}
-                  </TableCell>
-                  <TableCell>
-                    <span className="text-sm text-gray-600">{row.created_by || 'System'}</span>
                   </TableCell>
                 </TableRow>
               );
@@ -162,10 +196,9 @@ export function InventoryLedgerModal({ isOpen, onClose, product }: InventoryLedg
 
       {openReservations.size > 0 && (
         <p className="mt-3 text-xs text-gray-500">
-          {openReservations.size} order
-          {openReservations.size === 1 ? '' : 's'} still holding stock on this page. A reservation
-          settles when the same order dispatches or releases it, so one that never does is stock
-          nobody can sell. Only movements on this page are compared.
+          {openReservations.size} order{openReservations.size === 1 ? '' : 's'} on this page
+          reserved stock and never dispatched or released it, so those units are held against
+          nothing. Only movements on this page are compared.
         </p>
       )}
 
