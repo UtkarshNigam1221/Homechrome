@@ -24,4 +24,5 @@ const (
 	reasonRelease           = "release"
 	reasonReleaseUnreserved = "release_unreserved"
 	reasonRestock           = "restock"
+	reasonWriteOff          = "write_off"
 )

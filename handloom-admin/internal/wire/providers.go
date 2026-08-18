@@ -177,6 +177,7 @@ var RepositorySet = wire.NewSet(
 	ProvideInventoryRepository,
 	ProvideOrderRepository,
 	ProvidePaymentRepository,
+	ProvideRefundRepository,
 	ProvideCartRepository,
 	ProvideCustomerRepository,
 	ProvidePricingRuleRepository,
@@ -358,6 +359,7 @@ var ServiceSet = wire.NewSet(
 	ProvideCartService,
 	ProvidePhonePeGateway,
 	ProvidePaymentService,
+	ProvideRefundService,
 	ProvideEmbedderClient,
 )
 
@@ -410,9 +412,10 @@ func ProvideInventoryHandler(
 func ProvideOrderHandler(
 	orderService *service.OrderService,
 	paymentService *service.PaymentService,
+	refundService *service.RefundService,
 	validation *middleware.Validation,
 ) *handler.OrderHandler {
-	return handler.NewOrderHandler(orderService, paymentService, validation)
+	return handler.NewOrderHandler(orderService, paymentService, refundService, validation)
 }
 
 // ProvideCustomerHandler creates a new CustomerHandler
@@ -533,6 +536,22 @@ func ProvideCustomerTokenStore(client *dynamodb.Client) domain.CustomerTokenStor
 // ProvideCartRepository creates a new CartRepository
 func ProvideCartRepository(client *dynamodb.Client) domain.CartRepository {
 	return dynamodb.NewCartRepository(client)
+}
+
+// ProvidePaymentRepository creates a new PaymentRepository
+func ProvideRefundRepository(client *dynamodb.Client) domain.RefundRepository {
+	return dynamodb.NewRefundRepository(client)
+}
+
+// ProvideRefundService creates a new RefundService.
+func ProvideRefundService(
+	refundRepo domain.RefundRepository,
+	orderRepo domain.OrderRepository,
+	paymentRepo domain.PaymentRepository,
+	inventoryRepo domain.InventoryRepository,
+	gateway phonepe.Gateway,
+) *service.RefundService {
+	return service.NewRefundService(refundRepo, orderRepo, paymentRepo, inventoryRepo, gateway)
 }
 
 // ProvidePaymentRepository creates a new PaymentRepository
@@ -689,10 +708,12 @@ func ProvideStoreProfileHandler(
 // ProvideStoreWebhookHandler creates a new store WebhookHandler
 func ProvideStoreWebhookHandler(
 	paymentService *service.PaymentService,
+	refundService *service.RefundService,
 	phonePe phonepe.Gateway,
 	cfg *config.Config,
 ) *store.WebhookHandler {
-	return store.NewWebhookHandler(paymentService, phonePe, cfg.Store.PhonePeWebhookUsername, cfg.Store.PhonePeWebhookPassword)
+	return store.NewWebhookHandler(paymentService, refundService, phonePe,
+		cfg.Store.PhonePeWebhookUsername, cfg.Store.PhonePeWebhookPassword)
 }
 
 // ProvideCentroidsRepository creates a new CentroidsRepository backed by PostgreSQL.
