@@ -9,13 +9,13 @@
     "build": "next build",
     "build:dev": "NEXT_PUBLIC_API_URL=https://dev-api.homechrome.in NEXT_PUBLIC_SITE_URL=https://dev-store.homechrome.in next build",
     "build:prod": "NEXT_PUBLIC_API_URL=https://api.homechrome.in NEXT_PUBLIC_SITE_URL=https://homechrome.in next build",
-    "open-next:build": "npx @opennextjs/aws build && cp ../handloom-admin/infra/configs/otel-collector.yaml .open-next/server-functions/default/otel.yaml",
+    "open-next:build": "SHARP_VERSION=0.35.0 npx @opennextjs/aws build && cp ../handloom-admin/infra/configs/otel-collector.yaml .open-next/server-functions/default/otel.yaml",
     "start": "next start",
     "lint": "eslint",
     "cdk:synth:dev": "set -a && . ./.env.deploy.dev && set +a && cd infra && cdk synth -c environment=dev",
     "cdk:synth:prod": "set -a && . ./.env.deploy.prod && set +a && cd infra && cdk synth -c environment=prod",
-    "cdk:deploy:dev": "set -a && . ./.env.deploy.dev && set +a && npx @opennextjs/aws build && cp ../handloom-admin/infra/configs/otel-collector.yaml .open-next/server-functions/default/otel.yaml && cd infra && cdk deploy --all --require-approval never -c environment=dev && aws cloudfront create-invalidation --distribution-id $(aws cloudformation describe-stacks --stack-name HomechromeStoreStack-dev --query \"Stacks[0].Outputs[?OutputKey=='DistributionId'].OutputValue\" --output text) --paths '/*'",
-    "cdk:deploy:prod": "set -a && . ./.env.deploy.prod && set +a && npx @opennextjs/aws build && cp ../handloom-admin/infra/configs/otel-collector.yaml .open-next/server-functions/default/otel.yaml && cd infra && cdk deploy --all --require-approval never -c environment=prod && aws cloudfront create-invalidation --distribution-id $(aws cloudformation describe-stacks --stack-name HomechromeStoreStack-prod --query \"Stacks[0].Outputs[?OutputKey=='DistributionId'].OutputValue\" --output text) --paths '/*'",
+    "cdk:deploy:dev": "set -a && . ./.env.deploy.dev && set +a && SHARP_VERSION=0.35.0 npx @opennextjs/aws build && cp ../handloom-admin/infra/configs/otel-collector.yaml .open-next/server-functions/default/otel.yaml && cd infra && cdk deploy --all --require-approval never -c environment=dev && aws cloudfront create-invalidation --distribution-id $(aws cloudformation describe-stacks --stack-name HomechromeStoreStack-dev --query \"Stacks[0].Outputs[?OutputKey=='DistributionId'].OutputValue\" --output text) --paths '/*'",
+    "cdk:deploy:prod": "set -a && . ./.env.deploy.prod && set +a && SHARP_VERSION=0.35.0 npx @opennextjs/aws build && cp ../handloom-admin/infra/configs/otel-collector.yaml .open-next/server-functions/default/otel.yaml && cd infra && cdk deploy --all --require-approval never -c environment=prod && aws cloudfront create-invalidation --distribution-id $(aws cloudformation describe-stacks --stack-name HomechromeStoreStack-prod --query \"Stacks[0].Outputs[?OutputKey=='DistributionId'].OutputValue\" --output text) --paths '/*'",
     "cdk:destroy:dev": "export AWS_REGION=ap-south-1 && cd infra && cdk destroy --all -c environment=dev",
     "cdk:destroy:prod": "export AWS_REGION=ap-south-1 && cd infra && cdk destroy --all -c environment=prod"
   },
@@ -29,9 +29,9 @@
     "@mantine/modals": "^9.5.1",
     "@mantine/notifications": "^9.5.1",
     "@mantine/spotlight": "^9.5.1",
-    "@tanstack/react-query": "^5.100.14",
+    "@tanstack/react-query": "^5.101.4",
     "@vercel/otel": "^1.13.0",
-    "axios": "^1.16.1",
+    "axios": "^1.19.0",
     "dayjs": "^1.11.20",
     "embla-carousel": "^8.6.0",
     "embla-carousel-react": "^8.6.0",
@@ -39,8 +39,8 @@
     "next": "16.2.11",
     "react": "^19.2.4",
     "react-dom": "^19.2.6",
-    "web-vitals": "^5.3.0",
-    "zustand": "^5.0.12"
+    "web-vitals": "^6.1.1",
+    "zustand": "^5.0.15"
   },
   "overrides": {
     "fast-xml-parser": "5.8.0",
@@ -48,7 +48,7 @@
     "postcss": "^8.5.23"
   },
   "devDependencies": {
-    "@opennextjs/aws": "4.0.3",
+    "@opennextjs/aws": "4.1.0",
     "@types/node": "^25",
     "@types/react": "^19",
     "@types/react-dom": "^19",

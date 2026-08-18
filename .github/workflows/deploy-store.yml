@@ -29,6 +29,10 @@ jobs:
   deploy:
     name: Build & Deploy
     runs-on: ubuntu-latest
+    # OpenNext hardcodes sharp 0.32.6 for the image Lambda and only honours
+    # SHARP_VERSION; root package.json overrides do not reach that bundle.
+    env:
+      SHARP_VERSION: 0.35.0
     defaults:
       run:
         working-directory: homechrome-store
@@ -88,6 +92,10 @@ jobs:
             echo "::error::OpenNext build produced no .open-next/server-functions/default"; exit 1; }
           test -f .open-next/server-functions/default/otel.yaml || {
             echo "::error::otel.yaml not bundled into the server function"; exit 1; }
+          bundled=$(node -p "require('./.open-next/image-optimization-function/node_modules/sharp/package.json').version")
+          echo "image function sharp: $bundled"
+          test "$bundled" = "$SHARP_VERSION" || {
+            echo "::error::image function bundled sharp $bundled, expected $SHARP_VERSION (GHSA-f88m-g3jw-g9cj)"; exit 1; }
 
       - uses: aws-actions/configure-aws-credentials@v6
         with:
