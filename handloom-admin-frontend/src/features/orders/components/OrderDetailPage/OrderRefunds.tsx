@@ -17,6 +17,12 @@ export interface OrderRefundsProps {
   isLoading: boolean;
 }
 
+// A refund raised by an admin names them. One settled straight from a webhook has
+// no actor, and inventing one would be worse than showing none.
+function actorName(refund: Refund): string {
+  return refund.created_by_name ?? refund.created_by;
+}
+
 const STATUS_VARIANT: Record<RefundStatus, 'warning' | 'success' | 'danger'> = {
   PENDING: 'warning',
   COMPLETED: 'success',
@@ -71,6 +77,8 @@ export function OrderRefunds({ orderId, refunds, isLoading }: OrderRefundsProps)
               </p>
               <p className="text-xs text-gray-400 mt-1">
                 {format(new Date(refund.initiated_at), 'd MMM yyyy, h:mm a')}
+                {/* Money left the account on someone's say-so; the record has to name them. */}
+                {actorName(refund) && ` by ${actorName(refund)}`}
                 {refund.completed_at &&
                   ` · settled ${format(new Date(refund.completed_at), 'd MMM, h:mm a')}`}
               </p>

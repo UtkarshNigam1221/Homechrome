@@ -565,7 +565,7 @@ func InitializeStoreWebhooksDeps(ctx context.Context, cfg *config.Config) (*Stor
 		ProvidePhonePeGateway,
 		ProvidePaymentService,
 		ProvideRefundRepository,
-		ProvideRefundService,
+		ProvideStoreRefundService,
 		ProvideStoreWebhookHandler,
 		wire.Struct(new(StoreWebhooksDeps), "*"),
 	)

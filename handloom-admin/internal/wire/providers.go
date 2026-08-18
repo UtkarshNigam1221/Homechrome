@@ -547,9 +547,24 @@ func ProvideRefundService(
 	orderRepo domain.OrderRepository,
 	paymentRepo domain.PaymentRepository,
 	inventoryRepo domain.InventoryRepository,
+	userRepo domain.UserRepository,
 	gateway phonepe.Gateway,
 ) *service.RefundService {
-	return service.NewRefundService(refundRepo, orderRepo, paymentRepo, inventoryRepo, gateway)
+	return service.NewRefundService(refundRepo, orderRepo, paymentRepo, inventoryRepo, userRepo, gateway)
+}
+
+// ProvideStoreRefundService builds the service without a user directory. The
+// store Lambda only settles refunds from webhooks — it never lists them, so
+// there is no actor to name, and the user repository has no business in a
+// customer-facing Lambda.
+func ProvideStoreRefundService(
+	refundRepo domain.RefundRepository,
+	orderRepo domain.OrderRepository,
+	paymentRepo domain.PaymentRepository,
+	inventoryRepo domain.InventoryRepository,
+	gateway phonepe.Gateway,
+) *service.RefundService {
+	return service.NewRefundService(refundRepo, orderRepo, paymentRepo, inventoryRepo, nil, gateway)
 }
 
 // ProvidePaymentRepository creates a new PaymentRepository
