@@ -395,6 +395,20 @@ func TestInventoryRepository_FindOrphanReservations(t *testing.T) {
 		return mine
 	}
 
+	// A refunded line's goods are written off — neither dispatched nor released.
+	// Counting only those two made every fully refunded order look like stock
+	// stuck in limbo, which is noise in the one report that has to be believed.
+	t.Run("treats a write-off as settling the reservation", func(t *testing.T) {
+		productID := newProduct(t, 10, 0)
+		_, err := repo.ReserveStock(ctx, productID, 2, "order_written_off")
+		require.NoError(t, err)
+		_, err = repo.WriteOffStock(ctx, productID, 2, "order_written_off", "refund_wo")
+		require.NoError(t, err)
+		age(t, productID, "order_written_off")
+
+		require.Empty(t, findFor(t, productID), "the goods are accounted for")
+	})
+
 	t.Run("reports a reservation nothing settled", func(t *testing.T) {
 		productID := newProduct(t, 10, 0)
 		_, err := repo.ReserveStock(ctx, productID, 3, "order_stuck")
@@ -455,6 +469,160 @@ func TestInventoryRepository_FindOrphanReservations(t *testing.T) {
 	})
 }
 
+// An order-scoped movement must be bounded by what that order still holds, not
+// by the product's reserved_qty total. Once a refund has written part of an
+// order off, a release sized from the order's lines is larger than the order's
+// remaining reservation — and the difference comes out of another order's.
+func TestInventoryRepository_OrderOutstandingReservation(t *testing.T) {
+	pool := newTestPool(t)
+	repo := postgres.NewInventoryRepository(pool)
+	ctx := context.Background()
+	category := seedCategory(t, pool)
+
+	newProduct := func(t *testing.T, quantity, reserved int) string {
+		t.Helper()
+		p := newTestProduct(category.ID)
+		require.NoError(t, postgres.NewProductRepository(pool).Create(ctx, p, nil))
+		t.Cleanup(func() {
+			_, _ = pool.Exec(ctx, `DELETE FROM products WHERE id = $1`, p.ID)
+		})
+		_, err := pool.Exec(ctx, `DELETE FROM inventory WHERE product_id = $1`, p.ID)
+		require.NoError(t, err)
+		seedInventory(t, pool, p.ID, quantity, reserved)
+		return p.ID
+	}
+
+	t.Run("a cancel releases only what its own order still holds", func(t *testing.T) {
+		productID := newProduct(t, 100, 0)
+
+		_, err := repo.ReserveStock(ctx, productID, 3, "order_x")
+		require.NoError(t, err)
+		_, err = repo.ReserveStock(ctx, productID, 4, "order_y")
+		require.NoError(t, err)
+
+		// order_x refunds two of its three units, so it holds one.
+		_, err = repo.WriteOffStock(ctx, productID, 2, "order_x", "refund_x")
+		require.NoError(t, err)
+
+		// Canceling passes the order's line quantity, which is now too large.
+		require.NoError(t, repo.ReleaseOrderStock(ctx, "order_x", map[string]int{productID: 3}))
+
+		_, reserved, _ := readInventory(t, pool, productID)
+		require.Equal(t, 4, reserved, "order_y's reservation must survive order_x's cancel")
+	})
+
+	t.Run("a dispatch commits only what its own order still holds", func(t *testing.T) {
+		productID := newProduct(t, 100, 0)
+
+		_, err := repo.ReserveStock(ctx, productID, 2, "order_c")
+		require.NoError(t, err)
+		_, err = repo.ReserveStock(ctx, productID, 5, "order_d")
+		require.NoError(t, err)
+		_, err = repo.WriteOffStock(ctx, productID, 1, "order_c", "refund_c")
+		require.NoError(t, err)
+
+		require.NoError(t, repo.CommitOrderStock(ctx, "order_c", map[string]int{productID: 2}))
+
+		qty, reserved, _ := readInventory(t, pool, productID)
+		require.Equal(t, 5, reserved, "order_d keeps its reservation")
+		require.Equal(t, 98, qty, "one unit written off, one dispatched")
+	})
+
+	// A refund asking for more than the order holds is the caller being wrong,
+	// not a remainder to settle — it must not quietly take a smaller bite.
+	t.Run("refuses a refund larger than the order's outstanding reservation", func(t *testing.T) {
+		productID := newProduct(t, 100, 0)
+
+		_, err := repo.ReserveStock(ctx, productID, 1, "order_e")
+		require.NoError(t, err)
+		_, err = repo.ReserveStock(ctx, productID, 6, "order_f")
+		require.NoError(t, err)
+
+		_, err = repo.WriteOffStock(ctx, productID, 3, "order_e", "refund_e")
+		require.Error(t, err)
+
+		qty, reserved, _ := readInventory(t, pool, productID)
+		require.Equal(t, 100, qty, "a refused write-off changes nothing")
+		require.Equal(t, 7, reserved)
+	})
+}
+
+// ReleaseRefundedStock is the restock half of a refund: the units go back on
+// sale, so only the reservation moves. Refund-scoped for the same reason the
+// write-off is — two refunds against one order must both count.
+func TestInventoryRepository_ReleaseRefundedStock(t *testing.T) {
+	pool := newTestPool(t)
+	repo := postgres.NewInventoryRepository(pool)
+	ctx := context.Background()
+	category := seedCategory(t, pool)
+
+	productID := func(t *testing.T, quantity, reserved int) string {
+		t.Helper()
+		p := newTestProduct(category.ID)
+		require.NoError(t, postgres.NewProductRepository(pool).Create(ctx, p, nil))
+		t.Cleanup(func() {
+			_, _ = pool.Exec(ctx, `DELETE FROM products WHERE id = $1`, p.ID)
+		})
+		_, err := pool.Exec(ctx, `DELETE FROM inventory WHERE product_id = $1`, p.ID)
+		require.NoError(t, err)
+		seedInventory(t, pool, p.ID, quantity, reserved)
+		return p.ID
+	}
+
+	t.Run("returns the units to sale without touching on hand", func(t *testing.T) {
+		id := productID(t, 100, 10)
+
+		txn, err := repo.ReleaseRefundedStock(ctx, id, 3, "order_rr", "refund_rr")
+		require.NoError(t, err)
+		require.Equal(t, domain.InventoryTransactionTypeRelease, txn.Type)
+
+		qty, reserved, available := readInventory(t, pool, id)
+		require.Equal(t, 100, qty)
+		require.Equal(t, 7, reserved)
+		require.Equal(t, 93, available, "the units are back on sale")
+	})
+
+	t.Run("counts two refunds against the same order and product", func(t *testing.T) {
+		id := productID(t, 100, 10)
+
+		_, err := repo.ReleaseRefundedStock(ctx, id, 2, "order_rr_two", "refund_a")
+		require.NoError(t, err)
+		_, err = repo.ReleaseRefundedStock(ctx, id, 2, "order_rr_two", "refund_b")
+		require.NoError(t, err)
+
+		_, reserved, _ := readInventory(t, pool, id)
+		require.Equal(t, 6, reserved)
+	})
+
+	t.Run("is idempotent per refund", func(t *testing.T) {
+		id := productID(t, 100, 10)
+
+		_, err := repo.ReleaseRefundedStock(ctx, id, 2, "order_rr_same", "refund_same")
+		require.NoError(t, err)
+		_, err = repo.ReleaseRefundedStock(ctx, id, 2, "order_rr_same", "refund_same")
+		require.NoError(t, err)
+
+		_, reserved, _ := readInventory(t, pool, id)
+		require.Equal(t, 8, reserved)
+	})
+
+	// The ledger still has to say which order the goods belonged to, or the
+	// history and the orphan-reservation pairing lose the thread.
+	t.Run("records the order as the reference, and the refund as the source", func(t *testing.T) {
+		id := productID(t, 100, 10)
+		_, err := repo.ReleaseRefundedStock(ctx, id, 1, "order_rr_ref", "refund_rr_ref")
+		require.NoError(t, err)
+
+		var refType, refID, sourceID string
+		require.NoError(t, pool.QueryRow(ctx,
+			`SELECT reference_type, reference_id, source_id FROM inventory_transactions
+			 WHERE product_id = $1`, id).Scan(&refType, &refID, &sourceID))
+		require.Equal(t, "ORDER", refType)
+		require.Equal(t, "order_rr_ref", refID)
+		require.Equal(t, "refund_rr_ref", sourceID)
+	})
+}
+
 // A write-off is a refunded line whose goods are gone: the reservation goes and
 // the stock goes with it. Same arithmetic as a dispatch, different meaning, and
 // the ledger has to say which.
@@ -480,7 +648,7 @@ func TestInventoryRepository_WriteOffStock(t *testing.T) {
 	t.Run("drops on hand and reserved together, leaving available alone", func(t *testing.T) {
 		productID := newProduct(t, 100, 10)
 
-		txn, err := repo.WriteOffStock(ctx, productID, 4, "order_wo")
+		txn, err := repo.WriteOffStock(ctx, productID, 4, "order_wo", "refund_wo")
 		require.NoError(t, err)
 		require.Equal(t, domain.InventoryTransactionTypeWriteOff, txn.Type)
 
@@ -493,7 +661,7 @@ func TestInventoryRepository_WriteOffStock(t *testing.T) {
 	t.Run("refuses to write off more than the order reserved", func(t *testing.T) {
 		productID := newProduct(t, 100, 2)
 
-		_, err := repo.WriteOffStock(ctx, productID, 5, "order_wo_over")
+		_, err := repo.WriteOffStock(ctx, productID, 5, "order_wo_over", "refund_over")
 		require.Error(t, err)
 
 		qty, reserved, _ := readInventory(t, pool, productID)
@@ -501,12 +669,12 @@ func TestInventoryRepository_WriteOffStock(t *testing.T) {
 		require.Equal(t, 2, reserved)
 	})
 
-	t.Run("is idempotent per order", func(t *testing.T) {
+	t.Run("is idempotent per refund", func(t *testing.T) {
 		productID := newProduct(t, 100, 10)
 
-		_, err := repo.WriteOffStock(ctx, productID, 3, "order_wo_twice")
+		_, err := repo.WriteOffStock(ctx, productID, 3, "order_wo_twice", "refund_twice")
 		require.NoError(t, err)
-		_, err = repo.WriteOffStock(ctx, productID, 3, "order_wo_twice")
+		_, err = repo.WriteOffStock(ctx, productID, 3, "order_wo_twice", "refund_twice")
 		require.NoError(t, err, "a replay must be a no-op, not an error")
 
 		qty, reserved, _ := readInventory(t, pool, productID)
@@ -514,11 +682,41 @@ func TestInventoryRepository_WriteOffStock(t *testing.T) {
 		require.Equal(t, 7, reserved)
 	})
 
+	// An order can be refunded line by line over days. Keying the movement on
+	// the order alone deduped the second refund into the first: the money went
+	// back and the stock never moved.
+	t.Run("moves stock for a second refund against the same order and product", func(t *testing.T) {
+		productID := newProduct(t, 100, 10)
+
+		_, err := repo.WriteOffStock(ctx, productID, 1, "order_wo_two", "refund_one")
+		require.NoError(t, err)
+		_, err = repo.WriteOffStock(ctx, productID, 1, "order_wo_two", "refund_two")
+		require.NoError(t, err)
+
+		qty, reserved, _ := readInventory(t, pool, productID)
+		require.Equal(t, 98, qty, "both refunds have to move stock")
+		require.Equal(t, 8, reserved)
+	})
+
+	// The order lifecycle still gets one movement of each type per product: an
+	// order reserves once, dispatches once, releases once.
+	t.Run("leaves the order-scoped guard intact", func(t *testing.T) {
+		productID := newProduct(t, 100, 10)
+
+		_, err := repo.ReleaseStock(ctx, productID, 2, "order_wo_guard")
+		require.NoError(t, err)
+		_, err = repo.ReleaseStock(ctx, productID, 2, "order_wo_guard")
+		require.NoError(t, err, "a replayed release must still be a no-op")
+
+		_, reserved, _ := readInventory(t, pool, productID)
+		require.Equal(t, 8, reserved)
+	})
+
 	// A dispatch and a write-off move the same numbers, so only the type tells
 	// an auditor what happened to the goods.
 	t.Run("records itself as a write-off, not a dispatch", func(t *testing.T) {
 		productID := newProduct(t, 100, 10)
-		_, err := repo.WriteOffStock(ctx, productID, 2, "order_wo_type")
+		_, err := repo.WriteOffStock(ctx, productID, 2, "order_wo_type", "refund_type")
 		require.NoError(t, err)
 
 		var typ string

@@ -138,11 +138,11 @@ func (s *RefundService) applyInventoryEffect(ctx context.Context, order *domain.
 		var err error
 		if item.Restock {
 			// Back on sale: the reservation is released and nothing else moves.
-			_, err = s.inventoryRepo.ReleaseStock(ctx, item.ProductID, item.Quantity, order.ID)
+			_, err = s.inventoryRepo.ReleaseRefundedStock(ctx, item.ProductID, item.Quantity, order.ID, refund.ID)
 		} else {
 			// Written off: the goods are not there, so the reservation goes and
 			// on-hand falls with it.
-			_, err = s.inventoryRepo.WriteOffStock(ctx, item.ProductID, item.Quantity, order.ID)
+			_, err = s.inventoryRepo.WriteOffStock(ctx, item.ProductID, item.Quantity, order.ID, refund.ID)
 		}
 		if err != nil {
 			slog.ErrorContext(ctx, "Failed to move stock for refund",

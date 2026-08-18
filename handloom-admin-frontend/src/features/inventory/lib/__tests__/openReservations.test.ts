@@ -33,6 +33,14 @@ describe('openReservationIDs', () => {
     expect(openReservationIDs(rows).size).toBe(0);
   });
 
+  // A refunded line's goods are written off, not dispatched and not released.
+  // Leaving WRITE_OFF out flagged every fully refunded order as stock stuck in
+  // limbo — false alarms in the one report that exists to be believed.
+  it('clears a reservation the same order wrote off', () => {
+    const rows = [row('RESERVE', 'order_1'), row('WRITE_OFF', 'order_1')];
+    expect(openReservationIDs(rows).size).toBe(0);
+  });
+
   it('clears a reservation the same order released', () => {
     const rows = [row('RESERVE', 'order_1'), row('RELEASE', 'order_1')];
     expect(openReservationIDs(rows).size).toBe(0);

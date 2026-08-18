@@ -118,7 +118,9 @@ func TestRefundService_Create(t *testing.T) {
 				return nil
 			})
 		h.refunds.EXPECT().SetProviderRefundID(gomock.Any(), gomock.Any(), "OMR1").Return(nil)
-		h.inventory.EXPECT().WriteOffStock(gomock.Any(), "prod_a", 1, "order_1").
+		// The refund id, not just the order: two refunds against one order have to
+		// move stock twice.
+		h.inventory.EXPECT().WriteOffStock(gomock.Any(), "prod_a", 1, "order_1", gomock.Not("")).
 			Return(&domain.InventoryTransaction{}, nil)
 
 		refund, err := h.svc.Create(ctx, "order_1", oneLine(1, false), "admin_1")
@@ -149,7 +151,7 @@ func TestRefundService_Create(t *testing.T) {
 		h.payments.EXPECT().GetByOrderID(gomock.Any(), "order_1").Return(paidPayment(), nil)
 		h.refunds.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
 		h.refunds.EXPECT().SetProviderRefundID(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-		h.inventory.EXPECT().ReleaseStock(gomock.Any(), "prod_a", 1, "order_1").
+		h.inventory.EXPECT().ReleaseRefundedStock(gomock.Any(), "prod_a", 1, "order_1", gomock.Not("")).
 			Return(&domain.InventoryTransaction{}, nil)
 
 		_, err := h.svc.Create(ctx, "order_1", oneLine(1, true), "admin_1")

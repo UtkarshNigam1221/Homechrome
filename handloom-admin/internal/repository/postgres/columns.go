@@ -78,6 +78,7 @@ const (
 	ColReason        = "reason"
 	ColReferenceType = "reference_type"
 	ColReferenceID   = "reference_id"
+	ColSourceID      = "source_id"
 )
 
 // Column lists for SELECT queries. Each slice matches the db struct tag order

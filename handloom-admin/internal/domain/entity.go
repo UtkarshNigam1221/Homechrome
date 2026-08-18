@@ -688,6 +688,11 @@ type InventoryTransaction struct {
 	ReferenceType string                   `json:"reference_type,omitempty" db:"reference_type"`
 	ReferenceID   string                   `json:"reference_id,omitempty" db:"reference_id"`
 
+	// SourceID names what caused the movement when that is not the order itself
+	// — today, the refund. It is what a refund's idempotency keys on, since an
+	// order can be refunded line by line and each refund must count once.
+	SourceID string `json:"source_id,omitempty" db:"source_id"`
+
 	CreatedAt time.Time `json:"created_at" db:"created_at"`
 	CreatedBy string    `json:"created_by" db:"created_by"`
 
