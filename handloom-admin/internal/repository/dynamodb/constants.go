@@ -13,13 +13,11 @@ const (
 	attrStatus = "status"
 	attrTTL    = "ttl"
 
-	// nameTTL aliases attrTTL inside expressions. ttl is not reserved, but the
-	// alias keeps every TTL expression written the same way.
+	// nameTTL aliases attrTTL inside expressions.
 	nameTTL = "#ttl"
 
-	// attrSuccessorHash marks a refresh-token row as rotated and names the
-	// token that replaced it. Its presence is the condition that lets exactly
-	// one of several concurrent refreshes claim the rotation.
+	// attrSuccessorHash names the token that replaced this one. Its presence is
+	// the condition that lets one concurrent refresh claim the rotation.
 	attrSuccessorHash = "successor_hash"
 
 	// nameSuccessor aliases attrSuccessorHash inside expressions.

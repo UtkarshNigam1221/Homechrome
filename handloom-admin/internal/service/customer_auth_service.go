@@ -39,9 +39,8 @@ const (
 	// validates the JWT's exp claim before it ever consults the store, so
 	// bumping the DB TTL on a nearly-expired token is inert.
 	//
-	// Note for anyone adding token-reuse detection later: the rotated row
-	// already carries its successor's hash, so a presentation after the
-	// window has lapsed is the signal to alarm on.
+	// For token-reuse detection later: the rotated row carries its successor's
+	// hash, so a presentation after the window lapses is the signal to alarm on.
 	refreshGracePeriod = 30 * time.Second
 
 	// JWT standard claim keys (RFC 7519).
@@ -232,11 +231,8 @@ func (s *CustomerAuthService) RefreshToken(ctx context.Context, refreshToken str
 		return nil, nil, err
 	}
 
-	// Claim the rotation before storing the successor. The claim also puts the
-	// presented token on the grace window instead of deleting it, so an
-	// overlapping refresh still validates; ValidateToken treats ttl < now as
-	// invalid, so expiry is exact regardless of when DynamoDB's TTL sweeper
-	// reaches the row.
+	// Claim before storing the successor. This also puts the presented token on
+	// the grace window instead of deleting it, so an overlapping refresh validates.
 	graceTTL := time.Now().Add(refreshGracePeriod).Unix()
 	claimed, err := s.tokenStore.ClaimRotation(ctx, customerID, oldHash, hashSHA256(tokens.RefreshToken), graceTTL)
 	if err != nil {
@@ -244,14 +240,8 @@ func (s *CustomerAuthService) RefreshToken(ctx context.Context, refreshToken str
 	}
 
 	if !claimed {
-		// Another refresh rotated this token first, and its successor is what
-		// the customer's cookie now holds. Storing the pair minted above would
-		// leave a second full-life refresh token that nobody holds: it never
-		// reaches the cookie jar, and Logout's grace-cutoff sweep only reaches
-		// short-TTL rows, so it would stay usable for the full refresh
-		// lifetime after the customer logged out. An access token alone keeps
-		// the straggler's request working and leaves the winner's refresh
-		// cookie untouched.
+		// Storing the pair minted above would orphan a full-life token nobody holds
+		// and Logout's grace-cutoff sweep never reaches. Access token only.
 		access, err := s.generateAccessToken(customer)
 		if err != nil {
 			return nil, nil, err
@@ -431,9 +421,8 @@ func (s *CustomerAuthService) signAccessToken(customer *domain.Customer) (string
 	return accessTokenString, accessExpiry, nil
 }
 
-// generateAccessToken mints an access token and no refresh token. Used on the
-// grace-window straggler path, where handing back a refresh token would create
-// a credential nobody holds and logout cannot reach.
+// generateAccessToken mints an access token and no refresh token, for the
+// grace-window straggler path.
 func (s *CustomerAuthService) generateAccessToken(customer *domain.Customer) (*domain.TokenPair, error) {
 	accessTokenString, accessExpiry, err := s.signAccessToken(customer)
 	if err != nil {

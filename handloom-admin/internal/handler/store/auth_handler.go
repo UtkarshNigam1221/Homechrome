@@ -51,8 +51,7 @@ func (h *AuthHandler) Routes(authenticate func(http.Handler) http.Handler) chi.R
 	return r
 }
 
-// Cookie names the store's auth flow reads and writes. The refresh cookie is
-// also cleared by name on logout, so a rename has to happen in one place.
+// Cookie names the store's auth flow reads, writes, and clears by name.
 const (
 	cookieStoreToken   = "store_token"
 	cookieStoreRefresh = "store_refresh"
@@ -75,9 +74,8 @@ func (h *AuthHandler) setStoreCookies(w http.ResponseWriter, tokens *domain.Toke
 		MaxAge:   int(15 * time.Minute / time.Second),
 	})
 
-	// A grace-window straggler is answered with an access token and no refresh
-	// token: the refresh that won the rotation already set the current one, and
-	// writing an empty value here would delete it.
+	// A grace-window straggler gets no refresh token; writing an empty value
+	// here would delete the cookie the rotation winner just set.
 	if tokens.RefreshToken == "" {
 		return
 	}

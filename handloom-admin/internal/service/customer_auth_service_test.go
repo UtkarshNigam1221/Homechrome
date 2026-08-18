@@ -15,24 +15,20 @@ import (
 	"github.com/handloom/admin/pkg/errors"
 )
 
-// fakeCustomerTokenStore mimics the DynamoDB store's semantics — rows keyed by
-// (customerID, tokenHash), TTL compared against wall clock — so rotation can be
+// fakeCustomerTokenStore mimics the DynamoDB store's semantics so rotation is
 // exercised for real instead of asserted against call expectations.
 type fakeCustomerTokenStore struct {
 	ttls map[string]int64 // customerID#tokenHash -> unix expiry
 
-	// successors mirrors the successor_hash attribute the real store writes
-	// when it claims a rotation. Its presence is what makes ClaimRotation
+	// successors mirrors successor_hash: its presence is what makes ClaimRotation
 	// succeed for exactly one of several concurrent refreshes.
 	successors map[string]string // customerID#tokenHash -> successor token hash
 
-	// onClaim fires at the top of ClaimRotation so a test can interleave
-	// another operation between validation and the claim.
+	// onClaim lets a test interleave an operation between validation and the claim.
 	onClaim func()
 
-	// validateErr stands in for a throttled or timed-out GetItem. The real
-	// store returns (false, wrapped-err) there, and callers must not read
-	// that as "token revoked".
+	// validateErr stands in for a throttled GetItem; callers must not read the
+	// resulting (false, err) as "token revoked".
 	validateErr error
 }
 
@@ -133,13 +129,8 @@ func newCustomerAuthServiceForTest(t *testing.T) (*CustomerAuthService, *fakeCus
 	return svc, store, customer
 }
 
-// A browser fires several authenticated requests at once; each 401s on the same
-// expired access token and refreshes with the same refresh token. Rotation used
-// to delete the old token immediately, so every straggler got "revoked" — and
-// the handler clears both auth cookies on that path, logging the customer out.
-// The straggler arrives after the winner has already rotated, which is what
-// this models; DynamoDB serializes per-item, so the interesting ordering is
-// sequential rather than genuinely simultaneous.
+// Rotation used to delete the old token at once, so every straggler got
+// "revoked" — and the handler cleared both cookies on that path.
 func TestCustomerAuthService_RefreshToken_RotatedTokenValidInGraceWindow(t *testing.T) {
 	svc, store, customer := newCustomerAuthServiceForTest(t)
 	ctx := context.Background()
@@ -203,10 +194,8 @@ func TestCustomerAuthService_Logout_RevokesImmediately(t *testing.T) {
 	require.Error(t, err)
 }
 
-// Logout must also kill the predecessor left alive by a recent rotation. The
-// caller only ever holds the successor, so revoking just that would leave a
-// working refresh token behind for the rest of the grace window — after the
-// customer explicitly asked to be logged out.
+// The caller only holds the successor, so revoking just that would leave the
+// predecessor working for the rest of the grace window after logout.
 func TestCustomerAuthService_Logout_RevokesGracePredecessor(t *testing.T) {
 	svc, store, customer := newCustomerAuthServiceForTest(t)
 	ctx := context.Background()
@@ -227,9 +216,8 @@ func TestCustomerAuthService_Logout_RevokesGracePredecessor(t *testing.T) {
 	require.Error(t, err, "the pre-rotation token must not outlive logout")
 }
 
-// Logging out on one device must not end a session on another. A live
-// session's TTL is the full 7-day refresh lifetime — far past the grace
-// cutoff — so the sweep in Logout must leave it alone.
+// A live session's TTL is the full 7-day lifetime, far past the grace cutoff,
+// so Logout's sweep must leave another device alone.
 func TestCustomerAuthService_Logout_LeavesOtherDeviceSessionIntact(t *testing.T) {
 	svc, _, customer := newCustomerAuthServiceForTest(t)
 	ctx := context.Background()
@@ -251,9 +239,8 @@ func TestCustomerAuthService_Logout_LeavesOtherDeviceSessionIntact(t *testing.T)
 	require.NoError(t, err, "an unrelated device's live session must survive another device's logout")
 }
 
-// A throttled or timed-out token lookup must surface as an infrastructure
-// error, not as a revocation. The handler clears both auth cookies on terminal
-// auth codes, so misclassifying here ends the session over a transient blip.
+// A throttled lookup must surface as infrastructure error, not revocation: the
+// handler clears both cookies on terminal auth codes.
 func TestCustomerAuthService_RefreshToken_StoreErrorIsNotRevocation(t *testing.T) {
 	svc, store, customer := newCustomerAuthServiceForTest(t)
 	ctx := context.Background()
@@ -279,11 +266,8 @@ func TestCustomerAuthService_RefreshToken_StoreErrorIsNotRevocation(t *testing.T
 	require.NoError(t, err)
 }
 
-// A grace-window straggler must not be handed a refresh token of its own. Two
-// tabs racing on the same pre-rotation token both pass validation; if both mint
-// and store a full-life refresh token, only one can land in the cookie jar and
-// the other is an orphan — valid for the full 7-day refresh lifetime, held by
-// nobody, and out of reach of the grace-cutoff sweep Logout uses.
+// If both racing tabs mint and store a full-life token, only one reaches the
+// cookie jar; the other is an orphan the grace-cutoff sweep never reaches.
 func TestCustomerAuthService_RefreshToken_StragglerMintsNoRivalRefreshToken(t *testing.T) {
 	svc, store, customer := newCustomerAuthServiceForTest(t)
 	ctx := context.Background()
@@ -308,9 +292,8 @@ func TestCustomerAuthService_RefreshToken_StragglerMintsNoRivalRefreshToken(t *t
 	require.Contains(t, store.ttls, rowKey(customer.ID, hashSHA256(original.RefreshToken)))
 }
 
-// Logout sweeps the grace predecessor by TTL cutoff, which by design never
-// reaches a full-life token. A rival minted during a racing refresh is
-// full-life, so it would outlive the logout by the whole refresh lifetime.
+// The TTL cutoff never reaches a full-life token, so a rival minted during a
+// racing refresh would outlive the logout by the whole refresh lifetime.
 func TestCustomerAuthService_Logout_LeavesNothingAfterRacingRefresh(t *testing.T) {
 	svc, store, customer := newCustomerAuthServiceForTest(t)
 	ctx := context.Background()
@@ -332,8 +315,7 @@ func TestCustomerAuthService_Logout_LeavesNothingAfterRacingRefresh(t *testing.T
 	require.Empty(t, store.ttls, "logout must leave nothing usable, including a rival from a racing refresh")
 }
 
-// A logout landing between validation and the claim must not be papered over.
-// Treating the vanished row as "someone else rotated it" would mint an access
+// Treating a vanished row as "someone else rotated it" would mint an access
 // token for a session the customer just ended.
 func TestCustomerAuthService_RefreshToken_RevokedDuringClaimIsRejected(t *testing.T) {
 	svc, store, customer := newCustomerAuthServiceForTest(t)

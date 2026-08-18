@@ -42,15 +42,8 @@ type CustomerTokenStore interface {
 	ValidateToken(ctx context.Context, customerID, tokenHash string) (bool, error)
 	RevokeToken(ctx context.Context, customerID, tokenHash string) error
 	RevokeAllTokens(ctx context.Context, customerID string) error
-	// ClaimRotation records successorHash against the customer's token row and
-	// shortens that row's TTL to graceTTL. The write is conditional on no
-	// successor having been recorded yet, so of several refreshes presenting
-	// the same token exactly one claims the rotation.
-	//
-	// Reports claimed=false when another refresh got there first: the caller is
-	// a grace-window straggler and must not mint a rival credential. Returns an
-	// ErrCodeInvalidToken error when the row is gone — revoked or logged out
-	// between validation and the claim.
+	// Records successorHash and shortens the row's TTL, conditional on no successor:
+	// one concurrent refresh wins. claimed=false lost; ErrCodeInvalidToken row gone.
 	ClaimRotation(ctx context.Context, customerID, tokenHash, successorHash string, graceTTL int64) (claimed bool, err error)
 
 	// RevokeTokensExpiringBefore deletes every one of the customer's tokens

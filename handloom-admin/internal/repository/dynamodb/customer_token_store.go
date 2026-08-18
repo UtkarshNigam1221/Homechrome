@@ -75,10 +75,8 @@ func (s *CustomerTokenStore) ValidateToken(ctx context.Context, customerID, toke
 	return true, nil
 }
 
-// ClaimRotation implements domain.CustomerTokenStore. The conditional update is
-// what serializes concurrent refreshes: DynamoDB evaluates the condition and
-// applies the write as one atomic operation per item, so the second refresh to
-// arrive finds successor_hash already set and loses the claim.
+// ClaimRotation implements domain.CustomerTokenStore. DynamoDB applies condition
+// and write atomically per item, so the second refresh to arrive loses the claim.
 func (s *CustomerTokenStore) ClaimRotation(ctx context.Context, customerID, tokenHash, successorHash string, graceTTL int64) (bool, error) {
 	_, err := s.client.db.UpdateItem(ctx, &dynamodb.UpdateItemInput{
 		TableName: aws.String(s.client.sessionsTable),
@@ -96,9 +94,8 @@ func (s *CustomerTokenStore) ClaimRotation(ctx context.Context, customerID, toke
 			":successor": &types.AttributeValueMemberS{Value: successorHash},
 			":ttl":       &types.AttributeValueMemberN{Value: strconv.FormatInt(graceTTL, 10)},
 		},
-		// Returning the offending item is what separates the two ways the
-		// condition can fail: a row that is present was already rotated, a row
-		// that is absent was revoked.
+		// Splits the two failure modes: item present = already rotated,
+		// item absent = revoked.
 		ReturnValuesOnConditionCheckFailure: types.ReturnValuesOnConditionCheckFailureAllOld,
 	})
 	if err != nil {

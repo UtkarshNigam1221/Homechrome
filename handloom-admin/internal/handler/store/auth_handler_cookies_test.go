@@ -20,10 +20,8 @@ func refreshCookieValue(t *testing.T, rec *httptest.ResponseRecorder) (string, b
 	return "", false
 }
 
-// A grace-window straggler is answered with an access token and no refresh
-// token. Writing that empty value to store_refresh would wipe the cookie the
-// refresh that won the rotation just set, logging the customer out through the
-// very race the grace window exists to survive.
+// Writing the straggler's empty refresh token would wipe the cookie the
+// rotation winner just set — the very logout the grace window exists to stop.
 func TestSetStoreCookies_LeavesRefreshCookieAloneWhenNoRefreshTokenIssued(t *testing.T) {
 	h := &AuthHandler{}
 	rec := httptest.NewRecorder()
