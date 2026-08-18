@@ -181,8 +181,10 @@ export function InventoryLedgerModal({ isOpen, onClose, product }: InventoryLedg
                     ) : (
                       <div>
                         <p className="text-sm text-gray-700">{row.reason || '—'}</p>
-                        {row.created_by && (
-                          <p className="text-xs text-gray-500">{row.created_by}</p>
+                        {(row.created_by_name || row.created_by) && (
+                          <p className="text-xs text-gray-500">
+                            {row.created_by_name || row.created_by}
+                          </p>
                         )}
                       </div>
                     )}

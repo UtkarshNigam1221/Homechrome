@@ -669,6 +669,11 @@ type InventoryTransaction struct {
 
 	CreatedAt time.Time `json:"created_at" db:"created_at"`
 	CreatedBy string    `json:"created_by" db:"created_by"`
+
+	// CreatedByName is resolved when the ledger is read, not stored: created_by
+	// holds an opaque user id, which is no use to someone reading the history.
+	// Empty for order-driven movements, which have no admin behind them.
+	CreatedByName string `json:"created_by_name,omitempty" db:"-"`
 }
 
 // ==================== OTP ENTITY ====================
