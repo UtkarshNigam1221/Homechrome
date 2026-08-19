@@ -230,7 +230,7 @@ func (h *OrderHandler) ListRefunds(w http.ResponseWriter, r *http.Request) {
 func (h *OrderHandler) RecheckRefund(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	refund, err := h.refundService.RecheckStatus(ctx, chi.URLParam(r, "refundID"))
+	refund, err := h.refundService.RecheckStatus(ctx, chi.URLParam(r, "id"), chi.URLParam(r, "refundID"))
 	if err != nil {
 		response.Error(w, err)
 		return

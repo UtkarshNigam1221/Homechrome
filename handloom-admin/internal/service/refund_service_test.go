@@ -364,7 +364,7 @@ func TestRefundService_RecheckStatus(t *testing.T) {
 		h.payments.EXPECT().UpdateStatus(gomock.Any(), "pay_1", gomock.Any(), gomock.Any()).Return(nil)
 		h.refunds.EXPECT().GetByID(gomock.Any(), "refund_1").Return(refund, nil)
 
-		_, err := h.svc.RecheckStatus(ctx, "refund_1")
+		_, err := h.svc.RecheckStatus(ctx, "order_1", "refund_1")
 		require.NoError(t, err)
 	})
 
@@ -374,11 +374,11 @@ func TestRefundService_RecheckStatus(t *testing.T) {
 			RefundID: "OMR1", State: phonepe.RefundStatePending,
 		}
 		h.refunds.EXPECT().GetByID(gomock.Any(), "refund_1").Return(&domain.Refund{
-			ID: "refund_1", Status: domain.RefundStatusPending,
+			ID: "refund_1", OrderID: "order_1", Status: domain.RefundStatusPending,
 			MerchantRefundID: "mref_1", ProviderRefundID: "OMR1",
 		}, nil)
 
-		got, err := h.svc.RecheckStatus(ctx, "refund_1")
+		got, err := h.svc.RecheckStatus(ctx, "order_1", "refund_1")
 		require.NoError(t, err)
 		require.Equal(t, domain.RefundStatusPending, got.Status)
 	})
@@ -387,10 +387,10 @@ func TestRefundService_RecheckStatus(t *testing.T) {
 		h := newRefundHarness(t)
 		h.gateway.statusErr = stderrors.New("should not be called")
 		h.refunds.EXPECT().GetByID(gomock.Any(), "refund_1").Return(&domain.Refund{
-			ID: "refund_1", Status: domain.RefundStatusCompleted,
+			ID: "refund_1", OrderID: "order_1", Status: domain.RefundStatusCompleted,
 		}, nil)
 
-		got, err := h.svc.RecheckStatus(ctx, "refund_1")
+		got, err := h.svc.RecheckStatus(ctx, "order_1", "refund_1")
 		require.NoError(t, err)
 		require.Equal(t, domain.RefundStatusCompleted, got.Status)
 	})
@@ -619,5 +619,38 @@ func TestRefundService_AuditAndNotify(t *testing.T) {
 		require.NoError(t, h.svc.HandleRefundFailed(ctx, "OMR1", "E", "D"))
 
 		require.Zero(t, h.notifier.calls)
+	})
+}
+
+// The re-check route is nested under an order, so the refund it names has to be
+// that order's. Otherwise any refund is reachable through any order's URL.
+func TestRefundService_RecheckStatus_ChecksTheOrder(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("refuses a refund belonging to another order", func(t *testing.T) {
+		h := newRefundHarness(t)
+		h.refunds.EXPECT().GetByID(gomock.Any(), "refund_1").
+			Return(&domain.Refund{ID: "refund_1", OrderID: "order_other",
+				Status: domain.RefundStatusPending, MerchantRefundID: "mref_1"}, nil)
+		// No gateway call: the mismatch is caught before the provider is asked.
+
+		_, err := h.svc.RecheckStatus(ctx, "order_1", "refund_1")
+
+		require.Error(t, err)
+	})
+
+	t.Run("re-checks a refund that does belong to the order", func(t *testing.T) {
+		h := newRefundHarness(t)
+		h.gateway.statusResp = &phonepe.RefundStatusResponse{
+			RefundID: "OMR1", State: phonepe.RefundStatePending,
+		}
+		h.refunds.EXPECT().GetByID(gomock.Any(), "refund_1").
+			Return(&domain.Refund{ID: "refund_1", OrderID: "order_1", ProviderRefundID: "OMR1",
+				Status: domain.RefundStatusPending, MerchantRefundID: "mref_1"}, nil)
+
+		got, err := h.svc.RecheckStatus(ctx, "order_1", "refund_1")
+
+		require.NoError(t, err)
+		require.Equal(t, "refund_1", got.ID)
 	})
 }

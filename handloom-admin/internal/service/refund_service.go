@@ -287,10 +287,15 @@ func (s *RefundService) HandleRefundFailed(ctx context.Context, providerRefundID
 
 // RecheckStatus asks the provider directly and applies what it says. Keys on our
 // merchant refund id, so it works even when no provider id was ever stored.
-func (s *RefundService) RecheckStatus(ctx context.Context, refundID string) (*domain.Refund, error) {
+func (s *RefundService) RecheckStatus(ctx context.Context, orderID, refundID string) (*domain.Refund, error) {
 	refund, err := s.refundRepo.GetByID(ctx, refundID)
 	if err != nil {
 		return nil, err
+	}
+	if refund.OrderID != orderID {
+		// The route nests the refund under an order; honor that rather than
+		// letting any refund be re-checked through any order's URL.
+		return nil, errors.NotFound("Refund not found on this order")
 	}
 	if refund.IsTerminal() {
 		return refund, nil

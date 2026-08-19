@@ -171,5 +171,8 @@ type RefundService interface {
 
 	// RecheckStatus asks the provider directly: the escape hatch for a webhook that
 	// never came, and the only recovery when no provider id was ever stored.
-	RecheckStatus(ctx context.Context, refundID string) (*Refund, error)
+	//
+	// orderID is the one in the route: the refund must belong to it, or any refund
+	// would be reachable through any order's URL.
+	RecheckStatus(ctx context.Context, orderID, refundID string) (*Refund, error)
 }

@@ -37,6 +37,10 @@ export const ALLOWED_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
 };
 export type PaymentStatus =
   | 'PENDING'
+  // Written by the gateway path, not the checkout one — the union has to carry
+  // them or a status test against them only typechecks by widening to string.
+  | 'INITIATED'
+  | 'SUCCESS'
   | 'PAID'
   | 'FAILED'
   | 'REFUNDED'

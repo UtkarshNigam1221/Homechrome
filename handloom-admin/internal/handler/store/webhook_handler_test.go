@@ -28,7 +28,7 @@ func (r *recordingRefundService) Create(context.Context, string, domain.CreateRe
 func (r *recordingRefundService) ListByOrder(context.Context, string) ([]*domain.Refund, error) {
 	return nil, nil
 }
-func (r *recordingRefundService) RecheckStatus(context.Context, string) (*domain.Refund, error) {
+func (r *recordingRefundService) RecheckStatus(context.Context, string, string) (*domain.Refund, error) {
 	return nil, nil
 }
 
