@@ -48,7 +48,7 @@ concurrency:
 jobs:
   deploy:
     name: Deploy Embedder
-    runs-on: ${{ vars.ACTIONS_RUNNER || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: handloom-admin
