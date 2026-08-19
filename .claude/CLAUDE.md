@@ -138,17 +138,17 @@ domain/ (entities + interfaces) ← handler/ → service/ → repository/{dynamo
 **Env promotion flow**:
 1. Develop + test locally with `make setup-local` and `npm run dev`
 2. Commit to a branch (e.g., `fix/feature-name`)
-3. Create PR with full test plan; wait for CI (GitHub Actions) to pass
-4. Merge to `main`
-5. CI auto-deploys `main` to **dev** via `cdk deploy` (see `.github/workflows/deploy-*.yml`)
-6. Manual prod deployment: merge `main` to `prod` branch OR trigger `cdk deploy` for prod manually with `--context env=prod`
+3. Create PR with full test plan; wait for CI (GitHub Actions) to pass — `ci.yml` runs on `pull_request` only
+4. Deploy to **dev** by dispatching `Deploy Backend` (or `Deploy All`) with `environment: dev`. **Nothing deploys on merge** — every deploy workflow is `workflow_dispatch`, so `dev` can be deployed from any ref, including the PR branch, before merging
+5. Merge to `main`
+6. Deploy to **prod** by dispatching the same workflow with `environment: prod`. That path is guarded to `main` (`deploy-backend.yml`), and prod-writing workflows additionally sit behind the `production` environment
 
 **Secrets management**:
 - **Local dev**: `.env.local*` files (in `.gitignore`), sourced by `make setup-local`
 - **CI/CD**: GitHub Secrets injected as env vars, then passed to CDK via `.env.{env}` files
 - **Lambda (prod)**: Secrets fetched from AWS SSM at runtime (e.g., `/handloom/prod/jwt-secret`); no secrets in CDK output or Lambda environment
 
-**Database**: Separate DynamoDB + PostgreSQL instances per env (prefixed with env name: `handloom-core-dev` vs `handloom-core-prod`). Prod uses Neon PostgreSQL; dev uses local Docker.
+**Database**: Separate DynamoDB + PostgreSQL instances per env (DynamoDB tables prefixed with the env name: `handloom-core-dev` vs `handloom-core-prod`). **Both deployed environments use Neon PostgreSQL** — the `Catalog` project for dev and `Catalog-Prod` for prod. Only local development uses Docker Postgres, via `make setup-local`.
 
 **Cross-env considerations**: Prod API URL is hardcoded in admin frontend for AWS dev deployment but points to dev backend. To test prod backend from admin frontend locally, manually set `VITE_API_URL=https://api.homechrome.in` in `.env.local-backend`.
 
