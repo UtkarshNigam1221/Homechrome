@@ -87,6 +87,9 @@ export interface Order {
   tracking_url?: string;
   internal_notes?: OrderNote[];
   coupon_code?: string;
+  // What the payment says has actually gone back. Authoritative — a client
+  // summing its own refund rows can drift from it if a settlement half completed.
+  refunded_amount?: number;
   created_at: string;
   updated_at: string;
 }

@@ -33,7 +33,7 @@ describe('previewRefund', () => {
 
     expect(got.total).toBe(10000);
     expect(got.isFinal).toBe(false);
-    expect(got.lines).toEqual([{ orderItemId: 'a', amount: 10000 }]);
+    expect(got.lines).toEqual([{ orderItemId: 'a', quantity: 1, amount: 10000 }]);
   });
 
   it('keeps the shipping while a unit still ships', () => {
@@ -101,10 +101,34 @@ describe('previewRefund', () => {
     expect(got.total).toBe(subject.total_amount - 10000);
   });
 
-  it('clamps a selection to what the line has left', () => {
+  // The clamped figure is what gets priced, so it is also what has to be sent —
+  // submitting the raw input would post a quantity the preview never costed.
+  it('reports the clamped quantity it actually priced', () => {
     const got = previewRefund(order(0, 0, 0, line('a', 10000, 2, 1)), { a: 5 }, 10000);
 
-    expect(got.lines).toEqual([{ orderItemId: 'a', amount: 10000 }]);
+    expect(got.lines).toEqual([{ orderItemId: 'a', quantity: 1, amount: 10000 }]);
+  });
+
+  // claims and priorRefunded have to describe the same set of refunds. Passing
+  // in-flight units while counting only settled money would price the clearing
+  // refund at the whole order.
+  it('subtracts units an unsettled refund already claims', () => {
+    const subject = order(0, 0, 0, line('a', 10000, 3));
+
+    const got = previewRefund(subject, { a: 3 }, 20000, { a: 2 });
+
+    expect(got.lines).toEqual([{ orderItemId: 'a', quantity: 1, amount: 10000 }]);
+    expect(got.isFinal).toBe(true);
+    expect(got.total).toBe(10000, 'only the unclaimed unit is left to send back');
+  });
+
+  // Money is integer paise on both sides. JS doubles lose the last digits where
+  // Go's int64 does not, and the admin authorises what this returns.
+  it('stays exact where a double would not', () => {
+    const got = previewRefund(order(2500000, 0, 0, line('a', 626862991, 1)), { a: 1 }, 0);
+
+    expect(Number.isSafeInteger(got.total)).toBe(true);
+    expect(got.total).toBe(626862991 - 2500000);
   });
 
   it('ignores a line the order does not have', () => {
@@ -121,5 +145,49 @@ describe('unrefundedQuantity', () => {
 
   it('never goes below zero', () => {
     expect(unrefundedQuantity(line('a', 10000, 1, 4))).toBe(0);
+  });
+
+  it('counts units a refund still in flight has claimed', () => {
+    expect(unrefundedQuantity(line('a', 10000, 3, 1), { a: 2 })).toBe(1);
+  });
+
+  it('takes whichever claim is larger, settled or in flight', () => {
+    expect(unrefundedQuantity(line('a', 10000, 3, 2), { a: 1 })).toBe(1);
+  });
+});
+
+// The design asks for the terms, not just the total: a ₹10,000 line refunding
+// ₹9,000 gives the admin no way to see the ₹1,000 is a discount share, not an
+// error.
+describe('previewRefund breakdown', () => {
+  it('separates the line value from its prorated discount', () => {
+    const got = previewRefund(
+      order(3000, 0, 0, line('a', 10000, 1), line('b', 20000, 1)),
+      { a: 1 },
+      0
+    );
+
+    expect(got.breakdown.lineValue).toBe(10000);
+    expect(got.breakdown.discount).toBe(1000);
+    expect(got.breakdown.tax).toBe(0);
+    expect(got.breakdown.shipping).toBe(0);
+  });
+
+  it('shows the shipping only on the refund that clears the order', () => {
+    const subject = order(0, 0, 5000, line('a', 10000, 2));
+
+    expect(previewRefund(subject, { a: 1 }, 0).breakdown.shipping).toBe(0);
+    expect(previewRefund(subject, { a: 2 }, 0).breakdown.shipping).toBe(5000);
+  });
+
+  it('adds up to the total it reports', () => {
+    const got = previewRefund(
+      order(3000, 7000, 5000, line('a', 10000, 2), line('b', 20000, 1)),
+      { a: 2, b: 1 },
+      0
+    );
+    const { lineValue, discount, tax, shipping } = got.breakdown;
+
+    expect(lineValue - discount + tax + shipping).toBe(got.total);
   });
 });

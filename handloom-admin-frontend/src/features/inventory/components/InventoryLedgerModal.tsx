@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { ExternalLink } from 'lucide-react';
-import { useEffect, useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import {
@@ -72,11 +72,13 @@ export function InventoryLedgerModal({ isOpen, onClose, product }: InventoryLedg
 
   const productID = product?.id ?? '';
 
-  // The modal stays mounted between openings, so paging state outlives it: open
-  // one product at page 3, then another, and you land in the middle of its history.
-  useEffect(() => {
-    if (isOpen) resetPagination();
-  }, [isOpen, productID, resetPagination]);
+  // The modal stays mounted, so the cursor outlives it — and it is an OFFSET, not a
+  // key. Without this, opening a second product lands mid-history.
+  const [pagedProduct, setPagedProduct] = useState(productID);
+  if (productID !== pagedProduct) {
+    setPagedProduct(productID);
+    resetPagination();
+  }
 
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['inventory-transactions', productID, { limit, cursor }],
@@ -94,9 +96,10 @@ export function InventoryLedgerModal({ isOpen, onClose, product }: InventoryLedg
       balancesAfter(
         rows,
         { onHand: product?.quantity ?? 0, reserved: product?.reserved_qty ?? 0 },
-        cursor === undefined
+        // Only the newest page starts from the product's current levels.
+        !hasPrevious && !cursor
       ),
-    [rows, product, cursor]
+    [rows, product, hasPrevious, cursor]
   );
   const pagination = data?.pagination;
 
@@ -202,13 +205,20 @@ export function InventoryLedgerModal({ isOpen, onClose, product }: InventoryLedg
                   </TableCell>
                   <TableCell>
                     {orderID ? (
-                      <Link
-                        to={`/orders/${orderID}`}
-                        className="inline-flex items-center gap-1 font-mono text-sm text-blue-600 hover:underline"
-                      >
-                        {orderID}
-                        <ExternalLink className="h-3 w-3" />
-                      </Link>
+                      <div>
+                        <Link
+                          to={`/orders/${orderID}`}
+                          className="inline-flex items-center gap-1 font-mono text-sm text-blue-600 hover:underline"
+                        >
+                          {orderID}
+                          <ExternalLink className="h-3 w-3" />
+                        </Link>
+                        {/* Two write-offs on one order are the same order link;
+                            only the refund tells them apart. */}
+                        {row.source_id && (
+                          <p className="font-mono text-xs text-gray-500">{row.source_id}</p>
+                        )}
+                      </div>
                     ) : (
                       <div>
                         <p className="text-sm text-gray-700">{row.reason || '—'}</p>

@@ -99,3 +99,20 @@ describe('balancesAfter', () => {
     expect(balancesAfter(page2, currentWithNewerReserve, false)).toEqual([null]);
   });
 });
+
+// The reconstruction walks back from the product's current levels, so it is only
+// meaningful while the newest row shown is the newest movement.
+describe('balancesAfter anchoring', () => {
+  const history = [row('ADJUST', 2, 47, 45), row('COMMIT', 3, 50, 47)];
+
+  it('reconstructs nothing when the page is not the newest', () => {
+    expect(balancesAfter(history, { onHand: 45, reserved: 0 }, false)).toEqual([null, null]);
+  });
+
+  it('still reconstructs on the newest page', () => {
+    expect(balancesAfter(history, { onHand: 45, reserved: 0 }, true)[0]).toEqual({
+      onHand: 45,
+      reserved: 0,
+    });
+  });
+});

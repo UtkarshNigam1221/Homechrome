@@ -15,6 +15,8 @@ export interface OrderRefundsProps {
   orderId: string;
   refunds: Refund[];
   isLoading: boolean;
+  /** Re-check is admin-only on the server; a button that 403s is worse than none. */
+  canRecheck: boolean;
 }
 
 // A refund raised by an admin names them. One settled straight from a webhook has
@@ -29,7 +31,7 @@ const STATUS_VARIANT: Record<RefundStatus, 'warning' | 'success' | 'danger'> = {
   FAILED: 'danger',
 };
 
-export function OrderRefunds({ orderId, refunds, isLoading }: OrderRefundsProps) {
+export function OrderRefunds({ orderId, refunds, isLoading, canRecheck }: OrderRefundsProps) {
   const queryClient = useQueryClient();
 
   const recheckMutation = useMutation({
@@ -42,6 +44,7 @@ export function OrderRefunds({ orderId, refunds, isLoading }: OrderRefundsProps)
       );
       void queryClient.invalidateQueries({ queryKey: ['order-refunds', orderId] });
       void queryClient.invalidateQueries({ queryKey: ['order', orderId] });
+      void queryClient.invalidateQueries({ queryKey: ['orders'] });
     },
     onError: (error) => toast.error(getErrorMessage(error)),
   });
@@ -91,7 +94,7 @@ export function OrderRefunds({ orderId, refunds, isLoading }: OrderRefundsProps)
             </div>
 
             {/* Only a pending refund has anything to learn from the provider. */}
-            {refund.status === 'PENDING' && (
+            {refund.status === 'PENDING' && canRecheck && (
               <Button
                 variant="secondary"
                 size="sm"
