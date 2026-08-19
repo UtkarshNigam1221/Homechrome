@@ -401,6 +401,12 @@ func (r *InventoryRepository) orderMovementAll(ctx context.Context, m orderMovem
 	})
 }
 
+// ReserveOrderStock reserves every line of an order at once, all or nothing.
+// Aggregated first: one product on two lines would otherwise dedup into one.
+func (r *InventoryRepository) ReserveOrderStock(ctx context.Context, orderID string, quantities map[string]int) error {
+	return r.orderMovementAll(ctx, movementReserve, orderID, "", quantities)
+}
+
 // CommitOrderStock commits every line of an order at once, all or nothing.
 func (r *InventoryRepository) CommitOrderStock(ctx context.Context, orderID string, quantities map[string]int) error {
 	return r.orderMovementAll(ctx, movementCommit, orderID, "", quantities)

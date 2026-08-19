@@ -97,8 +97,8 @@ func TestOrderService_Create(t *testing.T) {
 			})
 
 		mockInventoryRepo.EXPECT().
-			ReserveStock(gomock.Any(), "prod_123", 2, gomock.Any()).
-			Return(&domain.InventoryTransaction{}, nil)
+			ReserveOrderStock(gomock.Any(), gomock.Any(), map[string]int{"prod_123": 2}).
+			Return(nil)
 
 		// The order total must reach TotalSpent — it is what the admin customer
 		// view renders as lifetime spend.
@@ -1077,4 +1077,52 @@ func TestIsValidStatusTransition(t *testing.T) {
 			assert.Equal(t, tt.expected, result)
 		})
 	}
+}
+
+// #226 F1: the admin create path takes items straight from the request, so one
+// product can appear twice. Reserving per line let the guard dedup the second away.
+func TestOrderService_Create_DuplicateProductLines(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockOrderRepo := mocks.NewMockOrderRepository(ctrl)
+	mockCustomerRepo := mocks.NewMockCustomerRepository(ctrl)
+	mockProductRepo := mocks.NewMockProductRepository(ctrl)
+	mockInventoryRepo := mocks.NewMockInventoryRepository(ctrl)
+	mockPriceQuoteRepo := mocks.NewMockPriceQuoteRepository(ctrl)
+	mockPricingService := mocks.NewMockPricingService(ctrl)
+
+	service := NewOrderService(mockOrderRepo, mockCustomerRepo, mockProductRepo,
+		mockInventoryRepo, mockPriceQuoteRepo, mockPricingService)
+	ctx := context.Background()
+
+	req := domain.CreateOrderRequest{
+		CustomerID: "cust_123",
+		Items: []domain.OrderItemInput{
+			{ProductID: "prod_123", Quantity: 2},
+			{ProductID: "prod_123", Quantity: 3},
+		},
+		ShippingAddress: domain.Address{
+			AddressLine1: "123 Main St", City: "Mumbai", State: "Maharashtra",
+			PostalCode: "400001", Country: "India",
+		},
+	}
+
+	mockCustomerRepo.EXPECT().GetByID(gomock.Any(), "cust_123").
+		Return(&domain.Customer{ID: "cust_123", FirstName: "John", Email: "john@example.com"}, nil)
+	mockProductRepo.EXPECT().GetByID(gomock.Any(), "prod_123").
+		Return(&domain.Product{ID: "prod_123", Name: "Silk Saree", SKU: "SKU-001",
+			CategoryID: "cat_123", SellingPrice: 500000}, nil).Times(2)
+	mockInventoryRepo.EXPECT().GetByProductID(gomock.Any(), "prod_123").
+		Return(&domain.Inventory{ProductID: "prod_123", Quantity: 100, AvailableQty: 90}, nil).Times(2)
+	mockOrderRepo.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
+	mockCustomerRepo.EXPECT().RecordPurchase(gomock.Any(), "cust_123", gomock.Any()).Return(int64(1), nil).AnyTimes()
+
+	// 5, not 2: both lines must reach the reservation as one aggregated movement.
+	mockInventoryRepo.EXPECT().
+		ReserveOrderStock(gomock.Any(), gomock.Any(), map[string]int{"prod_123": 5}).
+		Return(nil)
+
+	_, err := service.Create(ctx, req, "admin_123")
+	require.NoError(t, err)
 }

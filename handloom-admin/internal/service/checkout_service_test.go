@@ -104,10 +104,10 @@ func TestCheckoutService_Initiate(t *testing.T) {
 		mockCartService.EXPECT().GetCart(gomock.Any(), "cust_123", false).Return(cart, nil)
 
 		mockInventoryRepo.EXPECT().
-			ReserveStock(gomock.Any(), "prod_123", 2, gomock.Any()).
-			DoAndReturn(func(_ context.Context, _ string, _ int, ref string) (*domain.InventoryTransaction, error) {
+			ReserveOrderStock(gomock.Any(), gomock.Any(), map[string]int{"prod_123": 2}).
+			DoAndReturn(func(_ context.Context, ref string, _ map[string]int) error {
 				reservedRef = ref
-				return &domain.InventoryTransaction{}, nil
+				return nil
 			})
 
 		mockOrderRepo.EXPECT().
