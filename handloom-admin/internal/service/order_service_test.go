@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -525,7 +524,7 @@ func TestOrderService_UpdateStatus_Inventory(t *testing.T) {
 		mockOrderRepo.EXPECT().GetByID(gomock.Any(), "order_ret").Return(order, nil)
 		mockOrderRepo.EXPECT().Update(gomock.Any(), gomock.Any()).Return(nil)
 		mockInventoryRepo.EXPECT().
-			RestockOrderStock(gomock.Any(), "order_ret").
+			RestockOrderStock(gomock.Any(), "order_ret", "admin_123").
 			Return(nil)
 
 		err := service.UpdateStatus(ctx, "order_ret", domain.OrderStatusReturned, "admin_123")
@@ -542,7 +541,7 @@ func TestOrderService_UpdateStatus_Inventory(t *testing.T) {
 		mockOrderRepo.EXPECT().GetByID(gomock.Any(), "order_ret_fail").Return(order, nil)
 		mockOrderRepo.EXPECT().Update(gomock.Any(), gomock.Any()).Return(nil)
 		mockInventoryRepo.EXPECT().
-			RestockOrderStock(gomock.Any(), "order_ret_fail").
+			RestockOrderStock(gomock.Any(), "order_ret_fail", "admin_123").
 			Return(errors.New(errors.ErrCodeInternal, "boom"))
 
 		err := service.UpdateStatus(ctx, "order_ret_fail", domain.OrderStatusReturned, "admin_123")
@@ -608,38 +607,6 @@ func TestOrderService_UpdateStatus_Inventory(t *testing.T) {
 		err := service.UpdateStatus(ctx, "order_updatefail", domain.OrderStatusShipped, "admin_123")
 		require.Error(t, err, "a persist failure must propagate")
 	})
-}
-
-// TestReleaseFailureReason pins the reason label: insufficient-stock (already
-// zeroed by an earlier release) maps to "release_unreserved", not a leak signal.
-func TestReleaseFailureReason(t *testing.T) {
-	tests := []struct {
-		name     string
-		err      error
-		expected string
-	}{
-		{
-			name:     "insufficient stock maps to release_unreserved",
-			err:      errors.New(errors.ErrCodeInsufficientStock, "insufficient stock"),
-			expected: reasonReleaseUnreserved,
-		},
-		{
-			name:     "other AppError keeps release",
-			err:      errors.New(errors.ErrCodeNotFound, "Inventory not found"),
-			expected: reasonRelease,
-		},
-		{
-			name:     "non-AppError keeps release",
-			err:      fmt.Errorf("connection reset"),
-			expected: reasonRelease,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.expected, releaseFailureReason(tt.err))
-		})
-	}
 }
 
 func TestOrderService_AddNote(t *testing.T) {

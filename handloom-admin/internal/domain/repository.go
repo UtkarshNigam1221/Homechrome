@@ -264,7 +264,7 @@ type InventoryRepository interface {
 
 	// RestockOrderStock returns an order's goods on a return. Quantities come from its
 	// COMMIT ledger rows: a line that never committed was never decremented.
-	RestockOrderStock(ctx context.Context, orderID string) error
+	RestockOrderStock(ctx context.Context, orderID, createdBy string) error
 
 	// AdjustStock adjusts stock to a specific quantity
 	AdjustStock(ctx context.Context, productID string, newQuantity int, reason string, userID string) (*InventoryTransaction, error)

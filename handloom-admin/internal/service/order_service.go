@@ -370,7 +370,7 @@ func (s *OrderService) applyInventoryEffect(ctx context.Context, order *domain.O
 	case domain.OrderStatusCancelled:
 		if releaseErr := s.inventoryRepo.ReleaseOrderStock(ctx, order.ID, orderQuantities(order.Items)); releaseErr != nil {
 			slog.ErrorContext(ctx, "Failed to release stock", keyOrderID, order.ID, "error", releaseErr)
-			metrics.Record(ctx, "inventory_mutation_failed", metrics.L{metrics.LabelReason: releaseFailureReason(releaseErr)})
+			metrics.Record(ctx, "inventory_mutation_failed", metrics.L{metrics.LabelReason: reasonRelease})
 		}
 		// order_cancelled — status-transition path, no admin reason text.
 		metrics.Record(ctx, "order_cancelled", metrics.L{
@@ -380,7 +380,7 @@ func (s *OrderService) applyInventoryEffect(ctx context.Context, order *domain.O
 	case domain.OrderStatusReturned:
 		// Goods are back. The repository restocks what the order committed, not what it
 		// ordered: commit at dispatch is best-effort, so uncommitted lines stay out.
-		if restockErr := s.inventoryRepo.RestockOrderStock(ctx, order.ID); restockErr != nil {
+		if restockErr := s.inventoryRepo.RestockOrderStock(ctx, order.ID, updatedBy); restockErr != nil {
 			slog.ErrorContext(ctx, "Failed to restock returned order", keyOrderID, order.ID, "error", restockErr)
 			metrics.Record(ctx, "inventory_mutation_failed", metrics.L{metrics.LabelReason: reasonRestock})
 		}
@@ -453,7 +453,7 @@ func (s *OrderService) CancelOrder(ctx context.Context, id string, reason string
 
 	if releaseErr := s.inventoryRepo.ReleaseOrderStock(ctx, order.ID, orderQuantities(order.Items)); releaseErr != nil {
 		slog.ErrorContext(ctx, "Failed to release stock", keyOrderID, order.ID, "error", releaseErr)
-		metrics.Record(ctx, "inventory_mutation_failed", metrics.L{metrics.LabelReason: releaseFailureReason(releaseErr)})
+		metrics.Record(ctx, "inventory_mutation_failed", metrics.L{metrics.LabelReason: reasonRelease})
 	}
 
 	// order_cancelled — reason label is bounded (admin-supplied free text is
@@ -467,15 +467,6 @@ func (s *OrderService) CancelOrder(ctx context.Context, id string, reason string
 	slog.InfoContext(ctx, "Canceled order", "order_id", id)
 	span.End()
 	return nil
-}
-
-// releaseFailureReason labels a ReleaseStock failure: insufficient-stock means an
-// earlier release zeroed it, so "release_unreserved" (see runbook drift check).
-func releaseFailureReason(err error) string {
-	if appErr, ok := errors.AsAppError(err); ok && appErr.Code == errors.ErrCodeInsufficientStock {
-		return reasonReleaseUnreserved
-	}
-	return reasonRelease
 }
 
 // normaliseCancelReason maps free-text reasons to a bounded label set.
