@@ -36,10 +36,16 @@ jobs:
     runs-on: ubuntu-latest
     # The branch guard below is only a courtesy message: workflow_dispatch runs
     # the workflow file FROM THE SELECTED REF, so a branch can simply remove it.
-    # The enforceable control is this environment — configure it in repo
-    # Settings → Environments → production with a deployment branch policy of
-    # `main` and move BACKEND_ENV_PROD into its environment secrets. Runs
-    # dispatched from any other branch then fail before secrets are exposed.
+    #
+    # The environment named here is meant to be the enforceable control, but it
+    # is NOT one yet: `production` does not exist in repo settings, so GitHub
+    # creates it unprotected on first run and this line enforces nothing. Until
+    # it is configured, prod promotion has no guard a branch cannot bypass.
+    #
+    # To make it real: Settings → Environments → production, set a deployment
+    # branch policy of `main`, and move BACKEND_ENV_PROD into its environment
+    # secrets. Runs dispatched from any other ref then fail before secrets are
+    # exposed. deploy-backend.yml's prod path has the same gap.
     environment: production
     steps:
       - name: Guard prod promotion from non-main branches

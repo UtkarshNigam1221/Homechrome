@@ -47,7 +47,12 @@ jobs:
   reset:
     name: Reset dev transactional data
     runs-on: ubuntu-latest
-    environment: dev
+    # No job-level `environment:`, matching deploy-backend.yml. AWS_ROLE_ARN,
+    # AWS_REGION and BACKEND_ENV_DEV all live at repo level, so an environment
+    # would add no access — and the `dev` environment currently carries no
+    # secrets, no protection rules and no branch policy, so naming it would look
+    # like a control while enforcing nothing. The guards that do work are the
+    # typed confirmation and the -dev suffix check below.
     steps:
       - uses: actions/checkout@v4
 
