@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"log/slog"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/pkg/errors"
+	"github.com/handloom/admin/pkg/metrics"
 )
 
 // DecodeCursor decodes a base64-encoded cursor string into a DynamoDB
@@ -252,6 +254,17 @@ func QueryAll[T any](
 		if len(startKey) == 0 {
 			break
 		}
+	}
+
+	if len(startKey) > 0 {
+		// Returning a partial set with no error is exactly the silent wrong answer
+		// these helpers exist to remove. Say so: reaching the cap is the signal
+		// that this endpoint has outgrown reading to the end and needs real
+		// cursors.
+		slog.WarnContext(ctx, "Query stopped at the round-trip cap with more to read",
+			"failure", failure, "round_trips", maxQueryAllRoundTrips, "items", len(items))
+		// db_ prefix so retention classes it as operational rather than business.
+		metrics.Record(ctx, "db_query_all_truncated", metrics.L{})
 	}
 
 	return items, nil

@@ -117,3 +117,31 @@ func TestCustomerRepository_EmailIndex(t *testing.T) {
 		require.Equal(t, "Renamed", found.FirstName)
 	})
 }
+
+// The email pointer is a uniqueness guard, so leaving it behind claims a deleted
+// customer's address forever — nobody could ever sign up with it again.
+func TestCustomerRepository_DeleteFreesTheAddress(t *testing.T) {
+	wrapped, raw := testWrappedClient(t)
+	skipIfNoLocal(t, raw)
+	setupTestTable(t, raw, testOrdersTable)
+
+	repo := NewCustomerRepository(wrapped)
+	ctx := context.Background()
+
+	t.Run("releases the email so it can be used again", func(t *testing.T) {
+		first := &domain.Customer{ID: "cust_del_a", Email: "reuse@example.com", Phone: "+919800001111"}
+		require.NoError(t, repo.Create(ctx, first))
+		require.NoError(t, repo.Delete(ctx, first.ID))
+
+		found, err := repo.GetByEmail(ctx, "reuse@example.com")
+		require.Error(t, err, "the pointer must go with the customer")
+		require.Nil(t, found)
+
+		second := &domain.Customer{ID: "cust_del_b", Email: "reuse@example.com", Phone: "+919800002222"}
+		require.NoError(t, repo.Create(ctx, second), "the address is free again")
+	})
+
+	t.Run("still refuses to delete a customer that is not there", func(t *testing.T) {
+		require.Error(t, repo.Delete(ctx, "cust_missing"))
+	})
+}
