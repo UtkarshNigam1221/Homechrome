@@ -71,7 +71,10 @@ export function InventoryLedgerModal({ isOpen, onClose, product }: InventoryLedg
   });
 
   const rows = useMemo(() => data?.items ?? [], [data]);
-  const openReservations = useMemo(() => openReservationIDs(rows), [rows]);
+  const openReservations = useMemo(
+    () => openReservationIDs(rows, cursor === undefined),
+    [rows, cursor]
+  );
   const balances = useMemo(
     () =>
       balancesAfter(
@@ -199,9 +202,9 @@ export function InventoryLedgerModal({ isOpen, onClose, product }: InventoryLedg
 
       {openReservations.size > 0 && (
         <p className="mt-3 text-xs text-gray-500">
-          {openReservations.size} order{openReservations.size === 1 ? '' : 's'} on this page
-          reserved stock and never dispatched or released it, so those units are held against
-          nothing. Only movements on this page are compared.
+          {openReservations.size} order{openReservations.size === 1 ? '' : 's'} here reserved stock
+          and never dispatched or released it, so those units are held against nothing. Only the
+          newest page can tell: further back, the settling movement is on a page above.
         </p>
       )}
 
