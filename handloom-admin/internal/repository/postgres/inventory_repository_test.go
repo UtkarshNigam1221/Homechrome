@@ -11,6 +11,7 @@ import (
 
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/internal/repository/postgres"
+	"github.com/handloom/admin/pkg/errors"
 )
 
 // seedInventory inserts an inventory row directly, bypassing product-create
@@ -181,6 +182,25 @@ func TestInventoryRepository_OrderScopedIdempotency(t *testing.T) {
 		require.Equal(t, 1, ledgerRows(t, productID, "order_X", domain.InventoryTransactionTypeRelease))
 	})
 
+	// A replay of a different amount is divergence, not the no-op the index exists
+	// for. Silently dropping it would move zero units and report success.
+	t.Run("a replay with a different quantity is a conflict", func(t *testing.T) {
+		productID := newProduct(t, 10, 5)
+
+		_, err := repo.ReserveStock(ctx, productID, 2, "order_q")
+		require.NoError(t, err)
+
+		_, err = repo.ReserveStock(ctx, productID, 3, "order_q")
+		require.Error(t, err, "a different quantity must not be dropped silently")
+		appErr, ok := errors.AsAppError(err)
+		require.True(t, ok)
+		require.Equal(t, errors.ErrCodeConflict, appErr.Code)
+
+		_, reserved, _ := readInventory(t, pool, productID)
+		require.Equal(t, 7, reserved, "the first reservation stands, the replay moved nothing")
+		require.Equal(t, 1, ledgerRows(t, productID, "order_q", domain.InventoryTransactionTypeReserve))
+	})
+
 	t.Run("repeat reserve does not double-reserve", func(t *testing.T) {
 		productID := newProduct(t, 10, 0)
 
@@ -347,6 +367,43 @@ func TestInventoryRepository_RestockOrderStock(t *testing.T) {
 
 		err := repo.RestockOrderStock(ctx, "order_noinv", "admin_test")
 		require.Error(t, err, "a missing inventory row must not be skipped silently")
+	})
+
+	// The order-scoped rewrite wrote created_by='' and left updated_by alone, losing
+	// the actor AddStock used to record.
+	t.Run("records the actor on the return", func(t *testing.T) {
+		productID := newProduct(t, 10, 4)
+		require.NoError(t, repo.CommitOrderStock(ctx, "order_actor", map[string]int{productID: 4}))
+		require.NoError(t, repo.RestockOrderStock(ctx, "order_actor", "admin_actor"))
+
+		var ledgerActor, inventoryActor string
+		require.NoError(t, pool.QueryRow(ctx,
+			`SELECT created_by FROM inventory_transactions
+			 WHERE product_id = $1 AND reference_id = $2 AND type = $3`,
+			productID, "order_actor", string(domain.InventoryTransactionTypeReturn),
+		).Scan(&ledgerActor))
+		require.Equal(t, "admin_actor", ledgerActor)
+
+		require.NoError(t, pool.QueryRow(ctx,
+			`SELECT updated_by FROM inventory WHERE product_id = $1`, productID,
+		).Scan(&inventoryActor))
+		require.Equal(t, "admin_actor", inventoryActor)
+	})
+
+	// System-driven movements pass no actor and must not erase the one already there.
+	t.Run("a commit does not clobber the recorded actor", func(t *testing.T) {
+		productID := newProduct(t, 10, 4)
+		_, err := pool.Exec(ctx,
+			`UPDATE inventory SET updated_by = $1 WHERE product_id = $2`, "admin_earlier", productID)
+		require.NoError(t, err)
+
+		require.NoError(t, repo.CommitOrderStock(ctx, "order_keep", map[string]int{productID: 4}))
+
+		var actor string
+		require.NoError(t, pool.QueryRow(ctx,
+			`SELECT updated_by FROM inventory WHERE product_id = $1`, productID,
+		).Scan(&actor))
+		require.Equal(t, "admin_earlier", actor, "a system movement must not blank the actor")
 	})
 
 	t.Run("is idempotent", func(t *testing.T) {

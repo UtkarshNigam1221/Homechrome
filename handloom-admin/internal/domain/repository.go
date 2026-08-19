@@ -257,8 +257,8 @@ type InventoryRepository interface {
 	// both drop by the same amount, so available_qty is unchanged.
 	CommitStock(ctx context.Context, productID string, quantity int, orderID string) (*InventoryTransaction, error)
 
-	// ReserveOrderStock, CommitOrderStock and ReleaseOrderStock apply one movement to
-	// every line. quantities maps product ID to amount, so dup lines merge into one.
+	// Reserve and commit are all-or-nothing; release is per-line, so an error from it
+	// can mean a partial release. quantities maps product ID to amount, dups merged.
 	ReserveOrderStock(ctx context.Context, orderID string, quantities map[string]int) error
 	CommitOrderStock(ctx context.Context, orderID string, quantities map[string]int) error
 	ReleaseOrderStock(ctx context.Context, orderID string, quantities map[string]int) error

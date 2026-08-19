@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	stderrors "errors"
 	"fmt"
 	"maps"
 	"slices"
@@ -314,14 +315,17 @@ func applyOrderMovement(ctx context.Context, tx pgx.Tx, m orderMovement, product
 	}
 
 	now := time.Now()
-	updSQL, updArgs := querybuilder.Update("inventory").
+	upd := querybuilder.Update("inventory").
 		Set(ColQuantity, newQty).
 		Set(ColReservedQty, newReserved).
 		Set(ColAvailableQty, newQty-newReserved).
-		Set(ColUpdatedAt, now).
-		Set(ColUpdatedBy, createdBy).
-		Where(ColProductID, productID).
-		Build()
+		Set(ColUpdatedAt, now)
+	// Only when we know the actor: reserve, release and commit are system-driven and
+	// must not overwrite whoever AddStock or AdjustStock last recorded.
+	if createdBy != "" {
+		upd = upd.Set(ColUpdatedBy, createdBy)
+	}
+	updSQL, updArgs := upd.Where(ColProductID, productID).Build()
 	if _, err := tx.Exec(ctx, updSQL, updArgs...); err != nil {
 		return nil, errors.Wrap(err, "failed to update inventory")
 	}
@@ -415,13 +419,15 @@ func (r *InventoryRepository) CommitOrderStock(ctx context.Context, orderID stri
 // ReleaseOrderStock is best-effort, unlike commit: every caller is a rollback, so
 // one unreleasable line must not strand what the other lines still hold.
 func (r *InventoryRepository) ReleaseOrderStock(ctx context.Context, orderID string, quantities map[string]int) error {
-	var firstErr error
+	var failures []error
 	for _, productID := range slices.Sorted(maps.Keys(quantities)) {
-		if _, err := r.singleOrderMovement(ctx, movementRelease, productID, quantities[productID], orderID, ""); err != nil && firstErr == nil {
-			firstErr = err
+		if _, err := r.singleOrderMovement(ctx, movementRelease, productID, quantities[productID], orderID, ""); err != nil {
+			failures = append(failures, fmt.Errorf("product %s: %w", productID, err))
 		}
 	}
-	return firstErr
+	// Every failure, not just the first: these are the only leak signal an operator
+	// gets, and they need to know which products to reconcile.
+	return stderrors.Join(failures...)
 }
 
 // scanLedgerQuantities reads (product_id, quantity) ledger rows into a map plus the
@@ -486,8 +492,8 @@ func (r *InventoryRepository) RestockOrderStock(ctx context.Context, orderID, cr
 			}
 		}
 
-		// A line that reserved but never committed still holds its reservation, and a
-		// returned order can no longer reach CANCELLED to free it. Release it here.
+		// Reserved, never committed, not already released: still holding, and a returned
+		// order can no longer reach CANCELLED to free it. Already-released lines are not.
 		reserved, strandedIDs, strandedErr := scanLedgerQuantities(ctx, tx,
 			`SELECT t.product_id, t.quantity
 			 FROM inventory_transactions t
@@ -495,11 +501,13 @@ func (r *InventoryRepository) RestockOrderStock(ctx context.Context, orderID, cr
 			   AND NOT EXISTS (
 			     SELECT 1 FROM inventory_transactions c
 			     WHERE c.reference_id = t.reference_id AND c.reference_type = t.reference_type
-			       AND c.product_id = t.product_id AND c.type = $4
+			       AND c.product_id = t.product_id AND c.type IN ($4, $5)
 			   )
 			 ORDER BY t.product_id`,
 			orderID, inventoryRefTypeOrder,
-			string(domain.InventoryTransactionTypeReserve), string(domain.InventoryTransactionTypeCommit))
+			string(domain.InventoryTransactionTypeReserve),
+			string(domain.InventoryTransactionTypeCommit),
+			string(domain.InventoryTransactionTypeRelease))
 		if strandedErr != nil {
 			return errors.Wrap(strandedErr, "failed to read stranded reservations")
 		}

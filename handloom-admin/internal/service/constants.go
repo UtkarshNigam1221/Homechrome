@@ -16,7 +16,6 @@ const (
 )
 
 // Reason labels for inventory_mutation_failed. One per swallowed-failure call
-// site; release_unreserved marks the benign already-released case.
 const (
 	reasonReserve = "reserve"
 	reasonCommit  = "commit"

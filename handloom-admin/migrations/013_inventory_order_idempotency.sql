@@ -13,11 +13,13 @@ CREATE INDEX IF NOT EXISTS idx_inv_txn_order_dedup
 -- Duplicates would block the unique index. Copied out before deletion, not
 -- discarded: a duplicate RELEASE did move the balance, so this is the evidence.
 CREATE TABLE IF NOT EXISTS inventory_transactions_dedup_013 (
-  LIKE inventory_transactions INCLUDING DEFAULTS
+  LIKE inventory_transactions INCLUDING DEFAULTS INCLUDING INDEXES
 );
 
 WITH doomed AS (
-  SELECT a.id
+  -- DISTINCT: in a group of three, the last row matches both earlier rows and
+  -- would otherwise be copied twice.
+  SELECT DISTINCT a.id
   FROM inventory_transactions a
   JOIN inventory_transactions b
     ON  a.product_id   = b.product_id
@@ -30,12 +32,8 @@ WITH doomed AS (
 INSERT INTO inventory_transactions_dedup_013
 SELECT t.* FROM inventory_transactions t JOIN doomed d ON d.id = t.id;
 
-DO $$
-DECLARE n bigint;
-BEGIN
-  SELECT count(*) INTO n FROM inventory_transactions_dedup_013;
-  RAISE NOTICE 'migration 013: % duplicate order-scoped rows moved to inventory_transactions_dedup_013', n;
-END $$;
+-- No RAISE NOTICE here: the migrator's pool sets no OnNotice hook, so pgx drops
+-- notices. Count with: SELECT count(*) FROM inventory_transactions_dedup_013;
 
 DELETE FROM inventory_transactions t
 USING inventory_transactions_dedup_013 d
@@ -46,3 +44,7 @@ WHERE t.id = d.id;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_inv_txn_order_scoped
   ON inventory_transactions (product_id, reference_id, type)
   WHERE reference_type = 'ORDER';
+
+-- Same columns and predicate as the unique index above, so it is pure write
+-- overhead once that exists. It only had to support the dedup delete.
+DROP INDEX IF EXISTS idx_inv_txn_order_dedup;
