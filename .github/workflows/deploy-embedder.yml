@@ -48,7 +48,12 @@ concurrency:
 jobs:
   deploy:
     name: Deploy Embedder
-    runs-on: ubuntu-latest
+    # arm64 runner, matching the Lambda architecture. CDK builds the embedder
+    # container image during deploy; on an amd64 runner that ran under qemu.
+    # The cached assets survive the switch — the ONNX model is architecture
+    # independent and bootstrap-embedder-assets.sh always fetches the
+    # linux-aarch64 onnxruntime, whatever the host is.
+    runs-on: ubuntu-24.04-arm
     defaults:
       run:
         working-directory: handloom-admin
@@ -105,11 +110,6 @@ jobs:
         with:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
-
-      # Register binfmt_misc so plain `docker build` of the arm64 embedder image
-      # works on the amd64 runner (CDK builds the image during deploy).
-      - name: Register arm64 binfmt handlers
-        run: docker run --privileged --rm tonistiigi/binfmt --install arm64
 
       - name: Install CDK
         run: npm install -g aws-cdk
