@@ -2,6 +2,7 @@ package postgres_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -574,4 +575,59 @@ func TestInventoryRepository_FindOrphanReservations(t *testing.T) {
 		require.Len(t, found, 1)
 		require.Equal(t, "order_a", found[0].OrderID)
 	})
+}
+
+// #227: movements a second apart are routine — a reserve and its release land in
+// the same second — and ordering on created_at alone left the sort unstable, so
+// offset pagination could repeat a row on one page and skip it on the next.
+func TestInventoryRepository_GetTransactions_StableAcrossPages(t *testing.T) {
+	pool := newTestPool(t)
+	repo := postgres.NewInventoryRepository(pool)
+	ctx := context.Background()
+	category := seedCategory(t, pool)
+
+	p := newTestProduct(category.ID)
+	require.NoError(t, postgres.NewProductRepository(pool).Create(ctx, p, nil))
+	t.Cleanup(func() { _, _ = pool.Exec(ctx, `DELETE FROM products WHERE id = $1`, p.ID) })
+
+	// Six movements sharing one timestamp: created_at cannot order them at all.
+	tied := time.Date(2026, 8, 20, 12, 0, 0, 0, time.UTC)
+	for i := range 6 {
+		_, err := pool.Exec(ctx,
+			`INSERT INTO inventory_transactions
+			   (id, product_id, type, quantity, previous_qty, new_qty, reason,
+			    reference_type, reference_id, created_at)
+			 VALUES ($1, $2, 'ADD', 1, $3, $4, '', '', '', $5)`,
+			fmt.Sprintf("txn_tie_%d", i), p.ID, i, i+1, tied)
+		require.NoError(t, err)
+	}
+
+	// Page through two at a time, following next_cursor exactly as the UI does,
+	// and collect every id the reader is shown.
+	seen := []string{}
+	cursor := ""
+	for range 4 {
+		page, err := repo.GetTransactions(ctx, p.ID,
+			domain.PaginationRequest{Limit: 2, Cursor: cursor})
+		require.NoError(t, err)
+		for _, txn := range page.Transactions {
+			seen = append(seen, txn.ID)
+		}
+		if page.Pagination.NextCursor == "" {
+			break
+		}
+		cursor = page.Pagination.NextCursor
+	}
+
+	require.Len(t, seen, 6, "every movement must appear exactly once across the pages")
+
+	// The ids ascend with insertion, so id DESC is the reverse of heap order.
+	// Ordering on created_at alone leaves Postgres free to return heap order,
+	// which is why asserting the exact sequence discriminates where asserting
+	// mere uniqueness does not — on a table this small the unstable sort still
+	// happens to come back consistent.
+	require.Equal(t,
+		[]string{"txn_tie_5", "txn_tie_4", "txn_tie_3", "txn_tie_2", "txn_tie_1", "txn_tie_0"},
+		seen,
+		"tied timestamps must fall back to id DESC, the same way on every page")
 }

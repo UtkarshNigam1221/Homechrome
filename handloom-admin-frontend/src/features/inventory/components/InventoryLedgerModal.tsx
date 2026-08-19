@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { ExternalLink } from 'lucide-react';
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 
 import {
@@ -13,6 +13,7 @@ import { productsApi } from '@/features/products/api';
 import type { Product } from '@/features/products/types';
 import {
   Badge,
+  Button,
   Modal,
   Pagination,
   Table,
@@ -59,12 +60,25 @@ function Delta({ value }: { value: number | undefined }) {
 }
 
 export function InventoryLedgerModal({ isOpen, onClose, product }: InventoryLedgerModalProps) {
-  const { limit, cursor, hasPrevious, goToNextPage, goToPreviousPage, changeLimit } =
-    useCursorPagination(10);
+  const {
+    limit,
+    cursor,
+    hasPrevious,
+    goToNextPage,
+    goToPreviousPage,
+    changeLimit,
+    resetPagination,
+  } = useCursorPagination(10);
 
   const productID = product?.id ?? '';
 
-  const { data, isLoading } = useQuery({
+  // The modal stays mounted between openings, so paging state outlives it: open
+  // one product at page 3, then another, and you land in the middle of its history.
+  useEffect(() => {
+    if (isOpen) resetPagination();
+  }, [isOpen, productID, resetPagination]);
+
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['inventory-transactions', productID, { limit, cursor }],
     queryFn: () => productsApi.getInventoryTransactions(productID, { limit, cursor }),
     enabled: isOpen && productID !== '',
@@ -110,6 +124,19 @@ export function InventoryLedgerModal({ isOpen, onClose, product }: InventoryLedg
         <TableBody>
           {isLoading ? (
             <TableLoading colSpan={6} />
+          ) : isError ? (
+            // Never "no movements": this view exists to prove what happened to
+            // stock, so it must not claim nothing did when it could not read.
+            <TableEmpty
+              colSpan={6}
+              message="Could not load stock history"
+              description="The movements are still recorded — this read failed."
+              action={
+                <Button variant="secondary" size="sm" onClick={() => refetch()}>
+                  Try again
+                </Button>
+              }
+            />
           ) : rows.length === 0 ? (
             <TableEmpty
               colSpan={6}
