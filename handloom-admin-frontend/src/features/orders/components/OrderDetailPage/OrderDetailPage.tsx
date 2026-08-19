@@ -17,6 +17,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 
 import { addressFullName } from '@/features/customers/lib/displayName';
 import { ordersApi } from '@/features/orders/api';
+import { claimedByLiveRefunds } from '@/features/orders/lib/refundAmount';
 import { getErrorMessage } from '@/shared/api/client';
 import { Badge, Button, Card, ConfirmModal, Input, Modal, Select } from '@/shared/components/ui';
 import { useAuthStore } from '@/shared/stores/authStore';
@@ -65,11 +66,13 @@ export function OrderDetailPage() {
     enabled: !!id,
   });
 
-  // What the provider has actually sent back. Only completed refunds count —
-  // the same rule the server derives the next refund by.
-  const priorRefunded = refunds
-    .filter((refund) => refund.status === 'COMPLETED')
-    .reduce((sum, refund) => sum + refund.amount, 0);
+  // Everything the order's refunds already account for, settled or in flight,
+  // reconciled against the payment's own figure. Derived the way the server
+  // derives it, so the amount on screen is the amount that will leave.
+  const { claims: refundClaims, amount: priorRefunded } = claimedByLiveRefunds(
+    refunds,
+    order?.refunded_amount ?? 0
+  );
   const hasPendingRefund = refunds.some((refund) => refund.status === 'PENDING');
 
   // Update status mutation
@@ -171,7 +174,9 @@ export function OrderDetailPage() {
   const canRefund =
     isAdmin &&
     ['PAID', 'SUCCESS', 'PARTIALLY_REFUNDED'].includes(order.payment_status) &&
-    order.items?.some((item) => item.quantity > (item.refunded_quantity ?? 0));
+    order.items?.some(
+      (item) => item.quantity > Math.max(item.refunded_quantity ?? 0, refundClaims[item.id] ?? 0)
+    );
 
   // Mirrors the backend's `http_url` validation so a bad paste is caught before
   // the request. The scheme check matters: this URL becomes a customer-facing
@@ -353,7 +358,12 @@ export function OrderDetailPage() {
             </div>
           </Card>
 
-          <OrderRefunds orderId={order.id} refunds={refunds} isLoading={refundsLoading} />
+          <OrderRefunds
+            orderId={order.id}
+            refunds={refunds}
+            isLoading={refundsLoading}
+            canRecheck={isAdmin}
+          />
 
           {/* Notes */}
           {order.internal_notes && order.internal_notes.length > 0 && (
@@ -449,6 +459,7 @@ export function OrderDetailPage() {
           onClose={() => setShowRefundModal(false)}
           order={order}
           priorRefunded={priorRefunded}
+          claims={refundClaims}
           hasPendingRefund={hasPendingRefund}
         />
       )}

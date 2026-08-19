@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 
 import { ordersApi } from '@/features/orders/api';
+import type { RefundClaims } from '@/features/orders/lib/refundAmount';
 import { previewRefund, unrefundedQuantity } from '@/features/orders/lib/refundAmount';
 import { getErrorMessage } from '@/shared/api/client';
 import { Button, Input, Modal, Select } from '@/shared/components/ui';
@@ -16,8 +17,10 @@ export interface RefundModalProps {
   isOpen: boolean;
   onClose: () => void;
   order: Order;
-  /** Sum of the order's completed refunds — what the server has already sent back. */
+  /** What the order's refunds already account for, settled or in flight. */
   priorRefunded: number;
+  /** Units of each line those refunds already claim. */
+  claims: RefundClaims;
   /** A refund still awaiting the provider. Its units are not yet off the order. */
   hasPendingRefund: boolean;
 }
@@ -39,6 +42,7 @@ export function RefundModal({
   onClose,
   order,
   priorRefunded,
+  claims,
   hasPendingRefund,
 }: RefundModalProps) {
   const queryClient = useQueryClient();
@@ -62,24 +66,31 @@ export function RefundModal({
   }
 
   const items = useMemo(() => order.items ?? [], [order.items]);
-  const refundable = useMemo(() => items.filter((item) => unrefundedQuantity(item) > 0), [items]);
+  const refundable = useMemo(
+    () => items.filter((item) => unrefundedQuantity(item, claims) > 0),
+    [items, claims]
+  );
   const dispatched = isDispatched(order);
 
   const preview = useMemo(
-    () => previewRefund(order, quantities, priorRefunded),
-    [order, quantities, priorRefunded]
+    () => previewRefund(order, quantities, priorRefunded, claims),
+    [order, quantities, priorRefunded, claims]
   );
 
-  const selectedUnits = Object.values(quantities).reduce((sum, quantity) => sum + quantity, 0);
+  // From the priced lines, not the raw input: a line that dropped out while the
+  // modal was open must not count towards an enabled button.
+  const selectedUnits = preview.lines.reduce((sum, line) => sum + line.quantity, 0);
   const remainingAfter = order.total_amount - priorRefunded - preview.total;
 
   const refundMutation = useMutation({
     mutationFn: () =>
       ordersApi.createRefund(order.id, {
         reason: reason as RefundReason,
+        // The quantity that was priced, not the raw input — they differ if a
+        // pending refund settles while the modal is open.
         items: preview.lines.map((line) => ({
           order_item_id: line.orderItemId,
-          quantity: quantities[line.orderItemId],
+          quantity: line.quantity,
           restock: restock[line.orderItemId] ?? false,
         })),
       }),
@@ -87,6 +98,11 @@ export function RefundModal({
       toast.success(`Refund of ${formatCurrencyExact(refund.amount)} sent to the provider`);
       void queryClient.invalidateQueries({ queryKey: ['order', order.id] });
       void queryClient.invalidateQueries({ queryKey: ['order-refunds', order.id] });
+      void queryClient.invalidateQueries({ queryKey: ['orders'] });
+      // A refund moves stock as well as money, so the inventory views go stale too.
+      for (const key of ['products', 'products-inventory', 'inventory', 'low-stock']) {
+        void queryClient.invalidateQueries({ queryKey: [key] });
+      }
       onClose();
     },
     onError: (error) => toast.error(getErrorMessage(error)),
@@ -144,7 +160,7 @@ export function RefundModal({
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {refundable.map((item) => {
-                  const left = unrefundedQuantity(item);
+                  const left = unrefundedQuantity(item, claims);
                   const quantity = quantities[item.id] ?? 0;
                   const line = preview.lines.find((entry) => entry.orderItemId === item.id);
 
@@ -231,11 +247,39 @@ export function RefundModal({
             />
 
             <div className="rounded-lg bg-gray-50 border border-gray-200 p-4 space-y-2">
+              {/* The terms, not just the total: a line refunding less than its
+                  own value should not look like an error. */}
               <div className="flex justify-between text-sm text-gray-600">
                 <span>
                   {selectedUnits} unit{selectedUnits === 1 ? '' : 's'} across {preview.lines.length}{' '}
                   line{preview.lines.length === 1 ? '' : 's'}
                 </span>
+                <span className="font-mono">
+                  {formatCurrencyExact(preview.breakdown.lineValue)}
+                </span>
+              </div>
+              {preview.breakdown.discount > 0 && (
+                <div className="flex justify-between text-sm text-gray-600">
+                  <span>Less their share of the discount</span>
+                  <span className="font-mono">
+                    −{formatCurrencyExact(preview.breakdown.discount)}
+                  </span>
+                </div>
+              )}
+              {preview.breakdown.tax > 0 && (
+                <div className="flex justify-between text-sm text-gray-600">
+                  <span>Their share of the tax</span>
+                  <span className="font-mono">{formatCurrencyExact(preview.breakdown.tax)}</span>
+                </div>
+              )}
+              <div className="flex justify-between text-sm text-gray-600">
+                <span>
+                  {preview.isFinal ? 'Shipping' : 'Shipping (kept until the order clears)'}
+                </span>
+                <span className="font-mono">{formatCurrencyExact(preview.breakdown.shipping)}</span>
+              </div>
+              <div className="flex justify-between text-sm font-medium text-gray-900 border-t border-gray-200 pt-2">
+                <span>Refund total</span>
                 <span className="font-mono">{formatCurrencyExact(preview.total)}</span>
               </div>
               {preview.isFinal ? (

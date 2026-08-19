@@ -53,10 +53,20 @@ export interface Balance {
 // movement walking backwards through the list.
 //
 // That only holds while the newest row shown is the product's newest movement,
-// which is false on any page but the first. Rather than trust it, each result is
-// checked against the figure the row actually recorded; a row that disagrees
-// returns null and the caller shows only the recorded counter.
-export function balancesAfter(rows: InventoryTransaction[], current: Balance): (Balance | null)[] {
+// so anchored says whether the caller is on the first page. Off it, the walk
+// starts from the wrong figures and there is nothing to reconstruct from.
+//
+// The per-row check that follows is necessary but not sufficient on its own: it
+// can only compare the counter the row recorded, so a row whose unseen
+// predecessors moved the *other* counter agrees on the checked half and is
+// wrong on the shown half. Hence the anchor, rather than the check alone.
+export function balancesAfter(
+  rows: InventoryTransaction[],
+  current: Balance,
+  anchored = true
+): (Balance | null)[] {
+  if (!anchored) return rows.map(() => null);
+
   let { onHand, reserved } = current;
 
   return rows.map((row) => {

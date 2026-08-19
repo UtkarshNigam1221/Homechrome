@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { ExternalLink } from 'lucide-react';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import {
@@ -59,10 +59,26 @@ function Delta({ value }: { value: number | undefined }) {
 }
 
 export function InventoryLedgerModal({ isOpen, onClose, product }: InventoryLedgerModalProps) {
-  const { limit, cursor, hasPrevious, goToNextPage, goToPreviousPage, changeLimit } =
-    useCursorPagination(10);
+  const {
+    limit,
+    cursor,
+    hasPrevious,
+    goToNextPage,
+    goToPreviousPage,
+    changeLimit,
+    resetPagination,
+  } = useCursorPagination(10);
 
   const productID = product?.id ?? '';
+
+  // The modal stays mounted, so the cursor survives closing it — and it is an
+  // OFFSET, not a key. Without this, opening a second product lands mid-history
+  // with its newest movements silently skipped.
+  const [pagedProduct, setPagedProduct] = useState(productID);
+  if (productID !== pagedProduct) {
+    setPagedProduct(productID);
+    resetPagination();
+  }
 
   const { data, isLoading } = useQuery({
     queryKey: ['inventory-transactions', productID, { limit, cursor }],
@@ -74,11 +90,16 @@ export function InventoryLedgerModal({ isOpen, onClose, product }: InventoryLedg
   const openReservations = useMemo(() => openReservationIDs(rows), [rows]);
   const balances = useMemo(
     () =>
-      balancesAfter(rows, {
-        onHand: product?.quantity ?? 0,
-        reserved: product?.reserved_qty ?? 0,
-      }),
-    [rows, product]
+      balancesAfter(
+        rows,
+        {
+          onHand: product?.quantity ?? 0,
+          reserved: product?.reserved_qty ?? 0,
+        },
+        // Only the newest page starts from the product's current levels.
+        !hasPrevious && !cursor
+      ),
+    [rows, product, hasPrevious, cursor]
   );
   const pagination = data?.pagination;
 
@@ -171,13 +192,20 @@ export function InventoryLedgerModal({ isOpen, onClose, product }: InventoryLedg
                   </TableCell>
                   <TableCell>
                     {orderID ? (
-                      <Link
-                        to={`/orders/${orderID}`}
-                        className="inline-flex items-center gap-1 font-mono text-sm text-blue-600 hover:underline"
-                      >
-                        {orderID}
-                        <ExternalLink className="h-3 w-3" />
-                      </Link>
+                      <div>
+                        <Link
+                          to={`/orders/${orderID}`}
+                          className="inline-flex items-center gap-1 font-mono text-sm text-blue-600 hover:underline"
+                        >
+                          {orderID}
+                          <ExternalLink className="h-3 w-3" />
+                        </Link>
+                        {/* Two write-offs on one order are the same order link;
+                            only the refund tells them apart. */}
+                        {row.source_id && (
+                          <p className="font-mono text-xs text-gray-500">{row.source_id}</p>
+                        )}
+                      </div>
                     ) : (
                       <div>
                         <p className="text-sm text-gray-700">{row.reason || '—'}</p>

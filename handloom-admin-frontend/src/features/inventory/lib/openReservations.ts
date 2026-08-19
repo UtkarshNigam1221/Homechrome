@@ -8,16 +8,21 @@ import type { InventoryTransaction } from '@/features/inventory/types';
 // Only the rows passed in are compared, so a caller showing one page of history
 // sees open reservations within that page, not across the product's whole life.
 export function openReservationIDs(rows: InventoryTransaction[]): Set<string> {
-  const settled = new Set<string>();
-  const reserved = new Set<string>();
+  // Netted rather than counted by presence: one unit released out of three
+  // leaves two still held, and treating any settlement as the whole story hides
+  // exactly the partial drift this is meant to catch.
+  const outstanding = new Map<string, number>();
 
   for (const row of rows) {
     if (row.reference_type !== 'ORDER' || !row.reference_id) continue;
-    if (row.type === 'RESERVE') reserved.add(row.reference_id);
-    if (row.type === 'COMMIT' || row.type === 'RELEASE' || row.type === 'WRITE_OFF') {
-      settled.add(row.reference_id);
+
+    const held = outstanding.get(row.reference_id) ?? 0;
+    if (row.type === 'RESERVE') {
+      outstanding.set(row.reference_id, held + row.quantity);
+    } else if (row.type === 'COMMIT' || row.type === 'RELEASE' || row.type === 'WRITE_OFF') {
+      outstanding.set(row.reference_id, held - row.quantity);
     }
   }
 
-  return new Set([...reserved].filter((id) => !settled.has(id)));
+  return new Set([...outstanding].filter(([, held]) => held > 0).map(([id]) => id));
 }

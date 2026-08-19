@@ -7,13 +7,14 @@ import { openReservationIDs } from '../openReservations';
 function row(
   type: TransactionType,
   referenceID?: string,
-  referenceType = 'ORDER'
+  referenceType = 'ORDER',
+  quantity = 1
 ): InventoryTransaction {
   return {
-    id: `${type}-${referenceID ?? 'none'}`,
+    id: `${type}-${referenceID ?? 'none'}-${quantity}`,
     product_id: 'prod_1',
     type,
-    quantity: 1,
+    quantity,
     previous_qty: 0,
     new_qty: 1,
     reference_type: referenceType,
@@ -59,5 +60,25 @@ describe('openReservationIDs', () => {
   it('is order-independent, so a page starting mid-history still settles', () => {
     const newestFirst = [row('COMMIT', 'order_1'), row('RESERVE', 'order_1')];
     expect(openReservationIDs(newestFirst).size).toBe(0);
+  });
+});
+
+// Presence-based settlement called a partly-released order settled, which is the
+// drift the report exists to catch.
+describe('openReservationIDs partial settlement', () => {
+  it('still flags an order that released only some of what it holds', () => {
+    const rows = [row('RESERVE', 'order_1', 'ORDER', 3), row('RELEASE', 'order_1', 'ORDER', 1)];
+
+    expect(openReservationIDs(rows)).toEqual(new Set(['order_1']));
+  });
+
+  it('clears an order once every unit is accounted for', () => {
+    const rows = [
+      row('RESERVE', 'order_1', 'ORDER', 3),
+      row('RELEASE', 'order_1', 'ORDER', 1),
+      row('WRITE_OFF', 'order_1', 'ORDER', 2),
+    ];
+
+    expect(openReservationIDs(rows).size).toBe(0);
   });
 });
