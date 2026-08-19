@@ -428,15 +428,27 @@ func (r *InventoryRepository) ReleaseOrderStock(ctx context.Context, orderID str
 // COMMIT ledger rows. Its own RETURN type so last_restock_at is not stamped.
 func (r *InventoryRepository) RestockOrderStock(ctx context.Context, orderID, createdBy string) error {
 	return pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
-		// FOR UPDATE OF i takes the inventory row locks while the ledger is read, so a
-		// COMMIT row inserted concurrently cannot be missed and left unrestocked.
+		// Lock the order's inventory rows before reading the ledger, so a COMMIT row
+		// inserted concurrently cannot be missed and left unrestocked.
+		if _, err := tx.Exec(ctx,
+			`SELECT product_id FROM inventory
+			 WHERE product_id IN (
+			   SELECT product_id FROM inventory_transactions
+			   WHERE reference_id = $1 AND reference_type = $2
+			 )
+			 ORDER BY product_id
+			 FOR UPDATE`,
+			orderID, inventoryRefTypeOrder,
+		); err != nil {
+			return errors.Wrap(err, "failed to lock order inventory")
+		}
+
+		// Not joined to inventory: a COMMIT row whose inventory row was deleted must
+		// still reach applyOrderMovement and fail there, not vanish from the result.
 		rows, err := tx.Query(ctx,
-			`SELECT t.product_id, t.quantity
-			 FROM inventory_transactions t
-			 JOIN inventory i ON i.product_id = t.product_id
-			 WHERE t.reference_id = $1 AND t.reference_type = $2 AND t.type = $3
-			 ORDER BY t.product_id
-			 FOR UPDATE OF i`,
+			`SELECT product_id, quantity FROM inventory_transactions
+			 WHERE reference_id = $1 AND reference_type = $2 AND type = $3
+			 ORDER BY product_id`,
 			orderID, inventoryRefTypeOrder, string(domain.InventoryTransactionTypeCommit),
 		)
 		if err != nil {
@@ -471,15 +483,13 @@ func (r *InventoryRepository) RestockOrderStock(ctx context.Context, orderID, cr
 		stranded, err := tx.Query(ctx,
 			`SELECT t.product_id, t.quantity
 			 FROM inventory_transactions t
-			 JOIN inventory i ON i.product_id = t.product_id
 			 WHERE t.reference_id = $1 AND t.reference_type = $2 AND t.type = $3
 			   AND NOT EXISTS (
 			     SELECT 1 FROM inventory_transactions c
 			     WHERE c.reference_id = t.reference_id AND c.reference_type = t.reference_type
 			       AND c.product_id = t.product_id AND c.type = $4
 			   )
-			 ORDER BY t.product_id
-			 FOR UPDATE OF i`,
+			 ORDER BY t.product_id`,
 			orderID, inventoryRefTypeOrder,
 			string(domain.InventoryTransactionTypeReserve), string(domain.InventoryTransactionTypeCommit),
 		)

@@ -214,6 +214,7 @@ func (s *OrderService) Create(ctx context.Context, req domain.CreateOrderRequest
 
 	// inventory_mutation_failed meters every swallowed inventory failure and only
 	// those; sites that propagate the error are not metered, to avoid double-counting.
+
 	// Aggregated and all-or-nothing, like commit and release. One product can appear
 	// on two lines here, and per-line reserving let the guard dedup the second away.
 	if reserveErr := s.inventoryRepo.ReserveOrderStock(ctx, order.ID, orderQuantities(order.Items)); reserveErr != nil {

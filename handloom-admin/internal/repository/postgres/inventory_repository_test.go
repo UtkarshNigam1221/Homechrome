@@ -338,6 +338,17 @@ func TestInventoryRepository_RestockOrderStock(t *testing.T) {
 		require.Equal(t, 10, avail)
 	})
 
+	// DeleteByProductID drops only the inventory row, so a COMMIT row can outlive it.
+	// That must surface as an error, not be silently skipped and never restocked.
+	t.Run("a committed line with no inventory row errors", func(t *testing.T) {
+		productID := newProduct(t, 10, 4)
+		require.NoError(t, repo.CommitOrderStock(ctx, "order_noinv", map[string]int{productID: 4}))
+		require.NoError(t, repo.DeleteByProductID(ctx, productID))
+
+		err := repo.RestockOrderStock(ctx, "order_noinv", "admin_test")
+		require.Error(t, err, "a missing inventory row must not be skipped silently")
+	})
+
 	t.Run("is idempotent", func(t *testing.T) {
 		productID := newProduct(t, 10, 4)
 		require.NoError(t, repo.CommitOrderStock(ctx, "order_r2", map[string]int{productID: 4}))
