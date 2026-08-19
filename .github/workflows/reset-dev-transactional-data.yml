@@ -72,24 +72,36 @@ jobs:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
 
-      - name: Ensure psql is available
+      # ubuntu-latest ships both of these; a self-hosted machine may ship
+      # neither. Fail here with something actionable rather than deep inside the
+      # script with "command not found".
+      - name: Verify runner prerequisites
         run: |
-          # A self-hosted macOS runner usually has psql already, and has no
-          # apt-get. Install only what is missing, with whatever manager exists.
-          if command -v psql >/dev/null 2>&1; then
-            echo "psql already present: $(psql --version)"
-            exit 0
+          missing=0
+
+          if command -v aws >/dev/null 2>&1; then
+            echo "aws: $(aws --version 2>&1)"
+          else
+            echo "::error::AWS CLI v2 not found on this runner. Install it:" >&2
+            echo "  macOS:  brew install awscli" >&2
+            echo "  Linux:  curl 'https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip' -o a.zip && unzip a.zip && sudo ./aws/install" >&2
+            missing=1
           fi
-          if command -v apt-get >/dev/null 2>&1; then
+
+          if command -v psql >/dev/null 2>&1; then
+            echo "psql: $(psql --version)"
+          elif command -v apt-get >/dev/null 2>&1; then
             sudo apt-get update -qq
             sudo apt-get install -y --no-install-recommends postgresql-client
           elif command -v brew >/dev/null 2>&1; then
             brew install libpq
             echo "$(brew --prefix libpq)/bin" >> "$GITHUB_PATH"
           else
-            echo "::error::psql not found and no apt-get or brew to install it." >&2
-            exit 1
+            echo "::error::psql not found, and no apt-get or brew to install it." >&2
+            missing=1
           fi
+
+          [ "$missing" = "0" ] || exit 1
 
       - name: Reset
         working-directory: handloom-admin
