@@ -29,7 +29,7 @@ jobs:
   # dance that worked around upload-artifact dropping it is gone too.
   deploy:
     name: Build & Deploy
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.ACTIONS_RUNNER || 'ubuntu-latest' }}
     defaults:
       run:
         working-directory: handloom-admin
@@ -64,6 +64,9 @@ jobs:
       # (used by CDK NodejsFunction) can run arm64 images on amd64 runners.
       # docker/setup-qemu-action only works for buildx; this works globally.
       - name: Register arm64 binfmt handlers
+        # Linux only: binfmt_misc is a kernel feature, and a self-hosted Apple
+        # Silicon runner is natively arm64 so it needs no emulation.
+        if: runner.os == 'Linux'
         run: docker run --privileged --rm tonistiigi/binfmt --install arm64
 
       - name: Install CDK
@@ -145,3 +148,11 @@ jobs:
             HandloomAPIStack-${{ inputs.environment }} \
             --require-approval never \
             -c environment=${{ inputs.environment }}
+
+      # A GitHub-hosted runner is destroyed after the job, so the env file went
+      # with it. A self-hosted runner keeps its workspace, which would leave the
+      # whole BACKEND_ENV_* secret — prod included — sitting in plaintext on the
+      # machine. Always, so a failed deploy does not leave it behind either.
+      - name: Remove the deploy env file
+        if: always()
+        run: rm -f .env.deploy

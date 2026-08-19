@@ -2,6 +2,11 @@ name: CI
 
 # PR gate only. Build + deploy live in the deploy-* workflows (workflow_dispatch
 # / workflow_call), so they no longer show up as skipped jobs on pull requests.
+# Stays on a GitHub-hosted Linux runner on purpose: the repository tests use
+# service containers (Postgres, DynamoDB Local), which GitHub supports only on
+# Linux runners. Setting ACTIONS_RUNNER to a macOS self-hosted runner would break
+# this workflow, so it deliberately does not read that variable. If CI needs to
+# move off hosted minutes, the runner has to be Linux with Docker.
 on:
   pull_request:
     branches: [main]

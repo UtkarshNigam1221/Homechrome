@@ -28,7 +28,7 @@ jobs:
   # which was exhausting the artifact-storage quota.
   deploy:
     name: Build & Deploy
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.ACTIONS_RUNNER || 'ubuntu-latest' }}
     # OpenNext hardcodes sharp 0.32.6 for the image Lambda and only honours
     # SHARP_VERSION; root package.json overrides do not reach that bundle.
     env:

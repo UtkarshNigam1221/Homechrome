@@ -33,7 +33,7 @@ concurrency:
 jobs:
   promote:
     name: Promote dev → prod
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.ACTIONS_RUNNER || 'ubuntu-latest' }}
     # No job-level `environment:`, matching deploy-backend.yml — the two
     # prod-writing workflows should not disagree about how they are guarded.
     #

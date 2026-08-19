@@ -46,7 +46,7 @@ concurrency:
 jobs:
   reset:
     name: Reset dev transactional data
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.ACTIONS_RUNNER || 'ubuntu-latest' }}
     # No job-level `environment:`, matching deploy-backend.yml. AWS_ROLE_ARN,
     # AWS_REGION and BACKEND_ENV_DEV all live at repo level, so an environment
     # would add no access — and the `dev` environment currently carries no
@@ -72,10 +72,24 @@ jobs:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
 
-      - name: Install psql
+      - name: Ensure psql is available
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends postgresql-client
+          # A self-hosted macOS runner usually has psql already, and has no
+          # apt-get. Install only what is missing, with whatever manager exists.
+          if command -v psql >/dev/null 2>&1; then
+            echo "psql already present: $(psql --version)"
+            exit 0
+          fi
+          if command -v apt-get >/dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo apt-get install -y --no-install-recommends postgresql-client
+          elif command -v brew >/dev/null 2>&1; then
+            brew install libpq
+            echo "$(brew --prefix libpq)/bin" >> "$GITHUB_PATH"
+          else
+            echo "::error::psql not found and no apt-get or brew to install it." >&2
+            exit 1
+          fi
 
       - name: Reset
         working-directory: handloom-admin
