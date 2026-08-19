@@ -1,8 +1,7 @@
 package service
 
-// keyProductID is the shared "product_id" key — used both as a slog field and
-// as a metric label. Metric label KEYS live in the central vocabulary
-// (metrics.Label*); this stays here because it doubles as a log key.
+// keyProductID is the shared "product_id" key for slog fields and metric labels.
+// Label KEYS live in metrics.Label*; this stays because it doubles as a log key.
 const keyProductID = "product_id"
 
 // keyOrderID is the slog field for order-scoped inventory movements, which are

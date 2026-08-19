@@ -1,17 +1,11 @@
--- Order-scoped inventory movements must be idempotent.
---
--- ReleaseStock and CommitStock guarded only on the product-level reserved_qty
--- total, never on which order held it, so a repeated commit silently consumed a
--- different order's reservation. reference_id was written on every order-scoped
--- mutation but never read back. This index makes "one movement of each type per
--- product per order" an enforced invariant rather than a convention, so the
--- application-level check in the repository has a backstop it cannot race.
+-- Order-scoped inventory movements must be idempotent: Release/CommitStock guarded
+-- only on the reserved_qty total, so a repeat consumed another order's reservation.
 
--- Existing duplicates would block the index. The known source is a release that
--- ran twice for one order — the payment-failure rollback followed by a later
--- cancel — which was benign but does violate the rule from here on. Keep the
--- earliest row of each group; the later ones recorded no additional movement
--- that the balance did not already reflect.
+-- This index makes one movement per (product, order, type) an enforced invariant,
+-- backstopping the repository check against races.
+
+-- Existing duplicates would block the index; the known source is a double release
+-- (payment-failure rollback, then cancel). Keep the earliest row of each group.
 DELETE FROM inventory_transactions a
 USING inventory_transactions b
 WHERE a.reference_type = 'ORDER'

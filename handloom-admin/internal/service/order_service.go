@@ -212,15 +212,8 @@ func (s *OrderService) Create(ctx context.Context, req domain.CreateOrderRequest
 		utmSource: labelUnknown,
 	})
 
-	// Reserve inventory — track failures for visibility.
-	//
-	// inventory_mutation_failed metering rule: every swallowed inventory
-	// failure is metered, and only those. A site that instead propagates its
-	// error to the caller (e.g. checkout_service.go's initial ReserveStock
-	// loop) is deliberately NOT metered here — the caller already sees the
-	// failure via the returned error, so metering it too would double-count.
-	// The reason values are named in constants.go; each swallowed-failure call
-	// site emits exactly one of them.
+	// inventory_mutation_failed meters every swallowed inventory failure and only
+	// those; sites that propagate the error are not metered, to avoid double-counting.
 	var reservationFailures []string
 	for _, item := range items {
 		_, err := s.inventoryRepo.ReserveStock(ctx, item.ProductID, item.Quantity, order.ID)
@@ -336,10 +329,8 @@ func (s *OrderService) UpdateStatus(ctx context.Context, id string, status domai
 	case domain.OrderStatusDelivered:
 		order.DeliveredAt = &now
 	case domain.OrderStatusCancelled:
-		// CancelledAt mirrors CancelOrder, so tracking_handler's timeline
-		// (which gates the "cancelled" entry on CancelledAt != nil) shows a
-		// cancellation regardless of which path set it. Reuses the UpdatedAt
-		// timestamp above rather than calling time.Now() again.
+		// CancelledAt mirrors CancelOrder so tracking_handler's timeline shows the
+		// cancellation whichever path set it. Reuses UpdatedAt, not a new time.Now().
 		order.CancelledAt = &now
 	}
 
@@ -370,9 +361,8 @@ func orderQuantities(items []domain.OrderItem) map[string]int {
 func (s *OrderService) applyInventoryEffect(ctx context.Context, order *domain.Order, status domain.OrderStatus, updatedBy string) {
 	switch status {
 	case domain.OrderStatusShipped:
-		// Goods have left the warehouse: convert the reservations into a
-		// dispatch. available_qty is unaffected — these units were already
-		// unavailable while reserved.
+		// Goods have left the warehouse: convert reservations into a dispatch.
+		// available_qty is unaffected — these units were already unavailable.
 		if commitErr := s.inventoryRepo.CommitOrderStock(ctx, order.ID, orderQuantities(order.Items)); commitErr != nil {
 			slog.ErrorContext(ctx, "Failed to commit stock", keyOrderID, order.ID, "error", commitErr)
 			metrics.Record(ctx, "inventory_mutation_failed", metrics.L{metrics.LabelReason: reasonCommit})
@@ -388,10 +378,8 @@ func (s *OrderService) applyInventoryEffect(ctx context.Context, order *domain.O
 			metrics.LabelGateway: gatewayPhonePe,
 		})
 	case domain.OrderStatusReturned:
-		// Goods are back. The repository restocks what the order actually
-		// committed, not what it ordered: RETURNED is reachable from SHIPPED,
-		// but the commit at dispatch is best-effort, so a line that failed to
-		// commit was never decremented and must not be added back.
+		// Goods are back. The repository restocks what the order committed, not what it
+		// ordered: commit at dispatch is best-effort, so uncommitted lines stay out.
 		if restockErr := s.inventoryRepo.RestockOrderStock(ctx, order.ID); restockErr != nil {
 			slog.ErrorContext(ctx, "Failed to restock returned order", keyOrderID, order.ID, "error", restockErr)
 			metrics.Record(ctx, "inventory_mutation_failed", metrics.L{metrics.LabelReason: reasonRestock})
@@ -442,9 +430,8 @@ func (s *OrderService) CancelOrder(ctx context.Context, id string, reason string
 		return err
 	}
 
-	// Cancellable up to dispatch. Mirrors validTransitions, which allows
-	// PENDING/CONFIRMED/PROCESSING -> CANCELLED; the two paths previously
-	// disagreed about PROCESSING.
+	// Cancellable up to dispatch, mirroring validTransitions
+	// (PENDING/CONFIRMED/PROCESSING -> CANCELLED); the two disagreed on PROCESSING.
 	if order.Status != domain.OrderStatusPending &&
 		order.Status != domain.OrderStatusConfirmed &&
 		order.Status != domain.OrderStatusProcessing {
@@ -482,17 +469,8 @@ func (s *OrderService) CancelOrder(ctx context.Context, id string, reason string
 	return nil
 }
 
-// releaseFailureReason maps a ReleaseStock failure to the metric reason label
-// for inventory_mutation_failed. A release that fails with insufficient-stock
-// means the reservation was already zeroed out by an earlier release — most
-// commonly HandlePaymentFailure's rollback (payment_service.go) or the
-// checkout rollback (checkout_service.go), both of which leave the order in
-// PENDING, still cancellable by customer or admin. That later cancel finding
-// nothing left to release is benign and expected, not a leak, so it's
-// counted separately as "release_unreserved" rather than "release" — see the
-// runbook's "Ongoing drift check" section for why on-call should not treat it
-// as a page-worthy signal. Any other error keeps the "release" reason, which
-// does indicate a real problem.
+// releaseFailureReason labels a ReleaseStock failure: insufficient-stock means an
+// earlier release zeroed it, so "release_unreserved" (see runbook drift check).
 func releaseFailureReason(err error) string {
 	if appErr, ok := errors.AsAppError(err); ok && appErr.Code == errors.ErrCodeInsufficientStock {
 		return reasonReleaseUnreserved
@@ -551,9 +529,8 @@ func generateOrderNumber() string {
 	return fmt.Sprintf("HL%s%s", now.Format("20060102"), uuid.New().String()[:6])
 }
 
-// validTransitions defines allowed order status transitions.
-// CONFIRMED may go straight to SHIPPED: fulfillment is manual, and forcing a
-// stop at PROCESSING made shipping a single order three separate updates.
+// validTransitions defines allowed order status transitions. CONFIRMED may go
+// straight to SHIPPED: fulfillment is manual and the PROCESSING stop cost 3 updates.
 var validTransitions = map[domain.OrderStatus][]domain.OrderStatus{
 	domain.OrderStatusPending:    {domain.OrderStatusConfirmed, domain.OrderStatusCancelled},
 	domain.OrderStatusConfirmed:  {domain.OrderStatusProcessing, domain.OrderStatusShipped, domain.OrderStatusCancelled},

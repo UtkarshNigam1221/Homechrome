@@ -99,9 +99,8 @@ func (s *PaymentService) InitiatePayment(ctx context.Context, req domain.Initiat
 		return nil, providerErr
 	}
 
-	// Gateway accepted the request and returned a redirect URL — record the
-	// funnel event. Only PhonePe exists today; the gateway label is hardcoded
-	// to keep cardinality bounded.
+	// Gateway accepted and returned a redirect URL — record the funnel event.
+	// Only PhonePe exists today; the gateway label is hardcoded to bound cardinality.
 	metrics.Record(ctx, "payment_initiated", metrics.L{
 		metrics.LabelGateway: gatewayPhonePe, metrics.LabelCountry: middleware.GetCountry(ctx),
 	})
@@ -152,16 +151,11 @@ func (s *PaymentService) HandlePaymentSuccess(ctx context.Context, evt domain.Pa
 		slog.ErrorContext(ctx, "Failed to clear cart after payment success", "customer_id", payment.CustomerID, "error", err)
 	}
 
-	// Emit purchase-completion signals. These were previously emitted at
-	// order-create time in CheckoutService.Initiate, which caused failed-payment
-	// orders to inflate KPIs. All four signals now fire here, after the order
-	// has been confirmed as paid. resolvePayment already returned
-	// errPaymentAlreadyProcessed for webhook replays, so we never double-count.
+	// Purchase-completion signals fire here, after payment is confirmed — emitting at
+	// order-create inflated KPIs. resolvePayment already de-duped webhook replays.
 	{
-		// Webhook ctx is server-to-server (no CloudFront / X-Geo / X-Utm
-		// headers). All visitor attribution flows through fields the order
-		// denormalised at checkout-initiate time. Reuse the order returned by
-		// updateOrderStatus above rather than re-reading it.
+		// Webhook ctx is server-to-server (no CloudFront/X-Geo/X-Utm headers), so
+		// attribution reads fields the order denormalised at checkout-initiate.
 		city := order.City
 		if city == "" {
 			city = labelUnknown
@@ -180,8 +174,7 @@ func (s *PaymentService) HandlePaymentSuccess(ctx context.Context, evt domain.Pa
 		}
 
 		// Shared product-purchase signals (product_purchased, coupon_redeemed,
-		// first-vs-repeat). First-touch attribution flows through fields the
-		// order denormalised at checkout-initiate time.
+		// first-vs-repeat), attributed from fields the order denormalised.
 		recordPurchaseAnalytics(ctx, s.customerRepo, order, purchaseAttribution{
 			country:   country,
 			city:      city,
@@ -189,9 +182,8 @@ func (s *PaymentService) HandlePaymentSuccess(ctx context.Context, evt domain.Pa
 			utmSource: utmSource,
 		})
 
-		// payment_completed carries utm_source (for ROAS) + device_type (per-
-		// device funnel completion). Both read from the order — webhook ctx
-		// is server-to-server with no browser headers.
+		// payment_completed carries utm_source (ROAS) + device_type, both read from
+		// the order — webhook ctx has no browser headers.
 		metrics.Record(ctx, "payment_completed", metrics.L{
 			metrics.LabelGateway:    gatewayPhonePe,
 			metrics.LabelCountry:    country,
@@ -209,9 +201,8 @@ func (s *PaymentService) HandlePaymentSuccess(ctx context.Context, evt domain.Pa
 		metrics.LabelGateway: gatewayPhonePe, metrics.LabelOutcome: "success", metrics.LabelCountry: middleware.GetCountry(ctx),
 	})
 
-	// RecordOrderPlaced moved to CheckoutService.Initiate (at order creation
-	// time) so the metric also fires on the DevClient path where this webhook
-	// never runs. Don't emit here.
+	// RecordOrderPlaced moved to CheckoutService.Initiate so it also fires on the
+	// DevClient path where this webhook never runs. Don't emit here.
 
 	span.SetAttribute("entity.id", payment.ID)
 	span.SetAttribute("order.id", payment.OrderID)
@@ -253,9 +244,8 @@ func (s *PaymentService) HandlePaymentFailure(ctx context.Context, evt domain.Pa
 	return nil
 }
 
-// HandlePaymentPending processes a pending payment webhook event.
-// This occurs when PhonePe has received the payment attempt but it's still
-// being processed (e.g., UPI mandate pending, bank processing).
+// HandlePaymentPending processes a pending payment webhook event — PhonePe has the
+// attempt but it's still processing (UPI mandate pending, bank processing).
 func (s *PaymentService) HandlePaymentPending(ctx context.Context, evt domain.PaymentWebhookEvent) error {
 	payment, err := s.resolvePayment(ctx, evt.MerchantTxnID, domain.PaymentStatusInitiated)
 	if err != nil {
@@ -315,9 +305,8 @@ func (s *PaymentService) updatePaymentStatus(ctx context.Context, paymentID stri
 	return nil
 }
 
-// updateOrderStatus fetches the order and updates its status fields.
-// updateOrderStatus fetches the order, applies the new status fields, persists
-// it, and returns the updated order so callers can reuse it without a second read.
+// updateOrderStatus fetches the order, applies the new status fields, persists it,
+// and returns the updated order so callers can reuse it without a second read.
 func (s *PaymentService) updateOrderStatus(ctx context.Context, orderID string, orderStatus domain.OrderStatus, paymentStatus domain.PaymentStatus, paymentID string) (*domain.Order, error) {
 	order, err := s.orderRepo.GetByID(ctx, orderID)
 	if err != nil {

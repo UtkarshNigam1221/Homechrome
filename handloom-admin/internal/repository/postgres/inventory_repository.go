@@ -3,7 +3,8 @@ package postgres
 import (
 	"context"
 	"fmt"
-	"sort"
+	"maps"
+	"slices"
 	"time"
 
 	"github.com/georgysavva/scany/v2/pgxscan"
@@ -244,9 +245,8 @@ var (
 	movementReturn  = orderMovement{domain.InventoryTransactionTypeReturn, +1, 0}
 )
 
-// existingOrderMovement returns the movement this order already recorded for the
-// product, or nil. Reading reference_id back is what makes a repeat a no-op
-// rather than a second bite at whatever reserved_qty happens to hold.
+// existingOrderMovement returns this order's already-recorded movement for the
+// product, or nil. Reading reference_id back is what makes a repeat a no-op.
 func existingOrderMovement(ctx context.Context, tx pgx.Tx, productID, orderID string, typ domain.InventoryTransactionType) (*domain.InventoryTransaction, error) {
 	var txn domain.InventoryTransaction
 	err := tx.QueryRow(ctx,
@@ -267,14 +267,11 @@ func existingOrderMovement(ctx context.Context, tx pgx.Tx, productID, orderID st
 	return &txn, nil
 }
 
-// applyOrderMovement performs one product's stock movement for an order inside an
-// existing transaction. A movement this order already recorded is returned
-// unchanged rather than applied twice.
+// applyOrderMovement performs one product's stock movement inside an existing
+// transaction. A movement already recorded for this order is returned unchanged.
 func applyOrderMovement(ctx context.Context, tx pgx.Tx, m orderMovement, productID string, quantity int, orderID string) (*domain.InventoryTransaction, error) {
-	// Lock before checking the ledger, not after. Two concurrent duplicates
-	// would otherwise both read "not yet applied", and the second would reach
-	// the insert and trip the unique index — an error where a no-op is correct.
-	// Holding the row lock first serializes the check as well as the write.
+	// Lock before the ledger check, not after: concurrent duplicates would both
+	// read "not yet applied" and the second would trip the unique index.
 	var currentQty, reservedQty int
 	err := tx.QueryRow(ctx,
 		`SELECT quantity, reserved_qty FROM inventory WHERE product_id = $1 FOR UPDATE`,
@@ -294,9 +291,8 @@ func applyOrderMovement(ctx context.Context, tx pgx.Tx, m orderMovement, product
 	newQty := currentQty + m.deltaQty*quantity
 	newReserved := reservedQty + m.deltaReserve*quantity
 
-	// Reserving needs free stock; releasing and committing need the reservation to
-	// exist. The quantity guards also refuse to drive stock negative on a row
-	// corrupted by the historical leak, where reserved_qty could exceed quantity.
+	// Reserving needs free stock; release and commit need the reservation to exist.
+	// Also refuses to drive stock negative on rows the historical leak corrupted.
 	if newReserved < 0 || newQty < 0 || newQty < newReserved {
 		return nil, errors.New(errors.ErrCodeInsufficientStock, "insufficient stock")
 	}
@@ -362,31 +358,23 @@ func (r *InventoryRepository) ReleaseStock(ctx context.Context, productID string
 	return r.singleOrderMovement(ctx, movementRelease, productID, quantity, orderID)
 }
 
-// CommitStock converts this order's reservation into a dispatch. Both quantity and
-// reserved_qty drop by the same amount, so available_qty is unchanged: the units
-// were already unavailable while reserved and are now physically gone as well.
-// Idempotent per (product, order).
+// CommitStock turns this order's reservation into a dispatch: quantity and
+// reserved_qty both drop, available_qty unchanged. Idempotent per (product, order).
 func (r *InventoryRepository) CommitStock(ctx context.Context, productID string, quantity int, orderID string) (*domain.InventoryTransaction, error) {
 	return r.singleOrderMovement(ctx, movementCommit, productID, quantity, orderID)
 }
 
 // orderMovementAll applies one movement to every line of an order in a single
 // transaction, so a line that cannot be applied rolls back the ones before it.
-// Products are locked in sorted order: two orders sharing products could
-// otherwise grab the same rows in opposite orders and deadlock.
 func (r *InventoryRepository) orderMovementAll(ctx context.Context, m orderMovement, orderID string, quantities map[string]int) error {
 	if len(quantities) == 0 {
 		return nil
 	}
 
-	productIDs := make([]string, 0, len(quantities))
-	for productID := range quantities {
-		productIDs = append(productIDs, productID)
-	}
-	sort.Strings(productIDs)
-
 	return pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
-		for _, productID := range productIDs {
+		// Sorted, not map order: two orders sharing products would otherwise take
+		// the FOR UPDATE row locks in opposite sequences and deadlock.
+		for _, productID := range slices.Sorted(maps.Keys(quantities)) {
 			if _, err := applyOrderMovement(ctx, tx, m, productID, quantities[productID], orderID); err != nil {
 				return err
 			}
@@ -405,16 +393,8 @@ func (r *InventoryRepository) ReleaseOrderStock(ctx context.Context, orderID str
 	return r.orderMovementAll(ctx, movementRelease, orderID, quantities)
 }
 
-// RestockOrderStock returns an order's goods to stock on a return.
-//
-// Quantities come from the order's COMMIT ledger rows rather than its lines.
-// Committing is best-effort, so reaching SHIPPED does not prove the stock ever
-// left: adding back a line that never committed inflates quantity and oversells.
-// A line with no COMMIT row therefore restocks nothing, which is correct — there
-// was no decrement to undo.
-//
-// Recorded as its own RETURN type rather than through AddStock: a customer
-// return is not a supplier replenishment, and AddStock stamps last_restock_at.
+// RestockOrderStock returns an order's goods on a return, quantities read from its
+// COMMIT ledger rows. Its own RETURN type so last_restock_at is not stamped.
 func (r *InventoryRepository) RestockOrderStock(ctx context.Context, orderID string) error {
 	return pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
 		rows, err := tx.Query(ctx,

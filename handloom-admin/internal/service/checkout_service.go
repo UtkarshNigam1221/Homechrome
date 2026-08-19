@@ -165,10 +165,8 @@ func (s *CheckoutService) Initiate(ctx context.Context, customerID string, req d
 		metrics.LabelBucket:  metrics.BucketForCartSize(order.ItemCount),
 	})
 
-	// NOTE: Per-product purchase counts, coupon-redeemed, first-purchase, and
-	// order geomap are emitted in PaymentService.HandlePaymentSuccess AFTER
-	// payment is confirmed — not here. Emitting them before payment completes
-	// would inflate KPIs for failed-payment orders.
+	// Per-product counts, coupon-redeemed, first-purchase and order geomap fire in
+	// HandlePaymentSuccess — emitting here inflates KPIs on failed payments.
 
 	// 11. Initiate payment
 	paymentResp, err := s.paymentService.InitiatePayment(ctx, domain.InitiatePaymentRequest{
@@ -185,13 +183,11 @@ func (s *CheckoutService) Initiate(ctx context.Context, customerID string, req d
 		return nil, payErr
 	}
 
-	// 12. Cart is NOT cleared here — it's cleared after payment success
-	// in PaymentService.HandlePaymentSuccess. This ensures the cart
-	// is preserved if payment fails, so the user can retry.
+	// 12. Cart is NOT cleared here but after payment success, so it survives a
+	// failed payment and the user can retry.
 
-	// Funnel counter: checkout.initiated. cart_to_checkout duration + geomap
-	// were dropped per metrics-PG migration plan (covered by cart_to_payment
-	// + country/city labels on funnel metrics).
+	// Funnel counter: checkout.initiated. cart_to_checkout + geomap dropped per the
+	// metrics-PG migration (covered by cart_to_payment + country/city labels).
 	metrics.Record(ctx, "checkout_initiated", metrics.L{
 		metrics.LabelCountry:    country,
 		metrics.LabelCity:       city,
@@ -288,10 +284,8 @@ func (s *CheckoutService) releaseReservedItems(ctx context.Context, orderID stri
 	}
 }
 
-// checkoutUTMSource returns the visitor's first-touch utm_source from
-// context for denormalising onto the order. PhonePe webhook ctx is
-// server-to-server (no browser headers), so payment_completed +
-// customer_first_purchase have to read it back from order.UTMSource.
+// checkoutUTMSource reads first-touch utm_source from context to denormalise onto
+// the order; the PhonePe webhook has no browser headers and reads it back.
 func checkoutUTMSource(ctx context.Context) string {
 	src, _, _ := middleware.GetUTM(ctx)
 	return src

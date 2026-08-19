@@ -106,10 +106,8 @@ func TestInventoryRepository_CommitStock(t *testing.T) {
 	})
 }
 
-// The guard on ReleaseStock and CommitStock only reads the product-level
-// reserved_qty total, so a repeat consumes whatever another order reserved.
-// The ledger already records reference_id on every order-scoped mutation; these
-// tests pin that it is now read back.
+// The old guard read only the product-level reserved_qty total, so a repeat
+// consumed another order's reservation. These pin that reference_id is read back.
 func TestInventoryRepository_OrderScopedIdempotency(t *testing.T) {
 	pool := newTestPool(t)
 	repo := postgres.NewInventoryRepository(pool)
@@ -140,9 +138,8 @@ func TestInventoryRepository_OrderScopedIdempotency(t *testing.T) {
 		return n
 	}
 
-	// The failure from the backlog: order X holds 2, order Y holds 3, and X
-	// commits twice. The second commit passes the total-only guard and eats Y's
-	// reservation, leaving Y unable to ship.
+	// The failure from the backlog: X holds 2, Y holds 3, X commits twice — the
+	// second passes the total-only guard and eats Y's reservation.
 	t.Run("repeat commit does not consume another order's reservation", func(t *testing.T) {
 		productID := newProduct(t, 10, 5) // X holds 2, Y holds 3
 
@@ -239,9 +236,8 @@ func TestInventoryRepository_OrderScopedIdempotency(t *testing.T) {
 	})
 }
 
-// A return adds back only what the order actually committed. The commit is
-// best-effort, so "the order reached SHIPPED" does not mean the stock left —
-// and adding back an amount that never left inflates stock and oversells.
+// A return adds back only what the order committed. Commit is best-effort, so
+// reaching SHIPPED does not mean the stock left; adding it back would oversell.
 func TestInventoryRepository_RestockOrderStock(t *testing.T) {
 	pool := newTestPool(t)
 	repo := postgres.NewInventoryRepository(pool)

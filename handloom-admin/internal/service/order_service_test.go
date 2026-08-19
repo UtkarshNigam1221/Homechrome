@@ -511,9 +511,8 @@ func TestOrderService_UpdateStatus_Inventory(t *testing.T) {
 		require.NoError(t, err)
 	})
 
-	// The order lines are deliberately not passed: the repository restocks what
-	// the order committed, read from its COMMIT ledger rows. A line that never
-	// committed was never decremented, so adding it back would inflate stock.
+	// Order lines are deliberately not passed: the repository restocks from COMMIT
+	// ledger rows, and an uncommitted line was never decremented.
 	t.Run("return restocks the order, not its lines", func(t *testing.T) {
 		order := &domain.Order{
 			ID:     "order_ret",
@@ -593,12 +592,8 @@ func TestOrderService_UpdateStatus_Inventory(t *testing.T) {
 	})
 
 	t.Run("orderRepo.Update failure prevents any inventory mutation", func(t *testing.T) {
-		// Regression test: inventory mutations must run AFTER the status is
-		// persisted, not before. Registering no CommitOrderStock/RestockOrderStock/
-		// ReleaseOrderStock expectation means gomock fails this test the moment an
-		// unexpected call happens — which is exactly what the old ordering
-		// (mutate inventory, then persist) would have done here despite the
-		// persist failing.
+		// Regression: inventory mutations must run AFTER the status persists. No mock
+		// expectations here, so gomock fails on any unexpected inventory call.
 		order := &domain.Order{
 			ID:     "order_updatefail",
 			Status: domain.OrderStatusConfirmed,
@@ -615,11 +610,8 @@ func TestOrderService_UpdateStatus_Inventory(t *testing.T) {
 	})
 }
 
-// TestReleaseFailureReason pins the inventory_mutation_failed reason label
-// chosen for a ReleaseOrderStock failure: insufficient-stock (the reservation was
-// already zeroed by an earlier release, e.g. a failed-payment rollback) maps
-// to "release_unreserved" so it doesn't get counted as a real leak signal.
-// Any other error keeps the default "release" reason.
+// TestReleaseFailureReason pins the reason label: insufficient-stock (already
+// zeroed by an earlier release) maps to "release_unreserved", not a leak signal.
 func TestReleaseFailureReason(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -863,11 +855,8 @@ func TestOrderService_CancelOrder(t *testing.T) {
 	})
 }
 
-// TestOrderService_CancelOrder_Inventory covers the PROCESSING widening: the
-// validTransitions table already allowed PROCESSING -> CANCELLED, but
-// CancelOrder rejected it. These subtests pin CancelOrder's accepted statuses
-// to match that table, and confirm SHIPPED (post-commit) still stays out of
-// reach.
+// TestOrderService_CancelOrder_Inventory covers the PROCESSING widening and pins
+// CancelOrder's accepted statuses to validTransitions, SHIPPED still excluded.
 func TestOrderService_CancelOrder_Inventory(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
