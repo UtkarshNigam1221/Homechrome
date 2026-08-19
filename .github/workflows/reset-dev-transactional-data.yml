@@ -1,0 +1,121 @@
+name: Reset Dev Transactional Data
+
+# Empties dev's transactional data while leaving the catalog alone.
+#
+# Needed because the inventory-integrity work moves two DynamoDB key shapes —
+# payments to MERCHANT_TXN#<id>, and customer email lookup from a GSI to a
+# pointer item. SetKeys() only runs on write, so rows written before that deploy
+# keep the old keys and stop being findable: payments by merchant transaction
+# id, which is the PhonePe webhook path, and customers by email, which also
+# leaves their address unguarded against a duplicate.
+#
+# KEEPS:  categories, products, images, attributes, inventory levels including
+#         on-hand quantities, and manual stock movements (ADD/REMOVE/ADJUST).
+# DROPS:  the whole orders table — customers, orders, payments, refunds, carts,
+#         quotes, shipments — and the order-scoped reservations that referenced
+#         them. Those reservations live in PostgreSQL while the orders live in
+#         DynamoDB, so dropping one without the other would leave reserved_qty
+#         holding stock for orders that no longer exist: unsettleable by
+#         anything, and flagged by the reconciliation report forever.
+#
+# Run this BEFORE deploying the branch. Clearing the order-scoped ledger first
+# also means migration 013 has no duplicates to delete and its unique index
+# builds against clean data.
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type the table name to confirm, e.g. handloom-orders-dev'
+        required: true
+        type: string
+      dry_run:
+        description: 'Report what would change without writing anything'
+        type: boolean
+        default: true
+
+permissions:
+  id-token: write
+  contents: read
+
+# Two concurrent runs would interleave a scan with another run's deletes.
+concurrency:
+  group: reset-dev-transactional-data
+  cancel-in-progress: false
+
+jobs:
+  reset:
+    name: Reset dev transactional data
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Refuse to run against anything but dev
+        env:
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          # The typed confirmation is the guard against a mis-picked environment,
+          # and the suffix check is the guard against typing a prod table into it.
+          case "$CONFIRM" in
+            *-dev) ;;
+            *) echo "::error::Refusing to run: '$CONFIRM' is not a -dev table." >&2; exit 1 ;;
+          esac
+
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Install psql
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends postgresql-client
+
+      - name: Reset
+        working-directory: handloom-admin
+        env:
+          BACKEND_ENV_DEV: ${{ secrets.BACKEND_ENV_DEV }}
+          # Passed via env, never inline templating, so the value cannot inject shell.
+          TABLE: ${{ inputs.confirm }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          REGION: ${{ vars.AWS_REGION }}
+        run: |
+          set -euo pipefail
+
+          # Extract the DSN with grep rather than sourcing the secret blob: a
+          # value containing shell metacharacters must not execute.
+          PGURL="$(printf '%s\n' "$BACKEND_ENV_DEV" | grep -m1 '^POSTGRES_DSN=' | cut -d= -f2- \
+                    | sed -e "s/^['\"]//" -e "s/['\"]\$//")"
+          if [ -z "$PGURL" ]; then
+            echo "::error::POSTGRES_DSN missing from BACKEND_ENV_DEV." >&2
+            exit 1
+          fi
+          export PGURL
+
+          echo "### Before" >> "$GITHUB_STEP_SUMMARY"
+          {
+            psql "$PGURL" -tAc "SELECT '- categories: '||COUNT(*) FROM categories"
+            psql "$PGURL" -tAc "SELECT '- products: '||COUNT(*) FROM products"
+            psql "$PGURL" -tAc "SELECT '- reserved: '||COALESCE(SUM(reserved_qty),0)||' units' FROM inventory"
+            psql "$PGURL" -tAc "SELECT '- order-scoped ledger rows: '||COUNT(*) FROM inventory_transactions WHERE reference_type='ORDER'"
+            echo "- orders table items: $(aws dynamodb scan --region "$REGION" --table-name "$TABLE" --select COUNT --query Count --output text)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "**Dry run — nothing was written.** Re-run with \`dry_run\` unchecked to apply." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          ./scripts/reset-transactional-data.sh
+
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "### After" >> "$GITHUB_STEP_SUMMARY"
+          {
+            psql "$PGURL" -tAc "SELECT '- categories: '||COUNT(*) FROM categories"
+            psql "$PGURL" -tAc "SELECT '- products: '||COUNT(*) FROM products"
+            psql "$PGURL" -tAc "SELECT '- reserved: '||COALESCE(SUM(reserved_qty),0)||' units' FROM inventory"
+            psql "$PGURL" -tAc "SELECT '- manual ledger rows kept: '||COUNT(*) FROM inventory_transactions"
+            echo "- orders table items: $(aws dynamodb scan --region "$REGION" --table-name "$TABLE" --select COUNT --query Count --output text)"
+          } >> "$GITHUB_STEP_SUMMARY"
