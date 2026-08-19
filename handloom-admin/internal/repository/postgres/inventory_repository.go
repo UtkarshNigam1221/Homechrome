@@ -265,13 +265,13 @@ func existingOrderMovement(ctx context.Context, tx pgx.Tx, productID, orderID, s
 	var txn domain.InventoryTransaction
 	err := tx.QueryRow(ctx,
 		`SELECT id, product_id, type, quantity, previous_qty, new_qty, reason,
-		        reference_type, reference_id, created_at, created_by
+		        reference_type, reference_id, source_id, created_at, created_by
 		 FROM inventory_transactions
 		 WHERE product_id = $1 AND reference_id = $2 AND type = $3 AND reference_type = $4
 		   AND source_id = $5`,
 		productID, orderID, string(typ), inventoryRefTypeOrder, sourceID,
 	).Scan(&txn.ID, &txn.ProductID, &txn.Type, &txn.Quantity, &txn.PreviousQty,
-		&txn.NewQty, &txn.Reason, &txn.ReferenceType, &txn.ReferenceID,
+		&txn.NewQty, &txn.Reason, &txn.ReferenceType, &txn.ReferenceID, &txn.SourceID,
 		&txn.CreatedAt, &txn.CreatedBy)
 	if err != nil {
 		if err == pgx.ErrNoRows {

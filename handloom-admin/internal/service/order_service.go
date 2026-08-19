@@ -23,6 +23,7 @@ type OrderService struct {
 	productRepo    domain.ProductRepository
 	inventoryRepo  domain.InventoryRepository
 	priceQuoteRepo domain.PriceQuoteRepository
+	paymentRepo    domain.PaymentRepository
 	pricingService domain.PricingService
 }
 
@@ -33,6 +34,7 @@ func NewOrderService(
 	productRepo domain.ProductRepository,
 	inventoryRepo domain.InventoryRepository,
 	priceQuoteRepo domain.PriceQuoteRepository,
+	paymentRepo domain.PaymentRepository,
 	pricingService domain.PricingService,
 ) *OrderService {
 	return &OrderService{
@@ -41,6 +43,7 @@ func NewOrderService(
 		productRepo:    productRepo,
 		inventoryRepo:  inventoryRepo,
 		priceQuoteRepo: priceQuoteRepo,
+		paymentRepo:    paymentRepo,
 		pricingService: pricingService,
 	}
 }
@@ -247,6 +250,12 @@ func (s *OrderService) GetByID(ctx context.Context, id string) (*domain.OrderWit
 
 	result := &domain.OrderWithDetails{
 		Order: order,
+	}
+
+	// What has actually gone back, from the payment rather than reconstructed by
+	// the caller. A missing payment simply means nothing has.
+	if payment, payErr := s.paymentRepo.GetByOrderID(ctx, order.ID); payErr == nil && payment != nil {
+		result.RefundedAmount = payment.RefundAmount
 	}
 
 	// Get customer details

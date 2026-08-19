@@ -125,10 +125,10 @@ var inventoryColumns = []string{
 	ColCreatedAt, ColUpdatedAt, ColCreatedBy, ColUpdatedBy,
 }
 
-// inventoryTxnColumns lists the 11 columns selected for an inventory transaction row.
+// inventoryTxnColumns lists the 12 columns selected for an inventory transaction row.
 var inventoryTxnColumns = []string{
 	ColID, ColProductID, ColType, ColQuantity, ColPreviousQty, ColNewQty,
-	ColReason, ColReferenceType, ColReferenceID, ColCreatedAt, ColCreatedBy,
+	ColReason, ColReferenceType, ColReferenceID, ColSourceID, ColCreatedAt, ColCreatedBy,
 }
 
 // prefixColumns returns a new slice with each column prefixed by "alias.".

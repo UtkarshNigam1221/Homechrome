@@ -57,7 +57,42 @@ type refundHarness struct {
 	payments  *mocks.MockPaymentRepository
 	inventory *mocks.MockInventoryRepository
 	users     *mocks.MockUserRepository
+	auditor   *fakeAuditor
+	notifier  *fakeNotifier
 	gateway   *fakeRefundGateway
+}
+
+// fakeAuditor and fakeNotifier record the one call each that matters, rather
+// than pulling generated mocks in for a single verb.
+type fakeAuditor struct {
+	action, entityID, userID string
+	metadata                 map[string]interface{}
+	err                      error
+	calls                    int
+}
+
+func (f *fakeAuditor) Log(_ context.Context, action, _, entityID, userID string,
+	_ []domain.FieldChange, metadata map[string]interface{}) error {
+	f.calls++
+	f.action, f.entityID, f.userID, f.metadata = action, entityID, userID, metadata
+	return f.err
+}
+
+type fakeNotifier struct {
+	trigger domain.NotificationTrigger
+	orderID string
+	err     error
+	calls   int
+}
+
+func (f *fakeNotifier) SendOrderNotification(_ context.Context, order *domain.Order,
+	trigger domain.NotificationTrigger, _ string) error {
+	f.calls++
+	f.trigger = trigger
+	if order != nil {
+		f.orderID = order.ID
+	}
+	return f.err
 }
 
 func newRefundHarness(t *testing.T) *refundHarness {
@@ -70,11 +105,16 @@ func newRefundHarness(t *testing.T) *refundHarness {
 		payments:  mocks.NewMockPaymentRepository(ctrl),
 		inventory: mocks.NewMockInventoryRepository(ctrl),
 		users:     mocks.NewMockUserRepository(ctrl),
+		auditor:   &fakeAuditor{},
+		notifier:  &fakeNotifier{},
 		gateway: &fakeRefundGateway{
 			initiateResp: &phonepe.RefundResponse{RefundID: "OMR1", State: phonepe.RefundStatePending},
 		},
 	}
-	h.svc = NewRefundService(h.refunds, h.orders, h.payments, h.inventory, h.users, h.gateway)
+	// Audit and notification are optional collaborators; the paths that assert on
+	// them supply their own.
+	h.svc = NewRefundService(h.refunds, h.orders, h.payments, h.inventory, h.users,
+		h.auditor, h.notifier, h.gateway)
 
 	return h
 }
@@ -228,6 +268,8 @@ func TestRefundService_Settlement(t *testing.T) {
 			gomock.Any(), "", "").Return(nil)
 		h.payments.EXPECT().AddRefundAmount(gomock.Any(), "pay_1", int64(10000)).Return(int64(10000), nil)
 		h.orders.EXPECT().GetByID(gomock.Any(), "order_1").Return(paidOrder(domain.OrderStatusConfirmed), nil)
+		// The settled total is recomputed from the order's refunds, not incremented.
+		h.refunds.EXPECT().ListByOrder(gomock.Any(), "order_1").Return([]*domain.Refund{pendingRefund()}, nil)
 
 		h.orders.EXPECT().Update(gomock.Any(), gomock.Any()).
 			DoAndReturn(func(_ context.Context, o *domain.Order) error {
@@ -250,6 +292,8 @@ func TestRefundService_Settlement(t *testing.T) {
 			gomock.Any(), "", "").Return(nil)
 		h.payments.EXPECT().AddRefundAmount(gomock.Any(), "pay_1", int64(10000)).Return(int64(20000), nil)
 		h.orders.EXPECT().GetByID(gomock.Any(), "order_1").Return(paidOrder(domain.OrderStatusConfirmed), nil)
+		// The settled total is recomputed from the order's refunds, not incremented.
+		h.refunds.EXPECT().ListByOrder(gomock.Any(), "order_1").Return([]*domain.Refund{pendingRefund()}, nil)
 
 		h.orders.EXPECT().Update(gomock.Any(), gomock.Any()).
 			DoAndReturn(func(_ context.Context, o *domain.Order) error {
@@ -317,6 +361,7 @@ func TestRefundService_RecheckStatus(t *testing.T) {
 			gomock.Any(), "", "").Return(nil)
 		h.payments.EXPECT().AddRefundAmount(gomock.Any(), "pay_1", int64(10000)).Return(int64(10000), nil)
 		h.orders.EXPECT().GetByID(gomock.Any(), "order_1").Return(paidOrder(domain.OrderStatusConfirmed), nil)
+		h.refunds.EXPECT().ListByOrder(gomock.Any(), "order_1").Return([]*domain.Refund{refund}, nil)
 		h.orders.EXPECT().Update(gomock.Any(), gomock.Any()).Return(nil)
 		h.payments.EXPECT().UpdateStatus(gomock.Any(), "pay_1", gomock.Any(), gomock.Any()).Return(nil)
 		h.refunds.EXPECT().GetByID(gomock.Any(), "refund_1").Return(refund, nil)
@@ -494,5 +539,87 @@ func TestRefundService_Create_CountsRefundsStillInFlight(t *testing.T) {
 		_, err := h.svc.Create(ctx, "order_1", oneLine(2, false), "admin_1")
 
 		require.NoError(t, err)
+	})
+}
+
+// A refund is an admin sending money out. The trail has to say who, how much and
+// against which lines — and the customer has to be told it is coming back.
+func TestRefundService_AuditAndNotify(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("records the refund against the admin who raised it", func(t *testing.T) {
+		h := newRefundHarness(t)
+		h.orders.EXPECT().GetByID(gomock.Any(), "order_1").Return(paidOrder(domain.OrderStatusConfirmed), nil)
+		h.payments.EXPECT().GetByOrderID(gomock.Any(), "order_1").Return(paidPayment(), nil)
+		h.refunds.EXPECT().ListByOrder(gomock.Any(), "order_1").Return(nil, nil)
+		h.refunds.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
+		h.refunds.EXPECT().SetProviderRefundID(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		h.inventory.EXPECT().WriteOffStock(gomock.Any(), "prod_a", 1, "order_1", gomock.Not("")).
+			Return(&domain.InventoryTransaction{}, nil)
+
+		refund, err := h.svc.Create(ctx, "order_1", oneLine(1, false), "admin_1")
+
+		require.NoError(t, err)
+		require.Equal(t, 1, h.auditor.calls)
+		require.Equal(t, "refund.create", h.auditor.action)
+		require.Equal(t, refund.ID, h.auditor.entityID)
+		require.Equal(t, "admin_1", h.auditor.userID)
+		require.Equal(t, int64(10000), h.auditor.metadata["amount_paise"])
+		require.Len(t, h.auditor.metadata["items"], 1, "the trail names the lines, not just the total")
+	})
+
+	// The money is already on its way; a lost trail is not a reason to report it
+	// as failed.
+	t.Run("a failed audit does not fail the refund", func(t *testing.T) {
+		h := newRefundHarness(t)
+		h.auditor.err = stderrors.New("audit table down")
+		h.orders.EXPECT().GetByID(gomock.Any(), "order_1").Return(paidOrder(domain.OrderStatusConfirmed), nil)
+		h.payments.EXPECT().GetByOrderID(gomock.Any(), "order_1").Return(paidPayment(), nil)
+		h.refunds.EXPECT().ListByOrder(gomock.Any(), "order_1").Return(nil, nil)
+		h.refunds.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
+		h.refunds.EXPECT().SetProviderRefundID(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		h.inventory.EXPECT().WriteOffStock(gomock.Any(), "prod_a", 1, "order_1", gomock.Not("")).
+			Return(&domain.InventoryTransaction{}, nil)
+
+		_, err := h.svc.Create(ctx, "order_1", oneLine(1, false), "admin_1")
+
+		require.NoError(t, err)
+	})
+
+	t.Run("tells the customer once the money has gone back", func(t *testing.T) {
+		h := newRefundHarness(t)
+		refund := &domain.Refund{
+			ID: "refund_1", OrderID: "order_1", PaymentID: "pay_1", Amount: 10000,
+			Status: domain.RefundStatusPending,
+			Items:  []domain.RefundItem{{OrderItemID: "item_a", Quantity: 1, Amount: 10000}},
+		}
+		h.refunds.EXPECT().GetByProviderRefundID(gomock.Any(), "OMR1").Return(refund, nil)
+		h.refunds.EXPECT().Settle(gomock.Any(), "refund_1", domain.RefundStatusCompleted,
+			gomock.Any(), "", "").Return(nil)
+		h.payments.EXPECT().AddRefundAmount(gomock.Any(), "pay_1", int64(10000)).Return(int64(10000), nil)
+		h.orders.EXPECT().GetByID(gomock.Any(), "order_1").Return(paidOrder(domain.OrderStatusConfirmed), nil)
+		h.refunds.EXPECT().ListByOrder(gomock.Any(), "order_1").Return([]*domain.Refund{refund}, nil)
+		h.orders.EXPECT().Update(gomock.Any(), gomock.Any()).Return(nil)
+		h.payments.EXPECT().UpdateStatus(gomock.Any(), "pay_1", gomock.Any(), gomock.Any()).Return(nil)
+
+		require.NoError(t, h.svc.HandleRefundCompleted(ctx, "OMR1"))
+
+		require.Equal(t, 1, h.notifier.calls)
+		require.Equal(t, domain.NotificationTriggerRefund, h.notifier.trigger)
+		require.Equal(t, "order_1", h.notifier.orderID)
+	})
+
+	// A refund that failed at the provider sent nothing back.
+	t.Run("says nothing to the customer when the refund failed", func(t *testing.T) {
+		h := newRefundHarness(t)
+		refund := &domain.Refund{ID: "refund_1", OrderID: "order_1", PaymentID: "pay_1",
+			Amount: 10000, Status: domain.RefundStatusPending}
+		h.refunds.EXPECT().GetByProviderRefundID(gomock.Any(), "OMR1").Return(refund, nil)
+		h.refunds.EXPECT().Settle(gomock.Any(), "refund_1", domain.RefundStatusFailed,
+			gomock.Any(), "E", "D").Return(nil)
+
+		require.NoError(t, h.svc.HandleRefundFailed(ctx, "OMR1", "E", "D"))
+
+		require.Zero(t, h.notifier.calls)
 	})
 }

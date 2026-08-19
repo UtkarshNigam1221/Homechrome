@@ -13,6 +13,22 @@ import (
 	"github.com/handloom/admin/pkg/metrics"
 )
 
+// refundAuditor records who sent money back. Declared here rather than taken as
+// the whole audit service: this needs one verb.
+//
+// Nil in the store Lambda, which settles refunds from webhooks and raises none.
+type refundAuditor interface {
+	Log(ctx context.Context, action, entityType, entityID, userID string,
+		changes []domain.FieldChange, metadata map[string]interface{}) error
+}
+
+// refundNotifier tells the customer their money is on its way back. Nil where
+// there is no notification service to reach.
+type refundNotifier interface {
+	SendOrderNotification(ctx context.Context, order *domain.Order,
+		trigger domain.NotificationTrigger, createdBy string) error
+}
+
 // RefundService owns the refund lifecycle: deriving the amount, moving the
 // money, and settling asynchronously.
 //
@@ -24,6 +40,8 @@ type RefundService struct {
 	paymentRepo   domain.PaymentRepository
 	inventoryRepo domain.InventoryRepository
 	userRepo      domain.UserRepository
+	auditor       refundAuditor
+	notifier      refundNotifier
 	gateway       phonepe.Gateway
 }
 
@@ -34,6 +52,8 @@ func NewRefundService(
 	paymentRepo domain.PaymentRepository,
 	inventoryRepo domain.InventoryRepository,
 	userRepo domain.UserRepository,
+	auditor refundAuditor,
+	notifier refundNotifier,
 	gateway phonepe.Gateway,
 ) *RefundService {
 	return &RefundService{
@@ -42,6 +62,8 @@ func NewRefundService(
 		paymentRepo:   paymentRepo,
 		inventoryRepo: inventoryRepo,
 		userRepo:      userRepo,
+		auditor:       auditor,
+		notifier:      notifier,
 		gateway:       gateway,
 	}
 }
@@ -130,6 +152,7 @@ func (s *RefundService) Create(ctx context.Context, orderID string, req domain.C
 	refund.ProviderRefundID = resp.RefundID
 
 	s.applyInventoryEffect(ctx, order, refund)
+	s.audit(ctx, refund)
 
 	metrics.Record(ctx, "refund_initiated", metrics.L{
 		metrics.LabelReason:  string(refund.Reason),
@@ -139,6 +162,49 @@ func (s *RefundService) Create(ctx context.Context, orderID string, req domain.C
 		"refund_id", refund.ID, "order_id", order.ID, "amount_paise", refund.Amount)
 
 	return refund, nil
+}
+
+// audit records who sent the money back, with the lines it covered. Logged and
+// swallowed on failure: the refund is already live at the provider, and losing
+// the trail is not a reason to report the refund as failed.
+func (s *RefundService) audit(ctx context.Context, refund *domain.Refund) {
+	if s.auditor == nil {
+		return
+	}
+
+	lines := make([]map[string]interface{}, 0, len(refund.Items))
+	for _, item := range refund.Items {
+		lines = append(lines, map[string]interface{}{
+			"order_item_id": item.OrderItemID,
+			"product_id":    item.ProductID,
+			"quantity":      item.Quantity,
+			"amount_paise":  item.Amount,
+			"restock":       item.Restock,
+		})
+	}
+
+	if err := s.auditor.Log(ctx, "refund.create", "REFUND", refund.ID, refund.CreatedBy, nil,
+		map[string]interface{}{
+			"order_id":     refund.OrderID,
+			"payment_id":   refund.PaymentID,
+			"amount_paise": refund.Amount,
+			"reason":       string(refund.Reason),
+			"items":        lines,
+		}); err != nil {
+		slog.ErrorContext(ctx, "Failed to audit refund", "refund_id", refund.ID, "error", err)
+	}
+}
+
+// notifyCustomer tells the customer the money is on its way back. Best-effort
+// for the same reason the rest of applyCompletion is: it has already gone.
+func (s *RefundService) notifyCustomer(ctx context.Context, order *domain.Order, refund *domain.Refund) {
+	if s.notifier == nil {
+		return
+	}
+	if err := s.notifier.SendOrderNotification(ctx, order, domain.NotificationTriggerRefund, refund.CreatedBy); err != nil {
+		slog.ErrorContext(ctx, "Failed to notify the customer of a refund",
+			"refund_id", refund.ID, "error", err)
+	}
 }
 
 // claimedByLive totals what refunds that have not failed already account for,
@@ -343,12 +409,26 @@ func (s *RefundService) applyCompletion(ctx context.Context, refund *domain.Refu
 		return
 	}
 
-	refundedByItem := make(map[string]int, len(refund.Items))
-	for _, item := range refund.Items {
-		refundedByItem[item.OrderItemID] += item.Quantity
+	// Derived from every completed refund rather than incremented by this one.
+	// Two refunds settling at once both read-modify-write this order, and an
+	// increment loses one of them; recomputing the total makes the write
+	// idempotent and self-healing instead.
+	settled, err := s.refundRepo.ListByOrder(ctx, refund.OrderID)
+	if err != nil {
+		slog.ErrorContext(ctx, "Failed to total refunded quantities", "refund_id", refund.ID, "error", err)
+		return
+	}
+	refundedByItem := make(map[string]int)
+	for _, r := range settled {
+		if r.Status != domain.RefundStatusCompleted && r.ID != refund.ID {
+			continue
+		}
+		for _, item := range r.Items {
+			refundedByItem[item.OrderItemID] += item.Quantity
+		}
 	}
 	for i := range order.Items {
-		order.Items[i].RefundedQuantity += refundedByItem[order.Items[i].ID]
+		order.Items[i].RefundedQuantity = refundedByItem[order.Items[i].ID]
 	}
 
 	// Fulfillment status is left alone: whatever was not refunded still ships.
@@ -372,6 +452,8 @@ func (s *RefundService) applyCompletion(ctx context.Context, refund *domain.Refu
 	if err := s.paymentRepo.UpdateStatus(ctx, refund.PaymentID, paymentStatus, updates); err != nil {
 		slog.ErrorContext(ctx, "Failed to update payment after refund", "refund_id", refund.ID, "error", err)
 	}
+
+	s.notifyCustomer(ctx, order, refund)
 }
 
 var _ domain.RefundService = (*RefundService)(nil)
