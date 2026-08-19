@@ -424,6 +424,32 @@ func (r *InventoryRepository) ReleaseOrderStock(ctx context.Context, orderID str
 	return firstErr
 }
 
+// scanLedgerQuantities reads (product_id, quantity) ledger rows into a map plus the
+// product IDs in query order, so callers keep a deterministic iteration order.
+func scanLedgerQuantities(ctx context.Context, tx pgx.Tx, sql string, args ...any) (map[string]int, []string, error) {
+	rows, err := tx.Query(ctx, sql, args...)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer rows.Close()
+
+	quantities := map[string]int{}
+	productIDs := []string{}
+	for rows.Next() {
+		var productID string
+		var quantity int
+		if scanErr := rows.Scan(&productID, &quantity); scanErr != nil {
+			return nil, nil, scanErr
+		}
+		quantities[productID] = quantity
+		productIDs = append(productIDs, productID)
+	}
+	if rowsErr := rows.Err(); rowsErr != nil {
+		return nil, nil, rowsErr
+	}
+	return quantities, productIDs, nil
+}
+
 // RestockOrderStock returns an order's goods on a return, quantities read from its
 // COMMIT ledger rows. Its own RETURN type so last_restock_at is not stamped.
 func (r *InventoryRepository) RestockOrderStock(ctx context.Context, orderID, createdBy string) error {
@@ -445,34 +471,16 @@ func (r *InventoryRepository) RestockOrderStock(ctx context.Context, orderID, cr
 
 		// Not joined to inventory: a COMMIT row whose inventory row was deleted must
 		// still reach applyOrderMovement and fail there, not vanish from the result.
-		rows, err := tx.Query(ctx,
+		committed, committedIDs, readErr := scanLedgerQuantities(ctx, tx,
 			`SELECT product_id, quantity FROM inventory_transactions
 			 WHERE reference_id = $1 AND reference_type = $2 AND type = $3
 			 ORDER BY product_id`,
-			orderID, inventoryRefTypeOrder, string(domain.InventoryTransactionTypeCommit),
-		)
-		if err != nil {
-			return errors.Wrap(err, "failed to read committed lines")
+			orderID, inventoryRefTypeOrder, string(domain.InventoryTransactionTypeCommit))
+		if readErr != nil {
+			return errors.Wrap(readErr, "failed to read committed lines")
 		}
 
-		committed := map[string]int{}
-		productIDs := []string{}
-		for rows.Next() {
-			var productID string
-			var quantity int
-			if err := rows.Scan(&productID, &quantity); err != nil {
-				rows.Close()
-				return errors.Wrap(err, "failed to scan committed line")
-			}
-			committed[productID] = quantity
-			productIDs = append(productIDs, productID)
-		}
-		rows.Close()
-		if err := rows.Err(); err != nil {
-			return errors.Wrap(err, "failed to read committed lines")
-		}
-
-		for _, productID := range productIDs {
+		for _, productID := range committedIDs {
 			if _, err := applyOrderMovement(ctx, tx, movementReturn, productID, committed[productID], orderID, createdBy); err != nil {
 				return err
 			}
@@ -480,7 +488,7 @@ func (r *InventoryRepository) RestockOrderStock(ctx context.Context, orderID, cr
 
 		// A line that reserved but never committed still holds its reservation, and a
 		// returned order can no longer reach CANCELLED to free it. Release it here.
-		stranded, err := tx.Query(ctx,
+		reserved, strandedIDs, strandedErr := scanLedgerQuantities(ctx, tx,
 			`SELECT t.product_id, t.quantity
 			 FROM inventory_transactions t
 			 WHERE t.reference_id = $1 AND t.reference_type = $2 AND t.type = $3
@@ -491,26 +499,9 @@ func (r *InventoryRepository) RestockOrderStock(ctx context.Context, orderID, cr
 			   )
 			 ORDER BY t.product_id`,
 			orderID, inventoryRefTypeOrder,
-			string(domain.InventoryTransactionTypeReserve), string(domain.InventoryTransactionTypeCommit),
-		)
-		if err != nil {
-			return errors.Wrap(err, "failed to read stranded reservations")
-		}
-		reserved := map[string]int{}
-		strandedIDs := []string{}
-		for stranded.Next() {
-			var productID string
-			var quantity int
-			if err := stranded.Scan(&productID, &quantity); err != nil {
-				stranded.Close()
-				return errors.Wrap(err, "failed to scan stranded reservation")
-			}
-			reserved[productID] = quantity
-			strandedIDs = append(strandedIDs, productID)
-		}
-		stranded.Close()
-		if err := stranded.Err(); err != nil {
-			return errors.Wrap(err, "failed to read stranded reservations")
+			string(domain.InventoryTransactionTypeReserve), string(domain.InventoryTransactionTypeCommit))
+		if strandedErr != nil {
+			return errors.Wrap(strandedErr, "failed to read stranded reservations")
 		}
 
 		for _, productID := range strandedIDs {
