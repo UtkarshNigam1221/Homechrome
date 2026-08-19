@@ -119,7 +119,8 @@ describe('previewRefund', () => {
 
     expect(got.lines).toEqual([{ orderItemId: 'a', quantity: 1, amount: 10000 }]);
     expect(got.isFinal).toBe(true);
-    expect(got.total).toBe(10000, 'only the unclaimed unit is left to send back');
+    // Only the unclaimed unit is left to send back.
+    expect(got.total).toBe(10000);
   });
 
   // Money is integer paise on both sides. JS doubles lose the last digits where
