@@ -34,24 +34,50 @@ aws $ENDPOINT_ARG dynamodb scan --region "$REGION" --table-name "$TABLE" \
   --select COUNT --query 'Count' --output text | sed 's/^/  orders table items: /'
 
 say "1/2  Emptying $TABLE"
-# Scan keys only and delete in batches of 25, the BatchWriteItem maximum.
-aws $ENDPOINT_ARG dynamodb scan --region "$REGION" --table-name "$TABLE" \
-  --projection-expression "PK,SK" --output json \
-| python3 -c '
+# Loops until the table reports empty rather than deleting one scan's worth.
+# A single pass would miss two things: a scan larger than one page, and the
+# UnprocessedItems BatchWriteItem returns when it throttles. Both fail silently,
+# and a payment left behind is one the new key shape can no longer find.
+total=0
+for attempt in $(seq 1 40); do
+  remaining=$(aws $ENDPOINT_ARG dynamodb scan --region "$REGION" --table-name "$TABLE" \
+    --select COUNT --query 'Count' --output text)
+  [ "$remaining" = "0" ] && break
+
+  deleted=$(aws $ENDPOINT_ARG dynamodb scan --region "$REGION" --table-name "$TABLE" \
+      --projection-expression "PK,SK" --max-items 500 --output json \
+    | python3 -c '
 import json, subprocess, sys, os
 items = json.load(sys.stdin)["Items"]
 table, region = os.environ["TABLE"], os.environ.get("REGION", "ap-south-1")
 endpoint = os.environ.get("ENDPOINT")
+base = ["aws"] + ([f"--endpoint-url={endpoint}"] if endpoint else []) + ["dynamodb"]
+done = 0
 for i in range(0, len(items), 25):
-    batch = {table: [{"DeleteRequest": {"Key": it}} for it in items[i:i + 25]]}
-    cmd = ["aws"]
-    if endpoint:
-        cmd.append(f"--endpoint-url={endpoint}")
-    cmd += ["dynamodb", "batch-write-item", "--region", region,
-            "--request-items", json.dumps(batch)]
-    subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL)
-print(f"  deleted {len(items)} items")
-'
+    request = {table: [{"DeleteRequest": {"Key": it}} for it in items[i:i + 25]]}
+    # Retry whatever BatchWriteItem hands back unprocessed, or those rows stay.
+    for _ in range(6):
+        out = subprocess.run(base + ["batch-write-item", "--region", region,
+                                     "--request-items", json.dumps(request)],
+                             check=True, capture_output=True, text=True)
+        request = (json.loads(out.stdout or "{}").get("UnprocessedItems") or {})
+        if not request:
+            break
+    else:
+        sys.exit("BatchWriteItem kept returning unprocessed items")
+    done += len(items[i:i + 25])
+print(done)
+')
+  total=$((total + deleted))
+  printf '  deleted %s (running total %s)\n' "$deleted" "$total"
+done
+
+final=$(aws $ENDPOINT_ARG dynamodb scan --region "$REGION" --table-name "$TABLE" \
+  --select COUNT --query 'Count' --output text)
+if [ "$final" != "0" ]; then
+  echo "  ERROR: $final items still present after 40 passes" >&2
+  exit 1
+fi
 
 say "2/2  Releasing the reservations those orders held"
 # The orders are gone, so nothing can ever settle their reservations: the
