@@ -145,3 +145,56 @@ func TestCustomerRepository_DeleteFreesTheAddress(t *testing.T) {
 		require.Error(t, repo.Delete(ctx, "cust_missing"))
 	})
 }
+
+// OTP signup creates a customer from a phone number alone — no email, ever,
+// unless someone adds one later. Every pointer write has to tolerate that.
+func TestCustomerRepository_PhoneOnlyCustomer(t *testing.T) {
+	wrapped, raw := testWrappedClient(t)
+	skipIfNoLocal(t, raw)
+	setupTestTable(t, raw, testOrdersTable)
+
+	repo := NewCustomerRepository(wrapped)
+	ctx := context.Background()
+
+	t.Run("creates, updates and deletes with no email at all", func(t *testing.T) {
+		c := &domain.Customer{ID: "cust_otp", Phone: "+919800009001", FirstName: "OTP"}
+		require.NoError(t, repo.Create(ctx, c))
+
+		// The OTP login path flips phone_verified on an existing customer.
+		c.PhoneVerified = true
+		require.NoError(t, repo.Update(ctx, c), "an email-less update must not touch a pointer")
+
+		found, err := repo.GetByPhone(ctx, "+919800009001")
+		require.NoError(t, err)
+		require.True(t, found.PhoneVerified)
+
+		require.NoError(t, repo.Delete(ctx, "cust_otp"), "delete must not require an email pointer")
+	})
+
+	// The admin later fills in an address for a customer who signed up by phone.
+	t.Run("claims an address added after signup", func(t *testing.T) {
+		c := &domain.Customer{ID: "cust_otp2", Phone: "+919800009002", FirstName: "OTP"}
+		require.NoError(t, repo.Create(ctx, c))
+
+		c.Email = "added@example.com"
+		require.NoError(t, repo.Update(ctx, c))
+
+		found, err := repo.GetByEmail(ctx, "added@example.com")
+		require.NoError(t, err)
+		require.Equal(t, "cust_otp2", found.ID)
+	})
+
+	// Read-modify-write is what keeps this safe, so pin it: an update that
+	// carries no email for a customer who has one would orphan the pointer.
+	t.Run("keeps the pointer when an update carries the same address", func(t *testing.T) {
+		c := &domain.Customer{ID: "cust_otp3", Phone: "+919800009003", Email: "keep@example.com"}
+		require.NoError(t, repo.Create(ctx, c))
+
+		c.FirstName = "Renamed"
+		require.NoError(t, repo.Update(ctx, c))
+
+		found, err := repo.GetByEmail(ctx, "keep@example.com")
+		require.NoError(t, err)
+		require.Equal(t, "cust_otp3", found.ID)
+	})
+}
