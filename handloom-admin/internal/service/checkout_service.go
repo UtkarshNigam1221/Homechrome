@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"time"
 
@@ -85,19 +84,13 @@ func (s *CheckoutService) Initiate(ctx context.Context, customerID string, req d
 	// can be joined against their matching release.
 	orderID := uuid.New().String()
 
-	// 5. Reserve inventory for each item
-	reservedItems := make([]domain.CartItem, 0, len(cart.Items))
-	for _, item := range cart.Items {
-		_, reserveErr := s.inventoryRepo.ReserveStock(ctx, item.ProductID, item.Quantity, orderID)
-		if reserveErr != nil {
-			// Rollback: release all previously reserved items
-			s.releaseReservedItems(ctx, orderID, reservedItems)
-			slog.ErrorContext(ctx, "Failed to reserve stock", keyProductID, item.ProductID, "error", reserveErr)
-			stockErr := errors.Wrap(reserveErr, fmt.Sprintf("Failed to reserve stock for product %s", item.ProductID))
-			span.EndWithError(stockErr)
-			return nil, stockErr
-		}
-		reservedItems = append(reservedItems, item)
+	// 5. Reserve inventory, aggregated and all-or-nothing like the admin path. A
+	// failure leaves nothing reserved, so there is no partial rollback to unwind.
+	if reserveErr := s.inventoryRepo.ReserveOrderStock(ctx, orderID, cartQuantities(cart.Items)); reserveErr != nil {
+		slog.ErrorContext(ctx, "Failed to reserve stock", keyOrderID, orderID, "error", reserveErr)
+		stockErr := errors.Wrap(reserveErr, "Failed to reserve stock for the cart")
+		span.EndWithError(stockErr)
+		return nil, stockErr
 	}
 
 	// 6. Build order items from cart items
@@ -148,7 +141,7 @@ func (s *CheckoutService) Initiate(ctx context.Context, customerID string, req d
 
 	// 10. Save order (repository also writes the order number index)
 	if err = s.orderRepo.Create(ctx, order); err != nil {
-		s.releaseReservedItems(ctx, orderID, reservedItems)
+		s.releaseReservedItems(ctx, orderID, cart.Items)
 		slog.ErrorContext(ctx, "Failed to create order", "error", err)
 		createErr := errors.Wrap(err, "Failed to create order")
 		span.EndWithError(createErr)
@@ -165,10 +158,8 @@ func (s *CheckoutService) Initiate(ctx context.Context, customerID string, req d
 		metrics.LabelBucket:  metrics.BucketForCartSize(order.ItemCount),
 	})
 
-	// NOTE: Per-product purchase counts, coupon-redeemed, first-purchase, and
-	// order geomap are emitted in PaymentService.HandlePaymentSuccess AFTER
-	// payment is confirmed — not here. Emitting them before payment completes
-	// would inflate KPIs for failed-payment orders.
+	// Per-product counts, coupon-redeemed, first-purchase and order geomap fire in
+	// HandlePaymentSuccess — emitting here inflates KPIs on failed payments.
 
 	// 11. Initiate payment
 	paymentResp, err := s.paymentService.InitiatePayment(ctx, domain.InitiatePaymentRequest{
@@ -178,20 +169,18 @@ func (s *CheckoutService) Initiate(ctx context.Context, customerID string, req d
 		Phone:      customer.Phone,
 	})
 	if err != nil {
-		s.releaseReservedItems(ctx, orderID, reservedItems)
+		s.releaseReservedItems(ctx, orderID, cart.Items)
 		slog.ErrorContext(ctx, "Failed to initiate payment", "error", err)
 		payErr := errors.Wrap(err, "Failed to initiate payment")
 		span.EndWithError(payErr)
 		return nil, payErr
 	}
 
-	// 12. Cart is NOT cleared here — it's cleared after payment success
-	// in PaymentService.HandlePaymentSuccess. This ensures the cart
-	// is preserved if payment fails, so the user can retry.
+	// 12. Cart is NOT cleared here but after payment success, so it survives a
+	// failed payment and the user can retry.
 
-	// Funnel counter: checkout.initiated. cart_to_checkout duration + geomap
-	// were dropped per metrics-PG migration plan (covered by cart_to_payment
-	// + country/city labels on funnel metrics).
+	// Funnel counter: checkout.initiated. cart_to_checkout + geomap dropped per the
+	// metrics-PG migration (covered by cart_to_payment + country/city labels).
 	metrics.Record(ctx, "checkout_initiated", metrics.L{
 		metrics.LabelCountry:    country,
 		metrics.LabelCity:       city,
@@ -275,22 +264,25 @@ func cartItemsToOrderItems(items []domain.CartItem) []domain.OrderItem {
 	return orderItems
 }
 
+// cartQuantities aggregates cart lines by product, mirroring orderQuantities.
+func cartQuantities(items []domain.CartItem) map[string]int {
+	quantities := make(map[string]int, len(items))
+	for _, item := range items {
+		quantities[item.ProductID] += item.Quantity
+	}
+	return quantities
+}
+
 // releaseReservedItems releases inventory for items that were previously reserved
 func (s *CheckoutService) releaseReservedItems(ctx context.Context, orderID string, items []domain.CartItem) {
-	for _, item := range items {
-		_, err := s.inventoryRepo.ReleaseStock(ctx, item.ProductID, item.Quantity, orderID)
-		if err != nil {
-			slog.ErrorContext(ctx, "Failed to release reserved stock", keyProductID, item.ProductID, "error", err)
-			metrics.Record(ctx, "inventory_mutation_failed", metrics.L{metrics.LabelReason: reasonRelease})
-			// Continue releasing other items even if one fails
-		}
+	if err := s.inventoryRepo.ReleaseOrderStock(ctx, orderID, cartQuantities(items)); err != nil {
+		slog.ErrorContext(ctx, "Failed to release reserved stock", keyOrderID, orderID, "error", err)
+		metrics.Record(ctx, "inventory_mutation_failed", metrics.L{metrics.LabelReason: reasonRelease})
 	}
 }
 
-// checkoutUTMSource returns the visitor's first-touch utm_source from
-// context for denormalising onto the order. PhonePe webhook ctx is
-// server-to-server (no browser headers), so payment_completed +
-// customer_first_purchase have to read it back from order.UTMSource.
+// checkoutUTMSource reads first-touch utm_source from context to denormalise onto
+// the order; the PhonePe webhook has no browser headers and reads it back.
 func checkoutUTMSource(ctx context.Context) string {
 	src, _, _ := middleware.GetUTM(ctx)
 	return src

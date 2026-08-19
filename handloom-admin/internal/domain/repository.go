@@ -113,10 +113,8 @@ type ProductRepository interface {
 	// GetBySKU retrieves a product by SKU
 	GetBySKU(ctx context.Context, sku string) (*Product, error)
 
-	// MaxSlugSuffix returns the highest numeric slug suffix for a base slug:
-	// 0 if the base is unused, 1 if only the bare base exists, else the max
-	// N among "<base>-N" slugs. excludeID (when non-empty) skips that product's
-	// own row so re-saving an unchanged name doesn't collide with itself.
+	// MaxSlugSuffix returns the highest numeric suffix for a base slug (0 if unused,
+	// 1 if only the bare base). excludeID skips that product's own row.
 	MaxSlugSuffix(ctx context.Context, base, excludeID string) (int, error)
 
 	// Update updates an existing product
@@ -140,16 +138,12 @@ type ProductRepository interface {
 	// GetAttributeFilterOptions returns distinct values for each attribute in a category
 	GetAttributeFilterOptions(ctx context.Context, categoryID string, attrNames []string) (map[string][]string, error)
 
-	// UpsertProductWithEmbedding writes a new product + inventory row + (optionally)
-	// its embedding in one transaction. Pass nil embedding to leave the embedding
-	// columns NULL (backfill will populate later).
+	// UpsertProductWithEmbedding writes product + inventory + (optionally) embedding
+	// in one transaction. Nil embedding leaves the columns NULL for backfill.
 	UpsertProductWithEmbedding(ctx context.Context, product *Product, inventory *Inventory, embedding []float32) error
 
-	// UpdateProductWithOptionalEmbedding updates an existing product and writes the
-	// embedding only when writeEmbedding == true and embedding != nil. The contract:
-	//   writeEmbedding=false             → embedding columns untouched
-	//   writeEmbedding=true,  nil  vec   → embedding columns untouched (preserve good vec on transient embedder failure)
-	//   writeEmbedding=true, !nil vec    → write embedding + embedding_updated_at = now()
+	// UpdateProductWithOptionalEmbedding writes the embedding only when writeEmbedding
+	// && embedding != nil, so a transient embedder failure preserves the good vector.
 	UpdateProductWithOptionalEmbedding(ctx context.Context, product *Product, embedding []float32, writeEmbedding bool) error
 }
 
@@ -259,10 +253,19 @@ type InventoryRepository interface {
 	// ReleaseStock releases reserved stock
 	ReleaseStock(ctx context.Context, productID string, quantity int, orderID string) (*InventoryTransaction, error)
 
-	// CommitStock converts a reservation into a dispatch. The goods have left
-	// the warehouse, so quantity and reserved_qty both drop by the same amount
-	// and available_qty is unchanged.
+	// CommitStock converts a reservation into a dispatch: quantity and reserved_qty
+	// both drop by the same amount, so available_qty is unchanged.
 	CommitStock(ctx context.Context, productID string, quantity int, orderID string) (*InventoryTransaction, error)
+
+	// Reserve and commit are all-or-nothing; release is per-line, so an error from it
+	// can mean a partial release. quantities maps product ID to amount, dups merged.
+	ReserveOrderStock(ctx context.Context, orderID string, quantities map[string]int) error
+	CommitOrderStock(ctx context.Context, orderID string, quantities map[string]int) error
+	ReleaseOrderStock(ctx context.Context, orderID string, quantities map[string]int) error
+
+	// RestockOrderStock returns an order's goods on a return. Quantities come from its
+	// COMMIT ledger rows: a line that never committed was never decremented.
+	RestockOrderStock(ctx context.Context, orderID, createdBy string) error
 
 	// AdjustStock adjusts stock to a specific quantity
 	AdjustStock(ctx context.Context, productID string, newQuantity int, reason string, userID string) (*InventoryTransaction, error)

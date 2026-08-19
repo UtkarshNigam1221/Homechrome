@@ -130,6 +130,7 @@ const (
 	InventoryTransactionTypeRelease InventoryTransactionType = "RELEASE"
 	InventoryTransactionTypeAdjust  InventoryTransactionType = "ADJUST"
 	InventoryTransactionTypeCommit  InventoryTransactionType = "COMMIT"
+	InventoryTransactionTypeReturn  InventoryTransactionType = "RETURN"
 )
 
 // ==================== BASE ENTITY ====================

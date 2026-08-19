@@ -2,7 +2,10 @@ package postgres
 
 import (
 	"context"
+	stderrors "errors"
 	"fmt"
+	"maps"
+	"slices"
 	"time"
 
 	"github.com/georgysavva/scany/v2/pgxscan"
@@ -229,195 +232,293 @@ func (r *InventoryRepository) RemoveStock(ctx context.Context, productID string,
 	return txn, nil
 }
 
-// ReserveStock reserves stock for an order within a transaction.
+// orderMovement is one product's share of an order-scoped stock movement.
+type orderMovement struct {
+	typ          domain.InventoryTransactionType
+	deltaQty     int // multiplier applied to inventory.quantity
+	deltaReserve int // multiplier applied to inventory.reserved_qty
+}
+
+var (
+	movementReserve = orderMovement{domain.InventoryTransactionTypeReserve, 0, +1}
+	movementRelease = orderMovement{domain.InventoryTransactionTypeRelease, 0, -1}
+	movementCommit  = orderMovement{domain.InventoryTransactionTypeCommit, -1, -1}
+	movementReturn  = orderMovement{domain.InventoryTransactionTypeReturn, +1, 0}
+)
+
+// existingOrderMovement returns this order's already-recorded movement for the
+// product, or nil. Reading reference_id back is what makes a repeat a no-op.
+func existingOrderMovement(ctx context.Context, tx pgx.Tx, productID, orderID string, typ domain.InventoryTransactionType) (*domain.InventoryTransaction, error) {
+	var txn domain.InventoryTransaction
+	err := tx.QueryRow(ctx,
+		`SELECT id, product_id, type, quantity, previous_qty, new_qty, reason,
+		        reference_type, reference_id, created_at, created_by
+		 FROM inventory_transactions
+		 WHERE product_id = $1 AND reference_id = $2 AND type = $3 AND reference_type = $4`,
+		productID, orderID, string(typ), inventoryRefTypeOrder,
+	).Scan(&txn.ID, &txn.ProductID, &txn.Type, &txn.Quantity, &txn.PreviousQty,
+		&txn.NewQty, &txn.Reason, &txn.ReferenceType, &txn.ReferenceID,
+		&txn.CreatedAt, &txn.CreatedBy)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, nil
+		}
+		return nil, errors.Wrap(err, "failed to read order movement")
+	}
+	return &txn, nil
+}
+
+// applyOrderMovement performs one product's stock movement inside an existing
+// transaction. A movement already recorded for this order is returned unchanged.
+func applyOrderMovement(ctx context.Context, tx pgx.Tx, m orderMovement, productID string, quantity int, orderID, createdBy string) (*domain.InventoryTransaction, error) {
+	// Lock before the ledger check, not after: concurrent duplicates would both
+	// read "not yet applied" and the second would trip the unique index.
+	var currentQty, reservedQty int
+	err := tx.QueryRow(ctx,
+		`SELECT quantity, reserved_qty FROM inventory WHERE product_id = $1 FOR UPDATE`,
+		productID,
+	).Scan(&currentQty, &reservedQty)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, errors.NotFound("Inventory not found")
+		}
+		return nil, errors.Wrap(err, "failed to lock inventory row")
+	}
+
+	existing, err := existingOrderMovement(ctx, tx, productID, orderID, m.typ)
+	if err != nil {
+		return nil, err
+	}
+	if existing != nil {
+		// A replay of the same amount is the no-op the unique index exists for. A
+		// different amount is divergence, and silently dropping it loses stock.
+		if existing.Quantity != quantity {
+			return nil, errors.New(errors.ErrCodeConflict,
+				fmt.Sprintf("order %s already recorded %s of %d for product %s, cannot apply %d",
+					orderID, m.typ, existing.Quantity, productID, quantity))
+		}
+		return existing, nil
+	}
+
+	newQty := currentQty + m.deltaQty*quantity
+	newReserved := reservedQty + m.deltaReserve*quantity
+
+	// Neither counter may go negative: release and commit need the reservation to exist.
+	if newReserved < 0 || newQty < 0 {
+		return nil, errors.New(errors.ErrCodeInsufficientStock, "insufficient stock")
+	}
+
+	// Only a reservation has to fit inside free stock. Release and commit reduce
+	// reserved_qty, so they must stay possible on rows the historical leak corrupted.
+	if m.deltaReserve > 0 && newQty < newReserved {
+		return nil, errors.New(errors.ErrCodeInsufficientStock, "insufficient stock")
+	}
+
+	now := time.Now()
+	upd := querybuilder.Update("inventory").
+		Set(ColQuantity, newQty).
+		Set(ColReservedQty, newReserved).
+		Set(ColAvailableQty, newQty-newReserved).
+		Set(ColUpdatedAt, now)
+	// Only when we know the actor: reserve, release and commit are system-driven and
+	// must not overwrite whoever AddStock or AdjustStock last recorded.
+	if createdBy != "" {
+		upd = upd.Set(ColUpdatedBy, createdBy)
+	}
+	updSQL, updArgs := upd.Where(ColProductID, productID).Build()
+	if _, err := tx.Exec(ctx, updSQL, updArgs...); err != nil {
+		return nil, errors.Wrap(err, "failed to update inventory")
+	}
+
+	// PreviousQty/NewQty track whichever counter the movement is about:
+	// reserved_qty for RESERVE/RELEASE, quantity for COMMIT.
+	prev, next := reservedQty, newReserved
+	if m.deltaQty != 0 {
+		prev, next = currentQty, newQty
+	}
+
+	txn := &domain.InventoryTransaction{
+		ID:            "inv_txn_" + uuid.New().String()[:8],
+		ProductID:     productID,
+		Type:          m.typ,
+		Quantity:      quantity,
+		PreviousQty:   prev,
+		NewQty:        next,
+		Reason:        fmt.Sprintf("ORDER %s", orderID),
+		ReferenceType: inventoryRefTypeOrder,
+		ReferenceID:   orderID,
+		CreatedAt:     now,
+		CreatedBy:     createdBy,
+	}
+	if err := insertInventoryTransaction(ctx, tx, txn); err != nil {
+		return nil, err
+	}
+	return txn, nil
+}
+
+// singleOrderMovement wraps applyOrderMovement in its own transaction. No actor:
+// reserve, release and commit are system-driven; only a return carries one.
+func (r *InventoryRepository) singleOrderMovement(ctx context.Context, m orderMovement, productID string, quantity int, orderID string) (*domain.InventoryTransaction, error) {
+	var txn *domain.InventoryTransaction
+	err := pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
+		var err error
+		txn, err = applyOrderMovement(ctx, tx, m, productID, quantity, orderID, "")
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return txn, nil
+}
+
+// ReserveStock reserves stock for an order. Idempotent per (product, order).
 func (r *InventoryRepository) ReserveStock(ctx context.Context, productID string, quantity int, orderID string) (*domain.InventoryTransaction, error) {
-	var txn *domain.InventoryTransaction
-
-	err := pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
-		var currentQty, reservedQty int
-		err := tx.QueryRow(ctx,
-			`SELECT quantity, reserved_qty FROM inventory WHERE product_id = $1 FOR UPDATE`,
-			productID,
-		).Scan(&currentQty, &reservedQty)
-		if err != nil {
-			if err == pgx.ErrNoRows {
-				return errors.NotFound("Inventory not found")
-			}
-			return errors.Wrap(err, "failed to lock inventory row")
-		}
-
-		availableQty := currentQty - reservedQty
-		if availableQty < quantity {
-			return errors.New(errors.ErrCodeInsufficientStock, "insufficient stock")
-		}
-
-		now := time.Now()
-		newReserved := reservedQty + quantity
-		newAvailable := currentQty - newReserved
-
-		updQB := querybuilder.Update("inventory").
-			Set(ColReservedQty, newReserved).
-			Set(ColAvailableQty, newAvailable).
-			Set(ColUpdatedAt, now).
-			Where(ColProductID, productID)
-
-		updSQL, updArgs := updQB.Build()
-		_, err = tx.Exec(ctx, updSQL, updArgs...)
-		if err != nil {
-			return errors.Wrap(err, "failed to update inventory")
-		}
-
-		txn = &domain.InventoryTransaction{
-			ID:            "inv_txn_" + uuid.New().String()[:8],
-			ProductID:     productID,
-			Type:          domain.InventoryTransactionTypeReserve,
-			Quantity:      quantity,
-			PreviousQty:   reservedQty,
-			NewQty:        newReserved,
-			Reason:        fmt.Sprintf("ORDER %s", orderID),
-			ReferenceType: inventoryRefTypeOrder,
-			ReferenceID:   orderID,
-			CreatedAt:     now,
-		}
-
-		if err := insertInventoryTransaction(ctx, tx, txn); err != nil {
-			return err
-		}
-
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	return txn, nil
+	return r.singleOrderMovement(ctx, movementReserve, productID, quantity, orderID)
 }
 
-// ReleaseStock releases previously reserved stock within a transaction.
+// ReleaseStock releases stock this order reserved. Idempotent per (product, order).
 func (r *InventoryRepository) ReleaseStock(ctx context.Context, productID string, quantity int, orderID string) (*domain.InventoryTransaction, error) {
-	var txn *domain.InventoryTransaction
-
-	err := pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
-		var currentQty, reservedQty int
-		err := tx.QueryRow(ctx,
-			`SELECT quantity, reserved_qty FROM inventory WHERE product_id = $1 FOR UPDATE`,
-			productID,
-		).Scan(&currentQty, &reservedQty)
-		if err != nil {
-			if err == pgx.ErrNoRows {
-				return errors.NotFound("Inventory not found")
-			}
-			return errors.Wrap(err, "failed to lock inventory row")
-		}
-
-		if reservedQty < quantity {
-			return errors.New(errors.ErrCodeInsufficientStock, "insufficient stock")
-		}
-
-		now := time.Now()
-		newReserved := reservedQty - quantity
-		newAvailable := currentQty - newReserved
-
-		updQB := querybuilder.Update("inventory").
-			Set(ColReservedQty, newReserved).
-			Set(ColAvailableQty, newAvailable).
-			Set(ColUpdatedAt, now).
-			Where(ColProductID, productID)
-
-		updSQL, updArgs := updQB.Build()
-		_, err = tx.Exec(ctx, updSQL, updArgs...)
-		if err != nil {
-			return errors.Wrap(err, "failed to update inventory")
-		}
-
-		txn = &domain.InventoryTransaction{
-			ID:            "inv_txn_" + uuid.New().String()[:8],
-			ProductID:     productID,
-			Type:          domain.InventoryTransactionTypeRelease,
-			Quantity:      quantity,
-			PreviousQty:   reservedQty,
-			NewQty:        newReserved,
-			Reason:        fmt.Sprintf("ORDER %s", orderID),
-			ReferenceType: inventoryRefTypeOrder,
-			ReferenceID:   orderID,
-			CreatedAt:     now,
-		}
-
-		if err := insertInventoryTransaction(ctx, tx, txn); err != nil {
-			return err
-		}
-
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	return txn, nil
+	return r.singleOrderMovement(ctx, movementRelease, productID, quantity, orderID)
 }
 
-// CommitStock converts a reservation into a dispatch within a transaction.
-// Both quantity and reserved_qty drop by the same amount, so available_qty is
-// unchanged: the units were already unavailable when reserved, and are now
-// physically gone as well.
+// CommitStock turns this order's reservation into a dispatch: quantity and
+// reserved_qty both drop, available_qty unchanged. Idempotent per (product, order).
 func (r *InventoryRepository) CommitStock(ctx context.Context, productID string, quantity int, orderID string) (*domain.InventoryTransaction, error) {
-	var txn *domain.InventoryTransaction
+	return r.singleOrderMovement(ctx, movementCommit, productID, quantity, orderID)
+}
 
-	err := pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
-		var currentQty, reservedQty int
-		err := tx.QueryRow(ctx,
-			`SELECT quantity, reserved_qty FROM inventory WHERE product_id = $1 FOR UPDATE`,
-			productID,
-		).Scan(&currentQty, &reservedQty)
-		if err != nil {
-			if err == pgx.ErrNoRows {
-				return errors.NotFound("Inventory not found")
+// orderMovementAll applies one movement to every line of an order in a single
+// transaction, so a line that cannot be applied rolls back the ones before it.
+func (r *InventoryRepository) orderMovementAll(ctx context.Context, m orderMovement, orderID string, quantities map[string]int) error {
+	if len(quantities) == 0 {
+		return nil
+	}
+
+	return pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
+		// Sorted, not map order: two orders sharing products would otherwise take
+		// the FOR UPDATE row locks in opposite sequences and deadlock.
+		for _, productID := range slices.Sorted(maps.Keys(quantities)) {
+			if _, err := applyOrderMovement(ctx, tx, m, productID, quantities[productID], orderID, ""); err != nil {
+				return err
 			}
-			return errors.Wrap(err, "failed to lock inventory row")
 		}
-
-		// Both guards matter. reservedQty is the real invariant, but a row
-		// corrupted by the historical leak can violate reservedQty <= quantity,
-		// and driving quantity negative would be worse than refusing.
-		if reservedQty < quantity || currentQty < quantity {
-			return errors.New(errors.ErrCodeInsufficientStock, "insufficient stock")
-		}
-
-		now := time.Now()
-		newQty := currentQty - quantity
-		newReserved := reservedQty - quantity
-		newAvailable := newQty - newReserved
-
-		updQB := querybuilder.Update("inventory").
-			Set(ColQuantity, newQty).
-			Set(ColReservedQty, newReserved).
-			Set(ColAvailableQty, newAvailable).
-			Set(ColUpdatedAt, now).
-			Where(ColProductID, productID)
-
-		updSQL, updArgs := updQB.Build()
-		_, err = tx.Exec(ctx, updSQL, updArgs...)
-		if err != nil {
-			return errors.Wrap(err, "failed to update inventory")
-		}
-
-		txn = &domain.InventoryTransaction{
-			ID:            "inv_txn_" + uuid.New().String()[:8],
-			ProductID:     productID,
-			Type:          domain.InventoryTransactionTypeCommit,
-			Quantity:      quantity,
-			PreviousQty:   currentQty,
-			NewQty:        newQty,
-			Reason:        fmt.Sprintf("ORDER %s", orderID),
-			ReferenceType: inventoryRefTypeOrder,
-			ReferenceID:   orderID,
-			CreatedAt:     now,
-		}
-
-		return insertInventoryTransaction(ctx, tx, txn)
+		return nil
 	})
+}
+
+// ReserveOrderStock reserves every line of an order at once, all or nothing.
+// Aggregated first: one product on two lines would otherwise dedup into one.
+func (r *InventoryRepository) ReserveOrderStock(ctx context.Context, orderID string, quantities map[string]int) error {
+	return r.orderMovementAll(ctx, movementReserve, orderID, quantities)
+}
+
+// CommitOrderStock commits every line of an order at once, all or nothing.
+func (r *InventoryRepository) CommitOrderStock(ctx context.Context, orderID string, quantities map[string]int) error {
+	return r.orderMovementAll(ctx, movementCommit, orderID, quantities)
+}
+
+// ReleaseOrderStock is best-effort, unlike commit: every caller is a rollback, so
+// one unreleasable line must not strand what the other lines still hold.
+func (r *InventoryRepository) ReleaseOrderStock(ctx context.Context, orderID string, quantities map[string]int) error {
+	var failures []error
+	for _, productID := range slices.Sorted(maps.Keys(quantities)) {
+		if _, err := r.singleOrderMovement(ctx, movementRelease, productID, quantities[productID], orderID); err != nil {
+			failures = append(failures, fmt.Errorf("product %s: %w", productID, err))
+		}
+	}
+	// Every failure, not just the first: these are the only leak signal an operator
+	// gets, and they need to know which products to reconcile.
+	return stderrors.Join(failures...)
+}
+
+// ledgerLine is one (product_id, quantity) ledger row, in query order.
+type ledgerLine struct {
+	productID string
+	quantity  int
+}
+
+// scanLedgerQuantities reads ledger rows in the order the query returned them.
+func scanLedgerQuantities(ctx context.Context, tx pgx.Tx, sql string, args ...any) ([]ledgerLine, error) {
+	rows, err := tx.Query(ctx, sql, args...)
 	if err != nil {
 		return nil, err
 	}
-	return txn, nil
+	defer rows.Close()
+
+	var lines []ledgerLine
+	for rows.Next() {
+		var l ledgerLine
+		if scanErr := rows.Scan(&l.productID, &l.quantity); scanErr != nil {
+			return nil, scanErr
+		}
+		lines = append(lines, l)
+	}
+	return lines, rows.Err()
+}
+
+// RestockOrderStock returns an order's goods on a return, quantities read from its
+// COMMIT ledger rows. Its own RETURN type so last_restock_at is not stamped.
+func (r *InventoryRepository) RestockOrderStock(ctx context.Context, orderID, createdBy string) error {
+	return pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
+		// Lock the order's inventory rows before reading the ledger, so a COMMIT row
+		// inserted concurrently cannot be missed and left unrestocked.
+		if _, err := tx.Exec(ctx,
+			`SELECT product_id FROM inventory
+			 WHERE product_id IN (
+			   SELECT product_id FROM inventory_transactions
+			   WHERE reference_id = $1 AND reference_type = $2
+			 )
+			 ORDER BY product_id
+			 FOR UPDATE`,
+			orderID, inventoryRefTypeOrder,
+		); err != nil {
+			return errors.Wrap(err, "failed to lock order inventory")
+		}
+
+		// Not joined to inventory: a COMMIT row whose inventory row was deleted must
+		// still reach applyOrderMovement and fail there, not vanish from the result.
+		committed, readErr := scanLedgerQuantities(ctx, tx,
+			`SELECT product_id, quantity FROM inventory_transactions
+			 WHERE reference_id = $1 AND reference_type = $2 AND type = $3
+			 ORDER BY product_id`,
+			orderID, inventoryRefTypeOrder, string(domain.InventoryTransactionTypeCommit))
+		if readErr != nil {
+			return errors.Wrap(readErr, "failed to read committed lines")
+		}
+
+		for _, line := range committed {
+			if _, err := applyOrderMovement(ctx, tx, movementReturn, line.productID, line.quantity, orderID, createdBy); err != nil {
+				return err
+			}
+		}
+
+		// Reserved, never committed, not already released: still holding, and a returned
+		// order can no longer reach CANCELLED to free it. Already-released lines are not.
+		stranded, strandedErr := scanLedgerQuantities(ctx, tx,
+			`SELECT t.product_id, t.quantity
+			 FROM inventory_transactions t
+			 WHERE t.reference_id = $1 AND t.reference_type = $2 AND t.type = $3
+			   AND NOT EXISTS (
+			     SELECT 1 FROM inventory_transactions c
+			     WHERE c.reference_id = t.reference_id AND c.reference_type = t.reference_type
+			       AND c.product_id = t.product_id AND c.type IN ($4, $5)
+			   )
+			 ORDER BY t.product_id`,
+			orderID, inventoryRefTypeOrder,
+			string(domain.InventoryTransactionTypeReserve),
+			string(domain.InventoryTransactionTypeCommit),
+			string(domain.InventoryTransactionTypeRelease))
+		if strandedErr != nil {
+			return errors.Wrap(strandedErr, "failed to read stranded reservations")
+		}
+
+		for _, line := range stranded {
+			if _, err := applyOrderMovement(ctx, tx, movementRelease, line.productID, line.quantity, orderID, createdBy); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 // AdjustStock sets the inventory quantity to an absolute value within a transaction.

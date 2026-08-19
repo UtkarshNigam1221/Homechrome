@@ -1,4 +1,11 @@
-export type TransactionType = 'ADD' | 'REMOVE' | 'RESERVE' | 'RELEASE' | 'ADJUST' | 'COMMIT';
+export type TransactionType =
+  | 'ADD'
+  | 'REMOVE'
+  | 'RESERVE'
+  | 'RELEASE'
+  | 'ADJUST'
+  | 'COMMIT'
+  | 'RETURN';
 
 export interface Inventory {
   product_id: string;

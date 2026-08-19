@@ -3,6 +3,7 @@ package postgres_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/internal/repository/postgres"
+	"github.com/handloom/admin/pkg/errors"
 )
 
 // seedInventory inserts an inventory row directly, bypassing product-create
@@ -102,5 +104,369 @@ func TestInventoryRepository_CommitStock(t *testing.T) {
 	t.Run("commit on a missing product returns not found", func(t *testing.T) {
 		_, err := repo.CommitStock(ctx, "does-not-exist", 1, "order_jkl")
 		require.Error(t, err)
+	})
+}
+
+// The old guard read only the product-level reserved_qty total, so a repeat
+// consumed another order's reservation. These pin that reference_id is read back.
+func TestInventoryRepository_OrderScopedIdempotency(t *testing.T) {
+	pool := newTestPool(t)
+	repo := postgres.NewInventoryRepository(pool)
+	ctx := context.Background()
+	category := seedCategory(t, pool)
+
+	newProduct := func(t *testing.T, quantity, reserved int, id ...string) string {
+		t.Helper()
+		p := newTestProduct(category.ID)
+		if len(id) > 0 {
+			p.ID = id[0]
+		}
+		require.NoError(t, postgres.NewProductRepository(pool).Create(ctx, p, nil))
+		t.Cleanup(func() {
+			_, _ = pool.Exec(ctx, `DELETE FROM products WHERE id = $1`, p.ID)
+		})
+		_, err := pool.Exec(ctx, `DELETE FROM inventory WHERE product_id = $1`, p.ID)
+		require.NoError(t, err)
+		seedInventory(t, pool, p.ID, quantity, reserved)
+		return p.ID
+	}
+
+	ledgerRows := func(t *testing.T, productID, orderID string, typ domain.InventoryTransactionType) int {
+		t.Helper()
+		var n int
+		require.NoError(t, pool.QueryRow(ctx,
+			`SELECT count(*) FROM inventory_transactions
+			 WHERE product_id = $1 AND reference_id = $2 AND type = $3`,
+			productID, orderID, string(typ),
+		).Scan(&n))
+		return n
+	}
+
+	// The failure from the backlog: X holds 2, Y holds 3, X commits twice — the
+	// second passes the total-only guard and eats Y's reservation.
+	t.Run("repeat commit does not consume another order's reservation", func(t *testing.T) {
+		productID := newProduct(t, 10, 5) // X holds 2, Y holds 3
+
+		_, err := repo.CommitStock(ctx, productID, 2, "order_X")
+		require.NoError(t, err)
+
+		_, err = repo.CommitStock(ctx, productID, 2, "order_X")
+		require.NoError(t, err, "a repeat commit must be a no-op, not an error")
+
+		qty, reserved, _ := readInventory(t, pool, productID)
+		require.Equal(t, 8, qty, "quantity must drop once, not twice")
+		require.Equal(t, 3, reserved, "order Y's reservation must survive")
+		require.Equal(t, 1, ledgerRows(t, productID, "order_X", domain.InventoryTransactionTypeCommit))
+
+		// Y can still ship.
+		_, err = repo.CommitStock(ctx, productID, 3, "order_Y")
+		require.NoError(t, err)
+		qty, reserved, _ = readInventory(t, pool, productID)
+		require.Equal(t, 5, qty)
+		require.Equal(t, 0, reserved)
+	})
+
+	t.Run("repeat release does not free another order's reservation", func(t *testing.T) {
+		productID := newProduct(t, 10, 5)
+
+		_, err := repo.ReleaseStock(ctx, productID, 2, "order_X")
+		require.NoError(t, err)
+		_, err = repo.ReleaseStock(ctx, productID, 2, "order_X")
+		require.NoError(t, err, "a repeat release must be a no-op, not an error")
+
+		_, reserved, _ := readInventory(t, pool, productID)
+		require.Equal(t, 3, reserved, "only order X's 2 units may be released")
+		require.Equal(t, 1, ledgerRows(t, productID, "order_X", domain.InventoryTransactionTypeRelease))
+	})
+
+	// A replay of a different amount is divergence, not the no-op the index exists
+	// for. Silently dropping it would move zero units and report success.
+	t.Run("a replay with a different quantity is a conflict", func(t *testing.T) {
+		productID := newProduct(t, 10, 5)
+
+		_, err := repo.ReserveStock(ctx, productID, 2, "order_q")
+		require.NoError(t, err)
+
+		_, err = repo.ReserveStock(ctx, productID, 3, "order_q")
+		require.Error(t, err, "a different quantity must not be dropped silently")
+		appErr, ok := errors.AsAppError(err)
+		require.True(t, ok)
+		require.Equal(t, errors.ErrCodeConflict, appErr.Code)
+
+		_, reserved, _ := readInventory(t, pool, productID)
+		require.Equal(t, 7, reserved, "the first reservation stands, the replay moved nothing")
+		require.Equal(t, 1, ledgerRows(t, productID, "order_q", domain.InventoryTransactionTypeReserve))
+	})
+
+	t.Run("repeat reserve does not double-reserve", func(t *testing.T) {
+		productID := newProduct(t, 10, 0)
+
+		_, err := repo.ReserveStock(ctx, productID, 4, "order_X")
+		require.NoError(t, err)
+		_, err = repo.ReserveStock(ctx, productID, 4, "order_X")
+		require.NoError(t, err, "a repeat reserve must be a no-op, not an error")
+
+		_, reserved, available := readInventory(t, pool, productID)
+		require.Equal(t, 4, reserved)
+		require.Equal(t, 6, available)
+		require.Equal(t, 1, ledgerRows(t, productID, "order_X", domain.InventoryTransactionTypeReserve))
+	})
+
+	// #198: one transaction for the whole order, so a mid-order failure leaves
+	// no half-applied state.
+	t.Run("CommitOrderStock applies every line or none", func(t *testing.T) {
+		// IDs are pinned: orderMovementAll applies in sorted order, so "good" must be
+		// applied before "short" fails or the rollback is never exercised.
+		good := newProduct(t, 10, 5, "prod_013_a_good")
+		short := newProduct(t, 10, 1, "prod_013_z_short") // only 1 reserved, asking 3 fails
+
+		err := repo.CommitOrderStock(ctx, "order_multi", map[string]int{good: 2, short: 3})
+		require.Error(t, err, "a line that cannot commit must fail the whole order")
+
+		qty, reserved, _ := readInventory(t, pool, good)
+		require.Equal(t, 10, qty, "the good line must be rolled back")
+		require.Equal(t, 5, reserved)
+		require.Equal(t, 0, ledgerRows(t, good, "order_multi", domain.InventoryTransactionTypeCommit))
+	})
+
+	t.Run("CommitOrderStock commits all lines together", func(t *testing.T) {
+		a := newProduct(t, 10, 5)
+		b := newProduct(t, 20, 6)
+
+		require.NoError(t, repo.CommitOrderStock(ctx, "order_ok", map[string]int{a: 2, b: 3}))
+
+		qtyA, resA, _ := readInventory(t, pool, a)
+		qtyB, resB, _ := readInventory(t, pool, b)
+		require.Equal(t, 8, qtyA)
+		require.Equal(t, 3, resA)
+		require.Equal(t, 17, qtyB)
+		require.Equal(t, 3, resB)
+
+		// And it is idempotent as a whole.
+		require.NoError(t, repo.CommitOrderStock(ctx, "order_ok", map[string]int{a: 2, b: 3}))
+		qtyA, _, _ = readInventory(t, pool, a)
+		require.Equal(t, 8, qtyA, "a replayed order commit must change nothing")
+	})
+
+	// #226 F3: release is a rollback path. An unreleasable line must not strand the
+	// reservations the other lines still hold, whichever order they are applied in.
+	t.Run("ReleaseOrderStock releases what it can when one line fails", func(t *testing.T) {
+		good := newProduct(t, 10, 5)
+		unreserved := newProduct(t, 10, 0) // nothing reserved, releasing 3 must fail
+
+		err := repo.ReleaseOrderStock(ctx, "order_rel_partial", map[string]int{good: 2, unreserved: 3})
+		require.Error(t, err, "the failing line must still be reported")
+
+		_, resGood, _ := readInventory(t, pool, good)
+		require.Equal(t, 3, resGood, "the releasable line must not be rolled back")
+		_, resOther, _ := readInventory(t, pool, unreserved)
+		require.Equal(t, 0, resOther)
+	})
+
+	t.Run("ReleaseOrderStock releases all lines together", func(t *testing.T) {
+		a := newProduct(t, 10, 5)
+		b := newProduct(t, 20, 6)
+
+		require.NoError(t, repo.ReleaseOrderStock(ctx, "order_rel", map[string]int{a: 2, b: 3}))
+
+		_, resA, _ := readInventory(t, pool, a)
+		_, resB, _ := readInventory(t, pool, b)
+		require.Equal(t, 3, resA)
+		require.Equal(t, 3, resB)
+	})
+}
+
+// A return adds back only what the order committed. Commit is best-effort, so
+// reaching SHIPPED does not mean the stock left; adding it back would oversell.
+func TestInventoryRepository_RestockOrderStock(t *testing.T) {
+	pool := newTestPool(t)
+	repo := postgres.NewInventoryRepository(pool)
+	ctx := context.Background()
+	category := seedCategory(t, pool)
+
+	newProduct := func(t *testing.T, quantity, reserved int) string {
+		t.Helper()
+		p := newTestProduct(category.ID)
+		require.NoError(t, postgres.NewProductRepository(pool).Create(ctx, p, nil))
+		t.Cleanup(func() {
+			_, _ = pool.Exec(ctx, `DELETE FROM products WHERE id = $1`, p.ID)
+		})
+		_, err := pool.Exec(ctx, `DELETE FROM inventory WHERE product_id = $1`, p.ID)
+		require.NoError(t, err)
+		seedInventory(t, pool, p.ID, quantity, reserved)
+		return p.ID
+	}
+
+	t.Run("restocks exactly what was committed", func(t *testing.T) {
+		productID := newProduct(t, 10, 4)
+		require.NoError(t, repo.CommitOrderStock(ctx, "order_r1", map[string]int{productID: 4}))
+
+		qty, _, _ := readInventory(t, pool, productID)
+		require.Equal(t, 6, qty)
+
+		require.NoError(t, repo.RestockOrderStock(ctx, "order_r1", "admin_test"))
+
+		qty, reserved, available := readInventory(t, pool, productID)
+		require.Equal(t, 10, qty, "the committed units come back")
+		require.Equal(t, 0, reserved)
+		require.Equal(t, 10, available)
+	})
+
+	// The #200 regression: before the commit-gated restock, a return after a
+	// failed commit added stock that had never been decremented.
+	t.Run("restocks nothing when the commit never happened", func(t *testing.T) {
+		productID := newProduct(t, 10, 4)
+		// Reserved against this order but never committed, so the order does reference
+		// the product — otherwise the assertion holds however the restock behaves.
+		_, err := repo.ReserveStock(ctx, productID, 2, "order_never_shipped")
+		require.NoError(t, err)
+
+		require.NoError(t, repo.RestockOrderStock(ctx, "order_never_shipped", "admin_test"))
+
+		qty, _, _ := readInventory(t, pool, productID)
+		require.Equal(t, 10, qty, "stock must not be inflated by a return with no commit")
+		var returnRows int
+		require.NoError(t, pool.QueryRow(ctx,
+			`SELECT count(*) FROM inventory_transactions
+			 WHERE product_id = $1 AND reference_id = $2 AND type = $3`,
+			productID, "order_never_shipped", string(domain.InventoryTransactionTypeReturn),
+		).Scan(&returnRows))
+		require.Equal(t, 0, returnRows, "no RETURN row without a COMMIT to undo")
+	})
+
+	// #226 F5: a commit that failed at SHIPPED leaves the reservation held, and a
+	// returned order can no longer reach CANCELLED to free it.
+	t.Run("releases a reservation the order never committed", func(t *testing.T) {
+		productID := newProduct(t, 10, 0)
+		_, err := repo.ReserveStock(ctx, productID, 3, "order_strand")
+		require.NoError(t, err)
+		_, res, avail := readInventory(t, pool, productID)
+		require.Equal(t, 3, res)
+		require.Equal(t, 7, avail)
+
+		require.NoError(t, repo.RestockOrderStock(ctx, "order_strand", "admin_test"))
+
+		qty, res, avail := readInventory(t, pool, productID)
+		require.Equal(t, 10, qty, "nothing committed, so nothing to add back")
+		require.Equal(t, 0, res, "the stranded reservation must be freed")
+		require.Equal(t, 10, avail)
+	})
+
+	// DeleteByProductID drops only the inventory row, so a COMMIT row can outlive it.
+	// That must surface as an error, not be silently skipped and never restocked.
+	t.Run("a committed line with no inventory row errors", func(t *testing.T) {
+		productID := newProduct(t, 10, 4)
+		require.NoError(t, repo.CommitOrderStock(ctx, "order_noinv", map[string]int{productID: 4}))
+		require.NoError(t, repo.DeleteByProductID(ctx, productID))
+
+		err := repo.RestockOrderStock(ctx, "order_noinv", "admin_test")
+		require.Error(t, err, "a missing inventory row must not be skipped silently")
+	})
+
+	// The order-scoped rewrite wrote created_by='' and left updated_by alone, losing
+	// the actor AddStock used to record.
+	t.Run("records the actor on the return", func(t *testing.T) {
+		productID := newProduct(t, 10, 4)
+		require.NoError(t, repo.CommitOrderStock(ctx, "order_actor", map[string]int{productID: 4}))
+		require.NoError(t, repo.RestockOrderStock(ctx, "order_actor", "admin_actor"))
+
+		var ledgerActor, inventoryActor string
+		require.NoError(t, pool.QueryRow(ctx,
+			`SELECT created_by FROM inventory_transactions
+			 WHERE product_id = $1 AND reference_id = $2 AND type = $3`,
+			productID, "order_actor", string(domain.InventoryTransactionTypeReturn),
+		).Scan(&ledgerActor))
+		require.Equal(t, "admin_actor", ledgerActor)
+
+		require.NoError(t, pool.QueryRow(ctx,
+			`SELECT updated_by FROM inventory WHERE product_id = $1`, productID,
+		).Scan(&inventoryActor))
+		require.Equal(t, "admin_actor", inventoryActor)
+	})
+
+	// System-driven movements pass no actor and must not erase the one already there.
+	t.Run("a commit does not clobber the recorded actor", func(t *testing.T) {
+		productID := newProduct(t, 10, 4)
+		_, err := pool.Exec(ctx,
+			`UPDATE inventory SET updated_by = $1 WHERE product_id = $2`, "admin_earlier", productID)
+		require.NoError(t, err)
+
+		require.NoError(t, repo.CommitOrderStock(ctx, "order_keep", map[string]int{productID: 4}))
+
+		var actor string
+		require.NoError(t, pool.QueryRow(ctx,
+			`SELECT updated_by FROM inventory WHERE product_id = $1`, productID,
+		).Scan(&actor))
+		require.Equal(t, "admin_earlier", actor, "a system movement must not blank the actor")
+	})
+
+	t.Run("is idempotent", func(t *testing.T) {
+		productID := newProduct(t, 10, 4)
+		require.NoError(t, repo.CommitOrderStock(ctx, "order_r2", map[string]int{productID: 4}))
+
+		require.NoError(t, repo.RestockOrderStock(ctx, "order_r2", "admin_test"))
+		require.NoError(t, repo.RestockOrderStock(ctx, "order_r2", "admin_test"))
+
+		qty, _, _ := readInventory(t, pool, productID)
+		require.Equal(t, 10, qty, "a replayed return must not add twice")
+	})
+
+	// #199: AddStock stamps last_restock_at, which means "when did we last
+	// replenish this SKU". A customer return is not a replenishment.
+	t.Run("does not stamp last_restock_at", func(t *testing.T) {
+		productID := newProduct(t, 10, 4)
+		require.NoError(t, repo.CommitOrderStock(ctx, "order_r3", map[string]int{productID: 4}))
+
+		// Pre-stamped: starting from NULL, require.Nil would also pass if the restock
+		// never ran at all.
+		stamp := time.Date(2020, 1, 2, 3, 4, 5, 0, time.UTC)
+		_, err := pool.Exec(ctx,
+			`UPDATE inventory SET last_restock_at = $1 WHERE product_id = $2`, stamp, productID)
+		require.NoError(t, err)
+
+		require.NoError(t, repo.RestockOrderStock(ctx, "order_r3", "admin_test"))
+
+		var lastRestock *time.Time
+		require.NoError(t, pool.QueryRow(ctx,
+			`SELECT last_restock_at FROM inventory WHERE product_id = $1`, productID,
+		).Scan(&lastRestock))
+		require.NotNil(t, lastRestock)
+		require.True(t, stamp.Equal(*lastRestock), "a return is not a supplier replenishment")
+	})
+
+	// #199: returns land as their own ledger type, keyed to the order, rather
+	// than as an ADD distinguishable only by a reason prefix.
+	t.Run("writes a RETURN row keyed to the order", func(t *testing.T) {
+		productID := newProduct(t, 10, 4)
+		require.NoError(t, repo.CommitOrderStock(ctx, "order_r4", map[string]int{productID: 4}))
+		require.NoError(t, repo.RestockOrderStock(ctx, "order_r4", "admin_test"))
+
+		var typ, refType, refID string
+		var quantity int
+		require.NoError(t, pool.QueryRow(ctx,
+			`SELECT type, reference_type, reference_id, quantity
+			 FROM inventory_transactions
+			 WHERE product_id = $1 AND reference_id = $2 AND type = $3`,
+			productID, "order_r4", string(domain.InventoryTransactionTypeReturn),
+		).Scan(&typ, &refType, &refID, &quantity))
+
+		require.Equal(t, string(domain.InventoryTransactionTypeReturn), typ)
+		require.Equal(t, "ORDER", refType)
+		require.Equal(t, "order_r4", refID)
+		require.Equal(t, 4, quantity)
+	})
+
+	// Only the committed lines come back, not every line on the order.
+	t.Run("a partially committed order restocks only the committed line", func(t *testing.T) {
+		shipped := newProduct(t, 10, 3)
+		neverShipped := newProduct(t, 10, 3)
+
+		require.NoError(t, repo.CommitOrderStock(ctx, "order_partial", map[string]int{shipped: 3}))
+		require.NoError(t, repo.RestockOrderStock(ctx, "order_partial", "admin_test"))
+
+		qtyShipped, _, _ := readInventory(t, pool, shipped)
+		qtyNever, _, _ := readInventory(t, pool, neverShipped)
+		require.Equal(t, 10, qtyShipped, "the committed line comes back")
+		require.Equal(t, 10, qtyNever, "the uncommitted line was never decremented, so nothing to add")
 	})
 }

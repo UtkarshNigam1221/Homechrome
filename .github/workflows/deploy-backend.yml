@@ -29,7 +29,13 @@ jobs:
   # dance that worked around upload-artifact dropping it is gone too.
   deploy:
     name: Build & Deploy
-    runs-on: ubuntu-latest
+    # arm64 runner, matching the Lambda architecture. Everything this job builds
+    # is arm64 — the Go binaries, and the image CDK builds to bundle the
+    # ImageResizer NodejsFunction (ForceDockerBundling, for sharp's native
+    # binary). On an amd64 runner that image build ran under qemu, and CDK's
+    # bundling Dockerfile installs bun, whose aarch64 binary needs a newer CPU
+    # than qemu's default model — it died with SIGILL. Native runner, no qemu.
+    runs-on: ubuntu-24.04-arm
     defaults:
       run:
         working-directory: handloom-admin
@@ -59,12 +65,6 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 22
-
-      # Register binfmt_misc handlers system-wide so plain `docker build`
-      # (used by CDK NodejsFunction) can run arm64 images on amd64 runners.
-      # docker/setup-qemu-action only works for buildx; this works globally.
-      - name: Register arm64 binfmt handlers
-        run: docker run --privileged --rm tonistiigi/binfmt --install arm64
 
       - name: Install CDK
         run: npm install -g aws-cdk

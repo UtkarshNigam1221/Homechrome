@@ -63,6 +63,8 @@ func (s *OrderService) Create(ctx context.Context, req domain.CreateOrderRequest
 	// Process items
 	var items []domain.OrderItem
 	var subtotal int64
+	availableQty := map[string]int{}
+	productNames := map[string]string{}
 
 	for i, itemInput := range req.Items {
 		// Get product
@@ -117,19 +119,16 @@ func (s *OrderService) Create(ctx context.Context, req domain.CreateOrderRequest
 			unitPrice = product.SellingPrice
 		}
 
-		// Check inventory
+		// Availability is compared once per product after the loop: one product can be on
+		// two lines, and each line can fit while their total does not.
 		inventory, err := s.inventoryRepo.GetByProductID(ctx, itemInput.ProductID)
 		if err != nil {
 			invErr := errors.New(errors.ErrCodeNotFound, fmt.Sprintf("Inventory not found for product: %s", itemInput.ProductID))
 			span.EndWithError(invErr)
 			return nil, invErr
 		}
-
-		if inventory.AvailableQty < itemInput.Quantity {
-			stockErr := errors.New(errors.ErrCodeInsufficientStock, fmt.Sprintf("Insufficient stock for product: %s (available: %d, requested: %d)", product.Name, inventory.AvailableQty, itemInput.Quantity))
-			span.EndWithError(stockErr)
-			return nil, stockErr
-		}
+		availableQty[itemInput.ProductID] = inventory.AvailableQty
+		productNames[itemInput.ProductID] = product.Name
 
 		item := domain.OrderItem{
 			ID:          fmt.Sprintf("item_%d", i+1),
@@ -146,6 +145,16 @@ func (s *OrderService) Create(ctx context.Context, req domain.CreateOrderRequest
 		}
 		items = append(items, item)
 		subtotal += item.TotalPrice
+	}
+
+	for productID, wanted := range orderQuantities(items) {
+		if availableQty[productID] < wanted {
+			stockErr := errors.New(errors.ErrCodeInsufficientStock,
+				fmt.Sprintf("Insufficient stock for product: %s (available: %d, requested: %d)",
+					productNames[productID], availableQty[productID], wanted))
+			span.EndWithError(stockErr)
+			return nil, stockErr
+		}
 	}
 
 	// TODO: Apply coupon if provided
@@ -182,7 +191,21 @@ func (s *OrderService) Create(ctx context.Context, req domain.CreateOrderRequest
 	}
 	order.CreatedBy = createdBy
 
+	// Reserved before the order is persisted, so a failure cannot leave an order
+	// holding nothing. Aggregated: per-line reserving let the guard dedup a repeat.
+	quantities := orderQuantities(order.Items)
+	if reserveErr := s.inventoryRepo.ReserveOrderStock(ctx, order.ID, quantities); reserveErr != nil {
+		span.EndWithError(reserveErr)
+		return nil, reserveErr
+	}
+
 	if err := s.orderRepo.Create(ctx, order); err != nil {
+		// The reservation is already held; hand it back rather than strand it.
+		if releaseErr := s.inventoryRepo.ReleaseOrderStock(ctx, order.ID, quantities); releaseErr != nil {
+			slog.ErrorContext(ctx, "Failed to release after order create failed",
+				keyOrderID, order.ID, "error", releaseErr)
+			metrics.Record(ctx, "inventory_mutation_failed", metrics.L{metrics.LabelReason: reasonRelease})
+		}
 		span.EndWithError(err)
 		return nil, err
 	}
@@ -211,37 +234,6 @@ func (s *OrderService) Create(ctx context.Context, req domain.CreateOrderRequest
 		device:    labelUnknown,
 		utmSource: labelUnknown,
 	})
-
-	// Reserve inventory — track failures for visibility.
-	//
-	// inventory_mutation_failed metering rule: every swallowed inventory
-	// failure is metered, and only those. A site that instead propagates its
-	// error to the caller (e.g. checkout_service.go's initial ReserveStock
-	// loop) is deliberately NOT metered here — the caller already sees the
-	// failure via the returned error, so metering it too would double-count.
-	// The reason values are named in constants.go; each swallowed-failure call
-	// site emits exactly one of them.
-	var reservationFailures []string
-	for _, item := range items {
-		_, err := s.inventoryRepo.ReserveStock(ctx, item.ProductID, item.Quantity, order.ID)
-		if err != nil {
-			slog.ErrorContext(ctx, "Failed to reserve stock",
-				keyProductID, item.ProductID,
-				"order_id", order.ID,
-				"quantity", item.Quantity,
-				"error", err,
-			)
-			metrics.Record(ctx, "inventory_mutation_failed", metrics.L{metrics.LabelReason: reasonReserve})
-			reservationFailures = append(reservationFailures, item.ProductID)
-		}
-	}
-
-	if len(reservationFailures) > 0 {
-		slog.WarnContext(ctx, "Order created with inventory reservation failures",
-			"order_id", order.ID,
-			"failed_products", reservationFailures,
-		)
-	}
 
 	slog.InfoContext(ctx, "Created order", "order_id", order.ID)
 	span.End()
@@ -336,10 +328,8 @@ func (s *OrderService) UpdateStatus(ctx context.Context, id string, status domai
 	case domain.OrderStatusDelivered:
 		order.DeliveredAt = &now
 	case domain.OrderStatusCancelled:
-		// CancelledAt mirrors CancelOrder, so tracking_handler's timeline
-		// (which gates the "cancelled" entry on CancelledAt != nil) shows a
-		// cancellation regardless of which path set it. Reuses the UpdatedAt
-		// timestamp above rather than calling time.Now() again.
+		// CancelledAt mirrors CancelOrder so tracking_handler's timeline shows the
+		// cancellation whichever path set it. Reuses UpdatedAt, not a new time.Now().
 		order.CancelledAt = &now
 	}
 
@@ -355,27 +345,31 @@ func (s *OrderService) UpdateStatus(ctx context.Context, id string, status domai
 	return nil
 }
 
+// orderQuantities aggregates an order's lines by product. The admin Create path
+// takes items straight from the request, so one product can appear on two lines.
+func orderQuantities(items []domain.OrderItem) map[string]int {
+	quantities := make(map[string]int, len(items))
+	for _, item := range items {
+		quantities[item.ProductID] += item.Quantity
+	}
+	return quantities
+}
+
 // applyInventoryEffect moves stock for a status change, only after the order
 // write succeeds: AddStock has no idempotency guard, so a retry would double-add.
 func (s *OrderService) applyInventoryEffect(ctx context.Context, order *domain.Order, status domain.OrderStatus, updatedBy string) {
 	switch status {
 	case domain.OrderStatusShipped:
-		// Goods have left the warehouse: convert each reservation into a
-		// dispatch. available_qty is unaffected — these units were already
-		// unavailable while reserved.
-		for _, item := range order.Items {
-			if _, commitErr := s.inventoryRepo.CommitStock(ctx, item.ProductID, item.Quantity, order.ID); commitErr != nil {
-				slog.ErrorContext(ctx, "Failed to commit stock", keyProductID, item.ProductID, "error", commitErr)
-				metrics.Record(ctx, "inventory_mutation_failed", metrics.L{metrics.LabelReason: reasonCommit})
-			}
+		// Goods have left the warehouse: convert reservations into a dispatch.
+		// available_qty is unaffected — these units were already unavailable.
+		if commitErr := s.inventoryRepo.CommitOrderStock(ctx, order.ID, orderQuantities(order.Items)); commitErr != nil {
+			slog.ErrorContext(ctx, "Failed to commit stock", keyOrderID, order.ID, "error", commitErr)
+			metrics.Record(ctx, "inventory_mutation_failed", metrics.L{metrics.LabelReason: reasonCommit})
 		}
 	case domain.OrderStatusCancelled:
-		// Release reserved stock
-		for _, item := range order.Items {
-			if _, releaseErr := s.inventoryRepo.ReleaseStock(ctx, item.ProductID, item.Quantity, order.ID); releaseErr != nil {
-				slog.ErrorContext(ctx, "Failed to release stock", keyProductID, item.ProductID, "error", releaseErr)
-				metrics.Record(ctx, "inventory_mutation_failed", metrics.L{metrics.LabelReason: releaseFailureReason(releaseErr)})
-			}
+		if releaseErr := s.inventoryRepo.ReleaseOrderStock(ctx, order.ID, orderQuantities(order.Items)); releaseErr != nil {
+			slog.ErrorContext(ctx, "Failed to release stock", keyOrderID, order.ID, "error", releaseErr)
+			metrics.Record(ctx, "inventory_mutation_failed", metrics.L{metrics.LabelReason: reasonRelease})
 		}
 		// order_cancelled — status-transition path, no admin reason text.
 		metrics.Record(ctx, "order_cancelled", metrics.L{
@@ -383,15 +377,11 @@ func (s *OrderService) applyInventoryEffect(ctx context.Context, order *domain.O
 			metrics.LabelGateway: gatewayPhonePe,
 		})
 	case domain.OrderStatusReturned:
-		// Goods are back. RETURNED is reachable only from SHIPPED/DELIVERED,
-		// both post-commit, so quantity returns to its pre-dispatch value and
-		// reserved_qty is already clear.
-		for _, item := range order.Items {
-			reason := fmt.Sprintf("RETURN %s", order.ID)
-			if _, addErr := s.inventoryRepo.AddStock(ctx, item.ProductID, item.Quantity, reason, updatedBy); addErr != nil {
-				slog.ErrorContext(ctx, "Failed to restock returned item", keyProductID, item.ProductID, "error", addErr)
-				metrics.Record(ctx, "inventory_mutation_failed", metrics.L{metrics.LabelReason: reasonRestock})
-			}
+		// Goods are back. The repository restocks what the order committed, not what it
+		// ordered: commit at dispatch is best-effort, so uncommitted lines stay out.
+		if restockErr := s.inventoryRepo.RestockOrderStock(ctx, order.ID, updatedBy); restockErr != nil {
+			slog.ErrorContext(ctx, "Failed to restock returned order", keyOrderID, order.ID, "error", restockErr)
+			metrics.Record(ctx, "inventory_mutation_failed", metrics.L{metrics.LabelReason: reasonRestock})
 		}
 	}
 	// domain.OrderStatusDelivered: no inventory effect — stock was committed
@@ -439,9 +429,8 @@ func (s *OrderService) CancelOrder(ctx context.Context, id string, reason string
 		return err
 	}
 
-	// Cancellable up to dispatch. Mirrors validTransitions, which allows
-	// PENDING/CONFIRMED/PROCESSING -> CANCELLED; the two paths previously
-	// disagreed about PROCESSING.
+	// Cancellable up to dispatch, mirroring validTransitions
+	// (PENDING/CONFIRMED/PROCESSING -> CANCELLED); the two disagreed on PROCESSING.
 	if order.Status != domain.OrderStatusPending &&
 		order.Status != domain.OrderStatusConfirmed &&
 		order.Status != domain.OrderStatusProcessing {
@@ -461,13 +450,9 @@ func (s *OrderService) CancelOrder(ctx context.Context, id string, reason string
 		return err
 	}
 
-	// Release reserved stock
-	for _, item := range order.Items {
-		_, releaseErr := s.inventoryRepo.ReleaseStock(ctx, item.ProductID, item.Quantity, order.ID)
-		if releaseErr != nil {
-			slog.ErrorContext(ctx, "Failed to release stock", keyProductID, item.ProductID, "error", releaseErr)
-			metrics.Record(ctx, "inventory_mutation_failed", metrics.L{metrics.LabelReason: releaseFailureReason(releaseErr)})
-		}
+	if releaseErr := s.inventoryRepo.ReleaseOrderStock(ctx, order.ID, orderQuantities(order.Items)); releaseErr != nil {
+		slog.ErrorContext(ctx, "Failed to release stock", keyOrderID, order.ID, "error", releaseErr)
+		metrics.Record(ctx, "inventory_mutation_failed", metrics.L{metrics.LabelReason: reasonRelease})
 	}
 
 	// order_cancelled — reason label is bounded (admin-supplied free text is
@@ -481,24 +466,6 @@ func (s *OrderService) CancelOrder(ctx context.Context, id string, reason string
 	slog.InfoContext(ctx, "Canceled order", "order_id", id)
 	span.End()
 	return nil
-}
-
-// releaseFailureReason maps a ReleaseStock failure to the metric reason label
-// for inventory_mutation_failed. A release that fails with insufficient-stock
-// means the reservation was already zeroed out by an earlier release — most
-// commonly HandlePaymentFailure's rollback (payment_service.go) or the
-// checkout rollback (checkout_service.go), both of which leave the order in
-// PENDING, still cancellable by customer or admin. That later cancel finding
-// nothing left to release is benign and expected, not a leak, so it's
-// counted separately as "release_unreserved" rather than "release" — see the
-// runbook's "Ongoing drift check" section for why on-call should not treat it
-// as a page-worthy signal. Any other error keeps the "release" reason, which
-// does indicate a real problem.
-func releaseFailureReason(err error) string {
-	if appErr, ok := errors.AsAppError(err); ok && appErr.Code == errors.ErrCodeInsufficientStock {
-		return reasonReleaseUnreserved
-	}
-	return reasonRelease
 }
 
 // normaliseCancelReason maps free-text reasons to a bounded label set.
@@ -552,9 +519,8 @@ func generateOrderNumber() string {
 	return fmt.Sprintf("HL%s%s", now.Format("20060102"), uuid.New().String()[:6])
 }
 
-// validTransitions defines allowed order status transitions.
-// CONFIRMED may go straight to SHIPPED: fulfillment is manual, and forcing a
-// stop at PROCESSING made shipping a single order three separate updates.
+// validTransitions defines allowed order status transitions. CONFIRMED may go
+// straight to SHIPPED: fulfillment is manual and the PROCESSING stop cost 3 updates.
 var validTransitions = map[domain.OrderStatus][]domain.OrderStatus{
 	domain.OrderStatusPending:    {domain.OrderStatusConfirmed, domain.OrderStatusCancelled},
 	domain.OrderStatusConfirmed:  {domain.OrderStatusProcessing, domain.OrderStatusShipped, domain.OrderStatusCancelled},
