@@ -43,12 +43,9 @@ func TestInventoryRepository_CommitStock(t *testing.T) {
 	ctx := context.Background()
 	category := seedCategory(t, pool)
 
-	newProduct := func(t *testing.T, quantity, reserved int, id ...string) string {
+	newProduct := func(t *testing.T, quantity, reserved int) string {
 		t.Helper()
 		p := newTestProduct(category.ID)
-		if len(id) > 0 {
-			p.ID = id[0]
-		}
 		require.NoError(t, postgres.NewProductRepository(pool).Create(ctx, p, nil))
 		t.Cleanup(func() {
 			_, _ = pool.Exec(ctx, `DELETE FROM products WHERE id = $1`, p.ID)
@@ -287,12 +284,9 @@ func TestInventoryRepository_RestockOrderStock(t *testing.T) {
 	ctx := context.Background()
 	category := seedCategory(t, pool)
 
-	newProduct := func(t *testing.T, quantity, reserved int, id ...string) string {
+	newProduct := func(t *testing.T, quantity, reserved int) string {
 		t.Helper()
 		p := newTestProduct(category.ID)
-		if len(id) > 0 {
-			p.ID = id[0]
-		}
 		require.NoError(t, postgres.NewProductRepository(pool).Create(ctx, p, nil))
 		t.Cleanup(func() {
 			_, _ = pool.Exec(ctx, `DELETE FROM products WHERE id = $1`, p.ID)
