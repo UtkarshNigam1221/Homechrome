@@ -63,6 +63,8 @@ func (s *OrderService) Create(ctx context.Context, req domain.CreateOrderRequest
 	// Process items
 	var items []domain.OrderItem
 	var subtotal int64
+	availableQty := map[string]int{}
+	productNames := map[string]string{}
 
 	for i, itemInput := range req.Items {
 		// Get product
@@ -117,19 +119,16 @@ func (s *OrderService) Create(ctx context.Context, req domain.CreateOrderRequest
 			unitPrice = product.SellingPrice
 		}
 
-		// Check inventory
+		// Availability is compared once per product after the loop: one product can be on
+		// two lines, and each line can fit while their total does not.
 		inventory, err := s.inventoryRepo.GetByProductID(ctx, itemInput.ProductID)
 		if err != nil {
 			invErr := errors.New(errors.ErrCodeNotFound, fmt.Sprintf("Inventory not found for product: %s", itemInput.ProductID))
 			span.EndWithError(invErr)
 			return nil, invErr
 		}
-
-		if inventory.AvailableQty < itemInput.Quantity {
-			stockErr := errors.New(errors.ErrCodeInsufficientStock, fmt.Sprintf("Insufficient stock for product: %s (available: %d, requested: %d)", product.Name, inventory.AvailableQty, itemInput.Quantity))
-			span.EndWithError(stockErr)
-			return nil, stockErr
-		}
+		availableQty[itemInput.ProductID] = inventory.AvailableQty
+		productNames[itemInput.ProductID] = product.Name
 
 		item := domain.OrderItem{
 			ID:          fmt.Sprintf("item_%d", i+1),
@@ -146,6 +145,16 @@ func (s *OrderService) Create(ctx context.Context, req domain.CreateOrderRequest
 		}
 		items = append(items, item)
 		subtotal += item.TotalPrice
+	}
+
+	for productID, wanted := range orderQuantities(items) {
+		if availableQty[productID] < wanted {
+			stockErr := errors.New(errors.ErrCodeInsufficientStock,
+				fmt.Sprintf("Insufficient stock for product: %s (available: %d, requested: %d)",
+					productNames[productID], availableQty[productID], wanted))
+			span.EndWithError(stockErr)
+			return nil, stockErr
+		}
 	}
 
 	// TODO: Apply coupon if provided
@@ -182,7 +191,21 @@ func (s *OrderService) Create(ctx context.Context, req domain.CreateOrderRequest
 	}
 	order.CreatedBy = createdBy
 
+	// Reserved before the order is persisted, so a failure cannot leave an order
+	// holding nothing. Aggregated: per-line reserving let the guard dedup a repeat.
+	quantities := orderQuantities(order.Items)
+	if reserveErr := s.inventoryRepo.ReserveOrderStock(ctx, order.ID, quantities); reserveErr != nil {
+		span.EndWithError(reserveErr)
+		return nil, reserveErr
+	}
+
 	if err := s.orderRepo.Create(ctx, order); err != nil {
+		// The reservation is already held; hand it back rather than strand it.
+		if releaseErr := s.inventoryRepo.ReleaseOrderStock(ctx, order.ID, quantities); releaseErr != nil {
+			slog.ErrorContext(ctx, "Failed to release after order create failed",
+				keyOrderID, order.ID, "error", releaseErr)
+			metrics.Record(ctx, "inventory_mutation_failed", metrics.L{metrics.LabelReason: reasonRelease})
+		}
 		span.EndWithError(err)
 		return nil, err
 	}
@@ -211,16 +234,6 @@ func (s *OrderService) Create(ctx context.Context, req domain.CreateOrderRequest
 		device:    labelUnknown,
 		utmSource: labelUnknown,
 	})
-
-	// Aggregated and all-or-nothing, like commit and release. One product can appear
-	// on two lines here, and per-line reserving let the guard dedup the second away.
-	if reserveErr := s.inventoryRepo.ReserveOrderStock(ctx, order.ID, orderQuantities(order.Items)); reserveErr != nil {
-		// Metered because it is swallowed; sites that propagate their error are not,
-		// to avoid double-counting. Reason values live in constants.go.
-		slog.ErrorContext(ctx, "Order created with no inventory reservation",
-			keyOrderID, order.ID, "error", reserveErr)
-		metrics.Record(ctx, "inventory_mutation_failed", metrics.L{metrics.LabelReason: reasonReserve})
-	}
 
 	slog.InfoContext(ctx, "Created order", "order_id", order.ID)
 	span.End()

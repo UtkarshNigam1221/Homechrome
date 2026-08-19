@@ -1126,3 +1126,106 @@ func TestOrderService_Create_DuplicateProductLines(t *testing.T) {
 	_, err := service.Create(ctx, req, "admin_123")
 	require.NoError(t, err)
 }
+
+// Option A: reserve before persisting. A reservation failure must leave no order,
+// and a persist failure must give the reservation back.
+func TestOrderService_Create_ReserveBeforePersist(t *testing.T) {
+	newSvc := func(t *testing.T) (*OrderService, *mocks.MockOrderRepository, *mocks.MockInventoryRepository) {
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+		orderRepo := mocks.NewMockOrderRepository(ctrl)
+		customerRepo := mocks.NewMockCustomerRepository(ctrl)
+		productRepo := mocks.NewMockProductRepository(ctrl)
+		inventoryRepo := mocks.NewMockInventoryRepository(ctrl)
+		quoteRepo := mocks.NewMockPriceQuoteRepository(ctrl)
+		pricing := mocks.NewMockPricingService(ctrl)
+
+		customerRepo.EXPECT().GetByID(gomock.Any(), "cust_123").
+			Return(&domain.Customer{ID: "cust_123", FirstName: "John", Email: "j@e.com"}, nil)
+		productRepo.EXPECT().GetByID(gomock.Any(), "prod_123").
+			Return(&domain.Product{ID: "prod_123", Name: "Silk", SKU: "S1", CategoryID: "c1", SellingPrice: 500000}, nil)
+		inventoryRepo.EXPECT().GetByProductID(gomock.Any(), "prod_123").
+			Return(&domain.Inventory{ProductID: "prod_123", Quantity: 100, AvailableQty: 90}, nil)
+		customerRepo.EXPECT().RecordPurchase(gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(1), nil).AnyTimes()
+
+		return NewOrderService(orderRepo, customerRepo, productRepo, inventoryRepo, quoteRepo, pricing), orderRepo, inventoryRepo
+	}
+
+	req := domain.CreateOrderRequest{
+		CustomerID: "cust_123",
+		Items:      []domain.OrderItemInput{{ProductID: "prod_123", Quantity: 2}},
+		ShippingAddress: domain.Address{
+			AddressLine1: "1 St", City: "Mumbai", State: "MH", PostalCode: "400001", Country: "India",
+		},
+	}
+
+	t.Run("a reservation failure creates no order", func(t *testing.T) {
+		svc, orderRepo, inventoryRepo := newSvc(t)
+		inventoryRepo.EXPECT().
+			ReserveOrderStock(gomock.Any(), gomock.Any(), map[string]int{"prod_123": 2}).
+			Return(errors.New(errors.ErrCodeInsufficientStock, "insufficient stock"))
+		// No Create expectation: gomock fails the test if the order is persisted anyway.
+		_ = orderRepo
+
+		order, err := svc.Create(context.Background(), req, "admin_1")
+		require.Error(t, err)
+		require.Nil(t, order)
+		appErr, ok := errors.AsAppError(err)
+		require.True(t, ok)
+		require.Equal(t, errors.ErrCodeInsufficientStock, appErr.Code)
+	})
+
+	t.Run("a persist failure releases the reservation", func(t *testing.T) {
+		svc, orderRepo, inventoryRepo := newSvc(t)
+		inventoryRepo.EXPECT().
+			ReserveOrderStock(gomock.Any(), gomock.Any(), map[string]int{"prod_123": 2}).Return(nil)
+		orderRepo.EXPECT().Create(gomock.Any(), gomock.Any()).
+			Return(errors.New(errors.ErrCodeInternal, "dynamo down"))
+		inventoryRepo.EXPECT().
+			ReleaseOrderStock(gomock.Any(), gomock.Any(), map[string]int{"prod_123": 2}).Return(nil)
+
+		order, err := svc.Create(context.Background(), req, "admin_1")
+		require.Error(t, err)
+		require.Nil(t, order)
+	})
+}
+
+// The pre-flight check aggregates: two lines of 3 against 5 available each fit
+// alone, and the order must be rejected before anything is reserved.
+func TestOrderService_Create_DuplicateLinesExceedingStock(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	orderRepo := mocks.NewMockOrderRepository(ctrl)
+	customerRepo := mocks.NewMockCustomerRepository(ctrl)
+	productRepo := mocks.NewMockProductRepository(ctrl)
+	inventoryRepo := mocks.NewMockInventoryRepository(ctrl)
+	svc := NewOrderService(orderRepo, customerRepo, productRepo, inventoryRepo,
+		mocks.NewMockPriceQuoteRepository(ctrl), mocks.NewMockPricingService(ctrl))
+
+	customerRepo.EXPECT().GetByID(gomock.Any(), "cust_123").
+		Return(&domain.Customer{ID: "cust_123", FirstName: "John", Email: "j@e.com"}, nil)
+	productRepo.EXPECT().GetByID(gomock.Any(), "prod_123").
+		Return(&domain.Product{ID: "prod_123", Name: "Silk", SKU: "S1", CategoryID: "c1", SellingPrice: 500000}, nil).Times(2)
+	inventoryRepo.EXPECT().GetByProductID(gomock.Any(), "prod_123").
+		Return(&domain.Inventory{ProductID: "prod_123", Quantity: 10, AvailableQty: 5}, nil).Times(2)
+	// Neither ReserveOrderStock nor Create is expected: rejection happens first.
+
+	order, err := svc.Create(context.Background(), domain.CreateOrderRequest{
+		CustomerID: "cust_123",
+		Items: []domain.OrderItemInput{
+			{ProductID: "prod_123", Quantity: 3},
+			{ProductID: "prod_123", Quantity: 3},
+		},
+		ShippingAddress: domain.Address{
+			AddressLine1: "1 St", City: "Mumbai", State: "MH", PostalCode: "400001", Country: "India",
+		},
+	}, "admin_1")
+
+	require.Error(t, err)
+	require.Nil(t, order)
+	appErr, ok := errors.AsAppError(err)
+	require.True(t, ok)
+	require.Equal(t, errors.ErrCodeInsufficientStock, appErr.Code)
+	require.Contains(t, appErr.Message, "requested: 6", "the aggregated total must be reported")
+}
