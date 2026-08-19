@@ -74,11 +74,12 @@ export function InventoryLedgerModal({ isOpen, onClose, product }: InventoryLedg
   const openReservations = useMemo(() => openReservationIDs(rows), [rows]);
   const balances = useMemo(
     () =>
-      balancesAfter(rows, {
-        onHand: product?.quantity ?? 0,
-        reserved: product?.reserved_qty ?? 0,
-      }),
-    [rows, product]
+      balancesAfter(
+        rows,
+        { onHand: product?.quantity ?? 0, reserved: product?.reserved_qty ?? 0 },
+        cursor === undefined
+      ),
+    [rows, product, cursor]
   );
   const pagination = data?.pagination;
 

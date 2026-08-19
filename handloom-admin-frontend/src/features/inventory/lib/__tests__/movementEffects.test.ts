@@ -59,7 +59,7 @@ describe('balancesAfter', () => {
   const history = [row('ADJUST', 2, 47, 45), row('COMMIT', 3, 50, 47), row('RESERVE', 3, 0, 3)];
 
   it('reconstructs both counters at every step', () => {
-    const balances = balancesAfter(history, { onHand: 45, reserved: 0 });
+    const balances = balancesAfter(history, { onHand: 45, reserved: 0 }, true);
 
     expect(balances[0]).toEqual({ onHand: 45, reserved: 0 });
     // The dispatch cleared the reservation as it took the stock.
@@ -70,8 +70,23 @@ describe('balancesAfter', () => {
   });
 
   it('gives up on a row whose recorded figure disagrees', () => {
-    // A wrong anchor is what any page but the first would produce.
-    const balances = balancesAfter(history, { onHand: 999, reserved: 0 });
+    const balances = balancesAfter(history, { onHand: 999, reserved: 0 }, true);
     expect(balances[0]).toBeNull();
+  });
+
+  it('derives nothing once the anchor is not the newest movement', () => {
+    expect(balancesAfter(history, { onHand: 45, reserved: 0 }, false)).toEqual([null, null, null]);
+  });
+
+  // The reason the recorded-counter check cannot stand in for the anchor: a
+  // reserve and its release on a newer page net to zero on reserved, so the check
+  // passes on a stale anchor while the derived counter is fabricated.
+  it('does not report a reserved figure invented by a stale anchor', () => {
+    // Page 2 holds one ADD. Newer, unseen: a RESERVE of 5 still outstanding.
+    const page2 = [row('ADD', 10, 40, 50)];
+    const currentWithNewerReserve = { onHand: 50, reserved: 5 };
+
+    // Reserved right after that ADD was 0, not 5. Unanchored, nothing is claimed.
+    expect(balancesAfter(page2, currentWithNewerReserve, false)).toEqual([null]);
   });
 });

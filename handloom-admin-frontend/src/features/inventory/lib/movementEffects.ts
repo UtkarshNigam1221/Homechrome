@@ -48,11 +48,17 @@ export interface Balance {
 // be reconstructed: start from the product's current levels and undo each
 // movement walking backwards through the list.
 //
-// That only holds while the newest row shown is the product's newest movement,
-// which is false on any page but the first. Rather than trust it, each result is
-// checked against the figure the row actually recorded; a row that disagrees
-// returns null and the caller shows only the recorded counter.
-export function balancesAfter(rows: InventoryTransaction[], current: Balance): (Balance | null)[] {
+// `anchored` says the newest row shown is the product's newest movement, which is
+// true on the first page alone. Checking the recorded counter is not a substitute:
+// a reserve and its release on a newer page net to zero on that counter, so the
+// check passes while the counter this function exists to derive is still wrong.
+export function balancesAfter(
+  rows: InventoryTransaction[],
+  current: Balance,
+  anchored: boolean
+): (Balance | null)[] {
+  if (!anchored) return rows.map(() => null);
+
   let { onHand, reserved } = current;
 
   return rows.map((row) => {
@@ -62,6 +68,8 @@ export function balancesAfter(rows: InventoryTransaction[], current: Balance): (
     onHand -= effect.onHand ?? 0;
     reserved -= effect.reserved ?? 0;
 
+    // Belt and braces: `current` comes from the product row, which can be a
+    // render behind the ledger it is being walked against.
     const recorded = recordedCounter(row.type);
     const expected = recorded === 'reserved' ? after.reserved : after.onHand;
     return expected === row.new_qty ? after : null;
