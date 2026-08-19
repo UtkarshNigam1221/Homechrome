@@ -34,19 +34,22 @@ jobs:
   promote:
     name: Promote dev → prod
     runs-on: ubuntu-latest
-    # The branch guard below is only a courtesy message: workflow_dispatch runs
-    # the workflow file FROM THE SELECTED REF, so a branch can simply remove it.
+    # No job-level `environment:`, matching deploy-backend.yml — the two
+    # prod-writing workflows should not disagree about how they are guarded.
     #
-    # The environment named here is meant to be the enforceable control, but it
-    # is NOT one yet: `production` does not exist in repo settings, so GitHub
-    # creates it unprotected on first run and this line enforces nothing. Until
-    # it is configured, prod promotion has no guard a branch cannot bypass.
+    # An environment with a branch policy would only stop someone with write
+    # access from dispatching prod off a non-main ref. On this repo that is the
+    # sole admin, who can push to main directly anyway — main cannot be
+    # protected without GitHub Pro. So it would defend against nobody while
+    # reading like a control.
     #
-    # To make it real: Settings → Environments → production, set a deployment
-    # branch policy of `main`, and move BACKEND_ENV_PROD into its environment
-    # secrets. Runs dispatched from any other ref then fail before secrets are
-    # exposed. deploy-backend.yml's prod path has the same gap.
-    environment: production
+    # The guard below catches the case that actually happens: dispatching from
+    # the wrong ref by accident. Someone deliberately editing it out already had
+    # the access to skip the whole workflow.
+    #
+    # Worth adding an environment if either becomes true: more than one person
+    # can dispatch (scope BACKEND_ENV_PROD to it), or prod should pause for a
+    # human (required reviewers — the one thing no in-file guard can do).
     steps:
       - name: Guard prod promotion from non-main branches
         env:
