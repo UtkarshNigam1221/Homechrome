@@ -1,6 +1,7 @@
 import { APIRequestContext, request } from '@playwright/test';
 
 import { json, Order } from '../fixtures/api';
+import { payWithSandbox, testCardFromEnv } from '../pages/phonepe-sandbox';
 import { TARGETS } from '../playwright.config';
 
 /**
@@ -193,12 +194,21 @@ export async function placePaidOrder(
 
   const redirect = checkout.redirect_url ?? '';
   const autoPaid = redirect.includes('dev_payment=');
+
   if (!autoPaid && redirect) {
-    throw new Error(
-      `dev is running the real PhonePe sandbox (redirect ${redirect}).\n` +
-        `Paying requires a browser — use the admin-ui project and ` +
-        `pages/phonepe-sandbox.ts rather than placePaidOrder.`
-    );
+    // The real sandbox. Drive it, in the one file that knows its DOM.
+    const card = testCardFromEnv();
+    if (!card) {
+      throw new Error(
+        `dev returned a PhonePe sandbox redirect (${redirect.slice(0, 60)}…) but no ` +
+          `test instrument is configured.\n` +
+          `Set E2E_PHONEPE_CARD_NUMBER, E2E_PHONEPE_CARD_EXPIRY and ` +
+          `E2E_PHONEPE_CARD_CVV (optionally _CARD_NAME and _CARD_OTP) from the ` +
+          `PhonePe UAT dashboard. Without them a paid order cannot be created, ` +
+          `so every refund spec is unrunnable.`
+      );
+    }
+    await payWithSandbox(redirect, card);
   }
 
   const order = await pollUntilPaid(store, checkout.order_id);
