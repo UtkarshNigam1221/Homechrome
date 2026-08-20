@@ -1,0 +1,120 @@
+name: Backfill image variants
+
+# Regenerates the responsive variants (-320/-640/-1080/-1920 × webp/avif/jpg)
+# that the storefront requests, by re-invoking the ImageResizer Lambda for every
+# original in the assets bucket.
+#
+# Needed after Promote Catalog: promotion copies the S3 objects referenced by
+# promoted rows — the originals — and nothing regenerates the derivatives, so a
+# freshly promoted product renders 403s until this runs. Also useful for uploads
+# that predate the resizer.
+#
+# Idempotent: scripts/backfill-image-variants.sh HEAD-probes the -640.webp
+# companion and skips originals that already have variants.
+
+on:
+  workflow_dispatch:
+    inputs:
+      env:
+        description: 'Environment'
+        required: true
+        default: 'dev'
+        type: choice
+        options: [dev, prod]
+      parallel:
+        description: 'Concurrent Lambda invocations'
+        required: true
+        default: '4'
+        type: string
+      force:
+        description: 'Re-process originals that already have variants'
+        required: true
+        default: 'false'
+        type: choice
+        options: ['false', 'true']
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  # One at a time per environment: parallel runs would invoke the resizer twice
+  # for the same key and race on the write.
+  group: image-variant-backfill-${{ inputs.env }}
+  cancel-in-progress: false
+
+jobs:
+  backfill:
+    name: Backfill variants (${{ inputs.env }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: handloom-admin
+    steps:
+      - name: Guard prod backfill from non-main branches
+        if: inputs.env == 'prod' && github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::Prod backfill must be triggered from main. Current ref: ${{ github.ref }}"
+          exit 1
+
+      - uses: actions/checkout@v7
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      # Fail here rather than a hundred invocations later. A missing resizer is
+      # the likely state in a fresh environment, and the script cannot tell that
+      # apart from a transient error.
+      - name: Check the resizer exists
+        env:
+          ENV: ${{ inputs.env }}
+        run: |
+          BUCKET="handloom-assets-${ENV}"
+          FN="homechrome-image-resizer-${ENV}"
+
+          if ! aws s3api head-bucket --bucket "$BUCKET" 2>/dev/null; then
+            echo "::error::bucket $BUCKET not found or not readable by this role"; exit 1
+          fi
+          if ! aws lambda get-function-configuration --function-name "$FN" \
+                 --query 'FunctionName' --output text >/dev/null 2>&1; then
+            echo "::error::Lambda $FN not found — deploy the backend to ${ENV} before backfilling."
+            exit 1
+          fi
+
+          echo "bucket=$BUCKET fn=$FN"
+          echo "originals: $(aws s3 ls "s3://$BUCKET/assets/" --recursive \
+            | grep -cE '[0-9a-f-]+\.(jpe?g|png|webp|avif)$' || true)"
+
+      - name: Backfill
+        env:
+          ENV: ${{ inputs.env }}
+          REGION: ${{ vars.AWS_REGION }}
+          PARALLEL: ${{ inputs.parallel }}
+          # The script treats SKIP_EXISTING=1 as "skip originals that already
+          # have variants", which is the default and what you want after a
+          # promotion. force=true re-processes everything.
+          SKIP_EXISTING: ${{ inputs.force == 'true' && '0' || '1' }}
+        run: |
+          chmod +x scripts/backfill-image-variants.sh
+          ./scripts/backfill-image-variants.sh \
+            "handloom-assets-${ENV}" "$REGION" "homechrome-image-resizer-${ENV}" "$PARALLEL"
+
+      # A variant is only useful once the edge stops serving the 403 it cached.
+      - name: Invalidate the CDN
+        env:
+          ENV: ${{ inputs.env }}
+        run: |
+          DIST=$(aws cloudfront list-distributions \
+            --query "DistributionList.Items[?contains(Comment, 'assets-cdn-${ENV}')].Id | [0]" \
+            --output text 2>/dev/null || echo "None")
+
+          if [ "$DIST" = "None" ] || [ -z "$DIST" ]; then
+            echo "::warning::no assets CDN distribution found for ${ENV}; invalidate by hand if images still 403"
+            exit 0
+          fi
+          aws cloudfront create-invalidation --distribution-id "$DIST" --paths '/assets/*' \
+            --query 'Invalidation.{Id:Id,Status:Status}' --output json
