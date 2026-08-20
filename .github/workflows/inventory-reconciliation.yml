@@ -1,0 +1,53 @@
+name: Inventory Reconciliation
+
+# Stock reserved against orders that never dispatched or cancelled: held against
+# nothing, so available_qty understates what is sellable. A failing run is the alert.
+
+on:
+  schedule:
+    # Sundays, 02:30 UTC = 08:00 IST. Weekly, so an orphan can sit up to a week
+    # before it is reported — run it by hand after an incident rather than wait.
+    - cron: '30 2 * * 0'
+  workflow_dispatch:
+    inputs:
+      min_age:
+        description: 'Ignore reservations younger than this (Go duration, e.g. 24h)'
+        type: string
+        default: '24h'
+
+permissions:
+  contents: read
+
+jobs:
+  reconcile:
+    name: Check for stranded reservations
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: handloom-admin
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.25'
+          cache-dependency-path: handloom-admin/go.sum
+
+      - name: Report stranded reservations
+        env:
+          BACKEND_ENV_DEV: ${{ secrets.BACKEND_ENV_DEV }}
+          BACKEND_ENV_PROD: ${{ secrets.BACKEND_ENV_PROD }}
+          # Passed via env, not inline templating, so the value cannot inject shell.
+          MIN_AGE: ${{ inputs.min_age || '24h' }}
+        run: |
+          # Extract with grep — never source the secret blob, a value containing
+          # shell metacharacters must not corrupt or execute.
+          dsn_from() {
+            printf '%s\n' "$1" | grep -m1 '^POSTGRES_DSN=' | cut -d= -f2- \
+              | sed -e "s/^['\"]//" -e "s/['\"]\$//"
+          }
+          DEV_DSN="$(dsn_from "$BACKEND_ENV_DEV")"
+          PROD_DSN="$(dsn_from "$BACKEND_ENV_PROD")"
+          export DEV_DSN PROD_DSN
+
+          go run ./scripts/reconcile-inventory --min-age "$MIN_AGE"

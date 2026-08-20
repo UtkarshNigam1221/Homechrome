@@ -5,6 +5,7 @@ package postgres
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/exaring/otelpgx"
 	"github.com/jackc/pgx/v5"
@@ -45,6 +46,17 @@ func NewPool(ctx context.Context, pgCfg *appconfig.PostgresConfig) (*pgxpool.Poo
 		}
 		return nil
 	}
+
+	// Neon suspends idle compute, so the first connection after that pays a cold
+	// start; without a bound the caller waits until its own deadline instead.
+	if cfg.ConnConfig.ConnectTimeout == 0 {
+		cfg.ConnConfig.ConnectTimeout = 10 * time.Second
+	}
+	// Lambdas freeze between invocations and Neon can drop the far side while
+	// nothing is watching, so retire connections rather than hand out a dead one.
+	cfg.MaxConnLifetime = 30 * time.Minute
+	cfg.MaxConnIdleTime = 5 * time.Minute
+	cfg.HealthCheckPeriod = 1 * time.Minute
 
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {

@@ -27,7 +27,10 @@ export interface InventoryTransaction {
   previous_qty: number;
   new_qty: number;
   reason?: string;
+  reference_type?: string;
   reference_id?: string;
   created_by: string;
+  // Resolved server-side; created_by alone is an opaque user id.
+  created_by_name?: string;
   created_at: string;
 }

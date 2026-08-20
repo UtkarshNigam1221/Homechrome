@@ -283,7 +283,6 @@ func (h *InventoryHandler) Routes() chi.Router {
 	return r
 }
 
-// GetLowStock handles getting low stock products
 func (h *InventoryHandler) GetLowStock(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 

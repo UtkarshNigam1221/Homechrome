@@ -68,6 +68,8 @@ Each flow lists: the **metrics** it emits (in `metric_counters`) + the dashboard
 ### Inventory
 - **Metrics:** `inventory_out_of_stock` (`product_id`, admin stock removal crosses 0), `inventory_low_stock` (`product_id`, crosses threshold), `out_of_stock_shown` (`product_id`, storefront impression beacon), `back_in_stock_notify_requested` (`product_id`).
 - **Services:** `handloom-inventory` (admin) for the first two; `handloom-store-events` for the beacons.
+- **Stranded reservations:** the weekly **Inventory Reconciliation** workflow fails when stock is held against orders that never settled. See [Stranded reservations](#stranded-reservations) below.
+- **Per-product history:** Inventory → a product's **Stock history** shows every movement and its effect on both counters.
 
 ### RUM (real-user monitoring)
 - **Metrics:** `rum_lcp` / `rum_inp` / `rum_cls` / `rum_ttfb` (`bucket=good|needs_improvement|poor, page_type, device_type`), `rum_js_error` (`page_type,error_type`), `rum_page_view` (`page_type,device_type`).
@@ -157,6 +159,70 @@ GROUP BY 1, 2;
 - [ ] CW Log Group `/aws/lambda/handloom-store-checkout-dev` has `RetentionInDays=1`.
 - [ ] Force a 500 in dev → trace red, Loki ERROR with `trace_id`.
 - [ ] Search Loki for "password" / "Bearer " over the last hour → zero results (redaction working).
+
+## Stranded reservations
+
+**Signal:** the **Inventory Reconciliation** workflow fails. It runs Sundays 02:30 UTC against dev and prod, and exits non-zero only when units are actually stranded. A failed *read* is reported separately — unknown is not the same as clean.
+
+### What it means
+
+A reservation settles when the same order either dispatches the stock (`COMMIT`) or gives it back (`RELEASE`). One that does neither is stock held against an order that never shipped and never cancelled. Those units are unsellable, and **no order transition will free them**: from `SHIPPED` the only routes are `DELIVERED`, which has no inventory effect, and `RETURNED`, which restocks only what actually committed.
+
+This is not `inventory_mutation_failed`. That says a movement failed. This says what is stuck right now, whether or not anyone saw the failure that caused it.
+
+### Check
+
+The workflow output lists order id, SKU, product, units and age. To run it directly — after a suspected incident, rather than waiting for Sunday:
+
+```
+gh workflow run inventory-reconciliation.yml -f min_age=24h
+```
+
+Or locally against one environment:
+
+```
+cd handloom-admin
+DEV_DSN="$POSTGRES_DSN" go run ./scripts/reconcile-inventory --min-age 24h
+```
+
+`min_age` defaults to 24h; anything younger is usually a customer mid-payment, not drift. The report caps at 500 orders and warns when it hits the cap, which means the problem is systemic rather than a handful of stuck orders.
+
+### Diagnose before fixing
+
+```sql
+SELECT type, quantity, previous_qty, new_qty, created_at
+FROM inventory_transactions
+WHERE reference_id = 'order_dd90' AND reference_type = 'ORDER'
+ORDER BY created_at, id;
+```
+
+Then check the order's status. Three cases:
+
+| Order status | Meaning | Action |
+|---|---|---|
+| `PENDING` | Checkout never completed; no reaper exists yet | Release the reservation |
+| `CANCELLED` | The release failed at the time | Release the reservation |
+| `SHIPPED`/`DELIVERED` | The dispatch failed, so stock was never decremented | **Do not release** — commit it, or the units come back twice |
+
+That last row is the one to be careful about: releasing a reservation whose order actually shipped returns stock that physically left the warehouse.
+
+### Fix
+
+Every order-scoped movement is idempotent per `(product, order, type)` and writes a ledger row, so a fix is safe to retry and leaves a trace. Cancel an order that should be cancelled:
+
+```
+POST /admin/orders/{order_id}/cancel
+```
+
+There is deliberately no bulk "release all orphans" action: each case needs the status check above, and a blanket release would silently corrupt the `SHIPPED` case. Do not edit `reserved_qty` by hand — it leaves no ledger row, so the next reconciliation cannot explain the number.
+
+### If the number keeps growing
+
+Recurring drift is not something to keep clearing by hand. Usual causes:
+
+- No reaper for abandoned `PENDING` checkouts — the known permanent-leak path
+- A failing release on the payment-failure rollback, which also raises `inventory_mutation_failed` with reason `release`
+- Transient Postgres failures at dispatch. `CommitOrderStock` retries once and the pool bounds `ConnectTimeout`/`MaxConnLifetime`/`HealthCheckPeriod`, so a rising count here suggests something longer than a cold start
 
 ## Quota watch (Grafana Cloud free tier — traces + logs only)
 

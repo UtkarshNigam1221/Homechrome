@@ -443,7 +443,7 @@ func InitializeStoreCatalogDeps(ctx context.Context, cfg *config.Config) (*Store
 		ProvideAssetService,
 		ProvideCategoryService,
 		ProvideProductService,
-		ProvideInventoryService,
+		ProvideStoreInventoryService,
 		ProvideStoreCatalogHandler,
 		wire.Struct(new(StoreCatalogDeps), "*"),
 	)

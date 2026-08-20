@@ -120,6 +120,17 @@ const (
 	PaymentStatusSuccess   PaymentStatus = "SUCCESS"
 )
 
+// OrphanReservation is stock a reserve took and nothing gave back. No order
+// transition frees it, so the units stay unsellable until someone intervenes.
+type OrphanReservation struct {
+	ProductID   string    `json:"product_id" db:"product_id"`
+	ProductName string    `json:"product_name" db:"product_name"`
+	SKU         string    `json:"sku" db:"sku"`
+	OrderID     string    `json:"order_id" db:"order_id"`
+	Quantity    int       `json:"quantity" db:"quantity"`
+	ReservedAt  time.Time `json:"reserved_at" db:"reserved_at"`
+}
+
 // InventoryTransactionType defines the type of inventory transaction
 type InventoryTransactionType string
 
@@ -669,6 +680,10 @@ type InventoryTransaction struct {
 
 	CreatedAt time.Time `json:"created_at" db:"created_at"`
 	CreatedBy string    `json:"created_by" db:"created_by"`
+
+	// Resolved on read, not stored: created_by is an opaque id. Empty for
+	// order-driven movements, which have no admin behind them.
+	CreatedByName string `json:"created_by_name,omitempty" db:"-"`
 }
 
 // ==================== OTP ENTITY ====================

@@ -345,6 +345,38 @@ func (s *OrderService) UpdateStatus(ctx context.Context, id string, status domai
 	return nil
 }
 
+// retryOnce runs fn again after a short pause if it fails, unless the failure is
+// the movement itself being refused rather than the database being unreachable.
+func retryOnce(ctx context.Context, fn func() error) error {
+	err := fn()
+	if err == nil || terminal(err) {
+		return err
+	}
+
+	// Safe because every order-scoped movement is idempotent per
+	// (product, order, type): a retry of one that landed is a no-op.
+	select {
+	case <-ctx.Done():
+		return err
+	case <-time.After(250 * time.Millisecond):
+	}
+	return fn()
+}
+
+// terminal reports whether retrying could not possibly help.
+func terminal(err error) bool {
+	appErr, ok := errors.AsAppError(err)
+	if !ok {
+		return false
+	}
+	switch appErr.Code {
+	case errors.ErrCodeInsufficientStock, errors.ErrCodeNotFound,
+		errors.ErrCodeInventoryNotFound, errors.ErrCodeConflict:
+		return true
+	}
+	return false
+}
+
 // orderQuantities aggregates an order's lines by product. The admin Create path
 // takes items straight from the request, so one product can appear on two lines.
 func orderQuantities(items []domain.OrderItem) map[string]int {
@@ -362,7 +394,9 @@ func (s *OrderService) applyInventoryEffect(ctx context.Context, order *domain.O
 	case domain.OrderStatusShipped:
 		// Goods have left the warehouse: convert reservations into a dispatch.
 		// available_qty is unaffected — these units were already unavailable.
-		if commitErr := s.inventoryRepo.CommitOrderStock(ctx, order.ID, orderQuantities(order.Items)); commitErr != nil {
+		if commitErr := retryOnce(ctx, func() error {
+			return s.inventoryRepo.CommitOrderStock(ctx, order.ID, orderQuantities(order.Items))
+		}); commitErr != nil {
 			slog.ErrorContext(ctx, "Failed to commit stock", keyOrderID, order.ID, "error", commitErr)
 			metrics.Record(ctx, "inventory_mutation_failed", metrics.L{metrics.LabelReason: reasonCommit})
 		}

@@ -1,7 +1,7 @@
 import type { Inventory, InventoryTransaction } from '@/features/inventory/types';
 import apiClient, { normalizeListResponse } from '@/shared/api/client';
 import { ROUTES } from '@/shared/constants/routes';
-import type { ListResponse, PaginationParams } from '@/shared/types/common';
+import type { PaginationParams } from '@/shared/types/common';
 
 import type { CreateProductRequest, Product } from './types';
 
@@ -79,11 +79,12 @@ export const productsApi = {
   },
 
   getInventoryTransactions: async (id: string, params?: PaginationParams) => {
-    const response = await apiClient.get<ListResponse<InventoryTransaction>>(
-      ROUTES.PRODUCTS.INVENTORY_TRANSACTIONS(id),
-      { params }
+    const response = await apiClient.get(ROUTES.PRODUCTS.INVENTORY_TRANSACTIONS(id), { params });
+    // The endpoint returns `transactions`, not the `items` ListResponse assumes.
+    return normalizeListResponse<InventoryTransaction>(
+      response.data as Record<string, unknown>,
+      'transactions'
     );
-    return response.data;
   },
 
   getFilterOptions: async (categoryId: string): Promise<Record<string, string[]>> => {

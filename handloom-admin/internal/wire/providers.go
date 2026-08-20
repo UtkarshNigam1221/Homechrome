@@ -238,8 +238,17 @@ func ProvideProductService(
 // ProvideInventoryService creates a new InventoryService
 func ProvideInventoryService(
 	inventoryRepo domain.InventoryRepository,
+	userRepo domain.UserRepository,
 ) *service.InventoryService {
-	return service.NewInventoryService(inventoryRepo)
+	return service.NewInventoryService(inventoryRepo, userRepo)
+}
+
+// ProvideStoreInventoryService builds it without a user directory: the storefront
+// never reads the ledger, and an admin repository has no place in that Lambda.
+func ProvideStoreInventoryService(
+	inventoryRepo domain.InventoryRepository,
+) *service.InventoryService {
+	return service.NewInventoryService(inventoryRepo, nil)
 }
 
 // ProvidePricingService creates a new PricingService
