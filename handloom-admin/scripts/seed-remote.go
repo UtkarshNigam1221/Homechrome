@@ -2,9 +2,11 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"os"
+	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -26,7 +28,21 @@ func main() {
 
 	client := dynamodb.NewFromConfig(cfg)
 
-	// Admin user — password: Admin@123!
+	// The hash is supplied, never baked in. A hardcoded one turns every re-seed
+	// into a silent password reset back to whatever the repo happened to contain
+	// — which is exactly how a rotated credential gets restored months later by
+	// someone following the table-recreation runbook.
+	passwordHash := os.Getenv("SEED_ADMIN_PASSWORD_HASH")
+	if passwordHash == "" {
+		log.Fatal("SEED_ADMIN_PASSWORD_HASH is required.\n" +
+			"  Generate one:  go run ./scripts/generate-password-hash.go\n" +
+			"  Then:          SEED_ADMIN_PASSWORD_HASH='$2a$12$...' go run ./scripts/seed-remote.go")
+	}
+	// Catches passing the password itself, which would store an unusable hash.
+	if !strings.HasPrefix(passwordHash, "$2a$") && !strings.HasPrefix(passwordHash, "$2b$") {
+		log.Fatal("SEED_ADMIN_PASSWORD_HASH does not look like a bcrypt hash — pass the hash, not the password")
+	}
+
 	adminItem := map[string]types.AttributeValue{
 		"PK":             &types.AttributeValueMemberS{Value: "USER#usr_admin_001"},
 		"SK":             &types.AttributeValueMemberS{Value: "METADATA"},
@@ -38,7 +54,7 @@ func main() {
 		"id":             &types.AttributeValueMemberS{Value: "usr_admin_001"},
 		"email":          &types.AttributeValueMemberS{Value: "admin@handloom.com"},
 		"name":           &types.AttributeValueMemberS{Value: "System Administrator"},
-		"password_hash":  &types.AttributeValueMemberS{Value: "$2a$12$QA9/lw32rWAx6606bYrj4e1qkl9cqzp.MiG7lZS/K7giv4kD5/InC"},
+		"password_hash":  &types.AttributeValueMemberS{Value: passwordHash},
 		"role":           &types.AttributeValueMemberS{Value: "ADMIN"},
 		"status":         &types.AttributeValueMemberS{Value: "ACTIVE"},
 		"email_verified": &types.AttributeValueMemberBOOL{Value: true},
@@ -46,12 +62,23 @@ func main() {
 		"updated_at":     &types.AttributeValueMemberS{Value: "2024-01-15T10:00:00Z"},
 	}
 
-	_, err = client.PutItem(ctx, &dynamodb.PutItemInput{
+	input := &dynamodb.PutItemInput{
 		TableName: aws.String(table),
 		Item:      adminItem,
-	})
-	if err != nil {
+	}
+	// Seeding means creating, not replacing. Without this an accidental re-run
+	// against a live environment overwrites the current admin's password.
+	if os.Getenv("SEED_OVERWRITE") != "true" {
+		input.ConditionExpression = aws.String("attribute_not_exists(PK)")
+	}
+
+	if _, err = client.PutItem(ctx, input); err != nil {
+		var failed *types.ConditionalCheckFailedException
+		if errors.As(err, &failed) {
+			log.Fatalf("admin user already exists in %s — refusing to overwrite its password.\n"+
+				"  Set SEED_OVERWRITE=true only if replacing it is what you mean.", table)
+		}
 		log.Fatalf("failed to seed admin user: %v", err)
 	}
-	fmt.Println("Admin user seeded: admin@handloom.com / Admin@123!")
+	fmt.Printf("Admin user seeded in %s: admin@handloom.com\n", table)
 }
