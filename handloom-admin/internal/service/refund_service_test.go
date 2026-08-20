@@ -386,12 +386,11 @@ func TestRefundService_Settlement(t *testing.T) {
 		// The settled total is recomputed from the order's refunds, not incremented.
 		h.refunds.EXPECT().ListByOrder(gomock.Any(), "order_1").Return([]*domain.Refund{pendingRefund()}, nil)
 
-		h.orders.EXPECT().Update(gomock.Any(), gomock.Any()).
-			DoAndReturn(func(_ context.Context, o *domain.Order) error {
-				require.Equal(t, 1, o.Items[0].RefundedQuantity)
-				// Half the order refunded, so partial — and the rest still ships.
-				require.Equal(t, domain.PaymentStatusPartiallyRefunded, o.PaymentStatus)
-				require.Equal(t, domain.OrderStatusConfirmed, o.Status, "fulfillment status must not move")
+		// Only the lines and the payment status are written — the fulfillment status is
+		// not a parameter, so a whole-order write cannot revert it.
+		h.orders.EXPECT().ApplyRefundSettlement(gomock.Any(), "order_1", gomock.Any(), domain.PaymentStatusPartiallyRefunded).
+			DoAndReturn(func(_ context.Context, _ string, items []domain.OrderItem, _ domain.PaymentStatus) error {
+				require.Equal(t, 1, items[0].RefundedQuantity)
 				return nil
 			})
 		h.payments.EXPECT().UpdateStatus(gomock.Any(), "pay_1",
@@ -410,11 +409,8 @@ func TestRefundService_Settlement(t *testing.T) {
 		// The settled total is recomputed from the order's refunds, not incremented.
 		h.refunds.EXPECT().ListByOrder(gomock.Any(), "order_1").Return([]*domain.Refund{pendingRefund()}, nil)
 
-		h.orders.EXPECT().Update(gomock.Any(), gomock.Any()).
-			DoAndReturn(func(_ context.Context, o *domain.Order) error {
-				require.Equal(t, domain.PaymentStatusRefunded, o.PaymentStatus)
-				return nil
-			})
+		h.orders.EXPECT().ApplyRefundSettlement(gomock.Any(), "order_1", gomock.Any(),
+			domain.PaymentStatusRefunded).Return(nil)
 		h.payments.EXPECT().UpdateStatus(gomock.Any(), "pay_1",
 			domain.PaymentStatusRefunded, gomock.Any()).Return(nil)
 
@@ -438,9 +434,9 @@ func TestRefundService_Settlement(t *testing.T) {
 		h.orders.EXPECT().GetByID(gomock.Any(), "order_1").Return(stale, nil)
 		h.refunds.EXPECT().ListByOrder(gomock.Any(), "order_1").Return([]*domain.Refund{pendingRefund()}, nil)
 
-		h.orders.EXPECT().Update(gomock.Any(), gomock.Any()).
-			DoAndReturn(func(_ context.Context, o *domain.Order) error {
-				require.Equal(t, 1, o.Items[0].RefundedQuantity,
+		h.orders.EXPECT().ApplyRefundSettlement(gomock.Any(), "order_1", gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, _ string, items []domain.OrderItem, _ domain.PaymentStatus) error {
+				require.Equal(t, 1, items[0].RefundedQuantity,
 					"one completed refund of one unit means one, not two")
 				return nil
 			})
@@ -504,7 +500,7 @@ func TestRefundService_RecheckStatus(t *testing.T) {
 		h.payments.EXPECT().AddRefundAmount(gomock.Any(), "pay_1", int64(10000)).Return(int64(10000), nil)
 		h.orders.EXPECT().GetByID(gomock.Any(), "order_1").Return(paidOrder(domain.OrderStatusConfirmed), nil)
 		h.refunds.EXPECT().ListByOrder(gomock.Any(), "order_1").Return([]*domain.Refund{refund}, nil)
-		h.orders.EXPECT().Update(gomock.Any(), gomock.Any()).Return(nil)
+		h.orders.EXPECT().ApplyRefundSettlement(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 		h.payments.EXPECT().UpdateStatus(gomock.Any(), "pay_1", gomock.Any(), gomock.Any()).Return(nil)
 		h.refunds.EXPECT().GetByID(gomock.Any(), "refund_1").Return(refund, nil)
 
@@ -739,7 +735,7 @@ func TestRefundService_AuditAndNotify(t *testing.T) {
 		h.payments.EXPECT().AddRefundAmount(gomock.Any(), "pay_1", int64(10000)).Return(int64(10000), nil)
 		h.orders.EXPECT().GetByID(gomock.Any(), "order_1").Return(paidOrder(domain.OrderStatusConfirmed), nil)
 		h.refunds.EXPECT().ListByOrder(gomock.Any(), "order_1").Return([]*domain.Refund{refund}, nil)
-		h.orders.EXPECT().Update(gomock.Any(), gomock.Any()).Return(nil)
+		h.orders.EXPECT().ApplyRefundSettlement(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 		h.payments.EXPECT().UpdateStatus(gomock.Any(), "pay_1", gomock.Any(), gomock.Any()).Return(nil)
 
 		require.NoError(t, h.svc.HandleRefundCompleted(ctx, "OMR1"))

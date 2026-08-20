@@ -74,6 +74,10 @@ func (r *AuditRepository) GetByID(ctx context.Context, id string) (*domain.Audit
 }
 
 // List retrieves audit logs with filters
+// maxAuditRangeDays caps how far back one request may read. Audit items carry a
+// 30-day TTL, so a wider range costs round-trips to find nothing.
+const maxAuditRangeDays = 31
+
 func (r *AuditRepository) List(ctx context.Context, req domain.ListAuditLogsRequest) (*domain.ListAuditLogsResponse, error) {
 	// Default date range: last 7 days
 	endDate := time.Now()
@@ -92,6 +96,16 @@ func (r *AuditRepository) List(ctx context.Context, req domain.ListAuditLogsRequ
 			return nil, errors.BadRequest("Invalid end_date format, expected YYYY-MM-DD")
 		}
 		endDate = parsed
+	}
+
+	// One query per day, and each reads its partition whole, so an unbounded range is
+	// days x round-trips inside one request. The table's TTL is 30 days, so nothing
+	// beyond that exists to find.
+	if startDate.Before(endDate.AddDate(0, 0, -maxAuditRangeDays)) {
+		startDate = endDate.AddDate(0, 0, -maxAuditRangeDays)
+	}
+	if endDate.Before(startDate) {
+		return nil, errors.BadRequest("end_date is before start_date")
 	}
 
 	var allLogs []*domain.AuditLog

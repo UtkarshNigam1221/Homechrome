@@ -222,6 +222,42 @@ func (r *OrderRepository) GetByCustomer(ctx context.Context, customerID string, 
 }
 
 // UpdateStatus updates order status
+// ApplyRefundSettlement writes only what a settled refund owns: the lines' refunded
+// quantities and the payment status. Targeted rather than a whole-item write, which
+// would revert a status, tracking or note change made since the order was read.
+//
+// No optimistic lock needed. The caller recomputes both values from every completed
+// refund, so two settlements racing here both write the same answer.
+func (r *OrderRepository) ApplyRefundSettlement(ctx context.Context, id string, items []domain.OrderItem, paymentStatus domain.PaymentStatus) error {
+	marshaledItems, err := attributevalue.Marshal(items)
+	if err != nil {
+		return errors.Internal("Failed to marshal order items")
+	}
+
+	_, err = r.client.db.UpdateItem(ctx, &dynamodb.UpdateItemInput{
+		TableName: aws.String(r.client.ordersTable),
+		Key: map[string]types.AttributeValue{
+			"PK": &types.AttributeValueMemberS{Value: "ORDER#" + id},
+			"SK": &types.AttributeValueMemberS{Value: skMetadata},
+		},
+		UpdateExpression: aws.String("SET items = :items, payment_status = :ps, updated_at = :now"),
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":items": marshaledItems,
+			":ps":    &types.AttributeValueMemberS{Value: string(paymentStatus)},
+			exprNow:  &types.AttributeValueMemberS{Value: time.Now().Format(time.RFC3339)},
+		},
+		ConditionExpression: aws.String("attribute_exists(PK)"),
+	})
+	if err != nil {
+		if isConditionalCheckFailed(err) {
+			return errors.NotFound("Order not found")
+		}
+		return errors.Wrap(err, "Failed to apply refund settlement")
+	}
+
+	return nil
+}
+
 func (r *OrderRepository) UpdateStatus(ctx context.Context, id string, status domain.OrderStatus, updatedBy string) error {
 	now := time.Now()
 

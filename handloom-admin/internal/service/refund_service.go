@@ -464,7 +464,9 @@ func (s *RefundService) applyCompletion(ctx context.Context, refund *domain.Refu
 		updates["refunded_at"] = completedAt
 	}
 
-	if err := s.orderRepo.Update(ctx, order); err != nil {
+	// Targeted, not a whole-order write: an admin marking the order shipped while this
+	// webhook is in flight must not have that reverted to what we read seconds ago.
+	if err := s.orderRepo.ApplyRefundSettlement(ctx, order.ID, order.Items, order.PaymentStatus); err != nil {
 		slog.ErrorContext(ctx, "Failed to update order after refund", "refund_id", refund.ID, "error", err)
 		return
 	}
