@@ -136,10 +136,23 @@ Customer information with addresses and order history.
 |-----|---------|---------|
 | PK | `CUSTOMER#<id>` | `CUSTOMER#cust-001` |
 | SK | `METADATA` | `METADATA` |
-| GSI1PK | `CUSTOMER_EMAIL` | `CUSTOMER_EMAIL` |
-| GSI1SK | `<email>` | `john@example.com` |
+| GSI1PK | *(unset)* | — |
+| GSI1SK | *(unset)* | — |
 | GSI2PK | `CUSTOMER#ALL` | `CUSTOMER#ALL` |
 | GSI2SK | `<created_at>` | `2024-01-15T10:30:00Z` |
+
+#### Email Uniqueness Index
+
+A pointer item, not a GSI: it enforces uniqueness and is read-after-write
+consistent, neither of which a GSI can do.
+
+| Key | Pattern | Example |
+|-----|---------|---------|
+| PK | `CUSTOMER_EMAIL#<email>` | `CUSTOMER_EMAIL#john@example.com` |
+| SK | `METADATA` | `METADATA` |
+
+Written in the same `TransactWriteItems` as the customer, so a customer can
+never exist without its pointer.
 
 #### Phone Uniqueness Index
 
@@ -175,7 +188,7 @@ Additional attributes: `customer_id`.
 | Pattern | Key Condition |
 |---------|---------------|
 | Get customer by ID | PK = `CUSTOMER#<id>`, SK = `METADATA` |
-| Get customer by email | GSI1: GSI1PK = `CUSTOMER_EMAIL`, GSI1SK = `<email>` |
+| Get customer by email | PK = `CUSTOMER_EMAIL#<email>`, SK = `METADATA` → returns customer_id |
 | Get customer by phone | PK = `CUSTOMER_PHONE#<phone>`, SK = `METADATA` → returns customer_id |
 | List all customers | GSI2: GSI2PK = `CUSTOMER#ALL` (with filter/search) |
 
@@ -193,8 +206,8 @@ Payment records for orders.
 | SK | `METADATA` | `METADATA` |
 | GSI1PK | `ORDER#<order_id>` | `ORDER#ord-001` |
 | GSI1SK | `<created_at>` | `2024-01-15T10:30:00Z` |
-| GSI2PK | `PAYMENT_TXN` | `PAYMENT_TXN` |
-| GSI2SK | `<merchant_txn_id>` | `MCHT_abc123` |
+| GSI2PK | `MERCHANT_TXN#<merchant_txn_id>` | `MERCHANT_TXN#MCHT_abc123` |
+| GSI2SK | `METADATA` | `METADATA` |
 
 #### Attributes
 
@@ -217,7 +230,7 @@ Payment records for orders.
 |---------|---------------|
 | Get payment by ID | PK = `PAYMENT#<id>`, SK = `METADATA` |
 | Get payments for order | GSI1: GSI1PK = `ORDER#<order_id>` (newest first) |
-| Get payment by merchant txn | GSI2: GSI2PK = `PAYMENT_TXN`, GSI2SK = `<merchant_txn_id>` |
+| Get payment by merchant txn | GSI2: GSI2PK = `MERCHANT_TXN#<merchant_txn_id>`, GSI2SK = `METADATA` |
 
 #### Write Patterns
 
@@ -228,7 +241,40 @@ Payment records for orders.
 
 ---
 
-### 4. Shipment
+### 4. Refund
+
+One attempt to send money back for part or all of an order. Separate from
+Payment because an order can be refunded line by line, several times over;
+`Payment.RefundAmount` is the running total across them.
+
+#### Key Structure
+
+| Key | Pattern | Example |
+|-----|---------|---------|
+| PK | `REFUND#<id>` | `REFUND#refund_a1b2c3d4` |
+| SK | `METADATA` | `METADATA` |
+| GSI1PK | `ORDER#<order_id>` | `ORDER#ord-001` |
+| GSI1SK | `REFUND#<initiated_at>` | `REFUND#2024-01-15T10:30:00Z` |
+| GSI2PK | `REFUND_PROVIDER#<provider_refund_id>` | `REFUND_PROVIDER#OMR123` |
+| GSI2SK | `METADATA` | `METADATA` |
+
+GSI2 is omitted entirely until initiation returns a provider id: DynamoDB
+rejects an empty string on an indexed key attribute.
+
+#### Read Patterns
+
+| Pattern | Key Condition |
+|---------|---------------|
+| Get refund by ID | PK = `REFUND#<id>`, SK = `METADATA` |
+| List an order's refunds | GSI1: GSI1PK = `ORDER#<order_id>`, `begins_with(GSI1SK, 'REFUND#')` |
+| Get refund by provider id | GSI2: GSI2PK = `REFUND_PROVIDER#<id>`, GSI2SK = `METADATA` |
+
+The `begins_with` matters: GSI1's `ORDER#` partition holds the order's payments
+too, so an unnarrowed query returns both.
+
+---
+
+### 5. Shipment
 
 Shipment records stored under the order partition.
 
@@ -270,7 +316,7 @@ Multiple shipments per order are supported as separate SK items.
 
 ---
 
-### 5. Cart
+### 6. Cart
 
 Customer shopping cart with header + line items pattern.
 
@@ -321,7 +367,7 @@ Cart items have a TTL of **30 days** from last update. DynamoDB auto-deletes sta
 
 ---
 
-### 6. Price Quote
+### 7. Price Quote
 
 Temporary price calculations for custom-sized products.
 
