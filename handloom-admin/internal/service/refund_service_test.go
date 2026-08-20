@@ -204,6 +204,48 @@ func TestRefundService_Create(t *testing.T) {
 
 	// After dispatch the reservation is already consumed, and RETURNED owns
 	// restocking — a refund moving stock too would count the goods back twice.
+	// A cancellation already released the reservation. Releasing again would take the
+	// units out of some other order's holding, so the refund must move money only.
+	t.Run("moves no stock for an order already cancelled", func(t *testing.T) {
+		h := newRefundHarness(t)
+		h.orders.EXPECT().GetByID(gomock.Any(), "order_1").Return(paidOrder(domain.OrderStatusCancelled), nil)
+		h.payments.EXPECT().GetByOrderID(gomock.Any(), "order_1").Return(paidPayment(), nil)
+		h.refunds.EXPECT().ListByOrder(gomock.Any(), "order_1").Return(nil, nil)
+		h.refunds.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
+		h.refunds.EXPECT().SetProviderRefundID(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		// No ReleaseStock, no WriteOffStock: gomock fails the test if either is called.
+
+		_, err := h.svc.Create(ctx, "order_1", oneLine(1, true), "admin_1")
+		require.NoError(t, err)
+	})
+
+	// The payment total is written at settlement and the refund rows at creation, so
+	// a settlement that half-completed leaves one ahead of the other. The bound has to
+	// be the pessimistic reading, or the gap is refundable twice.
+	t.Run("bounds on the payment total when it is ahead of the refund rows", func(t *testing.T) {
+		h := newRefundHarness(t)
+		h.orders.EXPECT().GetByID(gomock.Any(), "order_1").Return(paidOrder(domain.OrderStatusConfirmed), nil)
+		// The payment says 10000 went back; no refund row accounts for it.
+		settled := paidPayment()
+		settled.RefundAmount = 10000
+		h.payments.EXPECT().GetByOrderID(gomock.Any(), "order_1").Return(settled, nil)
+		h.refunds.EXPECT().ListByOrder(gomock.Any(), "order_1").Return(nil, nil)
+		h.refunds.EXPECT().SetProviderRefundID(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		h.inventory.EXPECT().WriteOffStock(gomock.Any(), "prod_a", 2, "order_1").
+			Return(&domain.InventoryTransaction{}, nil)
+
+		// Both units clear the order, so the refund is what is left of it — 10000, not
+		// the 20000 the lines are worth. Ignoring the payment would send the 10000 twice.
+		h.refunds.EXPECT().Create(gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, r *domain.Refund) error {
+				require.Equal(t, int64(10000), r.Amount)
+				return nil
+			})
+
+		_, err := h.svc.Create(ctx, "order_1", oneLine(2, false), "admin_1")
+		require.NoError(t, err)
+	})
+
 	t.Run("moves no stock for an order already dispatched", func(t *testing.T) {
 		h := newRefundHarness(t)
 		h.orders.EXPECT().GetByID(gomock.Any(), "order_1").Return(paidOrder(domain.OrderStatusShipped), nil)
@@ -306,6 +348,34 @@ func TestRefundService_Settlement(t *testing.T) {
 
 	// PhonePe retries webhooks. The loser of the conditional update must apply
 	// nothing, not fail the delivery.
+	// Recomputed from the order's refunds, not incremented: a redelivery that gets
+	// past the gate must not add the same units again. Only a non-zero starting
+	// quantity tells the two apart.
+	t.Run("recomputes the refunded quantity rather than adding to it", func(t *testing.T) {
+		h := newRefundHarness(t)
+		h.refunds.EXPECT().GetByProviderRefundID(gomock.Any(), "OMR1").Return(pendingRefund(), nil)
+		h.refunds.EXPECT().Settle(gomock.Any(), "refund_1", domain.RefundStatusCompleted,
+			gomock.Any(), "", "").Return(nil)
+		h.payments.EXPECT().AddRefundAmount(gomock.Any(), "pay_1", int64(10000)).Return(int64(10000), nil)
+
+		// The order already carries a refunded unit from an earlier settlement.
+		stale := paidOrder(domain.OrderStatusConfirmed)
+		stale.Items[0].RefundedQuantity = 1
+		h.orders.EXPECT().GetByID(gomock.Any(), "order_1").Return(stale, nil)
+		h.refunds.EXPECT().ListByOrder(gomock.Any(), "order_1").Return([]*domain.Refund{pendingRefund()}, nil)
+
+		h.orders.EXPECT().Update(gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, o *domain.Order) error {
+				require.Equal(t, 1, o.Items[0].RefundedQuantity,
+					"one completed refund of one unit means one, not two")
+				return nil
+			})
+		h.payments.EXPECT().UpdateStatus(gomock.Any(), "pay_1",
+			domain.PaymentStatusPartiallyRefunded, gomock.Any()).Return(nil)
+
+		require.NoError(t, h.svc.HandleRefundCompleted(ctx, "OMR1"))
+	})
+
 	t.Run("a redelivered webhook applies nothing", func(t *testing.T) {
 		h := newRefundHarness(t)
 		h.refunds.EXPECT().GetByProviderRefundID(gomock.Any(), "OMR1").Return(pendingRefund(), nil)

@@ -582,7 +582,10 @@ func InitializeStoreWebhooksDeps(ctx context.Context, cfg *config.Config) (*Stor
 	gateway := ProvidePhonePeGateway(cfg)
 	paymentService := ProvidePaymentService(paymentRepository, orderRepository, inventoryRepository, cartService, customerRepository, gateway)
 	refundRepository := ProvideRefundRepository(client)
-	refundService := ProvideStoreRefundService(refundRepository, orderRepository, paymentRepository, inventoryRepository, gateway)
+	notificationRepository := ProvideNotificationRepository(client)
+	userRepository := ProvideUserRepository(client)
+	notificationService := ProvideNotificationService(notificationRepository, userRepository)
+	refundService := ProvideStoreRefundService(refundRepository, orderRepository, paymentRepository, inventoryRepository, notificationService, gateway)
 	webhookHandler := ProvideStoreWebhookHandler(paymentService, refundService, gateway, cfg)
 	storeWebhooksDeps := &StoreWebhooksDeps{
 		Config:  cfg,

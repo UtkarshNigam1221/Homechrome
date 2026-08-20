@@ -562,14 +562,19 @@ func ProvideRefundService(
 // store Lambda only settles refunds from webhooks — it never lists them, so
 // there is no actor to name, and the user repository has no business in a
 // customer-facing Lambda.
+// The store settles refunds from webhooks and raises none, so it needs no audit
+// trail or actor directory — but it does need the notifier: settlement is where the
+// customer is told the money is coming back, and webhooks are how settlement arrives.
 func ProvideStoreRefundService(
 	refundRepo domain.RefundRepository,
 	orderRepo domain.OrderRepository,
 	paymentRepo domain.PaymentRepository,
 	inventoryRepo domain.InventoryRepository,
+	notificationService *service.NotificationService,
 	gateway phonepe.Gateway,
 ) *service.RefundService {
-	return service.NewRefundService(refundRepo, orderRepo, paymentRepo, inventoryRepo, nil, nil, nil, gateway)
+	return service.NewRefundService(refundRepo, orderRepo, paymentRepo, inventoryRepo,
+		nil, nil, notificationService, gateway)
 }
 
 // ProvidePaymentRepository creates a new PaymentRepository

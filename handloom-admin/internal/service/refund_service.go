@@ -208,6 +208,11 @@ func (s *RefundService) price(ctx context.Context, orderID string, items []domai
 	// What every refund that has not failed already claims — settled or still in
 	// flight. Bounding on the settled figures alone left a window, between creating a
 	// refund and its webhook landing, in which the same units could go back twice.
+	//
+	// Best-effort, not a proof: ListByOrder reads GSI1, and a GSI is always
+	// eventually consistent. Two creates within the replication lag can each miss the
+	// other. Closing it needs the claim on a consistently-readable item — see the
+	// design's known gaps.
 	existing, err := s.refundRepo.ListByOrder(ctx, order.ID)
 	if err != nil {
 		return nil, nil, nil, err

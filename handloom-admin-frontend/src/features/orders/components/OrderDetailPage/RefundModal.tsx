@@ -34,11 +34,11 @@ const REASON_OPTIONS = (Object.keys(REFUND_REASON_LABELS) as RefundReason[]).map
   label: REFUND_REASON_LABELS[value],
 }));
 
-// Dispatch is the line where a refund stops moving stock: CommitStock has already
-// consumed the reservation, and RETURNED owns restocking from there. Letting a
-// refund restock as well would count the same goods back twice.
-function isDispatched(order: Order): boolean {
-  return ['SHIPPED', 'DELIVERED', 'RETURNED'].includes(order.status);
+// The statuses where a refund moves money only, matching the server's own skip list.
+// After dispatch CommitStock has consumed the reservation and RETURNED owns
+// restocking; after cancellation the release already happened.
+function movesNoStock(order: Order): boolean {
+  return ['SHIPPED', 'DELIVERED', 'RETURNED', 'CANCELLED'].includes(order.status);
 }
 
 export function RefundModal({
@@ -74,7 +74,7 @@ export function RefundModal({
     () => items.filter((item) => unrefundedQuantity(item, claims) > 0),
     [items, claims]
   );
-  const dispatched = isDispatched(order);
+  const moneyOnly = movesNoStock(order);
 
   // What the admin has asked for, in the shape the server prices — clamped to what
   // each line still has. A pending refund settling under an open modal shrinks the
@@ -154,18 +154,19 @@ export function RefundModal({
           <div className="flex gap-2 rounded-lg bg-amber-50 border border-amber-200 p-3 text-sm text-amber-900">
             <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
             <p>
-              A refund on this order is still pending at the provider. Its units are not counted
-              below until it settles — check it before refunding the same ones twice.
+              A refund on this order is still pending at the provider. Its units are already held
+              back below, so what is offered here is what is left on top of it.
             </p>
           </div>
         )}
 
-        {dispatched && (
+        {moneyOnly && (
           <div className="flex gap-2 rounded-lg bg-gray-50 border border-gray-200 p-3 text-sm text-gray-700">
             <Truck className="w-4 h-4 mt-0.5 shrink-0" />
             <p>
-              This order has already been dispatched, so the refund moves money only. To bring the
-              goods back into stock, mark the order returned.
+              {order.status === 'CANCELLED'
+                ? 'This order was cancelled, which already returned its stock, so the refund moves money only.'
+                : 'This order has already been dispatched, so the refund moves money only. To bring the goods back into stock, mark the order returned.'}
             </p>
           </div>
         )}
@@ -183,7 +184,7 @@ export function RefundModal({
                   <th className="py-2 pr-4 font-medium text-right">Unit price</th>
                   <th className="py-2 pr-4 font-medium text-right">Left</th>
                   <th className="py-2 pr-4 font-medium">Refund</th>
-                  {!dispatched && <th className="py-2 pr-4 font-medium">Stock</th>}
+                  {!moneyOnly && <th className="py-2 pr-4 font-medium">Stock</th>}
                   <th className="py-2 font-medium text-right">Amount</th>
                 </tr>
               </thead>
@@ -230,7 +231,7 @@ export function RefundModal({
                           </button>
                         </div>
                       </td>
-                      {!dispatched && (
+                      {!moneyOnly && (
                         <td className="py-3 pr-4">
                           <Select
                             aria-label={`Stock handling for ${item.product_name}`}

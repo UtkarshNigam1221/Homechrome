@@ -71,6 +71,24 @@ func TestDeriveRefundAmount(t *testing.T) {
 		require.Equal(t, order.TotalAmount, got.Total)
 	})
 
+	// clearsOrder asks what is left on lines this refund does not name, and a claim
+	// counts there too. Reading only RefundedQuantity would call the order unfinished
+	// while a refund covering the rest is still in flight — so the last refund would
+	// never earn the shipping and the order would never reach fully refunded.
+	t.Run("a claim on another line can make this refund the one that clears the order", func(t *testing.T) {
+		order := refundTestOrder(0, 0, 5000, line("a", 10000, 1, 0), line("b", 20000, 1, 0))
+
+		// Line b is spoken for by a refund still in flight, so refunding a clears it.
+		got, err := deriveRefundAmount(order, []domain.CreateRefundItemRequest{
+			{OrderItemID: "a", Quantity: 1},
+		}, map[string]int{"b": 1}, 20000)
+
+		require.NoError(t, err)
+		require.True(t, got.IsFinal, "nothing is left unrefunded once b's claim counts")
+		require.Equal(t, int64(5000), got.Shipping, "so this refund earns the shipping back")
+		require.Equal(t, order.TotalAmount-20000, got.Total)
+	})
+
 	t.Run("tax is prorated the same way as the discount", func(t *testing.T) {
 		// subtotal 30000, tax 3000 → a 10000 line carries 1000 of it, added not subtracted.
 		order := refundTestOrder(0, 3000, 0, line("a", 10000, 1, 0), line("b", 20000, 1, 0))

@@ -259,6 +259,15 @@ describe('RefundModal', () => {
     await waitFor(() => expect(screen.getByText(/clears the order/i)).toBeTruthy());
   });
 
+  // A cancellation already released the reservation, so the server moves no stock
+  // for the refund. Offering the choice would promise something that cannot happen.
+  it('drops the stock choice on a cancelled order', () => {
+    open({ order: order({ status: 'CANCELLED' }) });
+
+    expect(screen.queryByLabelText('Stock handling for Bedsheet')).toBeNull();
+    expect(screen.getByText(/already returned its stock/i)).toBeTruthy();
+  });
+
   // After dispatch RETURNED owns restocking, so the stock choice is not offered.
   it('drops the stock choice once the order has shipped', () => {
     open({ order: order({ status: 'SHIPPED' }) });

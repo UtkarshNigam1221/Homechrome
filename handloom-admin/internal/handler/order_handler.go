@@ -41,13 +41,12 @@ func (h *OrderHandler) Routes() chi.Router {
 	r.With(middleware.ValidateJSONTyped[AddOrderNoteRequest](h.validation)).Post("/{id}/notes", h.AddNote)
 	r.With(middleware.ValidateJSONTyped[UpdateTrackingRequest](h.validation)).Patch("/{id}/tracking", h.UpdateTracking)
 	r.With(middleware.ValidateJSONTyped[CancelOrderRequest](h.validation)).Post("/{id}/cancel", h.Cancel)
-	r.Get("/{id}/refunds", h.ListRefunds)
-
-	// Raising a refund moves money, and a re-check can settle one. Both are
-	// admin-only, gated here rather than at the mount site so the check travels
-	// with the routes into the monolith and the Lambda alike.
+	// Refunds are admin-only end to end, including the read: it is the money that
+	// went back. Gated here rather than at the mount site so the check travels with
+	// the routes into the monolith and the Lambda alike.
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.RequireRole(domain.UserRoleAdmin))
+		r.Get("/{id}/refunds", h.ListRefunds)
 		r.With(middleware.ValidateJSONTyped[domain.CreateRefundRequest](h.validation)).
 			Post("/{id}/refunds", h.CreateRefund)
 		r.With(middleware.ValidateJSONTyped[domain.PreviewRefundRequest](h.validation)).
