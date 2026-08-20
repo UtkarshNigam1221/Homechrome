@@ -160,21 +160,15 @@ func (c *Client) CheckPaymentStatus(ctx context.Context, merchantTxnID string) (
 		"PhonePe status check failed")
 }
 
-// VerifyWebhookSignature verifies the Authorization header from a PhonePe webhook.
-// PhonePe sends: Authorization: SHA256(username:password)
-// We compute the same and compare.
+// VerifyWebhookSignature checks the PhonePe webhook Authorization header, which is
+// SHA256(username:password). Computes the same and compares.
 func (c *Client) VerifyWebhookSignature(username, password, authHeader string) bool {
 	expected := fmt.Sprintf("%x", sha256.Sum256([]byte(username+":"+password)))
 	return subtle.ConstantTimeCompare([]byte(expected), []byte(authHeader)) == 1
 }
 
-// InitiateRefund asks PhonePe to send money back for part or all of an order.
-//
-// originalMerchantOrderID is the Payment.MerchantTransactionID recorded at
-// checkout — the same value passed as merchantOrderId when the payment was
-// created. merchantRefundID is ours and unique per attempt; it is the key the
-// status endpoint accepts, and the only handle we keep if this call's response
-// is lost.
+// InitiateRefund asks PhonePe to send money back. originalMerchantOrderID is checkout's
+// MerchantTransactionID; merchantRefundID is ours, and the only handle if this is lost.
 func (c *Client) InitiateRefund(ctx context.Context, merchantRefundID, originalMerchantOrderID string, amount int64) (*RefundResponse, error) {
 	token, err := c.getToken(ctx)
 	if err != nil {
@@ -221,9 +215,8 @@ func (c *Client) InitiateRefund(ctx context.Context, merchantRefundID, originalM
 	return &refundResp, nil
 }
 
-// CheckRefundStatus reads the provider's current view of a refund, keyed on our
-// merchantRefundID rather than PhonePe's id — which is what makes it the
-// recovery path when the initiation response never came back.
+// CheckRefundStatus reads the provider's view of a refund, keyed on our merchantRefundID
+// rather than PhonePe's — which is what makes it the recovery path.
 func (c *Client) CheckRefundStatus(ctx context.Context, merchantRefundID string) (*RefundStatusResponse, error) {
 	return getAuthedJSON[RefundStatusResponse](ctx, c,
 		fmt.Sprintf("/payments/v2/refund/%s/status", merchantRefundID),

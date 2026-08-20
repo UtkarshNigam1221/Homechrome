@@ -13,11 +13,8 @@ import (
 	"github.com/handloom/admin/pkg/metrics"
 )
 
-// RefundService owns the refund lifecycle: deriving the amount, moving the
-// money, and settling asynchronously.
-//
-// Its own service rather than more of OrderService, which is already the
-// largest here — refunds have a lifecycle of their own, spanning two Lambdas.
+// RefundService owns the refund lifecycle: deriving the amount, moving the money,
+// settling asynchronously. Its own service — that lifecycle spans two Lambdas.
 type RefundService struct {
 	refundRepo    domain.RefundRepository
 	orderRepo     domain.OrderRepository
@@ -43,11 +40,8 @@ func NewRefundService(
 	}
 }
 
-// Create derives the amount, records the refund, then asks the provider for it.
-//
-// The record is written before the provider is called, deliberately. A refund
-// that leaves the building with no local row is unreconcilable; a PENDING row
-// whose gateway call never happened is recoverable through RecheckStatus.
+// Create derives the amount, records the refund, then asks the provider. Record
+// first: a refund with no local row is unreconcilable, a stale PENDING one is not.
 func (s *RefundService) Create(ctx context.Context, orderID string, req domain.CreateRefundRequest, createdBy string) (*domain.Refund, error) {
 	if !req.Reason.IsValid() {
 		return nil, errors.BadRequest("Unknown refund reason")
@@ -92,9 +86,8 @@ func (s *RefundService) Create(ctx context.Context, orderID string, req domain.C
 
 	resp, err := s.gateway.InitiateRefund(ctx, refund.MerchantRefundID, payment.MerchantTransactionID, refund.Amount)
 	if err != nil {
-		// The provider never accepted it, so no money moves and no stock does
-		// either. Recording the failure keeps the row honest rather than leaving
-		// it PENDING forever.
+		// Provider never accepted it, so no money and no stock moved. Recording the
+		// failure beats leaving the row PENDING forever.
 		slog.ErrorContext(ctx, "Refund initiation failed", "refund_id", refund.ID, "error", err)
 		if settleErr := s.refundRepo.Settle(ctx, refund.ID, domain.RefundStatusFailed, time.Now(),
 			"INITIATION_FAILED", err.Error()); settleErr != nil {
@@ -123,11 +116,8 @@ func (s *RefundService) Create(ctx context.Context, orderID string, req domain.C
 	return refund, nil
 }
 
-// applyInventoryEffect moves stock for a refund, and only before dispatch.
-//
-// Dispatch is the dividing line because CommitStock consumes the reservation at
-// SHIPPED. After that, RETURNED owns restocking — letting a refund restock too
-// would count the same goods back twice.
+// applyInventoryEffect moves stock for a refund, only before dispatch: CommitStock
+// consumes the reservation at SHIPPED, after which RETURNED owns restocking.
 func (s *RefundService) applyInventoryEffect(ctx context.Context, order *domain.Order, refund *domain.Refund) {
 	if order.Status == domain.OrderStatusShipped || order.Status == domain.OrderStatusDelivered ||
 		order.Status == domain.OrderStatusReturned {
@@ -183,11 +173,8 @@ func (s *RefundService) HandleRefundFailed(ctx context.Context, providerRefundID
 	return s.settle(ctx, refund, domain.RefundStatusFailed, errorCode, detailedErrorCode)
 }
 
-// RecheckStatus asks the provider directly and applies whatever it says.
-//
-// The escape hatch for a webhook that never arrived, and the only recovery when
-// the initiation response was lost so no provider id was ever stored — which is
-// why it keys on our merchant refund id.
+// RecheckStatus asks the provider directly and applies what it says. Keys on our
+// merchant refund id, so it works even when no provider id was ever stored.
 func (s *RefundService) RecheckStatus(ctx context.Context, refundID string) (*domain.Refund, error) {
 	refund, err := s.refundRepo.GetByID(ctx, refundID)
 	if err != nil {
@@ -228,12 +215,8 @@ func (s *RefundService) RecheckStatus(ctx context.Context, refundID string) (*do
 	return s.refundRepo.GetByID(ctx, refund.ID)
 }
 
-// settle applies a terminal outcome exactly once.
-//
-// The repository's conditional update is the gate: PhonePe retries webhooks and
-// Lambda can process two deliveries at once, so of several attempts exactly one
-// gets past Settle. Everything after it — the payment total, the item
-// quantities, the order status — runs only for that one.
+// settle applies a terminal outcome exactly once. Settle's conditional update is
+// the gate: of several concurrent deliveries, only one gets past it.
 func (s *RefundService) settle(ctx context.Context, refund *domain.Refund, status domain.RefundStatus, errorCode, detailedErrorCode string) error {
 	// A cheap early out. Not the guard: the guard is Settle itself.
 	if refund.IsTerminal() {
@@ -251,9 +234,8 @@ func (s *RefundService) settle(ctx context.Context, refund *domain.Refund, statu
 	}
 
 	if status == domain.RefundStatusFailed {
-		// Order and payment are untouched: nothing went back. The inventory
-		// effect from creation is deliberately not reversed — see the design's
-		// known gaps.
+		// Nothing went back, so order and payment are untouched. The creation-time
+		// inventory effect is deliberately not reversed — see the design's known gaps.
 		metrics.Record(ctx, "refund_failed", metrics.L{metrics.LabelReason: string(refund.Reason)})
 		slog.WarnContext(ctx, "Refund failed at provider",
 			"refund_id", refund.ID, "error_code", errorCode, "detailed_error_code", detailedErrorCode)
@@ -268,10 +250,8 @@ func (s *RefundService) settle(ctx context.Context, refund *domain.Refund, statu
 	return nil
 }
 
-// applyCompletion records a completed refund against the payment and the order.
-// Failures here are logged rather than returned: the money has already gone
-// back, so refusing the webhook would only have PhonePe redeliver it into a
-// refund that is now terminal and would be skipped.
+// applyCompletion records a completed refund against the payment and order. Failures
+// are logged, not returned: the money is gone, and a redelivery would be skipped.
 func (s *RefundService) applyCompletion(ctx context.Context, refund *domain.Refund, completedAt time.Time) {
 	refundedTotal, err := s.paymentRepo.AddRefundAmount(ctx, refund.PaymentID, refund.Amount)
 	if err != nil {

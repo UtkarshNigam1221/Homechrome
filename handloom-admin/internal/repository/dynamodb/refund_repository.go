@@ -74,10 +74,8 @@ func (r *RefundRepository) GetByID(ctx context.Context, id string) (*domain.Refu
 	return &refund, nil
 }
 
-// ListByOrder returns an order's refunds, oldest first.
-//
-// GSI1's ORDER# partition holds payments as well, so the sort-key prefix does
-// the narrowing: without it this returns the order's payment rows too.
+// ListByOrder returns an order's refunds, oldest first. GSI1's ORDER# partition holds
+// payments too, so the sort-key prefix does the narrowing.
 func (r *RefundRepository) ListByOrder(ctx context.Context, orderID string) ([]*domain.Refund, error) {
 	return QueryAll[domain.Refund](ctx, r.client.db, &dynamodb.QueryInput{
 		TableName:              aws.String(r.client.ordersTable),
@@ -90,10 +88,8 @@ func (r *RefundRepository) ListByOrder(ctx context.Context, orderID string) ([]*
 	}, "Failed to list refunds for order")
 }
 
-// GetByProviderRefundID finds the refund a webhook is about.
-//
-// Webhooks carry PhonePe's refund id and never echo ours, and an order can have
-// several refunds, so the order id alone cannot identify one.
+// GetByProviderRefundID finds the refund a webhook is about. Webhooks carry only
+// PhonePe's id, and an order can have several refunds.
 func (r *RefundRepository) GetByProviderRefundID(ctx context.Context, providerRefundID string) (*domain.Refund, error) {
 	result, err := r.client.db.Query(ctx, &dynamodb.QueryInput{
 		TableName:              aws.String(r.client.ordersTable),
@@ -151,13 +147,8 @@ func (r *RefundRepository) SetProviderRefundID(ctx context.Context, id, provider
 	return nil
 }
 
-// Settle moves a refund to a terminal state, but only from PENDING.
-//
-// This condition is the single gate the whole settlement hangs off. PhonePe
-// retries webhooks and Lambda can process two deliveries at once, so of two
-// concurrent settlements exactly one wins here; the loser fails the condition
-// and every downstream effect — payment total, item quantities, order status,
-// notification — runs only for the winner.
+// Settle moves a refund to a terminal state, only from PENDING. That condition is the
+// gate: of two concurrent deliveries one wins, and only it runs the effects.
 func (r *RefundRepository) Settle(ctx context.Context, id string, status domain.RefundStatus, completedAt time.Time, errorCode, detailedErrorCode string) error {
 	_, err := r.client.db.UpdateItem(ctx, &dynamodb.UpdateItemInput{
 		TableName: aws.String(r.client.ordersTable),

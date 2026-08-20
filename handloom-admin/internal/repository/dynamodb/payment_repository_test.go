@@ -10,9 +10,8 @@ import (
 	"github.com/handloom/admin/internal/domain"
 )
 
-// GSI1's ORDER# partition holds an order's payments and its refunds. Descending,
-// REFUND# sorts above PAYMENT#, so a lookup that leans on a post-read filter
-// finds nothing once the order has been refunded once.
+// GSI1's ORDER# partition holds payments and refunds. Descending, REFUND# sorts first,
+// so a lookup leaning on a post-read filter finds nothing once a refund exists.
 func TestPaymentRepository_GetByOrderID_WithRefundsPresent(t *testing.T) {
 	wrapped, raw := testWrappedClient(t)
 	skipIfNoLocal(t, raw)

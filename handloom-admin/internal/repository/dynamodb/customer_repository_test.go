@@ -54,9 +54,8 @@ func TestCustomerRepository_EmailIndex(t *testing.T) {
 		require.Empty(t, found.Email)
 	})
 
-	// The customer and its pointer are one transaction. A refused address must
-	// leave no customer behind, or the guard has a hole in the case it exists
-	// for: a record nothing can find by email.
+	// Customer and pointer are one transaction. A refused address must leave no customer
+	// behind, or the guard has a hole exactly where it exists to have none.
 	t.Run("creates neither the customer nor the pointer when the address is taken", func(t *testing.T) {
 		require.NoError(t, repo.Create(ctx, newCustomer("cust_x", "shared@example.com", "+9120")))
 

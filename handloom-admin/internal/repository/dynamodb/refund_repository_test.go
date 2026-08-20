@@ -37,9 +37,8 @@ func TestRefundRepository(t *testing.T) {
 		require.Equal(t, domain.RefundStatusPending, found.Status)
 	})
 
-	// A refund with no provider id yet must carry no GSI2 keys at all: DynamoDB
-	// rejects an empty string on an indexed attribute, so blanks would fail the
-	// write outright.
+	// A refund with no provider id yet must carry no GSI2 keys at all: DynamoDB rejects
+	// an empty indexed attribute, so blanks would fail the write outright.
 	t.Run("stores a refund that has not reached the provider yet", func(t *testing.T) {
 		require.NoError(t, repo.Create(ctx, newRefund("ref_b", "order_1")))
 

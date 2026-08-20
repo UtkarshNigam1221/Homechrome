@@ -37,10 +37,8 @@ func (r *CustomerRepository) Create(ctx context.Context, customer *domain.Custom
 		return errors.Internal("Failed to marshal customer")
 	}
 
-	// The customer and its email pointer go in one transaction, as users have
-	// always done. Written separately, a failure on the second leaves a customer
-	// GetByEmail can never find — a hole in the very guard the pointer exists to
-	// provide.
+	// Customer and email pointer in one transaction, as users have always done. Written
+	// separately, a failure on the second leaves a customer GetByEmail cannot find.
 	writes := []types.TransactWriteItem{
 		{
 			Put: &types.Put{
@@ -193,10 +191,8 @@ func (r *CustomerRepository) Update(ctx context.Context, customer *domain.Custom
 		},
 	}
 
-	// Moving an address is three writes that have to agree: claim the new
-	// pointer, release the old, and save the record. Done separately, a failure
-	// between them leaves the customer findable at an address they no longer
-	// hold, or at none.
+	// Moving an address is three writes that must agree: claim the new pointer, release
+	// the old, save the record. Separately, a failure strands the customer at neither.
 	if existing.Email != customer.Email {
 		if customer.Email != "" {
 			emailAV, marshalErr := marshalEmailIndex(customer.Email, customer.ID)
@@ -310,13 +306,8 @@ func (r *CustomerRepository) Search(ctx context.Context, query string, paginatio
 	return r.List(ctx, req)
 }
 
-// RecordPurchase atomically bumps the customer's OrderCount by 1 and adds
-// amountPaise to TotalSpent, returning the new count. DynamoDB ADD initializes
-// an attribute to 0 when it does not yet exist, so the very first call always
-// returns 1. Using ReturnValues=UPDATED_NEW means callers can gate
-// first-purchase logic on newCount==1 without a separate read, closing the
-// concurrent-payment race. Both counters move in the same UpdateItem so they
-// cannot diverge.
+// RecordPurchase bumps OrderCount and TotalSpent in one UpdateItem, returning the new
+// count — so first-purchase logic gates on newCount==1 with no racing second read.
 func (r *CustomerRepository) RecordPurchase(ctx context.Context, customerID string, amountPaise int64) (int64, error) {
 	out, err := r.client.db.UpdateItem(ctx, &dynamodb.UpdateItemInput{
 		TableName: aws.String(r.client.ordersTable),

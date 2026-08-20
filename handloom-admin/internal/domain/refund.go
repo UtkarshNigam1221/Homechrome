@@ -56,11 +56,8 @@ type RefundItem struct {
 	Restock bool `json:"restock" dynamodbav:"restock"`
 }
 
-// Refund is one attempt to send money back for part or all of an order.
-//
-// A separate entity rather than fields on Payment because an order can be
-// refunded several times, line by line. Payment.RefundAmount becomes the
-// running total across them.
+// Refund is one attempt to send money back for part or all of an order. Separate from
+// Payment because an order can be refunded line by line, several times over.
 type Refund struct {
 	refundKeys
 
@@ -74,10 +71,8 @@ type Refund struct {
 	Reason RefundReason `json:"reason" dynamodbav:"reason"`
 	Items  []RefundItem `json:"items" dynamodbav:"items"`
 
-	// MerchantRefundID is ours and unique per attempt; it is the key the status
-	// endpoint accepts. ProviderRefundID is PhonePe's, and stays empty until
-	// initiation returns — webhooks identify a refund by it, which is why a lost
-	// initiation response has to be recovered through the status endpoint.
+	// MerchantRefundID is ours, unique per attempt, and what the status endpoint takes.
+	// ProviderRefundID is PhonePe's, empty until initiation returns; webhooks use it.
 	MerchantRefundID string `json:"merchant_refund_id" dynamodbav:"merchant_refund_id"`
 	ProviderRefundID string `json:"provider_refund_id,omitempty" dynamodbav:"provider_refund_id,omitempty"`
 
@@ -89,22 +84,16 @@ type Refund struct {
 	CreatedBy   string     `json:"created_by" dynamodbav:"created_by"`
 }
 
-// DynamoDB keys. Refunds live in the orders table alongside payments.
-//
-// GSI2 carries two shapes rather than one: the status re-check keys on our
-// merchantRefundID, but the pg.refund.* webhook carries only PhonePe's refundId
-// and never echoes ours. Splitting the partition instead of sharing a constant
-// one lets both lookups sit on the same index — and avoids the hot partition
-// PAYMENT_TXN used to have.
+// DynamoDB keys; refunds live in the orders table. GSI2 carries two partition shapes
+// so the re-check (our id) and the webhook (PhonePe's) share one index, unhotly.
 type refundKeys struct {
 	PK     string `json:"-" dynamodbav:"PK"`
 	SK     string `json:"-" dynamodbav:"SK"`
 	GSI1PK string `json:"-" dynamodbav:"GSI1PK"`
 	GSI1SK string `json:"-" dynamodbav:"GSI1SK"`
 
-	// Omitted until initiation returns: DynamoDB rejects an empty string on an
-	// indexed key attribute, so a half-written refund must carry no GSI2 keys
-	// at all rather than blank ones.
+	// Omitted until initiation returns: DynamoDB rejects an empty indexed key, so a
+	// half-written refund carries no GSI2 keys rather than blank ones.
 	GSI2PK string `json:"-" dynamodbav:"GSI2PK,omitempty"`
 	GSI2SK string `json:"-" dynamodbav:"GSI2SK,omitempty"`
 
@@ -153,19 +142,15 @@ type RefundRepository interface {
 	// ListByOrder returns an order's refunds, oldest first.
 	ListByOrder(ctx context.Context, orderID string) ([]*Refund, error)
 
-	// GetByProviderRefundID finds the refund a webhook is about. Webhooks carry
-	// PhonePe's id, not ours, and an order can have several refunds, so the
-	// order id alone cannot identify one.
+	// GetByProviderRefundID finds the refund a webhook is about. Webhooks carry only
+	// PhonePe's id, and an order can have several refunds.
 	GetByProviderRefundID(ctx context.Context, providerRefundID string) (*Refund, error)
 
 	// SetProviderRefundID records PhonePe's id once initiation returns.
 	SetProviderRefundID(ctx context.Context, id, providerRefundID string) error
 
-	// Settle moves a refund to a terminal state, but only from PENDING. The
-	// condition is the single gate the whole settlement hangs off: PhonePe
-	// retries webhooks and Lambda can process two deliveries at once, so of two
-	// concurrent settlements exactly one wins here and the other is refused.
-	// Every downstream effect runs only for the winner.
+	// Settle moves a refund to a terminal state, only from PENDING. That condition is
+	// the gate: of two concurrent deliveries one wins, and only it runs the effects.
 	Settle(ctx context.Context, id string, status RefundStatus, completedAt time.Time, errorCode, detailedErrorCode string) error
 }
 
@@ -179,8 +164,7 @@ type RefundService interface {
 	HandleRefundCompleted(ctx context.Context, providerRefundID string) error
 	HandleRefundFailed(ctx context.Context, providerRefundID, errorCode, detailedErrorCode string) error
 
-	// RecheckStatus asks the provider directly. The escape hatch for a webhook
-	// that never arrived, and the only recovery when the initiation response was
-	// lost and no provider id was ever stored.
+	// RecheckStatus asks the provider directly: the escape hatch for a webhook that
+	// never came, and the only recovery when no provider id was ever stored.
 	RecheckStatus(ctx context.Context, refundID string) (*Refund, error)
 }

@@ -188,11 +188,8 @@ func (h *OrderHandler) Cancel(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, http.StatusOK, map[string]string{response.KeyMessage: "Order canceled successfully"})
 }
 
-// CreateRefund refunds part or all of an order.
-//
-// The body carries lines and quantities only. The amount is derived server-side
-// — a client-supplied figure is not accepted, because money is not a client
-// input.
+// CreateRefund refunds part or all of an order. The body carries lines and quantities
+// only: the amount is derived server-side, because money is not a client input.
 func (h *OrderHandler) CreateRefund(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	id := chi.URLParam(r, "id")
@@ -220,10 +217,8 @@ func (h *OrderHandler) ListRefunds(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, http.StatusOK, map[string]interface{}{"refunds": refunds})
 }
 
-// RecheckRefund asks the provider for a refund's current state.
-//
-// The escape hatch for a webhook that never arrived, and the only recovery when
-// the initiation response was lost and no provider id was ever recorded.
+// RecheckRefund asks the provider for a refund's current state: the escape hatch for a
+// webhook that never came, and the only recovery when no provider id was recorded.
 func (h *OrderHandler) RecheckRefund(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 

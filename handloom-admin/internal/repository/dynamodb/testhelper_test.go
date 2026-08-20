@@ -82,8 +82,7 @@ func setupTestTable(t *testing.T, client *dynamodb.Client, tableName string) {
 					WriteCapacityUnits: aws.Int64(5),
 				},
 			},
-			// The real tables carry GSI2 as well. Without it here, anything that
-			// reads through it — payment by transaction id, refund by provider id —
+			// The real tables carry GSI2. Without it here, anything reading through it
 			// passes its unit tests and fails against a real table.
 			{
 				IndexName: aws.String("GSI2"),

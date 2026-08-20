@@ -13,9 +13,8 @@ type refundBreakdown struct {
 	Total int64
 	Items []domain.RefundItem
 
-	// IsFinal means this refund clears the last unrefunded unit on the order.
-	// It is what earns back the shipping, and what makes this refund absorb the
-	// rounding residual.
+	// IsFinal means this refund clears the order's last unrefunded unit: it earns
+	// back the shipping and absorbs the rounding residual.
 	IsFinal bool
 }
 
@@ -28,15 +27,8 @@ func prorate(value, lineSubtotal, subtotal int64) int64 {
 	return (value*lineSubtotal + subtotal/2) / subtotal
 }
 
-// deriveRefundAmount computes the refund for the requested lines.
-//
-// Each line is worth its own value less its prorated share of the order
-// discount, plus its share of the tax. Shipping comes back only with the refund
-// that clears the order, because until then the parcel still ships.
-//
-// That last refund is also made to absorb the residual left by per-line
-// rounding: without it the refunds sum to a few paise short of the order and it
-// never reaches fully refunded.
+// deriveRefundAmount computes the refund: each line less its prorated discount plus
+// its tax. The refund that clears the order also earns the shipping and the residual.
 func deriveRefundAmount(order *domain.Order, requested []domain.CreateRefundItemRequest, priorRefunded int64) (*refundBreakdown, error) {
 	if len(requested) == 0 {
 		return nil, errors.BadRequest("A refund needs at least one line")
@@ -92,9 +84,8 @@ func deriveRefundAmount(order *domain.Order, requested []domain.CreateRefundItem
 	breakdown.Total = runningTotal
 
 	if breakdown.IsFinal {
-		// Whatever is left of the order is what is left to refund, residual and
-		// shipping included. Deriving it this way rather than adding shipping to
-		// the running total is what guarantees the refunds sum to the order.
+		// What is left of the order is what is left to refund, shipping and residual
+		// included. Deriving it this way is what makes the refunds sum to the order.
 		breakdown.Total = order.TotalAmount - priorRefunded
 		if adjust := breakdown.Total - runningTotal; adjust != 0 {
 			last := &breakdown.Items[len(breakdown.Items)-1]

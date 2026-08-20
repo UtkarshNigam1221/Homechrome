@@ -627,9 +627,8 @@ func TestInventoryRepository_GetTransactions_StableAcrossPages(t *testing.T) {
 		"tied timestamps must fall back to id DESC, the same way on every page")
 }
 
-// A write-off is a refunded line whose goods are gone: the reservation goes and
-// the stock goes with it. Same arithmetic as a dispatch, different meaning, and
-// the ledger has to say which.
+// A write-off is a refunded line whose goods are gone: reservation and stock both go.
+// Same arithmetic as a dispatch, different meaning, and the ledger must say which.
 func TestInventoryRepository_WriteOffStock(t *testing.T) {
 	pool := newTestPool(t)
 	repo := postgres.NewInventoryRepository(pool)

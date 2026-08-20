@@ -81,10 +81,8 @@ func (r *PaymentRepository) GetByOrderID(ctx context.Context, orderID string) (*
 	result, err := r.client.db.Query(ctx, &dynamodb.QueryInput{
 		TableName: aws.String(r.client.ordersTable),
 		IndexName: aws.String("GSI1"),
-		// Narrow on the sort key, not a filter. This partition also holds the
-		// order's refunds, and a FilterExpression runs after Limit: descending,
-		// REFUND# sorts above PAYMENT#, so a limit of one scanned the refund,
-		// discarded it, and reported the order had no payment.
+		// Narrow on the sort key, not a filter: this partition also holds refunds, and a
+		// filter runs after Limit — REFUND# sorts first, so limit 1 found no payment.
 		KeyConditionExpression: aws.String("GSI1PK = :pk AND begins_with(GSI1SK, :prefix)"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
 			exprPK:    &types.AttributeValueMemberS{Value: "ORDER#" + orderID},

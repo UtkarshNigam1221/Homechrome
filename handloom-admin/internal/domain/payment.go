@@ -59,10 +59,8 @@ func (p *Payment) SetKeys() {
 	p.SK = SKMetadata
 	p.GSI1PK = "ORDER#" + p.OrderID
 	p.GSI1SK = "PAYMENT#" + p.InitiatedAt.Format("2006-01-02T15:04:05Z")
-	// The id belongs in the partition key, not the sort key. Nothing lists
-	// payments by transaction id — every read pins both halves — so a shared
-	// PAYMENT_TXN partition put the whole payment path, reads and writes, on one
-	// partition key for no benefit.
+	// The id belongs in the partition key: every read pins both halves, so a shared
+	// PAYMENT_TXN partition put the entire payment path on one key for no benefit.
 	p.GSI2PK = "MERCHANT_TXN#" + p.MerchantTransactionID
 	p.GSI2SK = SKMetadata
 	p.EntityType = "PAYMENT"

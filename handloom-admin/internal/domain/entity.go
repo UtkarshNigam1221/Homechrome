@@ -147,9 +147,8 @@ const (
 	InventoryTransactionTypeCommit  InventoryTransactionType = "COMMIT"
 	InventoryTransactionTypeReturn  InventoryTransactionType = "RETURN"
 
-	// InventoryTransactionTypeWriteOff is a refunded line whose goods are gone:
-	// the reservation is released and on-hand drops with it. Arithmetically the
-	// same as a dispatch, but the ledger has to tell the two apart.
+	// InventoryTransactionTypeWriteOff is a refunded line whose goods are gone: reservation
+	// released, on-hand drops with it. Same arithmetic as a dispatch, different meaning.
 	InventoryTransactionTypeWriteOff InventoryTransactionType = "WRITE_OFF"
 )
 
