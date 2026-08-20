@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"regexp"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -18,6 +19,11 @@ func main() {
 	table := os.Getenv("DYNAMODB_CORE_TABLE")
 	if table == "" {
 		table = "handloom-core-dev"
+	}
+	// Validated before it is used or logged: a typo here silently seeds the wrong
+	// table, and an unchecked env value has no business reaching a log line.
+	if !regexp.MustCompile(`^[A-Za-z0-9_.-]{3,255}$`).MatchString(table) {
+		log.Fatal("DYNAMODB_CORE_TABLE is not a valid DynamoDB table name")
 	}
 
 	ctx := context.Background()
@@ -75,6 +81,11 @@ func main() {
 	if _, err = client.PutItem(ctx, input); err != nil {
 		var failed *types.ConditionalCheckFailedException
 		if errors.As(err, &failed) {
+			// G706 flags the env-derived table name reaching a log. It is matched
+			// against ^[A-Za-z0-9_.-]{3,255}$ above, so it can carry no newline to
+			// forge a log line with — and naming the table is the whole point of
+			// this message.
+			//nolint:gosec // G706: table is validated against a strict charset above.
 			log.Fatalf("admin user already exists in %s — refusing to overwrite its password.\n"+
 				"  Set SEED_OVERWRITE=true only if replacing it is what you mean.", table)
 		}
