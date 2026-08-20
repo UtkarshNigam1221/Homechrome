@@ -1,6 +1,7 @@
 import { APIRequestContext, request } from '@playwright/test';
 
 import { json, Order } from '../fixtures/api';
+import { testPhone } from '../fixtures/test-phone';
 import { payWithSandbox } from '../pages/phonepe-sandbox';
 import { TARGETS } from '../playwright.config';
 
@@ -32,7 +33,7 @@ export interface AdminOrderLine {
  * order, so a fresh one per run would be permanently undeletable.
  */
 export async function resolveTestCustomerId(api: APIRequestContext): Promise<string> {
-  const phone = requiredEnv('E2E_STORE_PHONE');
+  const phone = testPhone();
   const body = await json<{ customers?: { id: string; phone: string }[] }>(
     await api.get(`/admin/customers?search=${encodeURIComponent(phone)}&limit=10`)
   );
@@ -113,7 +114,9 @@ function requiredEnv(name: string): string {
  * is the production path.
  */
 export async function customerClient(): Promise<APIRequestContext> {
-  const phone = requiredEnv('E2E_STORE_PHONE');
+  // Same number resolveTestCustomerId uses, or an admin order would attach
+  // to a different worker's customer.
+  const phone = testPhone();
   const otp = requiredEnv('E2E_STORE_OTP');
   const ctx = await request.newContext({ baseURL: TARGETS.api });
 

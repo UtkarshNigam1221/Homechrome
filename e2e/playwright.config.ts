@@ -1,5 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 
+import { testPhones } from './fixtures/test-phone';
+
 /**
  * Targets the deployed dev environment — real Lambdas, real DynamoDB, real
  * Neon, real PhonePe sandbox. Nothing here is mocked or stubbed; that is the
@@ -44,19 +46,16 @@ export default defineConfig({
   // point of a run flips from finding faults to gating a promotion.
   maxFailures: 0,
 
-  // One worker, because the suite shares one storefront customer and a customer
-  // has exactly one cart. placePaidOrder clears the cart, adds its items, then
-  // checks out; a second worker doing the same clears the first one's items
-  // mid-flight and checkout fails with "Cart is empty". Products are per-spec
-  // and safe to parallelise — the cart is not.
+  // One worker per storefront customer, no more. A customer has exactly one
+  // cart and placePaidOrder clears it before adding items, so two workers on
+  // one customer clear each other mid-flight and checkout fails with "Cart is
+  // empty". Deriving the count from the allowlist makes that unrepresentable:
+  // add a number to E2E_STORE_PHONES (and to the backend's STORE_TEST_PHONES)
+  // and the suite widens on its own; leave one and it stays serial.
   //
-  // Two fixed customers, one per worker, would restore parallelism: it needs a
-  // second number on the backend's STORE_TEST_PHONES and a second E2E_STORE_*
-  // pair. Worth doing when the wall-clock justifies it, not before — a fresh
-  // customer per run is not an option, since CustomerService.Delete refuses
-  // once a customer has an order, so they would accrete forever.
+  // Products are per-spec and parallelise safely. The cart is the constraint.
   fullyParallel: false,
-  workers: 1,
+  workers: Math.max(1, testPhones().length),
 
   // No retries. Against real infrastructure a retry doubles the time to red and
   // buys a second opinion nobody asked for — the first run against dev spent
