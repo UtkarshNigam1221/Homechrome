@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 
 import { adminClient, getInventory, json, Refund } from '../../fixtures/api';
+import { InventoryPage } from '../../pages/admin/inventory';
 import { loginToAdmin } from '../../pages/admin/login';
 import { buyProducts, PaidFixture, releaseFixture } from '../../helpers/paid-order';
 
@@ -37,17 +38,15 @@ test.describe('the stock ledger', () => {
     const inventory = await getInventory(admin, product.id);
 
     await loginToAdmin(page, 'admin');
-    await page.goto(`/products/${product.id}`);
+    const modal = await new InventoryPage(page).openLedger(product.sku);
 
     await expect(
-      page.getByText('Written off').first(),
+      modal.getByText('Written off').first(),
       'a write-off must not render as a dispatch'
     ).toBeVisible();
 
     // The figure on screen must be the figure in the database. A ledger that
     // renders beautifully and disagrees with stock is worse than no ledger.
-    await expect(
-      page.getByText(String(inventory.quantity), { exact: false }).first()
-    ).toBeVisible();
+    await expect(modal.getByText(String(inventory.quantity)).first()).toBeVisible();
   });
 });

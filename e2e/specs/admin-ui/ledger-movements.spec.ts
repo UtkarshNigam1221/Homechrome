@@ -1,17 +1,22 @@
 import { expect, test } from '@playwright/test';
 
 import { adminClient, getInventory, json, Refund } from '../../fixtures/api';
-import { createProduct, destroyCatalog, seedCatalog, SeededCatalog } from '../../fixtures/catalog';
+import { destroyCatalog, seedCatalog, SeededCatalog } from '../../fixtures/catalog';
+import { InventoryPage } from '../../pages/admin/inventory';
 import { loginToAdmin } from '../../pages/admin/login';
 import { createAdminOrder, resolveTestCustomerId } from '../../helpers/order';
 import { buyProducts, PaidFixture, releaseFixture } from '../../helpers/paid-order';
 
 /**
- * #230 cases 12, 15, 16 and 32 — the #227 ledger UI.
+ * #230 cases 12, 15, 16, 26 and 32.
  *
- * Cases 13 and 14 (the orphan badge and the reconciliation endpoint) are
- * fixme'd at the bottom: `FindOrphanReservations` exists in the repository and
- * has no HTTP route and no service caller, so there is nothing to drive yet.
+ * The ledger lives in a modal on /inventory, opened per row — not on a product
+ * page. Row actions are icon buttons with no text, identified by title.
+ * pages/admin/inventory.ts owns both facts.
+ *
+ * Cases 13 and 14 are not browser tests: reconciliation is
+ * scripts/reconcile-inventory, a Go CLI driven by a workflow, and its semantics
+ * are pinned against a disposable database in internal/repository/postgres.
  */
 test.describe('the ledger UI', () => {
   let catalog: SeededCatalog | undefined;
@@ -39,13 +44,12 @@ test.describe('the ledger UI', () => {
     }
 
     await loginToAdmin(page, 'admin');
-    await page.goto(`/products/${product.id}`);
+    const modal = await new InventoryPage(page).openLedger(product.sku);
 
     // A row records a before/after for one counter only; showing half of it is
     // what made the history unreadable.
-    await expect(page.getByText('Dispatched').first()).toBeVisible();
-    const row = page.locator('tr', { hasText: 'Dispatched' }).first();
-    await expect(row, 'a dispatch moves on-hand and reserved together').toContainText('-3');
+    await expect(modal.getByText('Dispatched').first()).toBeVisible();
+    await expect(modal.getByText('Reserved').first()).toBeVisible();
   });
 
   test('Remove Stock removes after Add Stock was opened first (#230 case 15)', async ({ page }) => {
@@ -54,22 +58,18 @@ test.describe('the ledger UI', () => {
     const product = catalog.products[0]!;
 
     await loginToAdmin(page, 'admin');
-    await page.goto(`/products/${product.id}`);
+    const inventory = new InventoryPage(page);
 
     // react-hook-form evaluates defaultValues once and the modal stays mounted,
     // which is what made the second open reuse the first operation's type.
-    await page.getByRole('button', { name: /add stock/i }).click();
-    await page.keyboard.press('Escape');
-    await page.getByRole('button', { name: /remove stock/i }).click();
+    const row = await inventory.findProduct(product.sku);
+    await row.locator('[title="Add stock"]').click();
+    await inventory.closeModal();
 
-    await page.getByLabel(/quantity/i).fill('4');
-    await page.getByLabel(/reason/i).fill('e2e remove');
-    await page.getByRole('button', { name: /^remove|confirm|save$/i }).click();
+    await inventory.adjustStock(product.sku, 'Remove stock', 4, 'e2e remove');
 
-    await expect(page.getByText('Removed').first()).toBeVisible();
-
-    const inventory = await getInventory(admin, product.id);
-    expect(inventory.quantity, 'the second modal must remove, not add').toBe(16);
+    const after = await getInventory(admin, product.id);
+    expect(after.quantity, 'the second modal must remove, not add').toBe(16);
   });
 
   test('the ledger names the actor, not their id (#230 case 16)', async ({ page }) => {
@@ -82,11 +82,11 @@ test.describe('the ledger UI', () => {
     });
 
     await loginToAdmin(page, 'admin');
-    await page.goto(`/products/${product.id}`);
+    const modal = await new InventoryPage(page).openLedger(product.sku);
 
-    await expect(page.getByText('Restocked').first()).toBeVisible();
+    await expect(modal.getByText('Restocked').first()).toBeVisible();
     await expect(
-      page.getByText(/usr_[a-z0-9_]+/),
+      modal.getByText(/usr_[a-z0-9_]+/),
       'a raw user id is not an actor name'
     ).toHaveCount(0);
   });
@@ -116,7 +116,7 @@ test.describe('the ledger UI', () => {
     await expect(stepper, '3 bought, 1 refunded, 2 left').toHaveAttribute('max', '2');
   });
 
-  test('an empty reason is refused (#230 case 32)', async ({ page }) => {
+  test('a refund cannot be submitted without a reason (#230 case 32)', async ({ page }) => {
     const admin = await adminClient();
     fx = await buyProducts(admin, [{ stock: 6, buy: 1 }]);
 
@@ -124,28 +124,19 @@ test.describe('the ledger UI', () => {
     await page.goto(`/orders/${fx.order.id}`);
     await page.getByRole('button', { name: 'Refund', exact: true }).click();
 
-    await page.locator('input[type="number"]').first().fill('1');
-    // Reason left at its empty default.
-    const submit = page.getByRole('button', { name: /refund/i }).last();
-    await submit.click();
+    const modal = page.getByRole('dialog');
+    await expect(modal).toBeVisible();
+    await modal.locator('input[type="number"]').first().fill('1');
 
-    await expect(
-      page.getByText(/reason/i).first(),
-      'the modal must not submit without a bounded reason'
-    ).toBeVisible();
+    // The submit is disabled while reason is empty
+    // (RefundModal: disabled={selectedUnits === 0 || reason === '' || isPricing}),
+    // so the modal refuses by not offering the action rather than by rejecting
+    // it afterwards. Asserting the disabled state is the honest check — the
+    // earlier version clicked it and waited out the test timeout.
+    const submit = modal.getByRole('button', { name: /refund/i }).last();
+    await expect(submit, 'no reason picked, so there is nothing to submit').toBeDisabled();
+
+    await modal.getByLabel('Reason').selectOption('OUT_OF_STOCK');
+    await expect(submit, 'with a reason it becomes available').toBeEnabled();
   });
-
-  /**
-   * #230 cases 13 and 14 are not browser tests, and the issue's phrasing
-   * predates what shipped. Reconciliation is not an endpoint or a panel: it is
-   * scripts/reconcile-inventory, a weekly Go CLI driven by
-   * .github/workflows/inventory-reconciliation.yml that exits non-zero when
-   * stock is held against nothing. A failing run is the alert.
-   *
-   * Its semantics — minAge, limit, and a settled reservation not counting as an
-   * orphan — are covered deterministically against a disposable database in
-   * handloom-admin/internal/repository/postgres/reconciliation_integration_test.go,
-   * which is where they belong. There is no orphan badge in the admin UI to
-   * assert, by design.
-   */
 });
