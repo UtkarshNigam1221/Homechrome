@@ -20,16 +20,19 @@ export const ORDER_STATUSES: OrderStatus[] = [
 ];
 
 /**
- * Mirrors validTransitions in internal/service/order_service.go. The backend
- * rejects anything else with a 400, so offering the full status list just
- * produced failing picks.
+ * The statuses the dropdown offers. A subset of validTransitions in
+ * internal/service/order_service.go: the backend rejects anything outside that map
+ * with a 400, so offering more just produced failing picks.
  *
- * Keep in sync with the Go map — it is the source of truth.
+ * CANCELLED is deliberately absent even though the backend allows it. Cancelling
+ * that way records no reason — the metric gets the literal "status_update" — so
+ * cancellation goes through Cancel Order, which asks for one. Do not add it back to
+ * "match the Go map"; the divergence is the point.
  */
 export const ALLOWED_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
-  PENDING: ['CONFIRMED', 'CANCELLED'],
-  CONFIRMED: ['PROCESSING', 'SHIPPED', 'CANCELLED'],
-  PROCESSING: ['SHIPPED', 'CANCELLED'],
+  PENDING: ['CONFIRMED'],
+  CONFIRMED: ['PROCESSING', 'SHIPPED'],
+  PROCESSING: ['SHIPPED'],
   SHIPPED: ['DELIVERED', 'RETURNED'],
   DELIVERED: ['RETURNED'],
   CANCELLED: [],
