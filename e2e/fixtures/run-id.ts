@@ -10,8 +10,19 @@ export const RUN_ID: string =
 /** Every entity the suite creates carries this prefix. Cleanup keys on it. */
 export const E2E_PREFIX = 'E2E-';
 
+/**
+ * Per-process nonce plus a counter. RUN_ID alone is not enough: it is fixed for
+ * the whole run (CI pins it to the workflow run id), so every seedCatalog
+ * produced the same category name — and the second one 409'd on a duplicate
+ * slug. The nonce covers parallel workers, which are separate processes and
+ * would otherwise each start their counter at 1.
+ */
+const NONCE = Math.random().toString(36).slice(2, 6);
+let sequence = 0;
+
 export function tag(name: string): string {
-  return `${E2E_PREFIX}${RUN_ID}-${name}`;
+  sequence += 1;
+  return `${E2E_PREFIX}${RUN_ID}-${NONCE}${sequence}-${name}`;
 }
 
 /** True for anything this suite created, in any run. */

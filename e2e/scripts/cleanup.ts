@@ -114,15 +114,34 @@ async function listAll<T>(
     const res = await api.get(`${path}?${qs.toString()}`);
     if (!res.ok()) break;
 
-    const body = (await res.json()) as {
-      data?: Record<string, unknown>;
-    } & Record<string, unknown>;
-    const payload = (body.data ?? body) as Record<string, unknown>;
+    // The two list endpoints do not agree on a shape, so handle both rather
+    // than silently finding nothing:
+    //
+    //   /admin/products   → response.JSON(result)          → {products, pagination}
+    //   /admin/categories → response.SuccessWithMeta(list) → {data: [...], meta}
+    //
+    // Assuming the first is why cleanup reported "0 e2e category(ies)" while an
+    // orphaned category sat in dev holding its slug against the next run.
+    const body = (await res.json()) as Record<string, unknown> & {
+      data?: unknown;
+      meta?: { next_cursor?: string; has_more?: boolean };
+    };
+    const unwrapped = body.data ?? body;
 
-    const items = (payload[key] ?? []) as T[];
+    let items: T[];
+    let pagination: { next_cursor?: string; has_more?: boolean } | undefined;
+
+    if (Array.isArray(unwrapped)) {
+      items = unwrapped as T[];
+      pagination = body.meta;
+    } else {
+      const payload = unwrapped as Record<string, unknown>;
+      items = (payload[key] ?? []) as T[];
+      pagination = payload.pagination as typeof pagination;
+    }
+
     out.push(...items);
 
-    const pagination = payload.pagination as { next_cursor?: string; has_more?: boolean } | undefined;
     if (!pagination?.has_more || !pagination.next_cursor) break;
     cursor = pagination.next_cursor;
   }
