@@ -283,7 +283,14 @@ WriteOffStock(ctx context.Context, productID string, quantity int, orderID strin
 One transaction, `SELECT ... FOR UPDATE`, `reserved_qty -= q` and `quantity -= q` (so
 `available_qty` is unchanged — the units were already unavailable while reserved, and now
 they do not exist). Guards mirror `CommitStock`: `reserved_qty >= q && quantity >= q`.
-One ledger row, new type `WRITE_OFF`, `reference_id = orderID`.
+One ledger row, new type `WRITE_OFF`, `reference_id = orderID` and
+`source_id = refundID`.
+
+`reference_id` alone was wrong and shipped that way: migration 013 makes
+`(product, order, type)` unique, so the second refund of a product on one order was
+deduped into the first and moved no stock. `source_id` is what separates them, while
+keeping the reference on the order so the ledger and the orphan report still read one
+story per order. Corrected by migration 014.
 
 This is arithmetically identical to `CommitStock` but semantically distinct, and the
 ledger must be able to tell a dispatch from a write-off. The frontend

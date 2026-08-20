@@ -166,7 +166,7 @@ GROUP BY 1, 2;
 
 ### What it means
 
-A reservation settles when the same order either dispatches the stock (`COMMIT`) or gives it back (`RELEASE`). One that does neither is stock held against an order that never shipped and never cancelled. Those units are unsellable, and **no order transition will free them**: from `SHIPPED` the only routes are `DELIVERED`, which has no inventory effect, and `RETURNED`, which restocks only what actually committed.
+A reservation settles when the same order dispatches the stock (`COMMIT`), gives it back (`RELEASE`), or writes it off on a refund (`WRITE_OFF`). The report nets those against what was reserved, so a reservation that settled *partly* is reported for what is still held rather than dropped for having settled at all. One with nothing settled is stock held against an order that never shipped and never cancelled. Those units are unsellable, and **no order transition will free them**: from `SHIPPED` the only routes are `DELIVERED`, which has no inventory effect, and `RETURNED`, which restocks only what actually committed.
 
 This is not `inventory_mutation_failed`. That says a movement failed. This says what is stuck right now, whether or not anyone saw the failure that caused it.
 
