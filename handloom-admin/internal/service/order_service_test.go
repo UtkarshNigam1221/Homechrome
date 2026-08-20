@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -1228,4 +1229,51 @@ func TestOrderService_Create_DuplicateLinesExceedingStock(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, errors.ErrCodeInsufficientStock, appErr.Code)
 	require.Contains(t, appErr.Message, "requested: 6", "the aggregated total must be reported")
+}
+
+// A commit that fails on a dropped connection strands the reservation for good:
+// the order is already SHIPPED and DELIVERED has no inventory effect.
+func TestRetryOnce(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("retries a transient failure", func(t *testing.T) {
+		calls := 0
+		err := retryOnce(ctx, func() error {
+			calls++
+			if calls == 1 {
+				return fmt.Errorf("connection reset by peer")
+			}
+			return nil
+		})
+		require.NoError(t, err)
+		require.Equal(t, 2, calls, "the second attempt must run")
+	})
+
+	t.Run("does not retry a refused movement", func(t *testing.T) {
+		for _, code := range []errors.ErrorCode{
+			errors.ErrCodeInsufficientStock,
+			errors.ErrCodeNotFound,
+			errors.ErrCodeConflict,
+		} {
+			calls := 0
+			err := retryOnce(ctx, func() error {
+				calls++
+				return errors.New(code, "refused")
+			})
+			require.Error(t, err)
+			require.Equal(t, 1, calls, "%s is terminal, retrying cannot help", code)
+		}
+	})
+
+	t.Run("gives up when the caller is already done", func(t *testing.T) {
+		cancelled, cancel := context.WithCancel(ctx)
+		cancel()
+		calls := 0
+		err := retryOnce(cancelled, func() error {
+			calls++
+			return fmt.Errorf("connection reset by peer")
+		})
+		require.Error(t, err)
+		require.Equal(t, 1, calls, "a cancelled context must not wait to retry")
+	})
 }
