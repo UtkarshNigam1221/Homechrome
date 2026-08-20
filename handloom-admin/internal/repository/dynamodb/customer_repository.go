@@ -297,15 +297,6 @@ func (r *CustomerRepository) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
-// Search searches customers by query
-func (r *CustomerRepository) Search(ctx context.Context, query string, pagination domain.PaginationRequest) (*domain.ListCustomersResponse, error) {
-	req := domain.ListCustomersRequest{
-		Search:     query,
-		Pagination: pagination,
-	}
-	return r.List(ctx, req)
-}
-
 // RecordPurchase bumps OrderCount and TotalSpent in one UpdateItem, returning the new
 // count — so first-purchase logic gates on newCount==1 with no racing second read.
 func (r *CustomerRepository) RecordPurchase(ctx context.Context, customerID string, amountPaise int64) (int64, error) {

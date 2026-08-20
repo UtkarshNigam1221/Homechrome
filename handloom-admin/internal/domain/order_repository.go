@@ -77,7 +77,6 @@ type CustomerRepository interface {
 	List(ctx context.Context, req ListCustomersRequest) (*ListCustomersResponse, error)
 
 	// Search searches customers by query
-	Search(ctx context.Context, query string, pagination PaginationRequest) (*ListCustomersResponse, error)
 
 	// RecordPurchase atomically increments the customer's OrderCount by 1 and
 	// adds amountPaise to TotalSpent, returning the new count. Uses DynamoDB ADD

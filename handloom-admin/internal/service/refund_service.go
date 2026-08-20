@@ -126,7 +126,9 @@ func (s *RefundService) applyInventoryEffect(ctx context.Context, order *domain.
 
 	for _, item := range refund.Items {
 		var err error
+		reason := reasonWriteOff
 		if item.Restock {
+			reason = reasonRelease
 			// Back on sale: the reservation is released and nothing else moves.
 			_, err = s.inventoryRepo.ReleaseStock(ctx, item.ProductID, item.Quantity, order.ID)
 		} else {
@@ -138,16 +140,9 @@ func (s *RefundService) applyInventoryEffect(ctx context.Context, order *domain.
 			slog.ErrorContext(ctx, "Failed to move stock for refund",
 				keyProductID, item.ProductID, "refund_id", refund.ID, "error", err)
 			metrics.Record(ctx, "inventory_mutation_failed",
-				metrics.L{metrics.LabelReason: refundInventoryReason(item.Restock)})
+				metrics.L{metrics.LabelReason: reason})
 		}
 	}
-}
-
-func refundInventoryReason(restock bool) string {
-	if restock {
-		return reasonRelease
-	}
-	return reasonWriteOff
 }
 
 // ListByOrder returns an order's refunds.
@@ -274,10 +269,11 @@ func (s *RefundService) applyCompletion(ctx context.Context, refund *domain.Refu
 	}
 
 	// Fulfillment status is left alone: whatever was not refunded still ships.
+	order.PaymentStatus = domain.PaymentStatusPartiallyRefunded
+	updates := map[string]interface{}{}
 	if refundedTotal >= order.TotalAmount {
 		order.PaymentStatus = domain.PaymentStatusRefunded
-	} else {
-		order.PaymentStatus = domain.PaymentStatusPartiallyRefunded
+		updates["refunded_at"] = completedAt
 	}
 
 	if err := s.orderRepo.Update(ctx, order); err != nil {
@@ -285,13 +281,7 @@ func (s *RefundService) applyCompletion(ctx context.Context, refund *domain.Refu
 		return
 	}
 
-	paymentStatus := domain.PaymentStatusPartiallyRefunded
-	updates := map[string]interface{}{}
-	if refundedTotal >= order.TotalAmount {
-		paymentStatus = domain.PaymentStatusRefunded
-		updates["refunded_at"] = completedAt
-	}
-	if err := s.paymentRepo.UpdateStatus(ctx, refund.PaymentID, paymentStatus, updates); err != nil {
+	if err := s.paymentRepo.UpdateStatus(ctx, refund.PaymentID, order.PaymentStatus, updates); err != nil {
 		slog.ErrorContext(ctx, "Failed to update payment after refund", "refund_id", refund.ID, "error", err)
 	}
 }

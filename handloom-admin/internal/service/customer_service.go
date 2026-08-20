@@ -147,7 +147,7 @@ func (s *CustomerService) List(ctx context.Context, req domain.ListCustomersRequ
 
 // Search searches customers by query
 func (s *CustomerService) Search(ctx context.Context, query string, pagination domain.PaginationRequest) (*domain.ListCustomersResponse, error) {
-	return s.customerRepo.Search(ctx, query, pagination)
+	return s.customerRepo.List(ctx, domain.ListCustomersRequest{Search: query, Pagination: pagination})
 }
 
 // GetOrders retrieves orders for a customer

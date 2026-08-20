@@ -148,6 +148,58 @@ func InMemoryPaginate[T any](items []T, req domain.PaginationRequest) ([]T, doma
 // filter would otherwise walk the whole index. Stopping early returns a cursor.
 const maxQueryPageRoundTrips = 10
 
+// maxQueryAllRoundTrips bounds QueryAll. Reaching it means that endpoint needs real
+// cursors, not a bigger number here.
+const maxQueryAllRoundTrips = 50
+
+// queryRounds follows LastEvaluatedKey up to maxRounds, returning the items and the
+// last key seen. A limit above zero caps the total and asks for exactly the shortfall.
+func queryRounds[T any](
+	ctx context.Context,
+	db *dynamodb.Client,
+	input *dynamodb.QueryInput,
+	startKey map[string]types.AttributeValue,
+	maxRounds, limit int,
+	failure string,
+) ([]*T, map[string]types.AttributeValue, error) {
+	// Nil until a limit says otherwise, so an empty unbounded read stays nil as before.
+	var items []*T
+	if limit > 0 {
+		items = make([]*T, 0, limit)
+	}
+	var lastKey map[string]types.AttributeValue
+
+	for range maxRounds {
+		input.ExclusiveStartKey = startKey
+		if limit > 0 {
+			// DefaultLimit clamps to [1,100], so the shortfall cannot overflow.
+			//nolint:gosec // G115: bounded by DefaultLimit
+			input.Limit = aws.Int32(int32(limit - len(items)))
+		}
+
+		result, queryErr := db.Query(ctx, input)
+		if queryErr != nil {
+			return nil, nil, errors.Wrap(queryErr, failure)
+		}
+
+		var page []*T
+		if unmarshalErr := attributevalue.UnmarshalListOfMaps(result.Items, &page); unmarshalErr != nil {
+			return nil, nil, errors.Internal(failure)
+		}
+		items = append(items, page...)
+
+		startKey = result.LastEvaluatedKey
+		lastKey = result.LastEvaluatedKey
+
+		// No further key means the index is exhausted, not that the page is full.
+		if len(startKey) == 0 || (limit > 0 && len(items) >= limit) {
+			break
+		}
+	}
+
+	return items, lastKey, nil
+}
+
 // QueryPage runs a paginated Query and returns one page plus a real cursor. Limit
 // bounds items scanned, so it refills by exactly the shortfall — cursors stay exact.
 func QueryPage[T any](
@@ -164,41 +216,13 @@ func QueryPage[T any](
 		return nil, domain.PaginationResponse{}, err
 	}
 
-	items := make([]*T, 0, limit)
-	var lastKey map[string]types.AttributeValue
-
-	for range maxQueryPageRoundTrips {
-		input.ExclusiveStartKey = startKey
-		// DefaultLimit clamps to [1,100], so the shortfall cannot overflow.
-		//nolint:gosec // G115: bounded by DefaultLimit
-		input.Limit = aws.Int32(int32(limit - len(items)))
-
-		result, queryErr := db.Query(ctx, input)
-		if queryErr != nil {
-			return nil, domain.PaginationResponse{}, errors.Wrap(queryErr, failure)
-		}
-
-		var page []*T
-		if unmarshalErr := attributevalue.UnmarshalListOfMaps(result.Items, &page); unmarshalErr != nil {
-			return nil, domain.PaginationResponse{}, errors.Internal(failure)
-		}
-		items = append(items, page...)
-
-		startKey = result.LastEvaluatedKey
-		lastKey = result.LastEvaluatedKey
-
-		// No further key means the index is exhausted, not that the page is full.
-		if len(startKey) == 0 || len(items) >= limit {
-			break
-		}
+	items, lastKey, err := queryRounds[T](ctx, db, input, startKey, maxQueryPageRoundTrips, limit, failure)
+	if err != nil {
+		return nil, domain.PaginationResponse{}, err
 	}
 
 	return items, BuildPaginationResponse(limit, lastKey), nil
 }
-
-// maxQueryAllRoundTrips bounds QueryAll. Reaching it means that endpoint needs real
-// cursors, not a bigger number here.
-const maxQueryAllRoundTrips = 50
 
 // QueryAll reads every matching item, following LastEvaluatedKey to the end. For lists
 // that sort or filter in Go, where QueryPage would make a global sort per-page.
@@ -208,28 +232,6 @@ func QueryAll[T any](
 	input *dynamodb.QueryInput,
 	failure string,
 ) ([]*T, error) {
-	var items []*T
-	var startKey map[string]types.AttributeValue
-
-	for range maxQueryAllRoundTrips {
-		input.ExclusiveStartKey = startKey
-
-		result, err := db.Query(ctx, input)
-		if err != nil {
-			return nil, errors.Wrap(err, failure)
-		}
-
-		var page []*T
-		if unmarshalErr := attributevalue.UnmarshalListOfMaps(result.Items, &page); unmarshalErr != nil {
-			return nil, errors.Internal(failure)
-		}
-		items = append(items, page...)
-
-		startKey = result.LastEvaluatedKey
-		if len(startKey) == 0 {
-			break
-		}
-	}
-
-	return items, nil
+	items, _, err := queryRounds[T](ctx, db, input, nil, maxQueryAllRoundTrips, 0, failure)
+	return items, err
 }
