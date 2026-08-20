@@ -273,15 +273,6 @@ func existingOrderMovement(ctx context.Context, tx pgx.Tx, productID, orderID, s
 	return &txn, nil
 }
 
-// movementReason is the ledger note. It names the source when one caused the
-// movement, so two write-offs on an order are told apart by more than their order.
-func movementReason(orderID, sourceID string) string {
-	if sourceID == "" {
-		return fmt.Sprintf("ORDER %s", orderID)
-	}
-	return fmt.Sprintf("ORDER %s (%s)", orderID, sourceID)
-}
-
 // orderOutstandingReservation is how much of a product this order still holds
 // reserved: what it reserved, less everything since settled or refunded away.
 //
@@ -314,6 +305,27 @@ func orderOutstandingReservation(ctx context.Context, tx pgx.Tx, productID, orde
 	return outstanding, reservedRows > 0, nil
 }
 
+// boundToOutstanding sizes a movement that lowers reserved_qty to what the order
+// still holds. Zero means there is nothing left to settle.
+func boundToOutstanding(quantity, outstanding int, known bool, sourceID string) (int, error) {
+	switch {
+	case !known:
+		// Nothing in the ledger to bound against; the product-level guards are the check.
+		return quantity, nil
+	case sourceID == "":
+		// A cancel or a dispatch settles whatever the order has left, and the caller
+		// cannot know that figure — it passes the ordered quantity.
+		return min(quantity, outstanding), nil
+	case quantity > outstanding:
+		// A refund naming more units than the order holds is a caller error, not a
+		// remainder to settle. Taking a smaller bite would hide it.
+		return 0, errors.New(errors.ErrCodeInsufficientStock,
+			"refund exceeds the order's outstanding reservation")
+	default:
+		return quantity, nil
+	}
+}
+
 // applyOrderMovement performs one product's stock movement inside an existing
 // transaction. A movement already recorded for this order and source is returned
 // unchanged. sourceID names a refund; createdBy names an admin, and they are not
@@ -337,10 +349,34 @@ func applyOrderMovement(ctx context.Context, tx pgx.Tx, m orderMovement, product
 	if err != nil {
 		return nil, err
 	}
+
+	// An order can only give back what it still holds. reserved_qty is a product-wide
+	// total, so sizing a release from the order's lines takes the difference out of
+	// another order's reservation once a refund has written part of this one off.
+	//
+	// Read before the replay check as well as for the clamp: a lifecycle movement was
+	// clamped when it was first applied, and the caller still passes the ordered
+	// quantity, so the two have to be compared on the same footing.
+	var outstanding int
+	var known bool
+	if m.deltaReserve < 0 {
+		if outstanding, known, err = orderOutstandingReservation(ctx, tx, productID, orderID); err != nil {
+			return nil, err
+		}
+	}
+
 	if existing != nil {
 		// A replay of the same amount is the no-op the unique index exists for. A
 		// different amount is divergence, and silently dropping it loses stock.
-		if existing.Quantity != quantity {
+		want := quantity
+		if known && sourceID == "" {
+			// What the clamp would have produced: the ledger no longer counts this
+			// movement's own effect, so add it back to get the figure it saw.
+			if before := outstanding + existing.Quantity; want > before {
+				want = before
+			}
+		}
+		if existing.Quantity != want {
 			return nil, errors.New(errors.ErrCodeConflict,
 				fmt.Sprintf("order %s already recorded %s of %d for product %s, cannot apply %d",
 					orderID, m.typ, existing.Quantity, productID, quantity))
@@ -348,31 +384,12 @@ func applyOrderMovement(ctx context.Context, tx pgx.Tx, m orderMovement, product
 		return existing, nil
 	}
 
-	// An order can only give back what it still holds. reserved_qty is a product-wide
-	// total, so sizing a release from the order's lines takes the difference out of
-	// another order's reservation once a refund has written part of this one off.
 	if m.deltaReserve < 0 {
-		outstanding, known, boundErr := orderOutstandingReservation(ctx, tx, productID, orderID)
-		if boundErr != nil {
-			return nil, boundErr
+		if quantity, err = boundToOutstanding(quantity, outstanding, known, sourceID); err != nil {
+			return nil, err
 		}
-		switch {
-		case !known:
-			// Nothing in the ledger to bound against; the guards below are the check.
-		case sourceID == "":
-			// A cancel or a dispatch settles whatever the order has left, and the caller
-			// cannot know that figure — it passes the ordered quantity.
-			if quantity > outstanding {
-				quantity = outstanding
-			}
-			if quantity == 0 {
-				return nil, nil
-			}
-		case quantity > outstanding:
-			// A refund naming more units than the order holds is a caller error, not a
-			// remainder to settle. Taking a smaller bite would hide it.
-			return nil, errors.New(errors.ErrCodeInsufficientStock,
-				"refund exceeds the order's outstanding reservation")
+		if quantity == 0 {
+			return nil, nil
 		}
 	}
 
@@ -420,7 +437,7 @@ func applyOrderMovement(ctx context.Context, tx pgx.Tx, m orderMovement, product
 		Quantity:      quantity,
 		PreviousQty:   prev,
 		NewQty:        next,
-		Reason:        movementReason(orderID, sourceID),
+		Reason:        fmt.Sprintf("ORDER %s", orderID),
 		ReferenceType: inventoryRefTypeOrder,
 		ReferenceID:   orderID,
 		SourceID:      sourceID,
@@ -612,7 +629,11 @@ func (r *InventoryRepository) RestockOrderStock(ctx context.Context, orderID, cr
 }
 
 // FindOrphanReservations implements domain.InventoryRepository. The signature is a
-// RESERVE with no COMMIT and no RELEASE for the same product and order.
+// RESERVE that nothing has since dispatched, released or written off.
+//
+// This still tests presence rather than netting, so it hands back the full reserved
+// quantity — correct only because applyOrderMovement then clamps it to what the order
+// still holds. Net it here too if that clamp ever moves.
 func (r *InventoryRepository) FindOrphanReservations(ctx context.Context, minAge time.Duration, limit int) ([]*domain.OrphanReservation, error) {
 	// Netted, not tested for presence: a reservation that settled partly is still
 	// partly stranded, and asking only whether any settlement exists hides exactly

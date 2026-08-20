@@ -97,16 +97,19 @@ func (s *RefundService) Create(ctx context.Context, orderID string, req domain.C
 	resp, err := s.gateway.InitiateRefund(ctx, refund.MerchantRefundID, payment.MerchantTransactionID, refund.Amount)
 	if err != nil {
 		slog.ErrorContext(ctx, "Refund initiation failed", "refund_id", refund.ID, "error", err)
-		metrics.Record(ctx, "refund_failed", metrics.L{metrics.LabelReason: string(refund.Reason)})
 
 		// Only a refusal is terminal. A timeout or a 5xx means PhonePe may have
 		// accepted and paid it, and marking that FAILED frees the units for a second
 		// refund while disabling the re-check that could have told us — so it stays
 		// PENDING and RecheckStatus resolves it.
-		var rejected *phonepe.RejectedError
-		if !stderrors.As(err, &rejected) {
+		if !stderrors.Is(err, phonepe.ErrRejected) {
+			// Not failed — unknown. A separate name, so the dashboard does not read a
+			// refund that may well have been paid as one that was not.
+			metrics.Record(ctx, "refund_outcome_unknown", metrics.L{metrics.LabelReason: string(refund.Reason)})
 			return nil, errors.Wrap(err, "Refund status unknown, re-check it before retrying")
 		}
+
+		metrics.Record(ctx, "refund_failed", metrics.L{metrics.LabelReason: string(refund.Reason)})
 
 		if settleErr := s.refundRepo.Settle(ctx, refund.ID, domain.RefundStatusFailed, time.Now(),
 			"INITIATION_FAILED", err.Error()); settleErr != nil {

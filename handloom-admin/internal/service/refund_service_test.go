@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	stderrors "errors"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -174,7 +175,7 @@ func TestRefundService_Create(t *testing.T) {
 
 	t.Run("marks the refund failed and moves no stock when the provider refuses it", func(t *testing.T) {
 		h := newRefundHarness(t)
-		h.gateway.initiateErr = &phonepe.RejectedError{Status: 400, Body: "AMOUNT_EXCEEDS"}
+		h.gateway.initiateErr = fmt.Errorf("%w (status 400): AMOUNT_EXCEEDS", phonepe.ErrRejected)
 
 		h.orders.EXPECT().GetByID(gomock.Any(), "order_1").Return(paidOrder(domain.OrderStatusConfirmed), nil)
 		h.payments.EXPECT().GetByOrderID(gomock.Any(), "order_1").Return(paidPayment(), nil)

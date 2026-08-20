@@ -759,6 +759,62 @@ func TestInventoryRepository_WriteOffStock(t *testing.T) {
 		require.Equal(t, 10, reserved)
 	})
 
+	// reserved_qty is product-wide, so sizing a cancel or dispatch from the order's own
+	// lines takes the difference out of whatever another order is holding.
+	t.Run("a cancel after a partial refund leaves another order's reservation alone", func(t *testing.T) {
+		productID := newProduct(t, 100, 0)
+		_, err := repo.ReserveStock(ctx, productID, 3, "order_ours")
+		require.NoError(t, err)
+		_, err = repo.ReserveStock(ctx, productID, 2, "order_theirs")
+		require.NoError(t, err)
+		_, err = repo.WriteOffStock(ctx, productID, 1, "order_ours", "refund_1")
+		require.NoError(t, err)
+
+		// The caller passes the ordered 3; only 2 are still held.
+		require.NoError(t, repo.ReleaseOrderStock(ctx, "order_ours", map[string]int{productID: 3}))
+
+		_, reserved, _ := readInventory(t, pool, productID)
+		require.Equal(t, 2, reserved, "the other order's two units must survive")
+	})
+
+	// The caller keeps passing the ordered quantity, so a replayed transition has to
+	// compare against what the clamp produced rather than what it asked for.
+	t.Run("a replayed cancel after a partial refund is a no-op, not a conflict", func(t *testing.T) {
+		productID := newProduct(t, 100, 0)
+		_, err := repo.ReserveStock(ctx, productID, 5, "order_replay")
+		require.NoError(t, err)
+		_, err = repo.WriteOffStock(ctx, productID, 2, "order_replay", "refund_1")
+		require.NoError(t, err)
+
+		require.NoError(t, repo.ReleaseOrderStock(ctx, "order_replay", map[string]int{productID: 5}))
+		_, afterFirst, _ := readInventory(t, pool, productID)
+
+		require.NoError(t, repo.ReleaseOrderStock(ctx, "order_replay", map[string]int{productID: 5}),
+			"a replay must not be reported as divergence")
+
+		_, afterSecond, _ := readInventory(t, pool, productID)
+		require.Equal(t, afterFirst, afterSecond, "and it must move nothing")
+	})
+
+	// Without the write-off in the outstanding sum, a second refund passes the
+	// product-level guard and eats another order's reservation.
+	t.Run("a second refund cannot exceed what the first left", func(t *testing.T) {
+		productID := newProduct(t, 100, 0)
+		_, err := repo.ReserveStock(ctx, productID, 5, "order_two_refunds")
+		require.NoError(t, err)
+		_, err = repo.ReserveStock(ctx, productID, 4, "order_other")
+		require.NoError(t, err)
+		_, err = repo.WriteOffStock(ctx, productID, 3, "order_two_refunds", "refund_1")
+		require.NoError(t, err)
+
+		// 2 left on this order, so 3 is a caller error even though the product holds 6.
+		_, err = repo.WriteOffStock(ctx, productID, 3, "order_two_refunds", "refund_2")
+		require.Error(t, err, "the order holds 2, not 3")
+
+		_, reserved, _ := readInventory(t, pool, productID)
+		require.Equal(t, 6, reserved, "nothing may come out of the other order")
+	})
+
 	// A dispatch and a write-off move the same numbers, so only the type tells
 	// an auditor what happened to the goods.
 	t.Run("records itself as a write-off, not a dispatch", func(t *testing.T) {

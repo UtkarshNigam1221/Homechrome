@@ -2,6 +2,7 @@ package dynamodb
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 
@@ -102,7 +103,9 @@ func (r *AuditRepository) List(ctx context.Context, req domain.ListAuditLogsRequ
 	// days x round-trips inside one request. The table's TTL is 30 days, so nothing
 	// beyond that exists to find.
 	if startDate.Before(endDate.AddDate(0, 0, -maxAuditRangeDays)) {
-		startDate = endDate.AddDate(0, 0, -maxAuditRangeDays)
+		// Refused rather than narrowed: 31 days returned for a 90-day request would
+		// look complete and be wrong.
+		return nil, errors.BadRequest(fmt.Sprintf("Date range cannot exceed %d days", maxAuditRangeDays))
 	}
 	if endDate.Before(startDate) {
 		return nil, errors.BadRequest("end_date is before start_date")

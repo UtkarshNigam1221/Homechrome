@@ -205,9 +205,9 @@ func (c *Client) InitiateRefund(ctx context.Context, merchantRefundID, originalM
 
 	// A 4xx is the provider answering no. A 5xx, a timeout or an unreadable body is
 	// the provider not answering, which is not the same thing and must not be
-	// recorded as a refusal — see RejectedError.
+	// recorded as a refusal — see ErrRejected.
 	if resp.StatusCode >= 400 && resp.StatusCode < 500 {
-		return nil, &RejectedError{Status: resp.StatusCode, Body: string(body)}
+		return nil, fmt.Errorf("%w (status %d): %s", ErrRejected, resp.StatusCode, string(body))
 	}
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 		return nil, fmt.Errorf("PhonePe refund failed (status %d): %s", resp.StatusCode, string(body))

@@ -428,6 +428,16 @@ The Refund action is hidden for non-`ADMIN` users, matching the server guard.
   recorded rather than how it is priced, and buys nothing against a single operator.
   Revisit only if refunds ever become concurrent: more than one admin raising them,
   an automated retry, or a bulk tool.
+- **A refund whose outcome is unknown has no automatic exit.** Only a 4xx from the
+  provider is treated as a refusal; a timeout or 5xx leaves the refund `PENDING`, on
+  purpose, because PhonePe may have accepted and paid it. `RecheckStatus` is the
+  intended resolution, but `CheckRefundStatus` returns a plain error for any non-200,
+  so a provider 404 — the answer when the request genuinely never arrived — fails the
+  re-check rather than resolving it. Those units and that amount stay counted by
+  `claimedByLive`, so they cannot be refunded again without operator action. Accepted
+  for now because paying twice is the worse failure; resolving a 404 to `FAILED`
+  needs confidence that PhonePe 404s an unknown `merchantRefundId` rather than one it
+  has not indexed yet. Procedure in the runbook.
 - **`Customer.TotalSpent` is not adjusted.** It is documented as gross order value; a
   refund does not reduce it. Changing that is a reporting decision beyond this scope.
 - **Refunds are per order, not per payment attempt.** An order has one successful
