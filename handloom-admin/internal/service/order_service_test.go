@@ -24,6 +24,7 @@ func TestOrderService_Create(t *testing.T) {
 	mockInventoryRepo := mocks.NewMockInventoryRepository(ctrl)
 	mockPriceQuoteRepo := mocks.NewMockPriceQuoteRepository(ctrl)
 	mockPricingService := mocks.NewMockPricingService(ctrl)
+	mockPaymentRepo := mocks.NewMockPaymentRepository(ctrl)
 
 	service := NewOrderService(
 		mockOrderRepo,
@@ -31,6 +32,7 @@ func TestOrderService_Create(t *testing.T) {
 		mockProductRepo,
 		mockInventoryRepo,
 		mockPriceQuoteRepo,
+		mockPaymentRepo,
 		mockPricingService,
 	)
 	ctx := context.Background()
@@ -223,6 +225,7 @@ func TestOrderService_GetByID(t *testing.T) {
 	mockInventoryRepo := mocks.NewMockInventoryRepository(ctrl)
 	mockPriceQuoteRepo := mocks.NewMockPriceQuoteRepository(ctrl)
 	mockPricingService := mocks.NewMockPricingService(ctrl)
+	mockPaymentRepo := mocks.NewMockPaymentRepository(ctrl)
 
 	service := NewOrderService(
 		mockOrderRepo,
@@ -230,11 +233,15 @@ func TestOrderService_GetByID(t *testing.T) {
 		mockProductRepo,
 		mockInventoryRepo,
 		mockPriceQuoteRepo,
+		mockPaymentRepo,
 		mockPricingService,
 	)
 	ctx := context.Background()
 
 	t.Run("successful get order with details", func(t *testing.T) {
+		// The detail view carries what the payment says has actually gone back.
+		mockPaymentRepo.EXPECT().GetByOrderID(gomock.Any(), gomock.Any()).
+			Return(&domain.Payment{ID: "pay_1"}, nil).AnyTimes()
 		order := &domain.Order{
 			ID:          "order_123",
 			OrderNumber: "HL202401010001",
@@ -303,6 +310,7 @@ func TestOrderService_UpdateStatus(t *testing.T) {
 	mockInventoryRepo := mocks.NewMockInventoryRepository(ctrl)
 	mockPriceQuoteRepo := mocks.NewMockPriceQuoteRepository(ctrl)
 	mockPricingService := mocks.NewMockPricingService(ctrl)
+	mockPaymentRepo := mocks.NewMockPaymentRepository(ctrl)
 
 	service := NewOrderService(
 		mockOrderRepo,
@@ -310,6 +318,7 @@ func TestOrderService_UpdateStatus(t *testing.T) {
 		mockProductRepo,
 		mockInventoryRepo,
 		mockPriceQuoteRepo,
+		mockPaymentRepo,
 		mockPricingService,
 	)
 	ctx := context.Background()
@@ -466,6 +475,7 @@ func TestOrderService_UpdateStatus_Inventory(t *testing.T) {
 	mockInventoryRepo := mocks.NewMockInventoryRepository(ctrl)
 	mockPriceQuoteRepo := mocks.NewMockPriceQuoteRepository(ctrl)
 	mockPricingService := mocks.NewMockPricingService(ctrl)
+	mockPaymentRepo := mocks.NewMockPaymentRepository(ctrl)
 
 	service := NewOrderService(
 		mockOrderRepo,
@@ -473,6 +483,7 @@ func TestOrderService_UpdateStatus_Inventory(t *testing.T) {
 		mockProductRepo,
 		mockInventoryRepo,
 		mockPriceQuoteRepo,
+		mockPaymentRepo,
 		mockPricingService,
 	)
 	ctx := context.Background()
@@ -621,6 +632,7 @@ func TestOrderService_AddNote(t *testing.T) {
 	mockInventoryRepo := mocks.NewMockInventoryRepository(ctrl)
 	mockPriceQuoteRepo := mocks.NewMockPriceQuoteRepository(ctrl)
 	mockPricingService := mocks.NewMockPricingService(ctrl)
+	mockPaymentRepo := mocks.NewMockPaymentRepository(ctrl)
 
 	service := NewOrderService(
 		mockOrderRepo,
@@ -628,6 +640,7 @@ func TestOrderService_AddNote(t *testing.T) {
 		mockProductRepo,
 		mockInventoryRepo,
 		mockPriceQuoteRepo,
+		mockPaymentRepo,
 		mockPricingService,
 	)
 	ctx := context.Background()
@@ -682,6 +695,7 @@ func TestOrderService_UpdateTracking(t *testing.T) {
 	mockInventoryRepo := mocks.NewMockInventoryRepository(ctrl)
 	mockPriceQuoteRepo := mocks.NewMockPriceQuoteRepository(ctrl)
 	mockPricingService := mocks.NewMockPricingService(ctrl)
+	mockPaymentRepo := mocks.NewMockPaymentRepository(ctrl)
 
 	service := NewOrderService(
 		mockOrderRepo,
@@ -689,6 +703,7 @@ func TestOrderService_UpdateTracking(t *testing.T) {
 		mockProductRepo,
 		mockInventoryRepo,
 		mockPriceQuoteRepo,
+		mockPaymentRepo,
 		mockPricingService,
 	)
 	ctx := context.Background()
@@ -728,6 +743,7 @@ func TestOrderService_CancelOrder(t *testing.T) {
 	mockInventoryRepo := mocks.NewMockInventoryRepository(ctrl)
 	mockPriceQuoteRepo := mocks.NewMockPriceQuoteRepository(ctrl)
 	mockPricingService := mocks.NewMockPricingService(ctrl)
+	mockPaymentRepo := mocks.NewMockPaymentRepository(ctrl)
 
 	service := NewOrderService(
 		mockOrderRepo,
@@ -735,6 +751,7 @@ func TestOrderService_CancelOrder(t *testing.T) {
 		mockProductRepo,
 		mockInventoryRepo,
 		mockPriceQuoteRepo,
+		mockPaymentRepo,
 		mockPricingService,
 	)
 	ctx := context.Background()
@@ -836,6 +853,7 @@ func TestOrderService_CancelOrder_Inventory(t *testing.T) {
 	mockInventoryRepo := mocks.NewMockInventoryRepository(ctrl)
 	mockPriceQuoteRepo := mocks.NewMockPriceQuoteRepository(ctrl)
 	mockPricingService := mocks.NewMockPricingService(ctrl)
+	mockPaymentRepo := mocks.NewMockPaymentRepository(ctrl)
 
 	service := NewOrderService(
 		mockOrderRepo,
@@ -843,6 +861,7 @@ func TestOrderService_CancelOrder_Inventory(t *testing.T) {
 		mockProductRepo,
 		mockInventoryRepo,
 		mockPriceQuoteRepo,
+		mockPaymentRepo,
 		mockPricingService,
 	)
 	ctx := context.Background()
@@ -888,6 +907,7 @@ func TestOrderService_List(t *testing.T) {
 	mockInventoryRepo := mocks.NewMockInventoryRepository(ctrl)
 	mockPriceQuoteRepo := mocks.NewMockPriceQuoteRepository(ctrl)
 	mockPricingService := mocks.NewMockPricingService(ctrl)
+	mockPaymentRepo := mocks.NewMockPaymentRepository(ctrl)
 
 	service := NewOrderService(
 		mockOrderRepo,
@@ -895,6 +915,7 @@ func TestOrderService_List(t *testing.T) {
 		mockProductRepo,
 		mockInventoryRepo,
 		mockPriceQuoteRepo,
+		mockPaymentRepo,
 		mockPricingService,
 	)
 	ctx := context.Background()
@@ -1001,7 +1022,8 @@ func TestOrderService_Create_DuplicateProductLines(t *testing.T) {
 	mockPricingService := mocks.NewMockPricingService(ctrl)
 
 	service := NewOrderService(mockOrderRepo, mockCustomerRepo, mockProductRepo,
-		mockInventoryRepo, mockPriceQuoteRepo, mockPricingService)
+		mockInventoryRepo, mockPriceQuoteRepo, mocks.NewMockPaymentRepository(ctrl),
+		mockPricingService)
 	ctx := context.Background()
 
 	req := domain.CreateOrderRequest{
@@ -1056,7 +1078,8 @@ func TestOrderService_Create_ReserveBeforePersist(t *testing.T) {
 			Return(&domain.Inventory{ProductID: "prod_123", Quantity: 100, AvailableQty: 90}, nil)
 		customerRepo.EXPECT().RecordPurchase(gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(1), nil).AnyTimes()
 
-		return NewOrderService(orderRepo, customerRepo, productRepo, inventoryRepo, quoteRepo, pricing), orderRepo, inventoryRepo
+		return NewOrderService(orderRepo, customerRepo, productRepo, inventoryRepo, quoteRepo,
+			mocks.NewMockPaymentRepository(ctrl), pricing), orderRepo, inventoryRepo
 	}
 
 	req := domain.CreateOrderRequest{
@@ -1109,7 +1132,8 @@ func TestOrderService_Create_DuplicateLinesExceedingStock(t *testing.T) {
 	productRepo := mocks.NewMockProductRepository(ctrl)
 	inventoryRepo := mocks.NewMockInventoryRepository(ctrl)
 	svc := NewOrderService(orderRepo, customerRepo, productRepo, inventoryRepo,
-		mocks.NewMockPriceQuoteRepository(ctrl), mocks.NewMockPricingService(ctrl))
+		mocks.NewMockPriceQuoteRepository(ctrl), mocks.NewMockPaymentRepository(ctrl),
+		mocks.NewMockPricingService(ctrl))
 
 	customerRepo.EXPECT().GetByID(gomock.Any(), "cust_123").
 		Return(&domain.Customer{ID: "cust_123", FirstName: "John", Email: "j@e.com"}, nil)
