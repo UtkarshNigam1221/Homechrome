@@ -39,7 +39,7 @@ func TestDeriveRefundAmount(t *testing.T) {
 
 		got, err := deriveRefundAmount(order, []domain.CreateRefundItemRequest{
 			{OrderItemID: "a", Quantity: 1},
-		}, 0)
+		}, nil, 0)
 
 		require.NoError(t, err)
 		require.Equal(t, int64(10000), got.Total)
@@ -53,7 +53,7 @@ func TestDeriveRefundAmount(t *testing.T) {
 
 		got, err := deriveRefundAmount(order, []domain.CreateRefundItemRequest{
 			{OrderItemID: "a", Quantity: 1},
-		}, 0)
+		}, nil, 0)
 
 		require.NoError(t, err)
 		require.Equal(t, int64(10000), got.Total, "no shipping while a unit remains")
@@ -64,7 +64,7 @@ func TestDeriveRefundAmount(t *testing.T) {
 
 		got, err := deriveRefundAmount(order, []domain.CreateRefundItemRequest{
 			{OrderItemID: "a", Quantity: 2},
-		}, 0)
+		}, nil, 0)
 
 		require.NoError(t, err)
 		require.True(t, got.IsFinal)
@@ -77,7 +77,7 @@ func TestDeriveRefundAmount(t *testing.T) {
 
 		got, err := deriveRefundAmount(order, []domain.CreateRefundItemRequest{
 			{OrderItemID: "a", Quantity: 1},
-		}, 0)
+		}, nil, 0)
 
 		require.NoError(t, err)
 		require.Equal(t, int64(9000), got.Total)
@@ -91,13 +91,13 @@ func TestDeriveRefundAmount(t *testing.T) {
 
 		first, err := deriveRefundAmount(order, []domain.CreateRefundItemRequest{
 			{OrderItemID: "a", Quantity: 1},
-		}, 0)
+		}, nil, 0)
 		require.NoError(t, err)
 
 		order.Items[0].RefundedQuantity = 1
 		second, err := deriveRefundAmount(order, []domain.CreateRefundItemRequest{
 			{OrderItemID: "b", Quantity: 1}, {OrderItemID: "c", Quantity: 1},
-		}, first.Total)
+		}, nil, first.Total)
 		require.NoError(t, err)
 
 		require.True(t, second.IsFinal)
@@ -110,7 +110,7 @@ func TestDeriveRefundAmount(t *testing.T) {
 
 		_, err := deriveRefundAmount(order, []domain.CreateRefundItemRequest{
 			{OrderItemID: "a", Quantity: 2},
-		}, 10000)
+		}, nil, 10000)
 
 		require.Error(t, err)
 	})
@@ -120,7 +120,7 @@ func TestDeriveRefundAmount(t *testing.T) {
 
 		got, err := deriveRefundAmount(order, []domain.CreateRefundItemRequest{
 			{OrderItemID: "a", Quantity: 1},
-		}, 10000)
+		}, nil, 10000)
 
 		require.NoError(t, err)
 		require.True(t, got.IsFinal)
@@ -131,7 +131,7 @@ func TestDeriveRefundAmount(t *testing.T) {
 
 		_, err := deriveRefundAmount(order, []domain.CreateRefundItemRequest{
 			{OrderItemID: "ghost", Quantity: 1},
-		}, 0)
+		}, nil, 0)
 
 		require.Error(t, err)
 	})
@@ -141,14 +141,14 @@ func TestDeriveRefundAmount(t *testing.T) {
 
 		_, err := deriveRefundAmount(order, []domain.CreateRefundItemRequest{
 			{OrderItemID: "a", Quantity: 2}, {OrderItemID: "a", Quantity: 2},
-		}, 0)
+		}, nil, 0)
 
 		require.Error(t, err, "one entry per line, or the remainder check is meaningless")
 	})
 
 	t.Run("rejects a request with no lines", func(t *testing.T) {
 		order := refundTestOrder(0, 0, 0, line("a", 10000, 1, 0))
-		_, err := deriveRefundAmount(order, nil, 0)
+		_, err := deriveRefundAmount(order, nil, nil, 0)
 		require.Error(t, err)
 	})
 
@@ -157,7 +157,7 @@ func TestDeriveRefundAmount(t *testing.T) {
 
 		got, err := deriveRefundAmount(order, []domain.CreateRefundItemRequest{
 			{OrderItemID: "a", Quantity: 2, Restock: true},
-		}, 0)
+		}, nil, 0)
 
 		require.NoError(t, err)
 		require.Len(t, got.Items, 1)
@@ -165,5 +165,54 @@ func TestDeriveRefundAmount(t *testing.T) {
 		require.Equal(t, "Item a", got.Items[0].ProductName)
 		require.Equal(t, 2, got.Items[0].Quantity)
 		require.True(t, got.Items[0].Restock)
+	})
+}
+
+// A refund is PENDING from creation until the provider's webhook lands. Bounding
+// the next one on settled refunds alone let the same units go back twice — real
+// money out for goods refunded once.
+func TestDeriveRefundAmount_CountsClaimedUnits(t *testing.T) {
+	t.Run("refuses units an unsettled refund already claimed", func(t *testing.T) {
+		order := refundTestOrder(0, 0, 0, line("a", 10000, 2, 0))
+
+		_, err := deriveRefundAmount(order, []domain.CreateRefundItemRequest{
+			{OrderItemID: "a", Quantity: 2},
+		}, map[string]int{"a": 1}, 10000)
+
+		require.Error(t, err, "one unit is already spoken for")
+	})
+
+	t.Run("allows what is left once the claim is counted", func(t *testing.T) {
+		order := refundTestOrder(0, 0, 0, line("a", 10000, 2, 0))
+
+		got, err := deriveRefundAmount(order, []domain.CreateRefundItemRequest{
+			{OrderItemID: "a", Quantity: 1},
+		}, map[string]int{"a": 1}, 10000)
+
+		require.NoError(t, err)
+		require.True(t, got.IsFinal, "the claimed unit plus this one clears the order")
+	})
+
+	// The claim is the authority, not the order's own counter: RefundedQuantity is
+	// written at settlement and can lag a refund that is already in flight.
+	t.Run("prefers the claim over the order's settled counter", func(t *testing.T) {
+		order := refundTestOrder(0, 0, 0, line("a", 10000, 3, 1))
+
+		_, err := deriveRefundAmount(order, []domain.CreateRefundItemRequest{
+			{OrderItemID: "a", Quantity: 2},
+		}, map[string]int{"a": 2}, 20000)
+
+		require.Error(t, err, "only one unit is unclaimed")
+	})
+
+	t.Run("falls back to the order's counter when nothing is claimed", func(t *testing.T) {
+		order := refundTestOrder(0, 0, 0, line("a", 10000, 2, 1))
+
+		got, err := deriveRefundAmount(order, []domain.CreateRefundItemRequest{
+			{OrderItemID: "a", Quantity: 1},
+		}, nil, 10000)
+
+		require.NoError(t, err)
+		require.True(t, got.IsFinal)
 	})
 }

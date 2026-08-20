@@ -97,6 +97,7 @@ func TestOrderService_Create(t *testing.T) {
 				return nil
 			})
 
+		// Aggregated per product, so two lines of one product are one movement.
 		mockInventoryRepo.EXPECT().
 			ReserveOrderStock(gomock.Any(), gomock.Any(), map[string]int{"prod_123": 2}).
 			Return(nil)
