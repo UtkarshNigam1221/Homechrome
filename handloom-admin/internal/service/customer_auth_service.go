@@ -58,6 +58,28 @@ type CustomerAuthConfig struct {
 	AccessTokenDuration  time.Duration
 	RefreshTokenDuration time.Duration
 	Issuer               string
+
+	// TestPhones is an exact-match E.164 allowlist that skips the SMS gateway
+	// and is issued TestOTP instead of a random code. Empty in every environment
+	// but dev; config.Validate refuses to start when it is set in production.
+	TestPhones []string
+	TestOTP    string
+}
+
+// isTestPhone reports whether phone is on the allowlist. Exact match on the
+// full E.164 string — never a prefix, never a pattern, so the set cannot widen
+// by accident. An empty TestOTP disables the bypass regardless of the
+// allowlist, so a half-configured environment fails closed.
+func (c CustomerAuthConfig) isTestPhone(phone string) bool {
+	if c.TestOTP == "" {
+		return false
+	}
+	for _, p := range c.TestPhones {
+		if p == phone {
+			return true
+		}
+	}
+	return false
 }
 
 // CustomerAuthService implements domain.CustomerAuthService
@@ -92,11 +114,22 @@ func NewCustomerAuthService(
 func (s *CustomerAuthService) SendOTP(ctx context.Context, phone string) error {
 	ctx, span := telemetry.StartServiceSpan(ctx, "customer_auth", "send_otp")
 
-	code, err := generateOTPCode()
-	if err != nil {
-		genErr := errors.Internal("Failed to generate OTP code")
-		span.EndWithError(genErr)
-		return genErr
+	// The bypass sits here, above the gateway, rather than inside an SMS dev
+	// client. A client chosen by credential absence would switch itself on in
+	// production the day the secret failed to propagate; this is keyed on
+	// explicit intent instead. Everything downstream — hashing, TTL, attempt
+	// limits, verification — is the production path, untouched.
+	testPhone := s.config.isTestPhone(phone)
+
+	code := s.config.TestOTP
+	if !testPhone {
+		generated, err := generateOTPCode()
+		if err != nil {
+			genErr := errors.Internal("Failed to generate OTP code")
+			span.EndWithError(genErr)
+			return genErr
+		}
+		code = generated
 	}
 
 	otp := &domain.OTP{
@@ -108,6 +141,13 @@ func (s *CustomerAuthService) SendOTP(ctx context.Context, phone string) error {
 	if err := s.otpRepo.Store(ctx, otp); err != nil {
 		span.EndWithError(err)
 		return err
+	}
+
+	if testPhone {
+		metrics.Record(ctx, "otp_outcome", metrics.L{metrics.LabelOutcome: "test_bypass"})
+		slog.InfoContext(ctx, "OTP short-circuited for allowlisted test phone", "phone", phone)
+		span.End()
+		return nil
 	}
 
 	if err := s.smsGateway.SendOTP(ctx, phone, code); err != nil {

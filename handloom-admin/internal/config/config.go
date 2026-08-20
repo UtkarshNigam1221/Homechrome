@@ -3,8 +3,10 @@ package config
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -55,6 +57,17 @@ type StoreConfig struct {
 	CustomerJWTSecret       string
 	CustomerAccessTokenTTL  time.Duration
 	CustomerRefreshTokenTTL time.Duration
+
+	// E2E OTP short-circuit. TestPhones is an exact-match E.164 allowlist whose
+	// numbers skip the SMS gateway and are issued TestOTP instead of a random
+	// code, so an automated suite can log in without sending real SMS. Never a
+	// prefix or pattern: an exact match cannot widen by accident.
+	//
+	// Validate() refuses to start when these are set in production. The prod CDK
+	// stack also never sets the variables at all, so console or SSM drift cannot
+	// switch this on without a code deploy.
+	TestPhones []string
+	TestOTP    string
 }
 
 // EmbedderConfig holds embedder Lambda configuration (used by catalog + backfill Lambdas).
@@ -177,6 +190,9 @@ func Load() *Config {
 			CustomerJWTSecret:       getEnv("CUSTOMER_JWT_SECRET", "customer-secret-change-in-production"),
 			CustomerAccessTokenTTL:  getDurationEnv("CUSTOMER_ACCESS_TOKEN_TTL", 15*time.Minute),
 			CustomerRefreshTokenTTL: getDurationEnv("CUSTOMER_REFRESH_TOKEN_TTL", 30*24*time.Hour),
+
+			TestPhones: splitAndTrim(getEnv("STORE_TEST_PHONES", "")),
+			TestOTP:    getEnv("STORE_TEST_OTP", ""),
 		},
 	}
 	cfg.Telemetry = TelemetryConfig{
@@ -185,6 +201,40 @@ func Load() *Config {
 		Environment:    cfg.App.Environment,
 	}
 	return cfg
+}
+
+// splitAndTrim turns a comma-separated env value into a slice, dropping empties
+// so a trailing comma or a blank variable yields no entries rather than one
+// empty entry that could match an empty phone.
+func splitAndTrim(v string) []string {
+	if strings.TrimSpace(v) == "" {
+		return nil
+	}
+	parts := strings.Split(v, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if t := strings.TrimSpace(p); t != "" {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
+// Validate refuses to start on a configuration that is safe in dev and unsafe
+// in production. Called from Load's callers at startup, so a misconfigured
+// Lambda dies on cold start rather than serving traffic with a test bypass
+// live. Loud and immediate beats subtle and later.
+func (c *Config) Validate() error {
+	if c.App.Environment != "prod" && c.App.Environment != "production" {
+		return nil
+	}
+	if len(c.Store.TestPhones) > 0 {
+		return fmt.Errorf("STORE_TEST_PHONES is set in %s: the OTP test bypass must never be enabled in production", c.App.Environment)
+	}
+	if c.Store.TestOTP != "" {
+		return fmt.Errorf("STORE_TEST_OTP is set in %s: the OTP test bypass must never be enabled in production", c.App.Environment)
+	}
+	return nil
 }
 
 // IsProduction returns true if running in production

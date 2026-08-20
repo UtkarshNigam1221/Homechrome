@@ -4,6 +4,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
 	"log/slog"
 	"net/http"
 	"os"
@@ -27,6 +28,10 @@ import (
 
 func main() {
 	cfg := config.Load()
+
+	if err := cfg.Validate(); err != nil {
+		log.Fatalf("invalid configuration: %v", err)
+	}
 
 	slogx.Setup(cfg.App.Debug)
 

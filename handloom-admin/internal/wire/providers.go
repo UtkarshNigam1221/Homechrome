@@ -610,6 +610,8 @@ func ProvideCustomerAuthService(
 			AccessTokenDuration:  cfg.Store.CustomerAccessTokenTTL,
 			RefreshTokenDuration: cfg.Store.CustomerRefreshTokenTTL,
 			Issuer:               "handloom-store",
+			TestPhones:           cfg.Store.TestPhones,
+			TestOTP:              cfg.Store.TestOTP,
 		},
 	)
 }
