@@ -213,11 +213,6 @@ export function InventoryLedgerModal({ isOpen, onClose, product }: InventoryLedg
                           {orderID}
                           <ExternalLink className="h-3 w-3" />
                         </Link>
-                        {/* Two write-offs on one order are the same order link;
-                            only the refund tells them apart. */}
-                        {row.source_id && (
-                          <p className="font-mono text-xs text-gray-500">{row.source_id}</p>
-                        )}
                       </div>
                     ) : (
                       <div>

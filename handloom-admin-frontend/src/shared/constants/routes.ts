@@ -34,7 +34,6 @@ export const ROUTES = {
 
   INVENTORY: {
     LOW_STOCK: '/admin/inventory/low-stock',
-    RECONCILIATION: '/admin/inventory/reconciliation',
   },
 
   NOTIFICATIONS: {

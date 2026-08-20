@@ -32,7 +32,6 @@ import {
 import { useCursorPagination, useDebounce } from '@/shared/hooks';
 
 import { InventoryLedgerModal } from './InventoryLedgerModal';
-import { ReconciliationPanel } from './ReconciliationPanel';
 import { StockAdjustmentModal } from './StockAdjustmentModal';
 
 export function InventoryPage() {
@@ -84,9 +83,6 @@ export function InventoryPage() {
   return (
     <div className="space-y-6">
       <PageHeader title="Inventory" subtitle="Track and manage product stock levels" />
-
-      {/* Silent unless something is actually stranded. */}
-      <ReconciliationPanel />
 
       {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

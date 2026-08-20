@@ -8,23 +8,6 @@ export type TransactionType =
   | 'RETURN'
   | 'WRITE_OFF';
 
-// A reservation with no dispatch and no release: stock held against an order
-// that went nowhere. The drift signature the ledger movements exist to catch.
-export interface OrphanReservation {
-  product_id: string;
-  product_name: string;
-  sku: string;
-  order_id: string;
-  quantity: number;
-  reserved_at: string;
-}
-
-export interface ReconciliationReport {
-  reservations: OrphanReservation[];
-  order_count: number;
-  stranded_units: number;
-}
-
 export interface Inventory {
   product_id: string;
   product_name: string;
@@ -49,7 +32,6 @@ export interface InventoryTransaction {
   reference_id?: string;
   // What caused the movement when that is not the order itself — today, the
   // refund. Two write-offs on one order are otherwise indistinguishable.
-  source_id?: string;
   created_by: string;
   // Resolved server-side; created_by alone is an opaque user id.
   created_by_name?: string;
