@@ -12,10 +12,6 @@ on:
         required: true
         default: active
         type: string
-      overwrite_inventory:
-        description: 'Overwrite prod stock quantities with dev values'
-        type: boolean
-        default: false
       skip_s3:
         description: 'Skip S3 media sync'
         type: boolean
@@ -97,9 +93,6 @@ jobs:
           fi
 
           args=( --products "$PRODUCTS" --yes )
-          if [ "${{ inputs.overwrite_inventory }}" = "true" ]; then
-            args+=( --overwrite-inventory )
-          fi
           if [ "${{ inputs.skip_s3 }}" = "true" ]; then
             args+=( --skip-s3 )
           fi

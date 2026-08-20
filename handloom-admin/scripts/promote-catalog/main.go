@@ -2,13 +2,20 @@
 // from dev to prod. Additive-only: everything upserts by id and nothing
 // prod-only is ever deleted; a promoted product's attribute values and images
 // are replaced as a set; asset URLs are rewritten to the prod CDN; only S3
-// objects referenced by promoted rows are copied. Inventory is seeded with
-// zero reservations where missing; --overwrite-inventory updates stock
-// numbers while preserving prod's reserved quantities. DynamoDB data and
+// objects referenced by promoted rows are copied. DynamoDB data and
 // inventory_transactions are never touched.
 //
+// Stock does not promote. A promoted product arrives with an inventory row at
+// zero and is stocked up by hand in prod. Dev quantities are test artifacts —
+// they are whatever the last e2e run or manual poke left behind — and carrying
+// them over would make prod's opening balance a number nobody chose. Stocking
+// up through the admin API also writes a proper ADD ledger row with a real
+// actor and reason, so prod's ledger reconciles from its first movement;
+// seeding a quantity directly would leave stock with no entry behind it.
+// Existing prod stock is never touched.
+//
 // Usage: go run ./scripts/promote-catalog [--products active|all|id1,id2,...]
-// [--overwrite-inventory] [--skip-s3] [--yes]
+// [--skip-s3] [--yes]
 //
 // Env: DEV_DSN/PROD_DSN (default: POSTGRES_DSN from .env.{dev,prod}),
 // DEV_ASSET_HOST/PROD_ASSET_HOST (default: CloudFormation exports), AWS_REGION.
@@ -53,7 +60,6 @@ func main() {
 	log.SetFlags(0)
 
 	products := flag.String("products", "active", `which products to promote: "active", "all", or comma-separated ids`)
-	overwriteInventory := flag.Bool("overwrite-inventory", false, "overwrite prod stock with dev quantities (default: only seed missing rows)")
 	skipS3 := flag.Bool("skip-s3", false, "skip S3 media sync")
 	yes := flag.Bool("yes", false, "skip confirmation prompt (CI)")
 	flag.Parse()
@@ -124,10 +130,7 @@ func main() {
 			urlValues(images, cols["product_images"], colURL))
 	}
 
-	inventoryMode := "seed missing rows only (zero reservations), prod stock untouched"
-	if *overwriteInventory {
-		inventoryMode = "OVERWRITE prod stock numbers with dev values (prod reservations preserved)"
-	}
+	inventoryMode := "seed missing rows at zero — stock up in prod by hand; existing prod stock untouched"
 	mediaMode := fmt.Sprintf("%d referenced objects -> s3://%s/assets/ (additive)", len(mediaKeys), prodBucket)
 	if *skipS3 {
 		mediaMode = "skipped"
@@ -157,25 +160,20 @@ Promotion plan (dev -> prod):
 	rewriteURLs(prods, cols["products"], []string{"video_url", "video_poster_url"}, urlRewrites)
 	rewriteURLs(images, cols["product_images"], []string{colURL}, urlRewrites)
 
-	// Reservation state belongs to prod: seeded rows start with zero reserved,
-	// and the overwrite path updates stock numbers while preserving prod's
-	// reserved_qty (available recomputed against it).
+	// Stock and reservations both belong to prod. The row is seeded at zero so
+	// the product exists and can be stocked up through the admin API, which
+	// writes the ADD ledger entry that a directly-seeded quantity would not.
+	// Thresholds carry over: those are catalog configuration, not stock.
 	iQty := colIndex(cols["inventory"], "quantity")
 	iRes := colIndex(cols["inventory"], "reserved_qty")
 	iAvail := colIndex(cols["inventory"], "available_qty")
 	for _, row := range inventory {
+		row[iQty] = "0"
 		row[iRes] = "0"
-		row[iAvail] = row[iQty]
+		row[iAvail] = "0"
 	}
+	// DO NOTHING, so a re-promotion never zeroes stock somebody has since added.
 	inventoryConflict := "ON CONFLICT (product_id) DO NOTHING"
-	if *overwriteInventory {
-		inventoryConflict = "ON CONFLICT (product_id) DO UPDATE SET " +
-			"quantity = EXCLUDED.quantity, " +
-			"available_qty = EXCLUDED.quantity - inventory.reserved_qty, " +
-			"low_stock_threshold = EXCLUDED.low_stock_threshold, " +
-			"reorder_point = EXCLUDED.reorder_point, " +
-			"updated_at = now(), updated_by = EXCLUDED.updated_by"
-	}
 
 	// Single transaction: either the whole catalog lands or none of it.
 	tx, err := prod.Begin(ctx)
