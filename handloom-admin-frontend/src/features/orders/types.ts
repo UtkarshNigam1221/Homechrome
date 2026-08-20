@@ -35,7 +35,17 @@ export const ALLOWED_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
   CANCELLED: [],
   RETURNED: [],
 };
-export type PaymentStatus = 'PENDING' | 'PAID' | 'FAILED' | 'REFUNDED';
+export type PaymentStatus =
+  | 'PENDING'
+  // Written by the gateway path, not the checkout one — the union has to carry
+  // them or a status test against them only typechecks by widening to string.
+  | 'INITIATED'
+  | 'SUCCESS'
+  | 'PAID'
+  | 'FAILED'
+  | 'REFUNDED'
+  // Money went back for some lines while the rest of the order still stands.
+  | 'PARTIALLY_REFUNDED';
 
 export interface OrderItem {
   id: string;
@@ -43,6 +53,8 @@ export interface OrderItem {
   product_name: string;
   product_sku: string;
   quantity: number;
+  // How much of this line has already gone back. Only completed refunds count.
+  refunded_quantity: number;
   unit_price: number;
   total_price: number;
   custom_dimensions?: Dimensions;
@@ -79,6 +91,9 @@ export interface Order {
   tracking_url?: string;
   internal_notes?: OrderNote[];
   coupon_code?: string;
+  // What the payment says has actually gone back. Authoritative — a client
+  // summing its own refund rows can drift from it if a settlement half completed.
+  refunded_amount?: number;
   created_at: string;
   updated_at: string;
 }
@@ -107,4 +122,85 @@ export interface CreateOrderRequest {
   billing_address?: Address;
   notes?: string;
   coupon_code?: string;
+}
+
+export type RefundStatus = 'PENDING' | 'COMPLETED' | 'FAILED';
+
+export type RefundReason =
+  | 'OUT_OF_STOCK'
+  | 'DAMAGED'
+  | 'CUSTOMER_REQUEST'
+  | 'PRICING_ERROR'
+  | 'OTHER';
+
+// Bounded server-side so it can label a metric. Anything needing explanation
+// belongs in an order note.
+export const REFUND_REASON_LABELS: Record<RefundReason, string> = {
+  OUT_OF_STOCK: 'Out of stock',
+  DAMAGED: 'Damaged',
+  CUSTOMER_REQUEST: 'Customer request',
+  PRICING_ERROR: 'Pricing error',
+  OTHER: 'Other',
+};
+
+export interface RefundItem {
+  order_item_id: string;
+  product_id: string;
+  product_name: string;
+  quantity: number;
+  amount: number;
+  // True returns the units to sale; false writes them off.
+  restock: boolean;
+}
+
+// Prices lines without raising a refund, so it carries no reason: the reason labels
+// a refund, it does not affect what the lines are worth.
+export interface PreviewRefundRequest {
+  items: { order_item_id: string; quantity: number }[];
+}
+
+// What a requested set of lines would cost. Derived server-side; the client never
+// sends an amount, so this is the only figure a screen should show.
+export interface RefundPreview {
+  total: number;
+  is_final: boolean;
+  lines: RefundItem[];
+  breakdown: {
+    line_value: number;
+    discount: number;
+    tax: number;
+    // Zero until the refund that clears the order, and carries the residual when not.
+    shipping: number;
+  };
+}
+
+export interface Refund {
+  id: string;
+  order_id: string;
+  payment_id: string;
+  customer_id: string;
+  amount: number;
+  status: RefundStatus;
+  reason: RefundReason;
+  items: RefundItem[];
+  merchant_refund_id: string;
+  provider_refund_id?: string;
+  error_code?: string;
+  detailed_error_code?: string;
+  initiated_at: string;
+  completed_at?: string;
+  created_by: string;
+  // Resolved server-side; created_by alone is an opaque user id.
+  created_by_name?: string;
+}
+
+// Lines and quantities only — the server derives the money and rejects any
+// amount a client sends.
+export interface CreateRefundRequest {
+  reason: RefundReason;
+  items: {
+    order_item_id: string;
+    quantity: number;
+    restock: boolean;
+  }[];
 }

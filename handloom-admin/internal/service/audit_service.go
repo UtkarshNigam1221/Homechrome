@@ -41,7 +41,10 @@ func (s *AuditService) Log(ctx context.Context, action string, entityType string
 		EntityID:        entityID,
 		UserID:          userID,
 		Changes:         changesMap,
-		CreatedAt:       now,
+		// Callers pass the detail worth keeping — a refund's amount and lines, say.
+		// Dropping it left an entry saying someone acted, but never on what.
+		NewValues: metadata,
+		CreatedAt: now,
 	}
 	log.SetKeys()
 

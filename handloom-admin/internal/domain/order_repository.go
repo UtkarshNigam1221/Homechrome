@@ -169,6 +169,10 @@ type OrderWithDetails struct {
 	*Order
 	Customer    *Customer          `json:"customer,omitempty"`
 	ItemDetails []OrderItemDetails `json:"item_details,omitempty"`
+
+	// RefundedAmount is what the payment says has gone back, and the authority on what
+	// is still refundable: a client summing its own rows drifts on a half settlement.
+	RefundedAmount int64 `json:"refunded_amount"`
 }
 
 // OrderItemDetails contains order item with product details

@@ -45,11 +45,21 @@ describe('movementEffect', () => {
     expect(movementEffect(row('ADJUST', 2, 48, 50)).onHand).toBe(2);
   });
 
+  // A write-off moves the same two counters a dispatch does, so the only thing
+  // separating them in the ledger is the label.
+  it('reports a write-off against both counters, but never calls it a dispatch', () => {
+    const effect = movementEffect(row('WRITE_OFF', 2, 50, 48));
+
+    expect(effect).toMatchObject({ onHand: -2, reserved: -2 });
+    expect(effect.label).toBe('Written off');
+  });
+
   it('names the counter the recorded before/after pair belongs to', () => {
     expect(recordedCounter('RESERVE')).toBe('reserved');
     expect(recordedCounter('RELEASE')).toBe('reserved');
     expect(recordedCounter('COMMIT')).toBe('onHand');
     expect(recordedCounter('ADD')).toBe('onHand');
+    expect(recordedCounter('WRITE_OFF')).toBe('onHand');
   });
 });
 
@@ -87,5 +97,22 @@ describe('balancesAfter', () => {
 
     // Reserved right after that ADD was 0, not 5. Unanchored, nothing is claimed.
     expect(balancesAfter(page2, currentWithNewerReserve, false)).toEqual([null]);
+  });
+});
+
+// The reconstruction walks back from the product's current levels, so it is only
+// meaningful while the newest row shown is the newest movement.
+describe('balancesAfter anchoring', () => {
+  const history = [row('ADJUST', 2, 47, 45), row('COMMIT', 3, 50, 47)];
+
+  it('reconstructs nothing when the page is not the newest', () => {
+    expect(balancesAfter(history, { onHand: 45, reserved: 0 }, false)).toEqual([null, null]);
+  });
+
+  it('still reconstructs on the newest page', () => {
+    expect(balancesAfter(history, { onHand: 45, reserved: 0 }, true)[0]).toEqual({
+      onHand: 45,
+      reserved: 0,
+    });
   });
 });

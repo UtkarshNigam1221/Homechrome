@@ -41,6 +41,9 @@ func TestAuditService_Log(t *testing.T) {
 				change, ok := auditLog.Changes["change_0"]
 				assert.True(t, ok)
 				assert.Equal(t, "pending", change.OldValue)
+				// The caller's detail has to survive the write. An entry naming the
+				// action but not what it was on is not a trail.
+				assert.Equal(t, "192.168.1.1", auditLog.NewValues["ip_address"])
 				// Verify TTL is approximately 90 days from now
 				expectedTTL := time.Now().Add(90 * 24 * time.Hour).Unix()
 				assert.InDelta(t, expectedTTL, auditLog.TTL, 60) // Allow 60 seconds variance

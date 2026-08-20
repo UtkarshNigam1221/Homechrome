@@ -280,21 +280,56 @@ func (r *CustomerRepository) List(ctx context.Context, req domain.ListCustomersR
 
 // Delete deletes a customer by ID
 func (r *CustomerRepository) Delete(ctx context.Context, id string) error {
-	_, err := r.client.db.DeleteItem(ctx, &dynamodb.DeleteItemInput{
-		TableName: aws.String(r.client.ordersTable),
-		Key: map[string]types.AttributeValue{
-			"PK": &types.AttributeValueMemberS{Value: "CUSTOMER#" + id},
-			"SK": &types.AttributeValueMemberS{Value: skMetadata},
-		},
-		ConditionExpression: aws.String("attribute_exists(PK)"),
-	})
+	// Read first: the pointers are keyed by the address, not by the customer id,
+	// so there is no way to remove them without knowing what they were.
+	customer, err := r.GetByID(ctx, id)
 	if err != nil {
-		if isConditionalCheckFailed(err) {
+		return err
+	}
+
+	writes := []types.TransactWriteItem{{
+		Delete: &types.Delete{
+			TableName: aws.String(r.client.ordersTable),
+			Key: map[string]types.AttributeValue{
+				"PK": &types.AttributeValueMemberS{Value: "CUSTOMER#" + id},
+				"SK": &types.AttributeValueMemberS{Value: skMetadata},
+			},
+			ConditionExpression: aws.String("attribute_exists(PK)"),
+		},
+	}}
+
+	// The email pointer is the uniqueness guard. Leaving it behind would claim
+	// this address forever — nobody could sign up with it again.
+	if customer.Email != "" {
+		writes = append(writes, r.pointerDelete("CUSTOMER_EMAIL#"+customer.Email))
+	}
+	if customer.Phone != "" {
+		writes = append(writes, r.pointerDelete("CUSTOMER_PHONE#"+customer.Phone))
+	}
+
+	if _, err := r.client.db.TransactWriteItems(ctx, &dynamodb.TransactWriteItemsInput{
+		TransactItems: writes,
+	}); err != nil {
+		if isTransactionCanceled(err) {
 			return errors.NotFound("Customer not found")
 		}
 		return errors.Wrap(err, "Failed to delete customer")
 	}
 	return nil
+}
+
+// pointerDelete removes a lookup pointer. Unconditional: a customer written before
+// the pointer existed has none, and that must not block the delete.
+func (r *CustomerRepository) pointerDelete(pk string) types.TransactWriteItem {
+	return types.TransactWriteItem{
+		Delete: &types.Delete{
+			TableName: aws.String(r.client.ordersTable),
+			Key: map[string]types.AttributeValue{
+				"PK": &types.AttributeValueMemberS{Value: pk},
+				"SK": &types.AttributeValueMemberS{Value: skMetadata},
+			},
+		},
+	}
 }
 
 // RecordPurchase bumps OrderCount and TotalSpent in one UpdateItem, returning the new

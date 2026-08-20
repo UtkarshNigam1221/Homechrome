@@ -8,3 +8,16 @@ const formatter = new Intl.NumberFormat('en-IN', {
 export function formatCurrency(paise: number): string {
   return formatter.format(paise / 100);
 }
+
+const exactFormatter = new Intl.NumberFormat('en-IN', {
+  style: 'currency',
+  currency: 'INR',
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
+// For a figure someone authorizes rather than skims. Refunds are derived to the paise
+// and have to be shown to the paise, or the screen is not the amount that leaves.
+export function formatCurrencyExact(paise: number): string {
+  return exactFormatter.format(paise / 100);
+}

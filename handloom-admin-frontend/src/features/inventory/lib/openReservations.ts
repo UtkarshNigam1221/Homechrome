@@ -1,18 +1,24 @@
 import type { InventoryTransaction } from '@/features/inventory/types';
 
-// A RESERVE with no COMMIT or RELEASE is the drift signature. Settling rows sit on
-// earlier pages, so only the newest page (`anchored`) can conclude anything.
+// A reservation settles on COMMIT, RELEASE or WRITE_OFF; one that does none is the
+// drift signature. Settling rows sit on earlier pages, so only the newest page counts.
 export function openReservationIDs(rows: InventoryTransaction[], anchored: boolean): Set<string> {
   if (!anchored) return new Set();
 
-  const settled = new Set<string>();
-  const reserved = new Set<string>();
+  // Netted, not counted by presence: one unit released out of three leaves two held,
+  // and treating any settlement as the whole story hides the partial drift.
+  const outstanding = new Map<string, number>();
 
   for (const row of rows) {
     if (row.reference_type !== 'ORDER' || !row.reference_id) continue;
-    if (row.type === 'RESERVE') reserved.add(row.reference_id);
-    if (row.type === 'COMMIT' || row.type === 'RELEASE') settled.add(row.reference_id);
+
+    const held = outstanding.get(row.reference_id) ?? 0;
+    if (row.type === 'RESERVE') {
+      outstanding.set(row.reference_id, held + row.quantity);
+    } else if (row.type === 'COMMIT' || row.type === 'RELEASE' || row.type === 'WRITE_OFF') {
+      outstanding.set(row.reference_id, held - row.quantity);
+    }
   }
 
-  return new Set([...reserved].filter((id) => !settled.has(id)));
+  return new Set([...outstanding].filter(([, held]) => held > 0).map(([id]) => id));
 }

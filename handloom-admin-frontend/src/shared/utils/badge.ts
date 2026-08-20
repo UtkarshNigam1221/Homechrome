@@ -21,6 +21,7 @@ export function getStatusBadgeVariant(
     // Payment statuses
     PAID: 'success',
     REFUNDED: 'warning',
+    PARTIALLY_REFUNDED: 'warning',
 
     // Product statuses
     DRAFT: 'gray',

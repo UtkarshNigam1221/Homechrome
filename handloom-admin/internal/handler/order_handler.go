@@ -41,9 +41,17 @@ func (h *OrderHandler) Routes() chi.Router {
 	r.With(middleware.ValidateJSONTyped[AddOrderNoteRequest](h.validation)).Post("/{id}/notes", h.AddNote)
 	r.With(middleware.ValidateJSONTyped[UpdateTrackingRequest](h.validation)).Patch("/{id}/tracking", h.UpdateTracking)
 	r.With(middleware.ValidateJSONTyped[CancelOrderRequest](h.validation)).Post("/{id}/cancel", h.Cancel)
-	r.With(middleware.ValidateJSONTyped[domain.CreateRefundRequest](h.validation)).Post("/{id}/refunds", h.CreateRefund)
-	r.Get("/{id}/refunds", h.ListRefunds)
-	r.Post("/{id}/refunds/{refundID}/recheck", h.RecheckRefund)
+	// Refunds are admin-only end to end, the read included. Gated here, not at the mount
+	// site, so the check travels with the routes into the monolith and the Lambda alike.
+	r.Group(func(r chi.Router) {
+		r.Use(middleware.RequireRole(domain.UserRoleAdmin))
+		r.Get("/{id}/refunds", h.ListRefunds)
+		r.With(middleware.ValidateJSONTyped[domain.CreateRefundRequest](h.validation)).
+			Post("/{id}/refunds", h.CreateRefund)
+		r.With(middleware.ValidateJSONTyped[domain.PreviewRefundRequest](h.validation)).
+			Post("/{id}/refunds/preview", h.PreviewRefund)
+		r.Post("/{id}/refunds/{refundID}/recheck", h.RecheckRefund)
+	})
 
 	return r
 }
@@ -188,6 +196,21 @@ func (h *OrderHandler) Cancel(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, http.StatusOK, map[string]string{response.KeyMessage: "Order canceled successfully"})
 }
 
+// PreviewRefund prices a refund without raising one, so the screen an admin authorizes
+// from shows the figure Create will use. Admin-only: it reads an order's money.
+func (h *OrderHandler) PreviewRefund(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	req := middleware.MustGetValidatedBody[domain.PreviewRefundRequest](ctx)
+
+	preview, err := h.refundService.Preview(ctx, chi.URLParam(r, "id"), *req)
+	if err != nil {
+		response.Error(w, err)
+		return
+	}
+
+	response.JSON(w, http.StatusOK, preview)
+}
+
 // CreateRefund refunds part or all of an order. The body carries lines and quantities
 // only: the amount is derived server-side, because money is not a client input.
 func (h *OrderHandler) CreateRefund(w http.ResponseWriter, r *http.Request) {
@@ -222,7 +245,7 @@ func (h *OrderHandler) ListRefunds(w http.ResponseWriter, r *http.Request) {
 func (h *OrderHandler) RecheckRefund(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	refund, err := h.refundService.RecheckStatus(ctx, chi.URLParam(r, "refundID"))
+	refund, err := h.refundService.RecheckStatus(ctx, chi.URLParam(r, "id"), chi.URLParam(r, "refundID"))
 	if err != nil {
 		response.Error(w, err)
 		return

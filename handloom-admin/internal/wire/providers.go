@@ -276,9 +276,11 @@ func ProvideOrderService(
 	productRepo domain.ProductRepository,
 	inventoryRepo domain.InventoryRepository,
 	priceQuoteRepo domain.PriceQuoteRepository,
+	paymentRepo domain.PaymentRepository,
 	pricingService *service.PricingService,
 ) *service.OrderService {
-	return service.NewOrderService(orderRepo, customerRepo, productRepo, inventoryRepo, priceQuoteRepo, pricingService)
+	return service.NewOrderService(orderRepo, customerRepo, productRepo, inventoryRepo,
+		priceQuoteRepo, paymentRepo, pricingService)
 }
 
 // ProvideCustomerService creates a new CustomerService
@@ -547,9 +549,27 @@ func ProvideRefundService(
 	orderRepo domain.OrderRepository,
 	paymentRepo domain.PaymentRepository,
 	inventoryRepo domain.InventoryRepository,
+	userRepo domain.UserRepository,
+	auditService *service.AuditService,
+	notificationService *service.NotificationService,
 	gateway phonepe.Gateway,
 ) *service.RefundService {
-	return service.NewRefundService(refundRepo, orderRepo, paymentRepo, inventoryRepo, gateway)
+	return service.NewRefundService(refundRepo, orderRepo, paymentRepo, inventoryRepo,
+		userRepo, auditService, notificationService, gateway)
+}
+
+// ProvideStoreRefundService wires no auditor or actor directory — the store settles
+// refunds and raises none — but it does need the notifier, which settlement uses.
+func ProvideStoreRefundService(
+	refundRepo domain.RefundRepository,
+	orderRepo domain.OrderRepository,
+	paymentRepo domain.PaymentRepository,
+	inventoryRepo domain.InventoryRepository,
+	notificationService *service.NotificationService,
+	gateway phonepe.Gateway,
+) *service.RefundService {
+	return service.NewRefundService(refundRepo, orderRepo, paymentRepo, inventoryRepo,
+		nil, nil, notificationService, gateway)
 }
 
 // ProvidePaymentRepository creates a new PaymentRepository

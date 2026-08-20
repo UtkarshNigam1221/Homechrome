@@ -16,6 +16,13 @@ type refundBreakdown struct {
 	// IsFinal means this refund clears the order's last unrefunded unit: it earns
 	// back the shipping and absorbs the rounding residual.
 	IsFinal bool
+
+	// The terms behind Total, so a screen can show why it is that number. Shipping
+	// carries the rounding residual too, which is what it overwhelmingly is.
+	LineValue int64
+	Discount  int64
+	Tax       int64
+	Shipping  int64
 }
 
 // prorate returns value's share of the whole for a line worth lineSubtotal,
@@ -27,9 +34,9 @@ func prorate(value, lineSubtotal, subtotal int64) int64 {
 	return (value*lineSubtotal + subtotal/2) / subtotal
 }
 
-// deriveRefundAmount computes the refund: each line less its prorated discount plus
-// its tax. The refund that clears the order also earns the shipping and the residual.
-func deriveRefundAmount(order *domain.Order, requested []domain.CreateRefundItemRequest, priorRefunded int64) (*refundBreakdown, error) {
+// deriveRefundAmount computes the refund: each line less its prorated discount plus its
+// tax, and claimed counts what refunds already spoke for, settled or in flight.
+func deriveRefundAmount(order *domain.Order, requested []domain.CreateRefundItemRequest, claimed map[string]int, priorRefunded int64) (*refundBreakdown, error) {
 	if len(requested) == 0 {
 		return nil, errors.BadRequest("A refund needs at least one line")
 	}
@@ -57,7 +64,7 @@ func deriveRefundAmount(order *domain.Order, requested []domain.CreateRefundItem
 		}
 		seen[req.OrderItemID] = true
 
-		left := item.Quantity - item.RefundedQuantity
+		left := item.Quantity - unrefundedBaseline(item, claimed)
 		if req.Quantity < 1 || req.Quantity > left {
 			return nil, errors.BadRequest(fmt.Sprintf(
 				"Line %s has %d unit(s) left to refund, asked for %d", req.OrderItemID, left, req.Quantity))
@@ -65,10 +72,13 @@ func deriveRefundAmount(order *domain.Order, requested []domain.CreateRefundItem
 		remaining[req.OrderItemID] = left - req.Quantity
 
 		lineSubtotal := item.UnitPrice * int64(req.Quantity)
-		amount := lineSubtotal -
-			prorate(order.DiscountAmount, lineSubtotal, order.Subtotal) +
-			prorate(order.TaxAmount, lineSubtotal, order.Subtotal)
+		lineDiscount := prorate(order.DiscountAmount, lineSubtotal, order.Subtotal)
+		lineTax := prorate(order.TaxAmount, lineSubtotal, order.Subtotal)
+		amount := lineSubtotal - lineDiscount + lineTax
 
+		breakdown.LineValue += lineSubtotal
+		breakdown.Discount += lineDiscount
+		breakdown.Tax += lineTax
 		runningTotal += amount
 		breakdown.Items = append(breakdown.Items, domain.RefundItem{
 			OrderItemID: item.ID,
@@ -80,7 +90,7 @@ func deriveRefundAmount(order *domain.Order, requested []domain.CreateRefundItem
 		})
 	}
 
-	breakdown.IsFinal = clearsOrder(order, remaining)
+	breakdown.IsFinal = clearsOrder(order, remaining, claimed)
 	breakdown.Total = runningTotal
 
 	if breakdown.IsFinal {
@@ -97,18 +107,36 @@ func deriveRefundAmount(order *domain.Order, requested []domain.CreateRefundItem
 		return nil, errors.BadRequest("Refund would exceed the order total")
 	}
 
+	// Whatever the clearing refund absorbs beyond the per-line terms is the shipping
+	// plus the residual. Zero until then, because the parcel still ships.
+	if breakdown.IsFinal {
+		breakdown.Shipping = breakdown.Total - (breakdown.LineValue - breakdown.Discount + breakdown.Tax)
+	}
+
 	return breakdown, nil
+}
+
+// unrefundedBaseline is what a line is already spoken for before this request: what
+// refunds claimed, or the settled counter when no claim is supplied.
+func unrefundedBaseline(item *domain.OrderItem, claimed map[string]int) int {
+	if claimed == nil {
+		return item.RefundedQuantity
+	}
+	if taken := claimed[item.ID]; taken > item.RefundedQuantity {
+		return taken
+	}
+	return item.RefundedQuantity
 }
 
 // clearsOrder reports whether nothing would be left unrefunded once the
 // requested lines go back.
-func clearsOrder(order *domain.Order, remainingAfter map[string]int) bool {
+func clearsOrder(order *domain.Order, remainingAfter, claimed map[string]int) bool {
 	for i := range order.Items {
 		item := &order.Items[i]
 
 		left, requested := remainingAfter[item.ID]
 		if !requested {
-			left = item.Quantity - item.RefundedQuantity
+			left = item.Quantity - unrefundedBaseline(item, claimed)
 		}
 		if left > 0 {
 			return false

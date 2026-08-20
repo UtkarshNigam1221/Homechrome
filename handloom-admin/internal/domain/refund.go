@@ -82,6 +82,10 @@ type Refund struct {
 	InitiatedAt time.Time  `json:"initiated_at" dynamodbav:"initiated_at"`
 	CompletedAt *time.Time `json:"completed_at,omitempty" dynamodbav:"completed_at,omitempty"`
 	CreatedBy   string     `json:"created_by" dynamodbav:"created_by"`
+
+	// CreatedByName is resolved on read, not stored: created_by is an opaque id, no use
+	// to whoever asks who sent money out. Empty for a refund no admin raised.
+	CreatedByName string `json:"created_by_name,omitempty" dynamodbav:"-"`
 }
 
 // DynamoDB keys; refunds live in the orders table. GSI2 carries two partition shapes
@@ -134,6 +138,12 @@ type CreateRefundRequest struct {
 	Items  []CreateRefundItemRequest `json:"items" validate:"required,min=1,dive"`
 }
 
+// PreviewRefundRequest prices lines without raising a refund, so it carries no
+// reason: a reason labels a refund, it does not change what the lines are worth.
+type PreviewRefundRequest struct {
+	Items []CreateRefundItemRequest `json:"items" validate:"required,min=1,dive"`
+}
+
 // RefundRepository persists refunds.
 type RefundRepository interface {
 	Create(ctx context.Context, refund *Refund) error
@@ -154,9 +164,33 @@ type RefundRepository interface {
 	Settle(ctx context.Context, id string, status RefundStatus, completedAt time.Time, errorCode, detailedErrorCode string) error
 }
 
+// RefundPreview is what a requested set of lines would cost. The amount is never
+// taken from the client, so this is the only figure a screen should show.
+type RefundPreview struct {
+	Total   int64        `json:"total"`
+	IsFinal bool         `json:"is_final"`
+	Lines   []RefundItem `json:"lines"`
+
+	// The terms behind Total. Shipping is zero until the refund that clears the
+	// order, and carries the rounding residual when it is not.
+	Breakdown RefundPreviewBreakdown `json:"breakdown"`
+}
+
+// RefundPreviewBreakdown is why the total is the number it is.
+type RefundPreviewBreakdown struct {
+	LineValue int64 `json:"line_value"`
+	Discount  int64 `json:"discount"`
+	Tax       int64 `json:"tax"`
+	Shipping  int64 `json:"shipping"`
+}
+
 // RefundService owns the refund lifecycle.
 type RefundService interface {
 	Create(ctx context.Context, orderID string, req CreateRefundRequest, createdBy string) (*Refund, error)
+
+	// Preview prices a refund without raising one, so an admin sees what will leave
+	// the account before authorizing it. Same derivation Create uses.
+	Preview(ctx context.Context, orderID string, req PreviewRefundRequest) (*RefundPreview, error)
 	ListByOrder(ctx context.Context, orderID string) ([]*Refund, error)
 
 	// HandleRefundCompleted and HandleRefundFailed settle a refund from a
@@ -164,7 +198,7 @@ type RefundService interface {
 	HandleRefundCompleted(ctx context.Context, providerRefundID string) error
 	HandleRefundFailed(ctx context.Context, providerRefundID, errorCode, detailedErrorCode string) error
 
-	// RecheckStatus asks the provider directly: the escape hatch for a webhook that
-	// never came, and the only recovery when no provider id was ever stored.
-	RecheckStatus(ctx context.Context, refundID string) (*Refund, error)
+	// RecheckStatus asks the provider directly: the escape hatch for a webhook that never
+	// came. orderID is the route's — the refund must belong to it, or any is reachable.
+	RecheckStatus(ctx context.Context, orderID, refundID string) (*Refund, error)
 }

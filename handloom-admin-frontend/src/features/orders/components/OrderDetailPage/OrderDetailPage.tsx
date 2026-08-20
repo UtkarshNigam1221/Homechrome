@@ -8,6 +8,7 @@ import {
   MapPin,
   MessageSquare,
   Package,
+  RotateCcw,
   Truck,
 } from 'lucide-react';
 import { useState } from 'react';
@@ -16,25 +17,31 @@ import { useNavigate, useParams } from 'react-router-dom';
 
 import { addressFullName } from '@/features/customers/lib/displayName';
 import { ordersApi } from '@/features/orders/api';
+import { claimedByLiveRefunds } from '@/features/orders/lib/refundClaims';
 import { getErrorMessage } from '@/shared/api/client';
 import { Badge, Button, Card, ConfirmModal, Input, Modal, Select } from '@/shared/components/ui';
+import { useAuthStore } from '@/shared/stores/authStore';
 import { getStatusBadgeVariant } from '@/shared/utils/badge';
-import { formatCurrency } from '@/shared/utils/currency';
+import { formatCurrency, formatCurrencyExact } from '@/shared/utils/currency';
 
 import type { OrderStatus, ProviderPaymentStatus } from '../../types';
 import { ALLOWED_TRANSITIONS } from '../../types';
 import { OrderNotes } from './OrderNotes';
+import { OrderRefunds } from './OrderRefunds';
 import { OrderTimeline } from './OrderTimeline';
+import { RefundModal } from './RefundModal';
 
 export function OrderDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const isAdmin = useAuthStore((state) => state.user?.role === 'ADMIN');
 
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [showTrackingModal, setShowTrackingModal] = useState(false);
   const [showNoteModal, setShowNoteModal] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
+  const [showRefundModal, setShowRefundModal] = useState(false);
   const [newStatus, setNewStatus] = useState<OrderStatus | ''>('');
   const [trackingNumber, setTrackingNumber] = useState('');
   const [carrier, setCarrier] = useState('');
@@ -52,6 +59,20 @@ export function OrderDetailPage() {
     queryFn: () => ordersApi.get(id ?? ''),
     enabled: !!id,
   });
+
+  const { data: refunds = [], isLoading: refundsLoading } = useQuery({
+    queryKey: ['order-refunds', id],
+    queryFn: () => ordersApi.listRefunds(id ?? ''),
+    enabled: !!id,
+  });
+
+  // What the order's refunds already account for, settled or in flight, reconciled
+  // against the payment's own figure — the same reading the server takes.
+  const { claims: refundClaims, amount: priorRefunded } = claimedByLiveRefunds(
+    refunds,
+    order?.refunded_amount ?? 0
+  );
+  const hasPendingRefund = refunds.some((refund) => refund.status === 'PENDING');
 
   // Update status mutation
   const updateStatusMutation = useMutation({
@@ -147,6 +168,15 @@ export function OrderDetailPage() {
   const canCancel = ['PENDING', 'CONFIRMED'].includes(order.status);
   const nextStatuses = ALLOWED_TRANSITIONS[order.status];
 
+  // Refunding is gated on the money having arrived, and on the role. The backend
+  // enforces both; hiding the button just stops the pointless attempt.
+  const canRefund =
+    isAdmin &&
+    ['PAID', 'SUCCESS', 'PARTIALLY_REFUNDED'].includes(order.payment_status) &&
+    order.items?.some(
+      (item) => item.quantity > Math.max(item.refunded_quantity ?? 0, refundClaims[item.id] ?? 0)
+    );
+
   // Mirrors the backend's `http_url` validation so a bad paste is caught before
   // the request. The scheme check matters: this URL becomes a customer-facing
   // link, and a javascript: URL would otherwise sail through.
@@ -222,6 +252,15 @@ export function OrderDetailPage() {
         >
           Add Note
         </Button>
+        {canRefund && (
+          <Button
+            variant="secondary"
+            leftIcon={<RotateCcw className="w-4 h-4" />}
+            onClick={() => setShowRefundModal(true)}
+          >
+            Refund
+          </Button>
+        )}
         {canCancel && (
           <Button
             variant="danger"
@@ -252,7 +291,15 @@ export function OrderDetailPage() {
                     <div>
                       <p className="font-medium">{item.product_name}</p>
                       <p className="text-sm text-gray-500">SKU: {item.product_sku}</p>
-                      <p className="text-sm text-gray-500">Qty: {item.quantity}</p>
+                      <p className="text-sm text-gray-500">
+                        Qty: {item.quantity}
+                        {item.refunded_quantity > 0 && (
+                          <span className="text-amber-700">
+                            {' '}
+                            · {item.refunded_quantity} refunded
+                          </span>
+                        )}
+                      </p>
                       {item.custom_dimensions && (
                         <p className="text-sm text-gray-500">
                           Size: {item.custom_dimensions.length} x {item.custom_dimensions.width}{' '}
@@ -301,8 +348,21 @@ export function OrderDetailPage() {
                 <span>Total</span>
                 <span>{formatCurrency(order.total_amount)}</span>
               </div>
+              {priorRefunded > 0 && (
+                <div className="flex justify-between text-amber-700">
+                  <span>Refunded</span>
+                  <span className="font-mono">−{formatCurrencyExact(priorRefunded)}</span>
+                </div>
+              )}
             </div>
           </Card>
+
+          <OrderRefunds
+            orderId={order.id}
+            refunds={refunds}
+            isLoading={refundsLoading}
+            canRecheck={isAdmin}
+          />
 
           {/* Notes */}
           {order.internal_notes && order.internal_notes.length > 0 && (
@@ -391,6 +451,17 @@ export function OrderDetailPage() {
           <OrderTimeline createdAt={order.created_at} updatedAt={order.updated_at} />
         </div>
       </div>
+
+      {canRefund && (
+        <RefundModal
+          isOpen={showRefundModal}
+          onClose={() => setShowRefundModal(false)}
+          order={order}
+          priorRefunded={priorRefunded}
+          claims={refundClaims}
+          hasPendingRefund={hasPendingRefund}
+        />
+      )}
 
       {/* Update Status Modal */}
       <Modal
