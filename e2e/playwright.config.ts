@@ -25,8 +25,11 @@ export const TARGETS = {
 
 export default defineConfig({
   testDir: './specs',
-  // Deployed infrastructure: a cold Lambda plus a Neon cold start is slow.
-  timeout: 90_000,
+  // Deployed infrastructure: a cold Lambda plus a Neon cold start is slow, and
+  // a refund spec additionally seeds a catalog, launches a browser to pay the
+  // PhonePe sandbox, and then polls for the webhook to settle. 90s covered none
+  // of that; the first run against dev timed out mid-payment.
+  timeout: 240_000,
   expect: { timeout: 15_000 },
 
   // Order-scoped inventory is shared mutable state in one Postgres row per

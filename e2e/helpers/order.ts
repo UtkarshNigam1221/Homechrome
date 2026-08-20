@@ -186,11 +186,20 @@ export async function placePaidOrder(
     })
   );
 
-  const checkout = await json<{ order_id: string; redirect_url?: string; payment_id?: string }>(
+  // CheckoutResult is {order, redirect_url, merchant_txn_id} — the order comes
+  // back whole, there is no top-level order_id.
+  const checkout = await json<{
+    order: { id: string };
+    redirect_url?: string;
+    merchant_txn_id?: string;
+  }>(
     await store.post('/api/v1/store/checkout/initiate', {
       data: { shipping_address_id: address.id },
     })
   );
+  if (!checkout.order?.id) {
+    throw new Error(`checkout returned no order: ${JSON.stringify(checkout).slice(0, 200)}`);
+  }
 
   const redirect = checkout.redirect_url ?? '';
   const autoPaid = redirect.includes('dev_payment=');
@@ -201,7 +210,7 @@ export async function placePaidOrder(
     await payWithSandbox(redirect);
   }
 
-  const order = await pollUntilPaid(store, checkout.order_id);
+  const order = await pollUntilPaid(store, checkout.order.id);
   return { order, autoPaid };
 }
 
