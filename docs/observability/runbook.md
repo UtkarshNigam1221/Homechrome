@@ -160,13 +160,35 @@ GROUP BY 1, 2;
 - [ ] Force a 500 in dev → trace red, Loki ERROR with `trace_id`.
 - [ ] Search Loki for "password" / "Bearer " over the last hour → zero results (redaction working).
 
+## A refund stuck pending
+
+**Signal:** a refund sits `PENDING` well past the provider's settlement window, and
+`refund_outcome_unknown` was recorded when it was raised.
+
+The provider's answer was never seen — a timeout or a 5xx. It is left `PENDING`
+deliberately: PhonePe may have accepted and paid it, and marking it `FAILED` would
+free the units for a second refund of the same money.
+
+### What to do
+
+1. `POST /api/v1/orders/{orderID}/refunds/{refundID}/recheck`. If the provider knows
+   the refund, this settles it either way and there is nothing more to do.
+2. If the re-check errors, the provider does not recognise the merchant refund id.
+   Confirm in the PhonePe dashboard against the refund's `merchant_refund_id` before
+   concluding anything — the id may simply not be indexed yet.
+3. Confirmed never received: the refund has to be abandoned by hand. Set its `status`
+   to `FAILED` on the `REFUND#<id>` item so `claimedByLive` stops counting its units,
+   then raise a fresh refund. There is no admin action for this yet.
+4. Confirmed paid but unsettled: leave the row alone and re-check again once the
+   provider reports it. Do **not** raise a second refund.
+
 ## Stranded reservations
 
 **Signal:** the **Inventory Reconciliation** workflow fails. It runs Sundays 02:30 UTC against dev and prod, and exits non-zero only when units are actually stranded. A failed *read* is reported separately — unknown is not the same as clean.
 
 ### What it means
 
-A reservation settles when the same order either dispatches the stock (`COMMIT`) or gives it back (`RELEASE`). One that does neither is stock held against an order that never shipped and never cancelled. Those units are unsellable, and **no order transition will free them**: from `SHIPPED` the only routes are `DELIVERED`, which has no inventory effect, and `RETURNED`, which restocks only what actually committed.
+A reservation settles when the same order dispatches the stock (`COMMIT`), gives it back (`RELEASE`), or writes it off on a refund (`WRITE_OFF`). The report nets those against what was reserved, so a reservation that settled *partly* is reported for what is still held rather than dropped for having settled at all. One with nothing settled is stock held against an order that never shipped and never cancelled. Those units are unsellable, and **no order transition will free them**: from `SHIPPED` the only routes are `DELIVERED`, which has no inventory effect, and `RETURNED`, which restocks only what actually committed.
 
 This is not `inventory_mutation_failed`. That says a movement failed. This says what is stuck right now, whether or not anyone saw the failure that caused it.
 
@@ -208,7 +230,7 @@ That last row is the one to be careful about: releasing a reservation whose orde
 
 ### Fix
 
-Every order-scoped movement is idempotent per `(product, order, type)` and writes a ledger row, so a fix is safe to retry and leaves a trace. Cancel an order that should be cancelled:
+Every order-scoped movement is idempotent per `(product, order, type, source_id)` — `source_id` being the refund, empty for the order's own lifecycle — and writes a ledger row, so a fix is safe to retry and leaves a trace. Cancel an order that should be cancelled:
 
 ```
 POST /admin/orders/{order_id}/cancel

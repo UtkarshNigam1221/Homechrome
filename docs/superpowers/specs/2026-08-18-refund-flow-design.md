@@ -283,7 +283,14 @@ WriteOffStock(ctx context.Context, productID string, quantity int, orderID strin
 One transaction, `SELECT ... FOR UPDATE`, `reserved_qty -= q` and `quantity -= q` (so
 `available_qty` is unchanged — the units were already unavailable while reserved, and now
 they do not exist). Guards mirror `CommitStock`: `reserved_qty >= q && quantity >= q`.
-One ledger row, new type `WRITE_OFF`, `reference_id = orderID`.
+One ledger row, new type `WRITE_OFF`, `reference_id = orderID` and
+`source_id = refundID`.
+
+`reference_id` alone was wrong and shipped that way: migration 013 makes
+`(product, order, type)` unique, so the second refund of a product on one order was
+deduped into the first and moved no stock. `source_id` is what separates them, while
+keeping the reference on the order so the ledger and the orphan report still read one
+story per order. Corrected by migration 014.
 
 This is arithmetically identical to `CommitStock` but semantically distinct, and the
 ledger must be able to tell a dispatch from a write-off. The frontend
@@ -421,6 +428,16 @@ The Refund action is hidden for non-`ADMIN` users, matching the server guard.
   recorded rather than how it is priced, and buys nothing against a single operator.
   Revisit only if refunds ever become concurrent: more than one admin raising them,
   an automated retry, or a bulk tool.
+- **A refund whose outcome is unknown has no automatic exit.** Only a 4xx from the
+  provider is treated as a refusal; a timeout or 5xx leaves the refund `PENDING`, on
+  purpose, because PhonePe may have accepted and paid it. `RecheckStatus` is the
+  intended resolution, but `CheckRefundStatus` returns a plain error for any non-200,
+  so a provider 404 — the answer when the request genuinely never arrived — fails the
+  re-check rather than resolving it. Those units and that amount stay counted by
+  `claimedByLive`, so they cannot be refunded again without operator action. Accepted
+  for now because paying twice is the worse failure; resolving a 404 to `FAILED`
+  needs confidence that PhonePe 404s an unknown `merchantRefundId` rather than one it
+  has not indexed yet. Procedure in the runbook.
 - **`Customer.TotalSpent` is not adjusted.** It is documented as gross order value; a
   refund does not reduce it. Changing that is a reporting decision beyond this scope.
 - **Refunds are per order, not per payment attempt.** An order has one successful

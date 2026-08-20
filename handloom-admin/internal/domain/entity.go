@@ -686,6 +686,10 @@ type InventoryTransaction struct {
 	ReferenceType string                   `json:"reference_type,omitempty" db:"reference_type"`
 	ReferenceID   string                   `json:"reference_id,omitempty" db:"reference_id"`
 
+	// SourceID names what inside the order caused the movement — a refund id — when
+	// that is not the order itself. It is what lets one order move stock more than once.
+	SourceID string `json:"source_id,omitempty" db:"source_id"`
+
 	CreatedAt time.Time `json:"created_at" db:"created_at"`
 	CreatedBy string    `json:"created_by" db:"created_by"`
 

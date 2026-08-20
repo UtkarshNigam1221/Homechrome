@@ -20,6 +20,10 @@ type OrderRepository interface {
 	// Update updates an existing order
 	Update(ctx context.Context, order *Order) error
 
+	// ApplyRefundSettlement writes only the lines' refunded quantities and the payment
+	// status, so it cannot revert a status or tracking change made since the read.
+	ApplyRefundSettlement(ctx context.Context, id string, items []OrderItem, paymentStatus PaymentStatus) error
+
 	// List retrieves orders with filters
 	List(ctx context.Context, req ListOrdersRequest) (*ListOrdersResponse, error)
 

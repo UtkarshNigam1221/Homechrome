@@ -213,6 +213,11 @@ export function InventoryLedgerModal({ isOpen, onClose, product }: InventoryLedg
                           {orderID}
                           <ExternalLink className="h-3 w-3" />
                         </Link>
+                        {row.source_id && (
+                          <p className="text-xs text-gray-500">
+                            Refund <span className="font-mono">{row.source_id}</span>
+                          </p>
+                        )}
                       </div>
                     ) : (
                       <div>

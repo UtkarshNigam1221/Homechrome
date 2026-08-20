@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	stderrors "errors"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -162,7 +163,7 @@ func TestRefundService_Create(t *testing.T) {
 				return nil
 			})
 		h.refunds.EXPECT().SetProviderRefundID(gomock.Any(), gomock.Any(), "OMR1").Return(nil)
-		h.inventory.EXPECT().WriteOffStock(gomock.Any(), "prod_a", 1, "order_1").
+		h.inventory.EXPECT().WriteOffStock(gomock.Any(), "prod_a", 1, "order_1", gomock.Not("")).
 			Return(&domain.InventoryTransaction{}, nil)
 
 		refund, err := h.svc.Create(ctx, "order_1", oneLine(1, false), "admin_1")
@@ -172,9 +173,9 @@ func TestRefundService_Create(t *testing.T) {
 		require.Equal(t, int64(10000), h.gateway.initiatedAmount)
 	})
 
-	t.Run("marks the refund failed and moves no stock when the provider is unreachable", func(t *testing.T) {
+	t.Run("marks the refund failed and moves no stock when the provider refuses it", func(t *testing.T) {
 		h := newRefundHarness(t)
-		h.gateway.initiateErr = stderrors.New("connection refused")
+		h.gateway.initiateErr = fmt.Errorf("%w (status 400): AMOUNT_EXCEEDS", phonepe.ErrRejected)
 
 		h.orders.EXPECT().GetByID(gomock.Any(), "order_1").Return(paidOrder(domain.OrderStatusConfirmed), nil)
 		h.payments.EXPECT().GetByOrderID(gomock.Any(), "order_1").Return(paidPayment(), nil)
@@ -188,6 +189,24 @@ func TestRefundService_Create(t *testing.T) {
 		require.Error(t, err)
 	})
 
+	// A timeout is not a refusal. PhonePe may have accepted and paid it, so recording
+	// FAILED would free the units for a second refund and disable the re-check that
+	// could have told us which it was.
+	t.Run("leaves the refund pending when the provider's answer is unknown", func(t *testing.T) {
+		h := newRefundHarness(t)
+		h.gateway.initiateErr = stderrors.New("context deadline exceeded")
+
+		h.orders.EXPECT().GetByID(gomock.Any(), "order_1").Return(paidOrder(domain.OrderStatusConfirmed), nil)
+		h.payments.EXPECT().GetByOrderID(gomock.Any(), "order_1").Return(paidPayment(), nil)
+		h.refunds.EXPECT().ListByOrder(gomock.Any(), "order_1").Return(nil, nil)
+		h.refunds.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
+		// No Settle and no inventory call: gomock fails the test if either happens.
+
+		_, err := h.svc.Create(ctx, "order_1", oneLine(1, false), "admin_1")
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "re-check", "the admin has to be told not to retry blindly")
+	})
+
 	t.Run("releases stock back to sale when the line is marked restock", func(t *testing.T) {
 		h := newRefundHarness(t)
 		h.orders.EXPECT().GetByID(gomock.Any(), "order_1").Return(paidOrder(domain.OrderStatusConfirmed), nil)
@@ -195,7 +214,7 @@ func TestRefundService_Create(t *testing.T) {
 		h.refunds.EXPECT().ListByOrder(gomock.Any(), "order_1").Return(nil, nil)
 		h.refunds.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
 		h.refunds.EXPECT().SetProviderRefundID(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-		h.inventory.EXPECT().ReleaseStock(gomock.Any(), "prod_a", 1, "order_1").
+		h.inventory.EXPECT().ReleaseRefundedStock(gomock.Any(), "prod_a", 1, "order_1", gomock.Not("")).
 			Return(&domain.InventoryTransaction{}, nil)
 
 		_, err := h.svc.Create(ctx, "order_1", oneLine(1, true), "admin_1")
@@ -221,7 +240,7 @@ func TestRefundService_Create(t *testing.T) {
 
 		// One call for 5, not one for 2 and one for 3 — the second would be deduped
 		// into the first and 3 units of stock would never move.
-		h.inventory.EXPECT().WriteOffStock(gomock.Any(), "prod_a", 5, "order_1").
+		h.inventory.EXPECT().WriteOffStock(gomock.Any(), "prod_a", 5, "order_1", gomock.Not("")).
 			Return(&domain.InventoryTransaction{}, nil).Times(1)
 
 		_, err := h.svc.Create(ctx, "order_1", domain.CreateRefundRequest{
@@ -247,9 +266,9 @@ func TestRefundService_Create(t *testing.T) {
 		h.refunds.EXPECT().ListByOrder(gomock.Any(), "order_1").Return(nil, nil)
 		h.refunds.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
 		h.refunds.EXPECT().SetProviderRefundID(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-		h.inventory.EXPECT().ReleaseStock(gomock.Any(), "prod_a", 2, "order_1").
+		h.inventory.EXPECT().ReleaseRefundedStock(gomock.Any(), "prod_a", 2, "order_1", gomock.Not("")).
 			Return(&domain.InventoryTransaction{}, nil).Times(1)
-		h.inventory.EXPECT().WriteOffStock(gomock.Any(), "prod_a", 3, "order_1").
+		h.inventory.EXPECT().WriteOffStock(gomock.Any(), "prod_a", 3, "order_1", gomock.Not("")).
 			Return(&domain.InventoryTransaction{}, nil).Times(1)
 
 		_, err := h.svc.Create(ctx, "order_1", domain.CreateRefundRequest{
@@ -288,7 +307,7 @@ func TestRefundService_Create(t *testing.T) {
 		h.payments.EXPECT().GetByOrderID(gomock.Any(), "order_1").Return(settled, nil)
 		h.refunds.EXPECT().ListByOrder(gomock.Any(), "order_1").Return(nil, nil)
 		h.refunds.EXPECT().SetProviderRefundID(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-		h.inventory.EXPECT().WriteOffStock(gomock.Any(), "prod_a", 2, "order_1").
+		h.inventory.EXPECT().WriteOffStock(gomock.Any(), "prod_a", 2, "order_1", gomock.Not("")).
 			Return(&domain.InventoryTransaction{}, nil)
 
 		// Both units clear the order, so the refund is what is left of it — 10000, not
@@ -368,12 +387,11 @@ func TestRefundService_Settlement(t *testing.T) {
 		// The settled total is recomputed from the order's refunds, not incremented.
 		h.refunds.EXPECT().ListByOrder(gomock.Any(), "order_1").Return([]*domain.Refund{pendingRefund()}, nil)
 
-		h.orders.EXPECT().Update(gomock.Any(), gomock.Any()).
-			DoAndReturn(func(_ context.Context, o *domain.Order) error {
-				require.Equal(t, 1, o.Items[0].RefundedQuantity)
-				// Half the order refunded, so partial — and the rest still ships.
-				require.Equal(t, domain.PaymentStatusPartiallyRefunded, o.PaymentStatus)
-				require.Equal(t, domain.OrderStatusConfirmed, o.Status, "fulfillment status must not move")
+		// Only the lines and the payment status are written — the fulfillment status is
+		// not a parameter, so a whole-order write cannot revert it.
+		h.orders.EXPECT().ApplyRefundSettlement(gomock.Any(), "order_1", gomock.Any(), domain.PaymentStatusPartiallyRefunded).
+			DoAndReturn(func(_ context.Context, _ string, items []domain.OrderItem, _ domain.PaymentStatus) error {
+				require.Equal(t, 1, items[0].RefundedQuantity)
 				return nil
 			})
 		h.payments.EXPECT().UpdateStatus(gomock.Any(), "pay_1",
@@ -392,11 +410,8 @@ func TestRefundService_Settlement(t *testing.T) {
 		// The settled total is recomputed from the order's refunds, not incremented.
 		h.refunds.EXPECT().ListByOrder(gomock.Any(), "order_1").Return([]*domain.Refund{pendingRefund()}, nil)
 
-		h.orders.EXPECT().Update(gomock.Any(), gomock.Any()).
-			DoAndReturn(func(_ context.Context, o *domain.Order) error {
-				require.Equal(t, domain.PaymentStatusRefunded, o.PaymentStatus)
-				return nil
-			})
+		h.orders.EXPECT().ApplyRefundSettlement(gomock.Any(), "order_1", gomock.Any(),
+			domain.PaymentStatusRefunded).Return(nil)
 		h.payments.EXPECT().UpdateStatus(gomock.Any(), "pay_1",
 			domain.PaymentStatusRefunded, gomock.Any()).Return(nil)
 
@@ -420,9 +435,9 @@ func TestRefundService_Settlement(t *testing.T) {
 		h.orders.EXPECT().GetByID(gomock.Any(), "order_1").Return(stale, nil)
 		h.refunds.EXPECT().ListByOrder(gomock.Any(), "order_1").Return([]*domain.Refund{pendingRefund()}, nil)
 
-		h.orders.EXPECT().Update(gomock.Any(), gomock.Any()).
-			DoAndReturn(func(_ context.Context, o *domain.Order) error {
-				require.Equal(t, 1, o.Items[0].RefundedQuantity,
+		h.orders.EXPECT().ApplyRefundSettlement(gomock.Any(), "order_1", gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, _ string, items []domain.OrderItem, _ domain.PaymentStatus) error {
+				require.Equal(t, 1, items[0].RefundedQuantity,
 					"one completed refund of one unit means one, not two")
 				return nil
 			})
@@ -486,7 +501,7 @@ func TestRefundService_RecheckStatus(t *testing.T) {
 		h.payments.EXPECT().AddRefundAmount(gomock.Any(), "pay_1", int64(10000)).Return(int64(10000), nil)
 		h.orders.EXPECT().GetByID(gomock.Any(), "order_1").Return(paidOrder(domain.OrderStatusConfirmed), nil)
 		h.refunds.EXPECT().ListByOrder(gomock.Any(), "order_1").Return([]*domain.Refund{refund}, nil)
-		h.orders.EXPECT().Update(gomock.Any(), gomock.Any()).Return(nil)
+		h.orders.EXPECT().ApplyRefundSettlement(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 		h.payments.EXPECT().UpdateStatus(gomock.Any(), "pay_1", gomock.Any(), gomock.Any()).Return(nil)
 		h.refunds.EXPECT().GetByID(gomock.Any(), "refund_1").Return(refund, nil)
 
@@ -635,7 +650,7 @@ func TestRefundService_Create_CountsRefundsStillInFlight(t *testing.T) {
 		h.refunds.EXPECT().ListByOrder(gomock.Any(), "order_1").Return(inFlight(1, 10000), nil)
 		h.refunds.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
 		h.refunds.EXPECT().SetProviderRefundID(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-		h.inventory.EXPECT().WriteOffStock(gomock.Any(), "prod_a", 1, "order_1").
+		h.inventory.EXPECT().WriteOffStock(gomock.Any(), "prod_a", 1, "order_1", gomock.Not("")).
 			Return(&domain.InventoryTransaction{}, nil)
 
 		refund, err := h.svc.Create(ctx, "order_1", oneLine(1, false), "admin_1")
@@ -655,7 +670,7 @@ func TestRefundService_Create_CountsRefundsStillInFlight(t *testing.T) {
 		}}, nil)
 		h.refunds.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
 		h.refunds.EXPECT().SetProviderRefundID(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-		h.inventory.EXPECT().WriteOffStock(gomock.Any(), "prod_a", 2, "order_1").
+		h.inventory.EXPECT().WriteOffStock(gomock.Any(), "prod_a", 2, "order_1", gomock.Not("")).
 			Return(&domain.InventoryTransaction{}, nil)
 
 		_, err := h.svc.Create(ctx, "order_1", oneLine(2, false), "admin_1")
@@ -676,7 +691,7 @@ func TestRefundService_AuditAndNotify(t *testing.T) {
 		h.refunds.EXPECT().ListByOrder(gomock.Any(), "order_1").Return(nil, nil)
 		h.refunds.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
 		h.refunds.EXPECT().SetProviderRefundID(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-		h.inventory.EXPECT().WriteOffStock(gomock.Any(), "prod_a", 1, "order_1").
+		h.inventory.EXPECT().WriteOffStock(gomock.Any(), "prod_a", 1, "order_1", gomock.Not("")).
 			Return(&domain.InventoryTransaction{}, nil)
 
 		refund, err := h.svc.Create(ctx, "order_1", oneLine(1, false), "admin_1")
@@ -700,7 +715,7 @@ func TestRefundService_AuditAndNotify(t *testing.T) {
 		h.refunds.EXPECT().ListByOrder(gomock.Any(), "order_1").Return(nil, nil)
 		h.refunds.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
 		h.refunds.EXPECT().SetProviderRefundID(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-		h.inventory.EXPECT().WriteOffStock(gomock.Any(), "prod_a", 1, "order_1").
+		h.inventory.EXPECT().WriteOffStock(gomock.Any(), "prod_a", 1, "order_1", gomock.Not("")).
 			Return(&domain.InventoryTransaction{}, nil)
 
 		_, err := h.svc.Create(ctx, "order_1", oneLine(1, false), "admin_1")
@@ -721,7 +736,7 @@ func TestRefundService_AuditAndNotify(t *testing.T) {
 		h.payments.EXPECT().AddRefundAmount(gomock.Any(), "pay_1", int64(10000)).Return(int64(10000), nil)
 		h.orders.EXPECT().GetByID(gomock.Any(), "order_1").Return(paidOrder(domain.OrderStatusConfirmed), nil)
 		h.refunds.EXPECT().ListByOrder(gomock.Any(), "order_1").Return([]*domain.Refund{refund}, nil)
-		h.orders.EXPECT().Update(gomock.Any(), gomock.Any()).Return(nil)
+		h.orders.EXPECT().ApplyRefundSettlement(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 		h.payments.EXPECT().UpdateStatus(gomock.Any(), "pay_1", gomock.Any(), gomock.Any()).Return(nil)
 
 		require.NoError(t, h.svc.HandleRefundCompleted(ctx, "OMR1"))

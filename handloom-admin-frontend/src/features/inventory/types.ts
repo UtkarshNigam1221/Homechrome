@@ -30,8 +30,9 @@ export interface InventoryTransaction {
   reason?: string;
   reference_type?: string;
   reference_id?: string;
-  // What caused the movement when that is not the order itself — today, the
-  // refund. Two write-offs on one order are otherwise indistinguishable.
+  // What inside the order caused the movement — a refund id — when it was not the
+  // order itself. Two write-offs on one order are told apart by this and nothing else.
+  source_id?: string;
   created_by: string;
   // Resolved server-side; created_by alone is an opaque user id.
   created_by_name?: string;

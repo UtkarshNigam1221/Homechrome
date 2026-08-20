@@ -1,5 +1,7 @@
 package phonepe
 
+import "errors"
+
 // Config holds PhonePe Standard Checkout configuration
 type Config struct {
 	ClientID      string
@@ -129,3 +131,7 @@ const (
 	RefundStateConfirmed = "CONFIRMED"
 	RefundStateFailed    = "FAILED"
 )
+
+// ErrRejected marks a refund the provider definitely refused: it answered, and the
+// answer was no. Anything else leaves the outcome unknown — see Create.
+var ErrRejected = errors.New("PhonePe refused the refund")

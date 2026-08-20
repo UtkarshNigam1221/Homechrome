@@ -2,6 +2,7 @@ package dynamodb
 
 import (
 	"context"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -221,7 +222,58 @@ func (r *OrderRepository) GetByCustomer(ctx context.Context, customerID string, 
 	}, nil
 }
 
-// UpdateStatus updates order status
+// ApplyRefundSettlement writes only what a settled refund owns: the lines' refunded
+// quantities and the payment status. Targeted rather than a whole-item write, which
+// would revert a status, tracking or note change made since the order was read.
+//
+// No optimistic lock needed. The caller recomputes both values from every completed
+// refund, so two settlements racing here both write the same answer.
+func (r *OrderRepository) ApplyRefundSettlement(ctx context.Context, id string, items []domain.OrderItem, paymentStatus domain.PaymentStatus) error {
+	marshaledItems, err := attributevalue.Marshal(items)
+	if err != nil {
+		return errors.Internal("Failed to marshal order items")
+	}
+
+	// A partial settlement must never overwrite a full one: two settlements racing can
+	// land in the opposite order to the totals they derived from.
+	condition := "attribute_exists(PK)"
+	values := map[string]types.AttributeValue{
+		":items": marshaledItems,
+		":ps":    &types.AttributeValueMemberS{Value: string(paymentStatus)},
+		exprNow:  &types.AttributeValueMemberS{Value: time.Now().Format(time.RFC3339)},
+	}
+	if paymentStatus != domain.PaymentStatusRefunded {
+		condition += " AND payment_status <> :refunded"
+		values[":refunded"] = &types.AttributeValueMemberS{Value: string(domain.PaymentStatusRefunded)}
+	}
+
+	_, err = r.client.db.UpdateItem(ctx, &dynamodb.UpdateItemInput{
+		TableName: aws.String(r.client.ordersTable),
+		Key: map[string]types.AttributeValue{
+			"PK": &types.AttributeValueMemberS{Value: "ORDER#" + id},
+			"SK": &types.AttributeValueMemberS{Value: skMetadata},
+		},
+		// items is a DynamoDB reserved word, like status, so it has to be aliased.
+		UpdateExpression:          aws.String("SET #items = :items, payment_status = :ps, updated_at = :now"),
+		ExpressionAttributeNames:  map[string]string{"#items": "items"},
+		ExpressionAttributeValues: values,
+		ConditionExpression:       aws.String(condition),
+	})
+	if err != nil {
+		if isConditionalCheckFailed(err) {
+			// Usually a settlement that already marked the order fully refunded, which is
+			// not worth failing a webhook over. It also covers a missing order, so say so
+			// rather than let that pass silently.
+			slog.WarnContext(ctx, "Refund settlement was refused by its condition",
+				"order_id", id, "payment_status", paymentStatus)
+			return nil
+		}
+		return errors.Wrap(err, "Failed to apply refund settlement")
+	}
+
+	return nil
+}
+
 func (r *OrderRepository) UpdateStatus(ctx context.Context, id string, status domain.OrderStatus, updatedBy string) error {
 	now := time.Now()
 

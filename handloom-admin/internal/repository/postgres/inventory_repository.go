@@ -250,18 +250,19 @@ var (
 	movementWriteOff = orderMovement{domain.InventoryTransactionTypeWriteOff, -1, -1}
 )
 
-// existingOrderMovement returns this order's already-recorded movement for the
-// product, or nil. Reading reference_id back is what makes a repeat a no-op.
-func existingOrderMovement(ctx context.Context, tx pgx.Tx, productID, orderID string, typ domain.InventoryTransactionType) (*domain.InventoryTransaction, error) {
+// existingOrderMovement returns the movement this order already recorded for the
+// product and source, or nil. Reading it back is what makes a repeat a no-op.
+func existingOrderMovement(ctx context.Context, tx pgx.Tx, productID, orderID, sourceID string, typ domain.InventoryTransactionType) (*domain.InventoryTransaction, error) {
 	var txn domain.InventoryTransaction
 	err := tx.QueryRow(ctx,
 		`SELECT id, product_id, type, quantity, previous_qty, new_qty, reason,
-		        reference_type, reference_id, created_at, created_by
+		        reference_type, reference_id, source_id, created_at, created_by
 		 FROM inventory_transactions
-		 WHERE product_id = $1 AND reference_id = $2 AND type = $3 AND reference_type = $4`,
-		productID, orderID, string(typ), inventoryRefTypeOrder,
+		 WHERE product_id = $1 AND reference_id = $2 AND type = $3 AND reference_type = $4
+		   AND source_id = $5`,
+		productID, orderID, string(typ), inventoryRefTypeOrder, sourceID,
 	).Scan(&txn.ID, &txn.ProductID, &txn.Type, &txn.Quantity, &txn.PreviousQty,
-		&txn.NewQty, &txn.Reason, &txn.ReferenceType, &txn.ReferenceID,
+		&txn.NewQty, &txn.Reason, &txn.ReferenceType, &txn.ReferenceID, &txn.SourceID,
 		&txn.CreatedAt, &txn.CreatedBy)
 	if err != nil {
 		if err == pgx.ErrNoRows {
@@ -272,9 +273,64 @@ func existingOrderMovement(ctx context.Context, tx pgx.Tx, productID, orderID st
 	return &txn, nil
 }
 
+// orderOutstandingReservation is how much of a product this order still holds
+// reserved: what it reserved, less everything since settled or refunded away.
+//
+// known is false when the ledger holds no reservation for this order at all.
+// reserved_qty can also be set through UpdateInventory, which writes no ledger row,
+// and refusing to release stock the ledger cannot explain would strand it.
+func orderOutstandingReservation(ctx context.Context, tx pgx.Tx, productID, orderID string) (outstanding int, known bool, err error) {
+	var reservedRows int
+	err = tx.QueryRow(ctx,
+		`SELECT COALESCE(SUM(CASE
+		          WHEN type = $3 THEN quantity
+		          WHEN type IN ($4, $5, $6) THEN -quantity
+		          ELSE 0 END), 0),
+		        COUNT(*) FILTER (WHERE type = $3)
+		 FROM inventory_transactions
+		 WHERE product_id = $1 AND reference_id = $2 AND reference_type = $7`,
+		productID, orderID,
+		string(domain.InventoryTransactionTypeReserve),
+		string(domain.InventoryTransactionTypeRelease),
+		string(domain.InventoryTransactionTypeCommit),
+		string(domain.InventoryTransactionTypeWriteOff),
+		inventoryRefTypeOrder,
+	).Scan(&outstanding, &reservedRows)
+	if err != nil {
+		return 0, false, errors.Wrap(err, "failed to read the order's outstanding reservation")
+	}
+	if outstanding < 0 {
+		outstanding = 0
+	}
+	return outstanding, reservedRows > 0, nil
+}
+
+// boundToOutstanding sizes a movement that lowers reserved_qty to what the order
+// still holds. Zero means there is nothing left to settle.
+func boundToOutstanding(quantity, outstanding int, known bool, sourceID string) (int, error) {
+	switch {
+	case !known:
+		// Nothing in the ledger to bound against; the product-level guards are the check.
+		return quantity, nil
+	case sourceID == "":
+		// A cancel or a dispatch settles whatever the order has left, and the caller
+		// cannot know that figure — it passes the ordered quantity.
+		return min(quantity, outstanding), nil
+	case quantity > outstanding:
+		// A refund naming more units than the order holds is a caller error, not a
+		// remainder to settle. Taking a smaller bite would hide it.
+		return 0, errors.New(errors.ErrCodeInsufficientStock,
+			"refund exceeds the order's outstanding reservation")
+	default:
+		return quantity, nil
+	}
+}
+
 // applyOrderMovement performs one product's stock movement inside an existing
-// transaction. A movement already recorded for this order is returned unchanged.
-func applyOrderMovement(ctx context.Context, tx pgx.Tx, m orderMovement, productID string, quantity int, orderID, createdBy string) (*domain.InventoryTransaction, error) {
+// transaction. A movement already recorded for this order and source is returned
+// unchanged. sourceID names a refund; createdBy names an admin, and they are not
+// the same thing — a refund has no actor on the movement it causes.
+func applyOrderMovement(ctx context.Context, tx pgx.Tx, m orderMovement, productID string, quantity int, orderID, sourceID, createdBy string) (*domain.InventoryTransaction, error) {
 	// Lock before the ledger check, not after: concurrent duplicates would both
 	// read "not yet applied" and the second would trip the unique index.
 	var currentQty, reservedQty int
@@ -289,19 +345,52 @@ func applyOrderMovement(ctx context.Context, tx pgx.Tx, m orderMovement, product
 		return nil, errors.Wrap(err, "failed to lock inventory row")
 	}
 
-	existing, err := existingOrderMovement(ctx, tx, productID, orderID, m.typ)
+	existing, err := existingOrderMovement(ctx, tx, productID, orderID, sourceID, m.typ)
 	if err != nil {
 		return nil, err
 	}
+
+	// An order can only give back what it still holds. reserved_qty is a product-wide
+	// total, so sizing a release from the order's lines takes the difference out of
+	// another order's reservation once a refund has written part of this one off.
+	//
+	// Read before the replay check as well as for the clamp: a lifecycle movement was
+	// clamped when it was first applied, and the caller still passes the ordered
+	// quantity, so the two have to be compared on the same footing.
+	var outstanding int
+	var known bool
+	if m.deltaReserve < 0 {
+		if outstanding, known, err = orderOutstandingReservation(ctx, tx, productID, orderID); err != nil {
+			return nil, err
+		}
+	}
+
 	if existing != nil {
 		// A replay of the same amount is the no-op the unique index exists for. A
 		// different amount is divergence, and silently dropping it loses stock.
-		if existing.Quantity != quantity {
+		want := quantity
+		if known && sourceID == "" {
+			// What the clamp would have produced: the ledger no longer counts this
+			// movement's own effect, so add it back to get the figure it saw.
+			if before := outstanding + existing.Quantity; want > before {
+				want = before
+			}
+		}
+		if existing.Quantity != want {
 			return nil, errors.New(errors.ErrCodeConflict,
 				fmt.Sprintf("order %s already recorded %s of %d for product %s, cannot apply %d",
 					orderID, m.typ, existing.Quantity, productID, quantity))
 		}
 		return existing, nil
+	}
+
+	if m.deltaReserve < 0 {
+		if quantity, err = boundToOutstanding(quantity, outstanding, known, sourceID); err != nil {
+			return nil, err
+		}
+		if quantity == 0 {
+			return nil, nil
+		}
 	}
 
 	newQty := currentQty + m.deltaQty*quantity
@@ -351,6 +440,7 @@ func applyOrderMovement(ctx context.Context, tx pgx.Tx, m orderMovement, product
 		Reason:        fmt.Sprintf("ORDER %s", orderID),
 		ReferenceType: inventoryRefTypeOrder,
 		ReferenceID:   orderID,
+		SourceID:      sourceID,
 		CreatedAt:     now,
 		CreatedBy:     createdBy,
 	}
@@ -362,11 +452,11 @@ func applyOrderMovement(ctx context.Context, tx pgx.Tx, m orderMovement, product
 
 // singleOrderMovement wraps applyOrderMovement in its own transaction. No actor:
 // reserve, release and commit are system-driven; only a return carries one.
-func (r *InventoryRepository) singleOrderMovement(ctx context.Context, m orderMovement, productID string, quantity int, orderID string) (*domain.InventoryTransaction, error) {
+func (r *InventoryRepository) singleOrderMovement(ctx context.Context, m orderMovement, productID string, quantity int, orderID, sourceID string) (*domain.InventoryTransaction, error) {
 	var txn *domain.InventoryTransaction
 	err := pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
 		var err error
-		txn, err = applyOrderMovement(ctx, tx, m, productID, quantity, orderID, "")
+		txn, err = applyOrderMovement(ctx, tx, m, productID, quantity, orderID, sourceID, "")
 		return err
 	})
 	if err != nil {
@@ -377,18 +467,25 @@ func (r *InventoryRepository) singleOrderMovement(ctx context.Context, m orderMo
 
 // ReserveStock reserves stock for an order. Idempotent per (product, order).
 func (r *InventoryRepository) ReserveStock(ctx context.Context, productID string, quantity int, orderID string) (*domain.InventoryTransaction, error) {
-	return r.singleOrderMovement(ctx, movementReserve, productID, quantity, orderID)
+	return r.singleOrderMovement(ctx, movementReserve, productID, quantity, orderID, "")
 }
 
-// ReleaseStock releases stock this order reserved. Idempotent per (product, order).
+// ReleaseStock releases stock this order reserved. Idempotent per (product, order),
+// so it belongs to the order lifecycle however many refunds preceded it.
 func (r *InventoryRepository) ReleaseStock(ctx context.Context, productID string, quantity int, orderID string) (*domain.InventoryTransaction, error) {
-	return r.singleOrderMovement(ctx, movementRelease, productID, quantity, orderID)
+	return r.singleOrderMovement(ctx, movementRelease, productID, quantity, orderID, "")
+}
+
+// ReleaseRefundedStock returns a refunded line to sale: only the reservation moves.
+// Scoped to the refund, so a second refund of the same product is not a replay.
+func (r *InventoryRepository) ReleaseRefundedStock(ctx context.Context, productID string, quantity int, orderID, refundID string) (*domain.InventoryTransaction, error) {
+	return r.singleOrderMovement(ctx, movementRelease, productID, quantity, orderID, refundID)
 }
 
 // CommitStock turns this order's reservation into a dispatch: quantity and
 // reserved_qty both drop, available_qty unchanged. Idempotent per (product, order).
 func (r *InventoryRepository) CommitStock(ctx context.Context, productID string, quantity int, orderID string) (*domain.InventoryTransaction, error) {
-	return r.singleOrderMovement(ctx, movementCommit, productID, quantity, orderID)
+	return r.singleOrderMovement(ctx, movementCommit, productID, quantity, orderID, "")
 }
 
 // orderMovementAll applies one movement to every line of an order in a single
@@ -402,7 +499,7 @@ func (r *InventoryRepository) orderMovementAll(ctx context.Context, m orderMovem
 		// Sorted, not map order: two orders sharing products would otherwise take
 		// the FOR UPDATE row locks in opposite sequences and deadlock.
 		for _, productID := range slices.Sorted(maps.Keys(quantities)) {
-			if _, err := applyOrderMovement(ctx, tx, m, productID, quantities[productID], orderID, ""); err != nil {
+			if _, err := applyOrderMovement(ctx, tx, m, productID, quantities[productID], orderID, "", ""); err != nil {
 				return err
 			}
 		}
@@ -426,7 +523,7 @@ func (r *InventoryRepository) CommitOrderStock(ctx context.Context, orderID stri
 func (r *InventoryRepository) ReleaseOrderStock(ctx context.Context, orderID string, quantities map[string]int) error {
 	var failures []error
 	for _, productID := range slices.Sorted(maps.Keys(quantities)) {
-		if _, err := r.singleOrderMovement(ctx, movementRelease, productID, quantities[productID], orderID); err != nil {
+		if _, err := r.singleOrderMovement(ctx, movementRelease, productID, quantities[productID], orderID, ""); err != nil {
 			failures = append(failures, fmt.Errorf("product %s: %w", productID, err))
 		}
 	}
@@ -435,10 +532,10 @@ func (r *InventoryRepository) ReleaseOrderStock(ctx context.Context, orderID str
 	return stderrors.Join(failures...)
 }
 
-// WriteOffStock implements domain.InventoryRepository. Idempotent per
-// (product, order), like every other order-scoped movement.
-func (r *InventoryRepository) WriteOffStock(ctx context.Context, productID string, quantity int, orderID string) (*domain.InventoryTransaction, error) {
-	return r.singleOrderMovement(ctx, movementWriteOff, productID, quantity, orderID)
+// WriteOffStock drops the reservation and on-hand together for a refunded line whose
+// goods are gone. Scoped to the refund, so a second refund is not read as a replay.
+func (r *InventoryRepository) WriteOffStock(ctx context.Context, productID string, quantity int, orderID, refundID string) (*domain.InventoryTransaction, error) {
+	return r.singleOrderMovement(ctx, movementWriteOff, productID, quantity, orderID, refundID)
 }
 
 // ledgerLine is one (product_id, quantity) ledger row, in query order.
@@ -497,7 +594,7 @@ func (r *InventoryRepository) RestockOrderStock(ctx context.Context, orderID, cr
 		}
 
 		for _, line := range committed {
-			if _, err := applyOrderMovement(ctx, tx, movementReturn, line.productID, line.quantity, orderID, createdBy); err != nil {
+			if _, err := applyOrderMovement(ctx, tx, movementReturn, line.productID, line.quantity, orderID, "", createdBy); err != nil {
 				return err
 			}
 		}
@@ -523,7 +620,7 @@ func (r *InventoryRepository) RestockOrderStock(ctx context.Context, orderID, cr
 		}
 
 		for _, line := range stranded {
-			if _, err := applyOrderMovement(ctx, tx, movementRelease, line.productID, line.quantity, orderID, createdBy); err != nil {
+			if _, err := applyOrderMovement(ctx, tx, movementRelease, line.productID, line.quantity, orderID, "", createdBy); err != nil {
 				return err
 			}
 		}
@@ -532,37 +629,48 @@ func (r *InventoryRepository) RestockOrderStock(ctx context.Context, orderID, cr
 }
 
 // FindOrphanReservations implements domain.InventoryRepository. The signature is a
-// RESERVE with no COMMIT and no RELEASE for the same product and order.
+// RESERVE that nothing has since dispatched, released or written off.
+//
+// This still tests presence rather than netting, so it hands back the full reserved
+// quantity — correct only because applyOrderMovement then clamps it to what the order
+// still holds. Net it here too if that clamp ever moves.
 func (r *InventoryRepository) FindOrphanReservations(ctx context.Context, minAge time.Duration, limit int) ([]*domain.OrphanReservation, error) {
+	// Netted, not tested for presence: a reservation that settled partly is still
+	// partly stranded, and asking only whether any settlement exists hides exactly
+	// that. The quantity reported is what is still held, not what was reserved.
 	const query = `
-		SELECT res.product_id,
-		       p.name  AS product_name,
-		       p.sku   AS sku,
-		       res.reference_id AS order_id,
-		       res.quantity,
-		       res.created_at   AS reserved_at
-		FROM inventory_transactions res
-		JOIN products p ON p.id = res.product_id
-		WHERE res.reference_type = $1
-		  AND res.type = $2
-		  AND res.created_at < $3
-		  AND NOT EXISTS (
-		      SELECT 1 FROM inventory_transactions settled
-		      WHERE settled.product_id = res.product_id
-		        AND settled.reference_id = res.reference_id
-		        AND settled.reference_type = $1
-		        AND settled.type IN ($4, $5)
-		  )
-		ORDER BY res.created_at
-		LIMIT $6`
+		SELECT t.product_id,
+		       p.name AS product_name,
+		       p.sku  AS sku,
+		       t.reference_id AS order_id,
+		       t.outstanding  AS quantity,
+		       t.reserved_at
+		FROM (
+		    SELECT product_id,
+		           reference_id,
+		           SUM(CASE WHEN type = $2 THEN quantity
+		                    WHEN type IN ($4, $5, $6) THEN -quantity
+		                    ELSE 0 END) AS outstanding,
+		           MIN(created_at) FILTER (WHERE type = $2) AS reserved_at
+		    FROM inventory_transactions
+		    WHERE reference_type = $1
+		    GROUP BY product_id, reference_id
+		) t
+		JOIN products p ON p.id = t.product_id
+		WHERE t.outstanding > 0
+		  AND t.reserved_at < $3
+		ORDER BY t.reserved_at
+		LIMIT $7`
 
 	var orphans []*domain.OrphanReservation
 	err := pgxscan.Select(ctx, r.pool, &orphans, query,
 		inventoryRefTypeOrder,
 		string(domain.InventoryTransactionTypeReserve),
 		time.Now().Add(-minAge),
-		string(domain.InventoryTransactionTypeCommit),
 		string(domain.InventoryTransactionTypeRelease),
+		string(domain.InventoryTransactionTypeCommit),
+		// A write-off settles a reservation too: the units are gone, not stranded.
+		string(domain.InventoryTransactionTypeWriteOff),
 		limit,
 	)
 	if err != nil {
@@ -649,6 +757,7 @@ func insertInventoryTransaction(ctx context.Context, tx pgx.Tx, txn *domain.Inve
 		Set(ColReason, txn.Reason).
 		Set(ColReferenceType, txn.ReferenceType).
 		Set(ColReferenceID, txn.ReferenceID).
+		Set(ColSourceID, txn.SourceID).
 		Set(ColCreatedAt, txn.CreatedAt).
 		Set(ColCreatedBy, txn.CreatedBy)
 
