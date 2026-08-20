@@ -124,9 +124,12 @@ test.describe('the ledger UI', () => {
     await page.goto(`/orders/${fx.order.id}`);
     await page.getByRole('button', { name: 'Refund', exact: true }).click();
 
+    // Scope to the dialog, but wait on a field: the Headless UI wrapper has no
+    // layout box and reads as hidden even when open.
     const modal = page.getByRole('dialog');
-    await expect(modal).toBeVisible();
-    await modal.locator('input[type="number"]').first().fill('1');
+    const quantity = modal.locator('input[type="number"]').first();
+    await expect(quantity, 'refund modal did not open').toBeVisible();
+    await quantity.fill('1');
 
     // The submit is disabled while reason is empty
     // (RefundModal: disabled={selectedUnits === 0 || reason === '' || isPricing}),

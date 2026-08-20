@@ -7,6 +7,13 @@ import { Locator, Page, expect } from '@playwright/test';
  *    page — InventoryLedgerModal, opened per row;
  *  - the row actions are icon buttons identified by their title attribute
  *    ("Add stock", "Remove stock", "Stock history"), because they have no text.
+ *
+ * It also absorbs a Headless UI detail. Modal renders
+ * <Dialog as="div" className="relative z-50"> — that element carries
+ * role="dialog", but every child is `fixed inset-0`, so the wrapper collapses to
+ * a zero-size box and Playwright reports it hidden even while it is open. It is
+ * fine to scope queries to it; it is never right to assert it visible. Waits
+ * here target the title or a field instead, both of which have real layout.
  */
 export class InventoryPage {
   constructor(private readonly page: Page) {}
@@ -26,14 +33,19 @@ export class InventoryPage {
     const row = await this.findProduct(nameOrSku);
     await row.locator('[title="Stock history"]').click();
 
-    const modal = this.page.getByRole('dialog').filter({ hasText: 'Stock history' });
-    await expect(modal).toBeVisible({ timeout: 20_000 });
+    const modal = this.page.getByRole('dialog');
+    await expect(
+      modal.locator('[id^="headlessui-dialog-title"]'),
+      'stock history modal did not open'
+    ).toContainText('Stock history', { timeout: 20_000 });
     return modal;
   }
 
   async closeModal(): Promise<void> {
     await this.page.keyboard.press('Escape');
-    await expect(this.page.getByRole('dialog')).toBeHidden({ timeout: 10_000 });
+    // Transition unmounts the dialog, so absence is the signal — not hidden,
+    // which the wrapper reports even when open.
+    await expect(this.page.getByRole('dialog')).toHaveCount(0, { timeout: 10_000 });
   }
 
   /** Opens Add or Remove stock for a product and fills it in. */
@@ -47,12 +59,13 @@ export class InventoryPage {
     await row.locator(`[title="${action}"]`).click();
 
     const modal = this.page.getByRole('dialog');
-    await expect(modal).toBeVisible({ timeout: 20_000 });
+    const quantityField = modal.getByPlaceholder('Enter quantity');
+    await expect(quantityField, `${action} modal did not open`).toBeVisible({ timeout: 20_000 });
 
-    await modal.getByPlaceholder('Enter quantity').fill(String(quantity));
+    await quantityField.fill(String(quantity));
     await modal.locator('textarea').first().fill(reason);
     await modal.locator('button[type="submit"]').click();
 
-    await expect(modal, `${action} modal did not close`).toBeHidden({ timeout: 30_000 });
+    await expect(modal, `${action} modal did not close`).toHaveCount(0, { timeout: 30_000 });
   }
 }
