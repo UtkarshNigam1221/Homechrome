@@ -24,7 +24,7 @@ test.describe('a second refund on the same product', () => {
 
   test.afterEach(async () => {
     // #230 case 35, before teardown removes the evidence.
-    if (fx) await expectAllLedgersBalance(fx.admin, fx.products.map((p) => p.id));
+    if (fx) await expectAllLedgersBalance(fx.admin, fx.products);
     await releaseFixture(fx);
     fx = undefined;
   });

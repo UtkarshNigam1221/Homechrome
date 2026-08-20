@@ -40,14 +40,26 @@ function delta(row: InventoryTransaction): { onHand: number; reserved: number } 
 /**
  * Replays the ledger and asserts it agrees with live inventory.
  *
- * Replay starts from the newest ADJUST when there is one — a stocktake sets
- * quantity rather than moving it, so anything before it is not additive.
+ * Replay needs an opening balance because the ledger does not contain one:
+ * ProductService.Create writes the inventory row with Quantity = InitialStock
+ * and no transaction to match, so the first stock a product ever has is
+ * invisible to the ledger. Summing deltas from zero therefore lands
+ * `initialStock` short for every product in the system — #230 case 35 as
+ * literally worded ("SUM(ledger deltas) equals inventory.quantity") cannot hold
+ * until opening stock is ledgered.
+ *
+ * reserved_qty needs no such treatment: it genuinely starts at zero and every
+ * change to it is a movement.
+ *
+ * A stocktake is the other discontinuity — ADJUST sets quantity outright rather
+ * than moving it — so replay restarts from the newest one when there is one.
  */
 export async function expectLedgerBalances(
   api: APIRequestContext,
-  productId: string,
+  product: { id: string; initialStock: number },
   context = ''
 ): Promise<void> {
+  const productId = product.id;
   const [inventory, ledger] = await Promise.all([
     getInventory(api, productId),
     getLedger(api, productId),
@@ -60,7 +72,7 @@ export async function expectLedgerBalances(
   const lastAdjust = ordered.map((r) => r.type).lastIndexOf('ADJUST');
   const replayFrom = lastAdjust >= 0 ? lastAdjust : 0;
 
-  let onHand = lastAdjust >= 0 ? ordered[lastAdjust]!.new_qty : 0;
+  let onHand = lastAdjust >= 0 ? ordered[lastAdjust]!.new_qty : product.initialStock;
   let reserved = 0;
 
   for (const row of ordered.slice(lastAdjust >= 0 ? replayFrom + 1 : 0)) {
@@ -89,10 +101,10 @@ export async function expectLedgerBalances(
 /** Convenience for a whole fixture's products. */
 export async function expectAllLedgersBalance(
   api: APIRequestContext,
-  productIds: string[],
+  products: { id: string; initialStock: number }[],
   context = ''
 ): Promise<void> {
-  for (const id of productIds) {
-    await expectLedgerBalances(api, id, context);
+  for (const product of products) {
+    await expectLedgerBalances(api, product, context);
   }
 }

@@ -38,7 +38,7 @@ test.describe('refund webhook settlement over HTTP', () => {
   });
 
   test.afterEach(async () => {
-    if (fx) await expectLedgerBalances(admin, fx.products[0]!.id, 'after webhook spec');
+    if (fx) await expectLedgerBalances(admin, fx.products[0]!, 'after webhook spec');
     await releaseFixture(fx);
     fx = undefined;
   });

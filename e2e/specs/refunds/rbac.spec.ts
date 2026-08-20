@@ -78,6 +78,6 @@ test.describe('refund routes are admin-only', () => {
   test('the ledger still balances after the refusals', async () => {
     // #230 case 35. A refused request must move nothing; asserting it here
     // catches a 403 that rejected the response but not the side effect.
-    await expectLedgerBalances(admin, catalog!.products[0]!.id, 'after rbac spec');
+    await expectLedgerBalances(admin, catalog!.products[0]!, 'after rbac spec');
   });
 });

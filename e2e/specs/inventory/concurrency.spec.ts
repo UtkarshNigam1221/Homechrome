@@ -24,7 +24,7 @@ test.describe('concurrent orders for the last units', () => {
   });
 
   test.afterEach(async () => {
-    if (catalog) await expectLedgerBalances(api, catalog.products[0]!.id, 'after concurrency spec');
+    if (catalog) await expectLedgerBalances(api, catalog.products[0]!, 'after concurrency spec');
     await destroyCatalog(api, catalog);
     catalog = undefined;
   });

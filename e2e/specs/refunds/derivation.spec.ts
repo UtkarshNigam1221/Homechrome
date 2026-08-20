@@ -21,7 +21,7 @@ test.describe('refund amount derivation', () => {
 
   test.afterEach(async () => {
     if (fx) {
-      for (const p of fx.products) await expectLedgerBalances(admin, p.id, 'after derivation spec');
+      for (const p of fx.products) await expectLedgerBalances(admin, p, 'after derivation spec');
     }
     await releaseFixture(fx);
     fx = undefined;

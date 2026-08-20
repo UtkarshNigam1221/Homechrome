@@ -26,7 +26,7 @@ test.describe('duplicate product lines', () => {
   test.afterEach(async () => {
     // #230 case 35: the ledger must replay to the live balance after every
     // scenario, not only the ones that thought to check.
-    if (catalog) await expectAllLedgersBalance(api, catalog.products.map((p) => p.id));
+    if (catalog) await expectAllLedgersBalance(api, catalog.products);
     await destroyCatalog(api, catalog);
     catalog = undefined;
   });
