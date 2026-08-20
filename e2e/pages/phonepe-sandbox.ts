@@ -47,7 +47,8 @@ export async function payWithSandbox(
     // The QR is the only PNG data-uri on the page; everything else is an SVG
     // icon or a CDN logo.
     const qr = page.locator('img[src^="data:image/png"]').first();
-    await qr.waitFor({ state: 'visible', timeout: 30_000 });
+    // If the QR has not rendered in 15s the page is not the one we expect.
+    await qr.waitFor({ state: 'visible', timeout: 15_000 });
 
     const src = await qr.getAttribute('src');
     if (!src) throw new Error('PhonePe rendered no QR image to scan');

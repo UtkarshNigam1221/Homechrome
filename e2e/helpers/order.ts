@@ -218,21 +218,34 @@ export async function placePaidOrder(
 export async function pollUntilPaid(
   store: APIRequestContext,
   orderId: string,
-  timeoutMs = 60_000
+  timeoutMs = 45_000
 ): Promise<Order> {
   const deadline = Date.now() + timeoutMs;
   let last = '';
+  let consecutiveErrors = 0;
 
   while (Date.now() < deadline) {
     const res = await store.get(`/api/v1/store/checkout/payment-status/${orderId}`);
-    if (res.ok()) {
+
+    if (!res.ok()) {
+      // A 404 here means the order id is wrong, and no amount of waiting fixes
+      // that. Three in a row is the endpoint saying so, not a slow webhook.
+      if (++consecutiveErrors >= 3) {
+        throw new Error(
+          `payment-status kept returning ${res.status()} for order ${orderId} — ` +
+            `the order id is probably wrong, not the payment slow`
+        );
+      }
+    } else {
+      consecutiveErrors = 0;
       const status = await json<{ payment_status?: string; local_status?: string }>(res);
       last = status.payment_status ?? status.local_status ?? '';
       if (last === 'PAID' || last === 'SUCCESS') {
         return json<Order>(await store.get(`/api/v1/store/orders/${orderId}`));
       }
-      if (last === 'FAILED') {
-        throw new Error(`payment failed for order ${orderId}`);
+      // Terminal states: stop immediately rather than waiting out the deadline.
+      if (last === 'FAILED' || last === 'CANCELLED') {
+        throw new Error(`payment reached ${last} for order ${orderId}`);
       }
     }
     await new Promise((r) => setTimeout(r, 2_000));

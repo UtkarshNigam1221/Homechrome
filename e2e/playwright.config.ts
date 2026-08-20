@@ -29,8 +29,18 @@ export default defineConfig({
   // a refund spec additionally seeds a catalog, launches a browser to pay the
   // PhonePe sandbox, and then polls for the webhook to settle. 90s covered none
   // of that; the first run against dev timed out mid-payment.
+  // A passing refund spec genuinely needs this: seed a catalog, launch a
+  // browser, load the hosted page, decode the QR, drive the simulator, wait for
+  // the webhook. It is a ceiling for the happy path, not a budget to spend —
+  // the individual awaits below fail far sooner when something is actually
+  // wrong, so a broken run goes red in seconds rather than minutes.
   timeout: 240_000,
-  expect: { timeout: 15_000 },
+  expect: { timeout: 10_000 },
+
+  // Stop at the first failure in CI. With retries off, a broken run reports in
+  // the time of one spec instead of grinding through the rest to tell you the
+  // same thing.
+  maxFailures: process.env.CI ? 1 : 0,
 
   // Order-scoped inventory is shared mutable state in one Postgres row per
   // product. Specs create their own products to stay independent, but the
@@ -39,9 +49,11 @@ export default defineConfig({
   fullyParallel: false,
   workers: process.env.CI ? 2 : 1,
 
-  // A flaky retry against real infrastructure hides real flakiness. One retry
-  // in CI only, to absorb a genuine Lambda cold-start timeout.
-  retries: process.env.CI ? 1 : 0,
+  // No retries. Against real infrastructure a retry doubles the time to red and
+  // buys a second opinion nobody asked for — the first run against dev spent
+  // 90s failing, then 90s failing again for a different reason. Re-dispatch is
+  // one click if a cold start really did cause it.
+  retries: 0,
   forbidOnly: !!process.env.CI,
 
   reporter: process.env.CI
