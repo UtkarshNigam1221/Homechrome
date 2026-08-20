@@ -37,10 +37,12 @@ export default defineConfig({
   timeout: 240_000,
   expect: { timeout: 10_000 },
 
-  // Stop at the first failure in CI. With retries off, a broken run reports in
-  // the time of one spec instead of grinding through the rest to tell you the
-  // same thing.
-  maxFailures: process.env.CI ? 1 : 0,
+  // Run everything, even after a failure. While the suite is being stabilised
+  // one dispatch that reports every problem beats several that each report one
+  // — the last run stopped at the first failure and left 33 specs unrun.
+  // Worth reinstating (maxFailures: 1) once it is reliably green, when the
+  // point of a run flips from finding faults to gating a promotion.
+  maxFailures: 0,
 
   // One worker, because the suite shares one storefront customer and a customer
   // has exactly one cart. placePaidOrder clears the cart, adds its items, then
