@@ -2,6 +2,7 @@ package dynamodb
 
 import (
 	"context"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -260,8 +261,11 @@ func (r *OrderRepository) ApplyRefundSettlement(ctx context.Context, id string, 
 	})
 	if err != nil {
 		if isConditionalCheckFailed(err) {
-			// The order is gone, or a settlement already marked it fully refunded.
-			// Neither is worth failing a webhook over.
+			// Usually a settlement that already marked the order fully refunded, which is
+			// not worth failing a webhook over. It also covers a missing order, so say so
+			// rather than let that pass silently.
+			slog.WarnContext(ctx, "Refund settlement was refused by its condition",
+				"order_id", id, "payment_status", paymentStatus)
 			return nil
 		}
 		return errors.Wrap(err, "Failed to apply refund settlement")
