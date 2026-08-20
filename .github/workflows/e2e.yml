@@ -1,0 +1,125 @@
+name: E2E (dev)
+
+# Deliberately not on pull_request. This tier is slow, hits deployed
+# infrastructure, needs credentials, and can fail for reasons that have nothing
+# to do with the PR under review — exactly the properties that make a gate
+# unreliable. Per #193: deploy to dev → run this → confirm green → promote.
+on:
+  workflow_dispatch:
+    inputs:
+      grep:
+        description: 'Only run specs matching this (Playwright --grep). Blank runs everything.'
+        required: false
+        type: string
+      project:
+        description: 'Which project to run'
+        required: false
+        type: choice
+        options: [all, api, admin-ui]
+        default: all
+
+permissions:
+  contents: read
+
+concurrency:
+  # The suite mutates shared dev inventory. Two runs at once would fight over
+  # stock on their own products only, but the shared test customer's cart is
+  # genuinely shared — serialise.
+  group: e2e-dev
+  cancel-in-progress: false
+
+jobs:
+  e2e:
+    name: E2E against dev
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+
+      # The workflow lands on main ahead of the suite so it becomes dispatchable
+      # (GitHub only exposes workflow_dispatch for files on the default branch).
+      # Dispatched against a ref without e2e/ — main until #234 lands, or any
+      # older branch — say so and pass, rather than failing on a missing npm ci
+      # and reading like the suite is broken.
+      - name: Is the suite on this ref?
+        id: suite
+        run: |
+          if [ -d e2e ]; then
+            echo 'present=true' >> "$GITHUB_OUTPUT"
+          else
+            echo '::notice::No e2e/ directory on this ref — nothing to run.'
+            echo 'present=false' >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-node@v7
+        if: steps.suite.outputs.present == 'true'
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: e2e/package-lock.json
+
+      - name: Install dependencies
+        if: steps.suite.outputs.present == 'true'
+        working-directory: e2e
+        run: npm ci
+
+      - name: Install Playwright browsers
+        if: steps.suite.outputs.present == 'true'
+        working-directory: e2e
+        # Only the admin-ui project needs a browser; the api project is pure
+        # HTTP. Installing chromium alone keeps the job under a minute here.
+        run: npx playwright install --with-deps chromium
+
+      - name: Run the suite
+        if: steps.suite.outputs.present == 'true'
+        working-directory: e2e
+        env:
+          # Targets — deployed dev, never localhost. Repository variables, not
+          # secrets: these are public hostnames.
+          API_URL: ${{ vars.DEV_API_URL }}
+          ADMIN_URL: ${{ vars.DEV_ADMIN_URL }}
+          STORE_URL: ${{ vars.DEV_STORE_URL }}
+
+          # Admin accounts. OPERATOR exists so the 403s can be asserted rather
+          # than assumed.
+          E2E_ADMIN_EMAIL: ${{ vars.E2E_ADMIN_EMAIL }}
+          E2E_ADMIN_PASSWORD: ${{ secrets.E2E_ADMIN_PASSWORD }}
+          E2E_OPERATOR_EMAIL: ${{ vars.E2E_OPERATOR_EMAIL }}
+          E2E_OPERATOR_PASSWORD: ${{ secrets.E2E_OPERATOR_PASSWORD }}
+
+          # Storefront customer. The phone must be on the deployment's
+          # STORE_TEST_PHONES allowlist and the OTP must match its
+          # STORE_TEST_OTP, or otp/verify rejects and every refund spec fails.
+          E2E_STORE_PHONE: ${{ vars.E2E_STORE_PHONE }}
+          E2E_STORE_OTP: ${{ secrets.E2E_STORE_OTP }}
+
+          E2E_RUN_ID: gha${{ github.run_id }}
+          CI: 'true'
+        run: |
+          args=""
+          if [ -n "${{ inputs.grep }}" ]; then
+            args="$args --grep=${{ inputs.grep }}"
+          fi
+          if [ "${{ inputs.project }}" != "all" ] && [ -n "${{ inputs.project }}" ]; then
+            args="$args --project=${{ inputs.project }}"
+          fi
+          npx playwright test $args
+
+      # Always: a crashed or cancelled run skips its own teardown, and the
+      # products it created would hold stock in dev until someone noticed.
+      - name: Reap anything left behind
+        if: always() && steps.suite.outputs.present == 'true'
+        working-directory: e2e
+        env:
+          API_URL: ${{ vars.DEV_API_URL }}
+          E2E_ADMIN_EMAIL: ${{ vars.E2E_ADMIN_EMAIL }}
+          E2E_ADMIN_PASSWORD: ${{ secrets.E2E_ADMIN_PASSWORD }}
+        run: npm run cleanup
+
+      - name: Upload the report
+        if: always() && steps.suite.outputs.present == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-${{ github.run_id }}
+          path: e2e/playwright-report/
+          retention-days: 14
