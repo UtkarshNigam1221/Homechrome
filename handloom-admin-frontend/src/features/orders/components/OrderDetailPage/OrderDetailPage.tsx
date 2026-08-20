@@ -165,7 +165,9 @@ export function OrderDetailPage() {
     );
   }
 
-  const canCancel = ['PENDING', 'CONFIRMED'].includes(order.status);
+  // Up to dispatch, matching CancelOrder's own guard. This is the only route to a
+  // cancellation now that the status dropdown does not offer one.
+  const canCancel = ['PENDING', 'CONFIRMED', 'PROCESSING'].includes(order.status);
   const nextStatuses = ALLOWED_TRANSITIONS[order.status];
 
   // Refunding is gated on the money having arrived, and on the role. The backend
