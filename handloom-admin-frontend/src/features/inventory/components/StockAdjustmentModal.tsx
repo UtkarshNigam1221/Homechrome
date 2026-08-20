@@ -54,9 +54,8 @@ export function StockAdjustmentModal({
 
   const type = watch('type');
 
-  // defaultValues are read once, when the form first mounts, and this modal stays
-  // mounted between openings. Without this the type stays on whichever action
-  // opened it first, so picking Remove stock after Add stock submitted an add.
+  // defaultValues are read once and this modal stays mounted, so without the reset
+  // the type stuck at whichever action opened it first — Remove submitted an add.
   useEffect(() => {
     if (isOpen) {
       reset({ type: adjustmentType, quantity: 1, reason: '' });

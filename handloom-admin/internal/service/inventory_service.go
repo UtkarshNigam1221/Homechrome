@@ -18,9 +18,7 @@ type InventoryService struct {
 }
 
 // NewInventoryService creates a new InventoryService. userRepo may be nil: the
-// storefront builds this service for stock levels alone and never reads the
-// ledger, so it wires no user directory rather than pulling an admin repository
-// into a customer-facing Lambda.
+// storefront reads stock levels only, so it wires no admin user directory.
 func NewInventoryService(
 	inventoryRepo domain.InventoryRepository,
 	userRepo domain.UserRepository,
@@ -123,10 +121,8 @@ func (s *InventoryService) GetTransactions(ctx context.Context, productID string
 	return result, nil
 }
 
-// resolveActorNames fills in CreatedByName for the movements an admin made.
-// One lookup per distinct user, not per row: a page of stocktake corrections is
-// usually one person. A name that cannot be resolved is left empty rather than
-// failing the read — the history is still worth showing without it.
+// resolveActorNames fills in CreatedByName, one lookup per distinct user. A name
+// that will not resolve is left empty rather than failing the whole read.
 func (s *InventoryService) resolveActorNames(ctx context.Context, txns []*domain.InventoryTransaction) {
 	if s.userRepo == nil {
 		return
@@ -158,23 +154,16 @@ func (s *InventoryService) resolveActorNames(ctx context.Context, txns []*domain
 	}
 }
 
-// orphanReservationMinAge keeps checkouts that are merely still in flight out of
-// the reconciliation. A reservation seconds old is a customer mid-payment, not
-// drift; one still unsettled a day later is nobody's live order.
+// orphanReservationMinAge keeps in-flight checkouts out: a reservation seconds
+// old is a customer mid-payment, not drift.
 const orphanReservationMinAge = 24 * time.Hour
 
 // orphanReservationLimit bounds a report meant to be read. Hitting it means the
-// drift is systemic, which the log line says outright rather than leaving the
-// reader to notice a suspiciously round number.
+// drift is systemic, which the log line says outright.
 const orphanReservationLimit = 500
 
-// FindOrphanReservations reports stock held against orders that never dispatched
-// or cancelled, and meters the count.
-//
-// inventory_mutation_failed says a movement failed but not what it stranded;
-// this is the other half — what is actually stuck right now, whether or not the
-// failure that caused it was ever observed. The gauge is what makes it
-// alertable; the rows are what make it fixable.
+// FindOrphanReservations reports what is stuck now, where inventory_mutation_failed
+// only says a movement failed — whether or not anyone saw it.
 func (s *InventoryService) FindOrphanReservations(ctx context.Context, minAge time.Duration, limit int) ([]*domain.OrphanReservation, error) {
 	if minAge <= 0 {
 		minAge = orphanReservationMinAge

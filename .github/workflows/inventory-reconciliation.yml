@@ -1,19 +1,7 @@
 name: Inventory Reconciliation
 
-# Reports stock reserved against orders that never dispatched and never
-# cancelled. Those units are held against nothing: available_qty understates
-# what is sellable, so the storefront quietly refuses to sell stock we own.
-#
-# They arise because inventory movements are deliberately best-effort. A status
-# transition persists the order first and moves stock second (order_service.go),
-# so a CommitOrderStock that fails at SHIPPED is logged, metered and never
-# retried — and DELIVERED has no inventory effect, so nothing revisits it. The
-# usual trigger is a transient Postgres failure: Neon suspends idle compute, and
-# the first connection after that can outlive the Lambda.
-#
-# Scheduled rather than exposed as an endpoint on purpose: the orphan appears at
-# 3am on a quiet Sunday, which is exactly when nobody is looking at a dashboard.
-# A failing scheduled run is the alert.
+# Stock reserved against orders that never dispatched or cancelled: held against
+# nothing, so available_qty understates what is sellable. A failing run is the alert.
 
 on:
   schedule:

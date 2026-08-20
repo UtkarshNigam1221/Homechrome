@@ -78,9 +78,8 @@ describe('balancesAfter', () => {
     expect(balancesAfter(history, { onHand: 45, reserved: 0 }, false)).toEqual([null, null, null]);
   });
 
-  // The reason the recorded-counter check cannot stand in for the anchor: a
-  // reserve and its release on a newer page net to zero on reserved, so the check
-  // passes on a stale anchor while the derived counter is fabricated.
+  // Why the recorded-counter check cannot replace the anchor: a reserve and its
+  // release net to zero on reserved, so it passes while the derived one is invented.
   it('does not report a reserved figure invented by a stale anchor', () => {
     // Page 2 holds one ADD. Newer, unseen: a RESERVE of 5 still outstanding.
     const page2 = [row('ADD', 10, 40, 50)];

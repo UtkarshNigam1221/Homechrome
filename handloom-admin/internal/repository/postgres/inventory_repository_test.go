@@ -472,9 +472,8 @@ func TestInventoryRepository_RestockOrderStock(t *testing.T) {
 	})
 }
 
-// The drift signature: a reservation with no dispatch and no release. Every
-// other pairing settles, so what this returns is stock no order transition will
-// ever free.
+// The drift signature: a reservation with no dispatch and no release. Every other
+// pairing settles, so what is left is stock no transition will free.
 func TestInventoryRepository_FindOrphanReservations(t *testing.T) {
 	pool := newTestPool(t)
 	repo := postgres.NewInventoryRepository(pool)
@@ -577,9 +576,8 @@ func TestInventoryRepository_FindOrphanReservations(t *testing.T) {
 	})
 }
 
-// #227: movements a second apart are routine — a reserve and its release land in
-// the same second — and ordering on created_at alone left the sort unstable, so
-// offset pagination could repeat a row on one page and skip it on the next.
+// #227: same-second movements are routine, and created_at alone left the sort
+// unstable, so pagination could repeat a row on one page and skip it on the next.
 func TestInventoryRepository_GetTransactions_StableAcrossPages(t *testing.T) {
 	pool := newTestPool(t)
 	repo := postgres.NewInventoryRepository(pool)
@@ -621,11 +619,8 @@ func TestInventoryRepository_GetTransactions_StableAcrossPages(t *testing.T) {
 
 	require.Len(t, seen, 6, "every movement must appear exactly once across the pages")
 
-	// The ids ascend with insertion, so id DESC is the reverse of heap order.
-	// Ordering on created_at alone leaves Postgres free to return heap order,
-	// which is why asserting the exact sequence discriminates where asserting
-	// mere uniqueness does not — on a table this small the unstable sort still
-	// happens to come back consistent.
+	// ids ascend with insertion, so id DESC reverses heap order. Asserting the exact
+	// sequence discriminates; uniqueness does not, as heap order is stable here.
 	require.Equal(t,
 		[]string{"txn_tie_5", "txn_tie_4", "txn_tie_3", "txn_tie_2", "txn_tie_1", "txn_tie_0"},
 		seen,

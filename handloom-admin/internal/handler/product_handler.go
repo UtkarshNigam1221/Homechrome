@@ -287,7 +287,6 @@ func (h *InventoryHandler) Routes() chi.Router {
 	return r
 }
 
-// GetLowStock handles getting low stock products
 // GetOrphanReservations reports stock held against orders that never dispatched
 // or cancelled — the reservations no order transition will ever free.
 func (h *InventoryHandler) GetOrphanReservations(w http.ResponseWriter, r *http.Request) {

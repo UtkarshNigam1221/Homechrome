@@ -8,10 +8,8 @@ export interface MovementEffect {
   reserved?: number;
 }
 
-// A ledger row records a before/after pair for one counter only, but a dispatch
-// moves both: quantity and reserved_qty fall by the same amount, which is what
-// makes available_qty unchanged. Deriving the second figure here is what lets
-// the table show the whole movement instead of half of it.
+// A row records a before/after for one counter, but a dispatch moves both — which
+// is why available_qty holds still. Deriving the second shows the whole movement.
 export function movementEffect(row: InventoryTransaction): MovementEffect {
   const q = row.quantity;
 
@@ -44,14 +42,8 @@ export interface Balance {
   reserved: number;
 }
 
-// A ledger row carries the before/after for one counter, so the other one has to
-// be reconstructed: start from the product's current levels and undo each
-// movement walking backwards through the list.
-//
-// `anchored` says the newest row shown is the product's newest movement, which is
-// true on the first page alone. Checking the recorded counter is not a substitute:
-// a reserve and its release on a newer page net to zero on that counter, so the
-// check passes while the counter this function exists to derive is still wrong.
+// Reconstructs the counter a row does not record by undoing each movement back
+// from current levels. Only valid while `anchored` — the first page — holds.
 export function balancesAfter(
   rows: InventoryTransaction[],
   current: Balance,

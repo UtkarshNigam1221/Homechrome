@@ -104,9 +104,8 @@ func TestInventoryService_GetTransactions_ResolvesActorNames(t *testing.T) {
 	})
 }
 
-// Restored: these cases were dropped when the ledger tests landed, and nothing
-// else covers the stock arithmetic they pin. userRepo is nil because none of
-// them reads the ledger, which is the only path that resolves an actor.
+// Restored: dropped when the ledger tests landed, and nothing else covers the
+// stock arithmetic they pin. userRepo is nil — none of them reads the ledger.
 func TestInventoryService_GetByProductID(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()

@@ -243,10 +243,8 @@ func ProvideInventoryService(
 	return service.NewInventoryService(inventoryRepo, userRepo)
 }
 
-// ProvideStoreInventoryService builds the service without a user directory. The
-// storefront reads stock levels, never the ledger, so resolving admin names is
-// dead weight there — and the user repository has no business in a
-// customer-facing Lambda.
+// ProvideStoreInventoryService builds it without a user directory: the storefront
+// never reads the ledger, and an admin repository has no place in that Lambda.
 func ProvideStoreInventoryService(
 	inventoryRepo domain.InventoryRepository,
 ) *service.InventoryService {

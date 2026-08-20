@@ -521,12 +521,8 @@ func (r *InventoryRepository) RestockOrderStock(ctx context.Context, orderID, cr
 	})
 }
 
-// FindOrphanReservations implements domain.InventoryRepository.
-//
-// The drift signature is a RESERVE with no COMMIT and no RELEASE for the same
-// product and order. Everything else settles: a dispatch consumes the
-// reservation, a cancel or payment failure gives it back. What is left is stock
-// held against an order that did neither, which no reachable transition frees.
+// FindOrphanReservations implements domain.InventoryRepository. The signature is a
+// RESERVE with no COMMIT and no RELEASE for the same product and order.
 func (r *InventoryRepository) FindOrphanReservations(ctx context.Context, minAge time.Duration, limit int) ([]*domain.OrphanReservation, error) {
 	const query = `
 		SELECT res.product_id,
@@ -661,9 +657,8 @@ func (r *InventoryRepository) GetTransactions(ctx context.Context, productID str
 	qb := querybuilder.Select(inventoryTxnColumns...).
 		From("inventory_transactions").
 		Where(ColProductID, productID).
-		// id breaks ties: movements a second apart are common, and an unstable
-		// order both scrambles the history and can repeat or skip a row across
-		// offset-paginated pages.
+		// id breaks ties: same-second movements are common, and an unstable order
+		// repeats or skips rows across pages.
 		OrderBy(ColCreatedAt + " DESC, " + ColID + " DESC").
 		Limit(limit + 1).
 		Offset(offset)
