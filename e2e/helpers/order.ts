@@ -34,17 +34,35 @@ export interface AdminOrderLine {
  */
 export async function resolveTestCustomerId(api: APIRequestContext): Promise<string> {
   const phone = testPhone();
-  const body = await json<{ customers?: { id: string; phone: string }[] }>(
-    await api.get(`/admin/customers?search=${encodeURIComponent(phone)}&limit=10`)
-  );
-  const match = (body.customers ?? []).find((c) => c.phone === phone);
-  if (!match) {
+
+  const find = async () => {
+    const body = await json<{ customers?: { id: string; phone: string }[] }>(
+      await api.get(`/admin/customers?search=${encodeURIComponent(phone)}&limit=10`)
+    );
+    return (body.customers ?? []).find((c) => c.phone === phone);
+  };
+
+  const existing = await find();
+  if (existing) return existing.id;
+
+  // No customer yet for this worker's number. VerifyOTP calls
+  // findOrCreateCustomer, so one storefront login creates it through the same
+  // path a real customer takes — no fabricated record via the admin API.
+  //
+  // This is reachable whenever a worker draws only admin-path specs: those
+  // never log a customer in, so nothing else would ever create it. It bit
+  // workers 2-4 the first time the suite ran in parallel.
+  const store = await customerClient();
+  await store.dispose();
+
+  const created = await find();
+  if (!created) {
     throw new Error(
-      `no customer in dev with phone ${phone}. Run a storefront purchase spec ` +
-        `first, or seed the customer — admin orders need one to attach to.`
+      `logged in as ${phone} but no customer came back from /admin/customers — ` +
+        `is the number on the backend's STORE_TEST_PHONES allowlist?`
     );
   }
-  return match.id;
+  return created.id;
 }
 
 export async function createAdminOrder(
