@@ -1,101 +1,83 @@
-import { chromium, Page } from '@playwright/test';
+import { chromium } from '@playwright/test';
+import jsQR from 'jsqr';
+import { PNG } from 'pngjs';
 
 /**
  * The only file that knows what PhonePe's hosted page looks like.
  *
  * Dev points at api-preprod.phonepe.com/apis/pg-sandbox, so checkout returns a
- * real mercury-uat.phonepe.com URL and the payment genuinely has to be driven.
- * Everything else in the suite is HTTP; this launches its own browser for the
- * payment leg only, so the refund specs stay in the api project rather than
- * being dragged into a browser project wholesale.
+ * real mercury-uat.phonepe.com URL and the payment genuinely has to be made.
  *
- * Every selector below was read off the live UAT page, not guessed. The ids are
- * semantic (#card-number, #card-cvv) while the class names are content-hashed
- * build output, so ids are what this keys on.
+ * The route through it is the one a human already uses in dev: the page renders
+ * a QR, and in UAT that QR does not encode a `upi://` intent a browser could
+ * never follow — it encodes a plain, unauthenticated simulator URL:
  *
- * A DOM change here is a one-file fix. That is the whole reason it is one file.
+ *   https://merchant-simulator.phonepe.com/checkout/ui/v2/payment/status
+ *     ?transactToken=…&amount=…
+ *
+ * which offers Success / Failure / Submitted. So the suite scans the QR the way
+ * a phone would, then clicks the button a tester would. No card, no test VPA,
+ * no credentials of any kind — nothing to configure and nothing to leak.
+ *
+ * Everything below was read off the live UAT pages, not guessed.
  */
 
-export interface TestCard {
-  number: string;
-  name: string;
-  expiry: string; // MM/YY
-  cvv: string;
-  otp?: string; // 3-D Secure step, if the simulator asks
-}
-
-/** Reads the UAT instrument from the environment. Absent → callers should skip. */
-export function testCardFromEnv(): TestCard | undefined {
-  const number = process.env.E2E_PHONEPE_CARD_NUMBER;
-  const expiry = process.env.E2E_PHONEPE_CARD_EXPIRY;
-  const cvv = process.env.E2E_PHONEPE_CARD_CVV;
-  if (!number || !expiry || !cvv) return undefined;
-  return {
-    number,
-    expiry,
-    cvv,
-    name: process.env.E2E_PHONEPE_CARD_NAME ?? 'E2E Suite',
-    otp: process.env.E2E_PHONEPE_CARD_OTP,
-  };
-}
+/** What the simulator should answer. Failure exercises the failed-payment path. */
+export type SandboxOutcome = 'Success' | 'Failure';
 
 /**
- * Drives the hosted page to completion and resolves once PhonePe redirects back
- * to the storefront. Does not assert the order is PAID — settlement is
- * asynchronous, so the caller polls payment-status afterwards.
+ * Pays a checkout by decoding its QR and driving the simulator.
+ *
+ * Returns once the simulator has been submitted. It does **not** assert the
+ * order is paid: settlement is asynchronous — PhonePe calls the webhook — so
+ * the caller polls payment-status afterwards. The merchant page itself may well
+ * render an error after this; it is a collect flow and stops polling once the
+ * tab moves on. That is cosmetic, and asserting on it would be asserting on
+ * PhonePe's UI rather than on our order.
  */
-export async function payWithSandbox(redirectUrl: string, card: TestCard): Promise<void> {
+export async function payWithSandbox(
+  redirectUrl: string,
+  outcome: SandboxOutcome = 'Success'
+): Promise<void> {
   const browser = await chromium.launch();
   try {
     const page = await browser.newPage();
     await page.goto(redirectUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 });
 
-    // The page renders its options client-side; the card form does not exist
-    // until this row is chosen.
-    await page.getByText('Debit/Credit Card', { exact: false }).first().click();
-    await page.locator('#card-number').waitFor({ state: 'visible', timeout: 20_000 });
+    // The QR is the only PNG data-uri on the page; everything else is an SVG
+    // icon or a CDN logo.
+    const qr = page.locator('img[src^="data:image/png"]').first();
+    await qr.waitFor({ state: 'visible', timeout: 30_000 });
 
-    await page.locator('#card-number').fill(card.number);
-    await page.locator('#card-name').fill(card.name);
-    await page.locator('#card-validity').fill(card.expiry);
-    await page.locator('#card-cvv').fill(card.cvv);
+    const src = await qr.getAttribute('src');
+    if (!src) throw new Error('PhonePe rendered no QR image to scan');
 
-    await page.getByRole('button', { name: /proceed/i }).click();
+    const simulatorUrl = decodeQR(src);
+    if (!simulatorUrl.startsWith('https://merchant-simulator.phonepe.com/')) {
+      throw new Error(
+        `expected the UAT QR to encode a merchant-simulator URL, got ${simulatorUrl.slice(0, 80)}.\n` +
+          `A upi:// intent here means dev is pointed at production PhonePe, ` +
+          `where this suite must never transact.`
+      );
+    }
 
-    await settle3DS(page, card);
-
-    // Back on the storefront confirmation route means PhonePe is done with us.
-    await page.waitForURL(/homechrome\.in|confirmation|order/i, { timeout: 90_000 });
+    await page.goto(simulatorUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 });
+    await page.getByRole('button', { name: outcome, exact: true }).click();
+    await page.locator('input[type="submit"]').click();
+    await page.waitForTimeout(3_000);
   } finally {
     await browser.close();
   }
 }
 
-/**
- * The 3-D Secure step. UAT simulators vary — some show an OTP field, some a
- * bare Success button, some nothing at all — so each shape is attempted and a
- * miss is not fatal: if the flow already completed, waitForURL above succeeds
- * regardless.
- */
-async function settle3DS(page: Page, card: TestCard): Promise<void> {
-  await page.waitForTimeout(4_000);
+/** Decodes a base64 PNG data-uri into the string its QR encodes. */
+function decodeQR(dataUri: string): string {
+  const base64 = dataUri.split(',')[1];
+  if (!base64) throw new Error('QR image had no base64 payload');
 
-  if (card.otp) {
-    const otpField = page
-      .locator('input[type="tel"], input[type="text"], input[type="password"]')
-      .filter({ hasNot: page.locator('#card-number, #card-name, #card-validity, #card-cvv') })
-      .first();
-    if (await otpField.isVisible().catch(() => false)) {
-      await otpField.fill(card.otp).catch(() => undefined);
-    }
-  }
+  const png = PNG.sync.read(Buffer.from(base64, 'base64'));
+  const decoded = jsQR(new Uint8ClampedArray(png.data), png.width, png.height);
+  if (!decoded) throw new Error('could not decode the QR image PhonePe rendered');
 
-  for (const name of [/submit/i, /confirm/i, /success/i, /^pay$/i, /proceed/i]) {
-    const button = page.getByRole('button', { name }).first();
-    if (await button.isVisible().catch(() => false)) {
-      await button.click().catch(() => undefined);
-      await page.waitForTimeout(3_000);
-      return;
-    }
-  }
+  return decoded.data;
 }
