@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	stderrors "errors"
 	"log/slog"
 	"time"
 
@@ -95,14 +96,22 @@ func (s *RefundService) Create(ctx context.Context, orderID string, req domain.C
 
 	resp, err := s.gateway.InitiateRefund(ctx, refund.MerchantRefundID, payment.MerchantTransactionID, refund.Amount)
 	if err != nil {
-		// Provider never accepted it, so no money and no stock moved. Recording the
-		// failure beats leaving the row PENDING forever.
 		slog.ErrorContext(ctx, "Refund initiation failed", "refund_id", refund.ID, "error", err)
+		metrics.Record(ctx, "refund_failed", metrics.L{metrics.LabelReason: string(refund.Reason)})
+
+		// Only a refusal is terminal. A timeout or a 5xx means PhonePe may have
+		// accepted and paid it, and marking that FAILED frees the units for a second
+		// refund while disabling the re-check that could have told us — so it stays
+		// PENDING and RecheckStatus resolves it.
+		var rejected *phonepe.RejectedError
+		if !stderrors.As(err, &rejected) {
+			return nil, errors.Wrap(err, "Refund status unknown, re-check it before retrying")
+		}
+
 		if settleErr := s.refundRepo.Settle(ctx, refund.ID, domain.RefundStatusFailed, time.Now(),
 			"INITIATION_FAILED", err.Error()); settleErr != nil {
 			slog.ErrorContext(ctx, "Failed to mark refund failed", "refund_id", refund.ID, "error", settleErr)
 		}
-		metrics.Record(ctx, "refund_failed", metrics.L{metrics.LabelReason: string(refund.Reason)})
 		return nil, errors.Wrap(err, "Failed to initiate refund")
 	}
 
@@ -260,11 +269,11 @@ func (s *RefundService) applyInventoryEffect(ctx context.Context, order *domain.
 		if group.restock {
 			reason = reasonRelease
 			// Back on sale: the reservation is released and nothing else moves.
-			_, err = s.inventoryRepo.ReleaseStock(ctx, group.productID, quantity, order.ID)
+			_, err = s.inventoryRepo.ReleaseRefundedStock(ctx, group.productID, quantity, order.ID, refund.ID)
 		} else {
 			// Written off: the goods are not there, so the reservation goes and
 			// on-hand falls with it.
-			_, err = s.inventoryRepo.WriteOffStock(ctx, group.productID, quantity, order.ID)
+			_, err = s.inventoryRepo.WriteOffStock(ctx, group.productID, quantity, order.ID, refund.ID)
 		}
 		if err != nil {
 			slog.ErrorContext(ctx, "Failed to move stock for refund",

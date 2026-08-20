@@ -1,5 +1,7 @@
 package phonepe
 
+import "fmt"
+
 // Config holds PhonePe Standard Checkout configuration
 type Config struct {
 	ClientID      string
@@ -129,3 +131,14 @@ const (
 	RefundStateConfirmed = "CONFIRMED"
 	RefundStateFailed    = "FAILED"
 )
+
+// RejectedError is a refund the provider definitely refused: it answered, and the answer
+// was no. Anything else leaves the outcome unknown — see the comment in Create.
+type RejectedError struct {
+	Status int
+	Body   string
+}
+
+func (e *RejectedError) Error() string {
+	return fmt.Sprintf("PhonePe refused the refund (status %d): %s", e.Status, e.Body)
+}

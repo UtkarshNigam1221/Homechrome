@@ -266,7 +266,11 @@ type InventoryRepository interface {
 
 	// WriteOffStock releases the reservation and drops on-hand in one transaction. As a
 	// release then a remove, a crash between them puts the units back on sale.
-	WriteOffStock(ctx context.Context, productID string, quantity int, orderID string) (*InventoryTransaction, error)
+	WriteOffStock(ctx context.Context, productID string, quantity int, orderID, refundID string) (*InventoryTransaction, error)
+
+	// ReleaseRefundedStock returns a refunded line to sale: only the reservation moves.
+	// Apart from ReleaseStock, which stays idempotent per order however many refunds ran.
+	ReleaseRefundedStock(ctx context.Context, productID string, quantity int, orderID, refundID string) (*InventoryTransaction, error)
 
 	// FindOrphanReservations lists reservations with no dispatch or release,
 	// older than minAge. A reservation seconds old is still in flight, not drift.
