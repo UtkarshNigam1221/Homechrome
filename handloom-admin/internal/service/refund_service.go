@@ -70,36 +70,7 @@ func (s *RefundService) Create(ctx context.Context, orderID string, req domain.C
 		return nil, errors.BadRequest("Unknown refund reason")
 	}
 
-	order, err := s.orderRepo.GetByID(ctx, orderID)
-	if err != nil {
-		return nil, err
-	}
-
-	payment, err := s.paymentRepo.GetByOrderID(ctx, orderID)
-	if err != nil {
-		return nil, errors.BadRequest("Order has no payment to refund")
-	}
-	if payment.Status != domain.PaymentStatusPaid && payment.Status != domain.PaymentStatusSuccess &&
-		payment.Status != domain.PaymentStatusPartiallyRefunded {
-		return nil, errors.BadRequest("Order has not been paid")
-	}
-
-	// What every refund that has not failed already claims — settled or still in
-	// flight. Bounding on the settled figures alone left a window, between
-	// creating a refund and its webhook landing, in which the same units could go
-	// back a second time and real money left twice.
-	existing, err := s.refundRepo.ListByOrder(ctx, order.ID)
-	if err != nil {
-		return nil, err
-	}
-	claimed, claimedAmount := claimedByLive(existing)
-	if claimedAmount < payment.RefundAmount {
-		// The payment total is authoritative for money; a refund whose settlement
-		// half-completed can leave it ahead of the rows.
-		claimedAmount = payment.RefundAmount
-	}
-
-	breakdown, err := deriveRefundAmount(order, req.Items, claimed, claimedAmount)
+	order, payment, breakdown, err := s.price(ctx, orderID, req.Items)
 	if err != nil {
 		return nil, err
 	}
@@ -215,6 +186,65 @@ func claimedByLive(refunds []*domain.Refund) (map[string]int, int64) {
 	}
 
 	return claimed, amount
+}
+
+// price is everything Create and Preview agree on: the order, the payment that can
+// be refunded, and what the requested lines are worth against what is already claimed.
+func (s *RefundService) price(ctx context.Context, orderID string, items []domain.CreateRefundItemRequest) (*domain.Order, *domain.Payment, *refundBreakdown, error) {
+	order, err := s.orderRepo.GetByID(ctx, orderID)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	payment, err := s.paymentRepo.GetByOrderID(ctx, orderID)
+	if err != nil {
+		return nil, nil, nil, errors.BadRequest("Order has no payment to refund")
+	}
+	if payment.Status != domain.PaymentStatusPaid && payment.Status != domain.PaymentStatusSuccess &&
+		payment.Status != domain.PaymentStatusPartiallyRefunded {
+		return nil, nil, nil, errors.BadRequest("Order has not been paid")
+	}
+
+	// What every refund that has not failed already claims — settled or still in
+	// flight. Bounding on the settled figures alone left a window, between creating a
+	// refund and its webhook landing, in which the same units could go back twice.
+	existing, err := s.refundRepo.ListByOrder(ctx, order.ID)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	claimed, claimedAmount := claimedByLive(existing)
+	if claimedAmount < payment.RefundAmount {
+		// The payment total is authoritative for money; a refund whose settlement
+		// half-completed can leave it ahead of the rows.
+		claimedAmount = payment.RefundAmount
+	}
+
+	breakdown, err := deriveRefundAmount(order, items, claimed, claimedAmount)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	return order, payment, breakdown, nil
+}
+
+// Preview prices a refund without raising one. The screen an admin authorizes from
+// shows this, so it must be the same derivation Create uses — hence the shared price.
+func (s *RefundService) Preview(ctx context.Context, orderID string, req domain.PreviewRefundRequest) (*domain.RefundPreview, error) {
+	_, _, breakdown, err := s.price(ctx, orderID, req.Items)
+	if err != nil {
+		return nil, err
+	}
+
+	return &domain.RefundPreview{
+		Total:   breakdown.Total,
+		IsFinal: breakdown.IsFinal,
+		Lines:   breakdown.Items,
+		Breakdown: domain.RefundPreviewBreakdown{
+			LineValue: breakdown.LineValue,
+			Discount:  breakdown.Discount,
+			Tax:       breakdown.Tax,
+			Shipping:  breakdown.Shipping,
+		},
+	}, nil
 }
 
 // applyInventoryEffect moves stock for a refund, and only while the order still holds a

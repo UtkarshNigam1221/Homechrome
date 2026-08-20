@@ -153,6 +153,27 @@ export interface RefundItem {
   restock: boolean;
 }
 
+// Prices lines without raising a refund, so it carries no reason: the reason labels
+// a refund, it does not affect what the lines are worth.
+export interface PreviewRefundRequest {
+  items: { order_item_id: string; quantity: number }[];
+}
+
+// What a requested set of lines would cost. Derived server-side; the client never
+// sends an amount, so this is the only figure a screen should show.
+export interface RefundPreview {
+  total: number;
+  is_final: boolean;
+  lines: RefundItem[];
+  breakdown: {
+    line_value: number;
+    discount: number;
+    tax: number;
+    // Zero until the refund that clears the order, and carries the residual when not.
+    shipping: number;
+  };
+}
+
 export interface Refund {
   id: string;
   order_id: string;

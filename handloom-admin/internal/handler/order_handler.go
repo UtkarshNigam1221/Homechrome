@@ -50,6 +50,8 @@ func (h *OrderHandler) Routes() chi.Router {
 		r.Use(middleware.RequireRole(domain.UserRoleAdmin))
 		r.With(middleware.ValidateJSONTyped[domain.CreateRefundRequest](h.validation)).
 			Post("/{id}/refunds", h.CreateRefund)
+		r.With(middleware.ValidateJSONTyped[domain.PreviewRefundRequest](h.validation)).
+			Post("/{id}/refunds/preview", h.PreviewRefund)
 		r.Post("/{id}/refunds/{refundID}/recheck", h.RecheckRefund)
 	})
 
@@ -194,6 +196,22 @@ func (h *OrderHandler) Cancel(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response.JSON(w, http.StatusOK, map[string]string{response.KeyMessage: "Order canceled successfully"})
+}
+
+// PreviewRefund prices a refund without raising one, so the screen an admin
+// authorizes from shows the same figure Create will use. Admin-only: it reads an
+// order's money and is the same body as the refund itself.
+func (h *OrderHandler) PreviewRefund(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	req := middleware.MustGetValidatedBody[domain.PreviewRefundRequest](ctx)
+
+	preview, err := h.refundService.Preview(ctx, chi.URLParam(r, "id"), *req)
+	if err != nil {
+		response.Error(w, err)
+		return
+	}
+
+	response.JSON(w, http.StatusOK, preview)
 }
 
 // CreateRefund refunds part or all of an order. The body carries lines and quantities

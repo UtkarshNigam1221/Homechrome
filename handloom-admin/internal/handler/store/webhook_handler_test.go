@@ -25,6 +25,9 @@ type recordingRefundService struct {
 func (r *recordingRefundService) Create(context.Context, string, domain.CreateRefundRequest, string) (*domain.Refund, error) {
 	return nil, nil
 }
+func (r *recordingRefundService) Preview(context.Context, string, domain.PreviewRefundRequest) (*domain.RefundPreview, error) {
+	return nil, nil
+}
 func (r *recordingRefundService) ListByOrder(context.Context, string) ([]*domain.Refund, error) {
 	return nil, nil
 }

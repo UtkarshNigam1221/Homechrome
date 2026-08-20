@@ -16,6 +16,13 @@ type refundBreakdown struct {
 	// IsFinal means this refund clears the order's last unrefunded unit: it earns
 	// back the shipping and absorbs the rounding residual.
 	IsFinal bool
+
+	// The terms behind Total, so a screen can show why it is that number. Shipping
+	// carries the rounding residual too, which is what it overwhelmingly is.
+	LineValue int64
+	Discount  int64
+	Tax       int64
+	Shipping  int64
 }
 
 // prorate returns value's share of the whole for a line worth lineSubtotal,
@@ -68,10 +75,13 @@ func deriveRefundAmount(order *domain.Order, requested []domain.CreateRefundItem
 		remaining[req.OrderItemID] = left - req.Quantity
 
 		lineSubtotal := item.UnitPrice * int64(req.Quantity)
-		amount := lineSubtotal -
-			prorate(order.DiscountAmount, lineSubtotal, order.Subtotal) +
-			prorate(order.TaxAmount, lineSubtotal, order.Subtotal)
+		lineDiscount := prorate(order.DiscountAmount, lineSubtotal, order.Subtotal)
+		lineTax := prorate(order.TaxAmount, lineSubtotal, order.Subtotal)
+		amount := lineSubtotal - lineDiscount + lineTax
 
+		breakdown.LineValue += lineSubtotal
+		breakdown.Discount += lineDiscount
+		breakdown.Tax += lineTax
 		runningTotal += amount
 		breakdown.Items = append(breakdown.Items, domain.RefundItem{
 			OrderItemID: item.ID,
@@ -98,6 +108,12 @@ func deriveRefundAmount(order *domain.Order, requested []domain.CreateRefundItem
 
 	if breakdown.Total < 0 || priorRefunded+breakdown.Total > order.TotalAmount {
 		return nil, errors.BadRequest("Refund would exceed the order total")
+	}
+
+	// Whatever the clearing refund absorbs beyond the per-line terms is the shipping
+	// plus the residual. Zero until then, because the parcel still ships.
+	if breakdown.IsFinal {
+		breakdown.Shipping = breakdown.Total - (breakdown.LineValue - breakdown.Discount + breakdown.Tax)
 	}
 
 	return breakdown, nil

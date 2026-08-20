@@ -52,6 +52,7 @@ export const ROUTES = {
     TRACKING: (id: string) => `/admin/orders/${id}/tracking`,
     CANCEL: (id: string) => `/admin/orders/${id}/cancel`,
     REFUNDS: (id: string) => `/admin/orders/${id}/refunds`,
+    REFUND_PREVIEW: (id: string) => `/admin/orders/${id}/refunds/preview`,
     REFUND_RECHECK: (id: string, refundId: string) =>
       `/admin/orders/${id}/refunds/${refundId}/recheck`,
     PAYMENT_STATUS: (id: string) => `/admin/orders/${id}/payment-status`,

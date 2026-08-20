@@ -9,12 +9,48 @@ import type { Order } from '../../../types';
 import { RefundModal } from '../RefundModal';
 
 vi.mock('@/features/orders/api', () => ({
-  ordersApi: { createRefund: vi.fn() },
+  ordersApi: { createRefund: vi.fn(), previewRefund: vi.fn() },
 }));
 
 vi.mock('react-hot-toast', () => ({
   default: { success: vi.fn(), error: vi.fn() },
 }));
+
+/**
+ * Stands in for the preview endpoint. The fixture order carries no discount, tax
+ * or shipping, so a line is worth exactly its unit price times the quantity —
+ * which is what lets these tests assert the wiring without restating the money
+ * rules the server owns and tests itself.
+ */
+function fakePreview(subject: Order) {
+  return async (_id: string, body: { items: { order_item_id: string; quantity: number }[] }) => {
+    const lines = body.items.map((item) => {
+      const line = (subject.items ?? []).find((entry) => entry.id === item.order_item_id);
+      return {
+        order_item_id: item.order_item_id,
+        product_id: line?.product_id ?? '',
+        product_name: line?.product_name ?? '',
+        quantity: item.quantity,
+        amount: (line?.unit_price ?? 0) * item.quantity,
+        restock: false,
+      };
+    });
+
+    const lineValue = lines.reduce((sum, line) => sum + line.amount, 0);
+    const outstanding = (subject.items ?? []).reduce(
+      (sum, line) => sum + line.quantity - (line.refunded_quantity ?? 0),
+      0
+    );
+    const requested = lines.reduce((sum, line) => sum + line.quantity, 0);
+
+    return {
+      total: lineValue,
+      is_final: requested === outstanding,
+      lines,
+      breakdown: { line_value: lineValue, discount: 0, tax: 0, shipping: 0 },
+    };
+  };
+}
 
 function wrapper({ children }: { children: ReactNode }) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -69,11 +105,15 @@ function order(overrides: Partial<Order> = {}): Order {
 
 function open(props: Partial<React.ComponentProps<typeof RefundModal>> = {}) {
   const onClose = vi.fn();
+  const subject = props.order ?? order();
+  vi.mocked(ordersApi.previewRefund).mockImplementation(
+    fakePreview(subject) as typeof ordersApi.previewRefund
+  );
   const view = render(
     <RefundModal
       isOpen
       onClose={onClose}
-      order={order()}
+      order={subject}
       priorRefunded={0}
       claims={{}}
       hasPendingRefund={false}
@@ -82,6 +122,16 @@ function open(props: Partial<React.ComponentProps<typeof RefundModal>> = {}) {
     { wrapper }
   );
   return { onClose, view };
+}
+
+// The amount comes from the server now, so the button carries it only once the
+// preview lands. Waiting on the figure is what proves the modal shows the priced one.
+async function pricedButton(amount: RegExp) {
+  return waitFor(() => {
+    const button = screen.getByRole('button', { name: amount });
+    expect(button).not.toHaveProperty('disabled', true);
+    return button;
+  });
 }
 
 function qtyFor(name: string): HTMLInputElement {
@@ -118,7 +168,8 @@ describe('RefundModal', () => {
 
     fireEvent.change(qtyFor('Bedsheet'), { target: { value: '9' } });
     fireEvent.change(screen.getByLabelText(/reason/i), { target: { value: 'DAMAGED' } });
-    fireEvent.click(screen.getByRole('button', { name: /Refund ₹/ }));
+    // Priced at two units, not the nine typed: the stepper caps the input.
+    fireEvent.click(await pricedButton(/Refund ₹3,998.00/));
 
     await waitFor(() => expect(ordersApi.createRefund).toHaveBeenCalled());
     expect(vi.mocked(ordersApi.createRefund).mock.calls[0][1]).toEqual({
@@ -141,6 +192,9 @@ describe('RefundModal', () => {
       priorRefunded: 0,
       hasPendingRefund: false,
     };
+    vi.mocked(ordersApi.previewRefund).mockImplementation(
+      fakePreview(props.order) as typeof ordersApi.previewRefund
+    );
     const { rerender } = render(<RefundModal isOpen claims={{}} {...props} />, { wrapper });
 
     fireEvent.change(qtyFor('Bedsheet'), { target: { value: '2' } });
@@ -149,8 +203,7 @@ describe('RefundModal', () => {
     // One of the two units settles elsewhere; only one is still refundable.
     rerender(<RefundModal isOpen claims={{ item_a: 1 }} {...props} priorRefunded={199900} />);
 
-    expect(screen.getByRole('button', { name: /Refund ₹1,999.00/ })).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: /Refund ₹/ }));
+    fireEvent.click(await pricedButton(/Refund ₹1,999.00/));
 
     await waitFor(() => expect(ordersApi.createRefund).toHaveBeenCalled());
     expect(vi.mocked(ordersApi.createRefund).mock.calls[0][1].items).toEqual([
@@ -164,7 +217,7 @@ describe('RefundModal', () => {
 
     fireEvent.change(qtyFor('Saree'), { target: { value: '1' } });
     fireEvent.change(screen.getByLabelText(/reason/i), { target: { value: 'DAMAGED' } });
-    fireEvent.click(screen.getByRole('button', { name: /Refund ₹/ }));
+    fireEvent.click(await pricedButton(/Refund ₹100.00/));
 
     await waitFor(() => expect(ordersApi.createRefund).toHaveBeenCalled());
     expect(vi.mocked(ordersApi.createRefund).mock.calls[0][1].items[0].restock).toBe(false);
@@ -197,13 +250,13 @@ describe('RefundModal', () => {
     expect(qtyFor('Bedsheet').value).toBe('0');
   });
 
-  it('says a refund clears the order when it does', () => {
+  it('says a refund clears the order when it does', async () => {
     open();
 
     fireEvent.change(qtyFor('Bedsheet'), { target: { value: '2' } });
     fireEvent.change(qtyFor('Saree'), { target: { value: '3' } });
 
-    expect(screen.getByText(/clears the order/i)).toBeTruthy();
+    await waitFor(() => expect(screen.getByText(/clears the order/i)).toBeTruthy());
   });
 
   // After dispatch RETURNED owns restocking, so the stock choice is not offered.

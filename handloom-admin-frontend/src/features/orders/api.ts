@@ -6,8 +6,10 @@ import type {
   CreateOrderRequest,
   CreateRefundRequest,
   Order,
+  PreviewRefundRequest,
   ProviderPaymentStatus,
   Refund,
+  RefundPreview,
 } from './types';
 
 export const ordersApi = {
@@ -63,6 +65,13 @@ export const ordersApi = {
   listRefunds: async (id: string): Promise<Refund[]> => {
     const response = await apiClient.get(ROUTES.ORDERS.REFUNDS(id));
     return normalizeListResponse<Refund>(response.data as Record<string, unknown>, 'refunds').items;
+  },
+
+  // Prices a refund without raising one. The server derives the amount either way,
+  // so previewing through it is what makes the figure on screen the one that leaves.
+  previewRefund: async (id: string, data: PreviewRefundRequest): Promise<RefundPreview> => {
+    const response = await apiClient.post<RefundPreview>(ROUTES.ORDERS.REFUND_PREVIEW(id), data);
+    return response.data;
   },
 
   createRefund: async (id: string, data: CreateRefundRequest): Promise<Refund> => {

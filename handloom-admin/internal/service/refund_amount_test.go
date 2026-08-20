@@ -71,6 +71,66 @@ func TestDeriveRefundAmount(t *testing.T) {
 		require.Equal(t, order.TotalAmount, got.Total)
 	})
 
+	t.Run("tax is prorated the same way as the discount", func(t *testing.T) {
+		// subtotal 30000, tax 3000 → a 10000 line carries 1000 of it, added not subtracted.
+		order := refundTestOrder(0, 3000, 0, line("a", 10000, 1, 0), line("b", 20000, 1, 0))
+
+		got, err := deriveRefundAmount(order, []domain.CreateRefundItemRequest{
+			{OrderItemID: "a", Quantity: 1},
+		}, nil, 0)
+
+		require.NoError(t, err)
+		require.Equal(t, int64(11000), got.Total)
+		require.Equal(t, int64(1000), got.Tax)
+	})
+
+	// Half-up, not truncation. A line carrying 1500 of a 3000 discount across two
+	// equal lines rounds away from zero, and truncating would lose the paise.
+	t.Run("proration rounds half up", func(t *testing.T) {
+		// subtotal 3, discount 1 → each line's share is 1/3, and 0.333 rounds to 0;
+		// with subtotal 2 the share is 1/2, which half-up takes to 1 and truncation to 0.
+		order := refundTestOrder(1, 0, 0, line("a", 1, 1, 0), line("b", 1, 1, 0))
+
+		got, err := deriveRefundAmount(order, []domain.CreateRefundItemRequest{
+			{OrderItemID: "a", Quantity: 1},
+		}, nil, 0)
+
+		require.NoError(t, err)
+		require.Equal(t, int64(1), got.Discount, "half of 1 rounds up to 1, truncation would give 0")
+		require.Equal(t, int64(0), got.Total)
+	})
+
+	// The four terms are what a screen shows; they have to reconcile to the number
+	// underneath the Refund button.
+	t.Run("the breakdown adds up to the total", func(t *testing.T) {
+		order := refundTestOrder(3000, 7000, 5000, line("a", 10000, 2, 0), line("b", 20000, 1, 0))
+
+		got, err := deriveRefundAmount(order, []domain.CreateRefundItemRequest{
+			{OrderItemID: "a", Quantity: 2}, {OrderItemID: "b", Quantity: 1},
+		}, nil, 0)
+
+		require.NoError(t, err)
+		require.True(t, got.IsFinal)
+		require.Equal(t, got.Total, got.LineValue-got.Discount+got.Tax+got.Shipping)
+		require.Equal(t, int64(5000), got.Shipping, "the clearing refund earns the shipping back")
+	})
+
+	t.Run("shipping is zero until the refund that clears the order", func(t *testing.T) {
+		order := refundTestOrder(0, 0, 5000, line("a", 10000, 2, 0))
+
+		partial, err := deriveRefundAmount(order, []domain.CreateRefundItemRequest{
+			{OrderItemID: "a", Quantity: 1},
+		}, nil, 0)
+		require.NoError(t, err)
+		require.Equal(t, int64(0), partial.Shipping)
+
+		whole, err := deriveRefundAmount(order, []domain.CreateRefundItemRequest{
+			{OrderItemID: "a", Quantity: 2},
+		}, nil, 0)
+		require.NoError(t, err)
+		require.Equal(t, int64(5000), whole.Shipping)
+	})
+
 	t.Run("discount is prorated by the line's share of the subtotal", func(t *testing.T) {
 		// subtotal 30000, discount 3000 → a 10000 line carries 1000 of it.
 		order := refundTestOrder(3000, 0, 0, line("a", 10000, 1, 0), line("b", 20000, 1, 0))

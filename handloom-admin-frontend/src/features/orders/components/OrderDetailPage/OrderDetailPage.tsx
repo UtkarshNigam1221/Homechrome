@@ -17,7 +17,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 
 import { addressFullName } from '@/features/customers/lib/displayName';
 import { ordersApi } from '@/features/orders/api';
-import { claimedByLiveRefunds } from '@/features/orders/lib/refundAmount';
+import { claimedByLiveRefunds } from '@/features/orders/lib/refundClaims';
 import { getErrorMessage } from '@/shared/api/client';
 import { Badge, Button, Card, ConfirmModal, Input, Modal, Select } from '@/shared/components/ui';
 import { useAuthStore } from '@/shared/stores/authStore';

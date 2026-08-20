@@ -1,16 +1,16 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, Truck } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 
 import { ordersApi } from '@/features/orders/api';
-import type { RefundClaims } from '@/features/orders/lib/refundAmount';
-import { previewRefund, unrefundedQuantity } from '@/features/orders/lib/refundAmount';
+import type { RefundClaims } from '@/features/orders/lib/refundClaims';
+import { unrefundedQuantity } from '@/features/orders/lib/refundClaims';
 import { getErrorMessage } from '@/shared/api/client';
 import { Button, Input, Modal, Select } from '@/shared/components/ui';
 import { formatCurrencyExact } from '@/shared/utils/currency';
 
-import type { Order, RefundReason } from '../../types';
+import type { Order, RefundPreview, RefundReason } from '../../types';
 import { REFUND_REASON_LABELS } from '../../types';
 
 export interface RefundModalProps {
@@ -24,6 +24,10 @@ export interface RefundModalProps {
   /** A refund still awaiting the provider. Its units are not yet off the order. */
   hasPendingRefund: boolean;
 }
+
+// Shown while nothing is selected, so the summary panel has a shape to render
+// rather than every line of it needing a null guard.
+const EMPTY_BREAKDOWN = { line_value: 0, discount: 0, tax: 0, shipping: 0 };
 
 const REASON_OPTIONS = (Object.keys(REFUND_REASON_LABELS) as RefundReason[]).map((value) => ({
   value,
@@ -72,10 +76,35 @@ export function RefundModal({
   );
   const dispatched = isDispatched(order);
 
-  const preview = useMemo(
-    () => previewRefund(order, quantities, priorRefunded, claims),
-    [order, quantities, priorRefunded, claims]
+  // What the admin has asked for, in the shape the server prices — clamped to what
+  // each line still has. A pending refund settling under an open modal shrinks the
+  // remainder, and sending the stale figure would be refused rather than priced.
+  const requested = useMemo(
+    () =>
+      items
+        .map((item) => ({
+          order_item_id: item.id,
+          quantity: Math.min(quantities[item.id] ?? 0, unrefundedQuantity(item, claims)),
+        }))
+        .filter((line) => line.quantity > 0),
+    [items, quantities, claims]
   );
+
+  // Priced by the server, because the server is what decides the amount. Computing
+  // it here as well would be a second implementation of the money to keep agreeing.
+  const { data: priced, isFetching: isPricing } = useQuery({
+    queryKey: ['refund-preview', order.id, requested],
+    queryFn: () => ordersApi.previewRefund(order.id, { items: requested }),
+    enabled: isOpen && requested.length > 0,
+    // Hold the last figure while the next one loads, so the panel does not blink
+    // back to zero between clicks of a stepper.
+    placeholderData: (previous) => previous,
+  });
+
+  const preview: RefundPreview =
+    requested.length > 0 && priced
+      ? priced
+      : { total: 0, is_final: false, lines: [], breakdown: EMPTY_BREAKDOWN };
 
   // From the priced lines, not the raw input: a line that dropped out while the
   // modal was open must not count towards an enabled button.
@@ -89,9 +118,9 @@ export function RefundModal({
         // The quantity that was priced, not the raw input — they differ if a
         // pending refund settles while the modal is open.
         items: preview.lines.map((line) => ({
-          order_item_id: line.orderItemId,
+          order_item_id: line.order_item_id,
           quantity: line.quantity,
-          restock: restock[line.orderItemId] ?? false,
+          restock: restock[line.order_item_id] ?? false,
         })),
       }),
     onSuccess: (refund) => {
@@ -162,7 +191,7 @@ export function RefundModal({
                 {refundable.map((item) => {
                   const left = unrefundedQuantity(item, claims);
                   const quantity = quantities[item.id] ?? 0;
-                  const line = preview.lines.find((entry) => entry.orderItemId === item.id);
+                  const line = preview.lines.find((entry) => entry.order_item_id === item.id);
 
                   return (
                     <tr key={item.id}>
@@ -255,7 +284,7 @@ export function RefundModal({
                   line{preview.lines.length === 1 ? '' : 's'}
                 </span>
                 <span className="font-mono">
-                  {formatCurrencyExact(preview.breakdown.lineValue)}
+                  {formatCurrencyExact(preview.breakdown.line_value)}
                 </span>
               </div>
               {preview.breakdown.discount > 0 && (
@@ -274,7 +303,7 @@ export function RefundModal({
               )}
               <div className="flex justify-between text-sm text-gray-600">
                 <span>
-                  {preview.isFinal ? 'Shipping' : 'Shipping (kept until the order clears)'}
+                  {preview.is_final ? 'Shipping' : 'Shipping (kept until the order clears)'}
                 </span>
                 <span className="font-mono">{formatCurrencyExact(preview.breakdown.shipping)}</span>
               </div>
@@ -282,7 +311,7 @@ export function RefundModal({
                 <span>Refund total</span>
                 <span className="font-mono">{formatCurrencyExact(preview.total)}</span>
               </div>
-              {preview.isFinal ? (
+              {preview.is_final ? (
                 <p className="text-sm text-emerald-700">
                   This clears the order — the shipping comes back with it.
                 </p>
@@ -304,7 +333,9 @@ export function RefundModal({
           </Button>
           <Button
             variant="danger"
-            disabled={selectedUnits === 0 || reason === ''}
+            // Held while the server is still pricing: the figure on the button is
+            // the one being authorised, so it must not be a stale one.
+            disabled={selectedUnits === 0 || reason === '' || isPricing}
             loading={refundMutation.isPending}
             onClick={() => refundMutation.mutate()}
           >
