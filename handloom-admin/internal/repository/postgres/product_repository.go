@@ -218,6 +218,39 @@ func (r *ProductRepository) createProductInTx(ctx context.Context, tx pgx.Tx, pr
 		if _, err := tx.Exec(ctx, invSQL, invArgs...); err != nil {
 			return errors.Internal(err)
 		}
+
+		// Opening stock is a movement like any other, and until now it was the
+		// only one that left no trace: the inventory row simply appeared with a
+		// quantity. That made SUM(ledger deltas) fall short of
+		// inventory.quantity by exactly the opening balance for every product,
+		// so the ledger could never be reconciled against the stock it
+		// describes.
+		//
+		// Same transaction as the row it accounts for — a product whose opening
+		// entry failed to record would reintroduce the drift this closes.
+		//
+		// Recorded as ADD rather than a new type, so it reuses the existing
+		// vocabulary and needs no frontend change. Deliberately does not stamp
+		// last_restock_at: opening stock is not a replenishment, and that field
+		// is read as "when did we last restock this SKU".
+		if inventory.Quantity > 0 {
+			opening := &domain.InventoryTransaction{
+				ID:            "inv_txn_" + uuid.New().String()[:8],
+				ProductID:     inventory.ProductID,
+				Type:          domain.InventoryTransactionTypeAdd,
+				Quantity:      inventory.Quantity,
+				PreviousQty:   0,
+				NewQty:        inventory.Quantity,
+				Reason:        "Opening stock",
+				ReferenceType: inventoryRefTypeUser,
+				ReferenceID:   inventory.CreatedBy,
+				CreatedAt:     now,
+				CreatedBy:     inventory.CreatedBy,
+			}
+			if err := insertInventoryTransaction(ctx, tx, opening); err != nil {
+				return err
+			}
+		}
 	}
 
 	return nil
