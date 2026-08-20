@@ -5,7 +5,6 @@ import (
 	"context"
 	"log/slog"
 	"strings"
-	"time"
 
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/pkg/metrics"
@@ -152,45 +151,6 @@ func (s *InventoryService) resolveActorNames(ctx context.Context, txns []*domain
 
 		txn.CreatedByName = name
 	}
-}
-
-// orphanReservationMinAge keeps in-flight checkouts out: a reservation seconds
-// old is a customer mid-payment, not drift.
-const orphanReservationMinAge = 24 * time.Hour
-
-// orphanReservationLimit bounds a report meant to be read. Hitting it means the
-// drift is systemic, which the log line says outright.
-const orphanReservationLimit = 500
-
-// FindOrphanReservations reports what is stuck now, where inventory_mutation_failed
-// only says a movement failed — whether or not anyone saw it.
-func (s *InventoryService) FindOrphanReservations(ctx context.Context, minAge time.Duration, limit int) ([]*domain.OrphanReservation, error) {
-	if minAge <= 0 {
-		minAge = orphanReservationMinAge
-	}
-	if limit <= 0 || limit > orphanReservationLimit {
-		limit = orphanReservationLimit
-	}
-
-	orphans, err := s.inventoryRepo.FindOrphanReservations(ctx, minAge, limit)
-	if err != nil {
-		return nil, err
-	}
-
-	stranded := 0
-	for _, orphan := range orphans {
-		stranded += orphan.Quantity
-	}
-
-	metrics.RecordSum(ctx, "inventory_orphan_reserved_units", int64(stranded), metrics.L{})
-
-	if len(orphans) > 0 {
-		slog.WarnContext(ctx, "Reservations held with no dispatch or release",
-			"orders", len(orphans), "units", stranded,
-			"truncated", len(orphans) == limit)
-	}
-
-	return orphans, nil
 }
 
 // GetLowStockProducts retrieves products with low stock

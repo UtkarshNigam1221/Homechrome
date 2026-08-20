@@ -482,10 +482,6 @@ type InventoryService interface {
 	// GetTransactions retrieves inventory transactions
 	GetTransactions(ctx context.Context, productID string, pagination PaginationRequest) (*ListInventoryTransactionsResponse, error)
 
-	// FindOrphanReservations lists stock held against orders that never dispatched
-	// or cancelled, and meters the count so the drift is alertable.
-	FindOrphanReservations(ctx context.Context, minAge time.Duration, limit int) ([]*OrphanReservation, error)
-
 	// GetLowStockProducts retrieves products with low stock
 	GetLowStockProducts(ctx context.Context, pagination PaginationRequest) (*ListInventoryResponse, error)
 }

@@ -10,16 +10,10 @@ on:
     - cron: '30 2 * * 0'
   workflow_dispatch:
     inputs:
-      environment:
-        description: 'Which environment to check'
-        required: true
-        type: choice
-        options: [dev, prod, both]
-        default: both
       min_age:
-        description: 'Ignore reservations younger than this interval'
+        description: 'Ignore reservations younger than this (Go duration, e.g. 24h)'
         type: string
-        default: '24 hours'
+        default: '24h'
 
 permissions:
   contents: read
@@ -28,110 +22,32 @@ jobs:
   reconcile:
     name: Check for stranded reservations
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: handloom-admin
     steps:
       - uses: actions/checkout@v7
 
-      - name: Ensure psql is available
-        run: |
-          # ubuntu-latest ships psql, so this is usually a no-op.
-          command -v psql >/dev/null 2>&1 && exit 0
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends postgresql-client
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.25'
+          cache-dependency-path: handloom-admin/go.sum
 
       - name: Report stranded reservations
         env:
           BACKEND_ENV_DEV: ${{ secrets.BACKEND_ENV_DEV }}
           BACKEND_ENV_PROD: ${{ secrets.BACKEND_ENV_PROD }}
           # Passed via env, not inline templating, so the value cannot inject shell.
-          TARGET: ${{ inputs.environment || 'both' }}
-          MIN_AGE: ${{ inputs.min_age || '24 hours' }}
+          MIN_AGE: ${{ inputs.min_age || '24h' }}
         run: |
-          set -uo pipefail
-
           # Extract with grep — never source the secret blob, a value containing
           # shell metacharacters must not corrupt or execute.
           dsn_from() {
             printf '%s\n' "$1" | grep -m1 '^POSTGRES_DSN=' | cut -d= -f2- \
               | sed -e "s/^['\"]//" -e "s/['\"]\$//"
           }
+          DEV_DSN="$(dsn_from "$BACKEND_ENV_DEV")"
+          PROD_DSN="$(dsn_from "$BACKEND_ENV_PROD")"
+          export DEV_DSN PROD_DSN
 
-          # A RESERVE with no COMMIT or RELEASE for the same product and order.
-          # Order-scoped, so one order cannot settle another's reservation.
-          read -r -d '' QUERY <<'SQL' || true
-          SELECT res.reference_id, p.sku, p.name, res.quantity,
-                 to_char(res.created_at, 'YYYY-MM-DD HH24:MI') AS reserved_at
-          FROM inventory_transactions res
-          JOIN products p ON p.id = res.product_id
-          WHERE res.reference_type = 'ORDER'
-            AND res.type = 'RESERVE'
-            AND res.created_at < now() - :'min_age'::interval
-            AND NOT EXISTS (
-              SELECT 1 FROM inventory_transactions settled
-              WHERE settled.product_id = res.product_id
-                AND settled.reference_id = res.reference_id
-                AND settled.reference_type = 'ORDER'
-                AND settled.type IN ('COMMIT', 'RELEASE')
-            )
-          ORDER BY res.created_at
-          LIMIT 500
-          SQL
-
-          stranded_total=0
-          checked=0
-
-          check() {
-            name="$1"; blob="$2"
-            dsn="$(dsn_from "$blob")"
-            if [ -z "$dsn" ]; then
-              echo "::warning::POSTGRES_DSN missing from BACKEND_ENV_${name}; skipping ${name}."
-              return 0
-            fi
-            checked=$((checked + 1))
-
-            # Piped, not -c: psql only interpolates :'min_age' for file or stdin
-            # input, and binding it is what keeps the value out of the SQL text.
-            rows="$(printf '%s' "$QUERY" \
-              | psql "$dsn" -tA -F'|' -v ON_ERROR_STOP=1 -v min_age="$MIN_AGE" -f -)" || {
-              echo "::error::${name}: could not read the ledger. Reconciliation did not run."
-              return 1
-            }
-
-            if [ -z "$rows" ]; then
-              echo "${name}: clean — no reservation older than ${MIN_AGE} is unsettled."
-              return 0
-            fi
-
-            count="$(printf '%s\n' "$rows" | wc -l | tr -d ' ')"
-            units="$(printf '%s\n' "$rows" | awk -F'|' '{s+=$4} END {print s+0}')"
-            stranded_total=$((stranded_total + units))
-
-            echo "::group::${name}: ${count} order(s) holding ${units} unit(s)"
-            printf '%s\n' "$rows" | awk -F'|' \
-              '{printf "  order %s  %-16s %-28s %3s unit(s)  since %s\n", $1, $2, $3, $4, $5}'
-            echo "::endgroup::"
-            echo "::error::${name}: ${units} unit(s) reserved against ${count} order(s) that never dispatched or cancelled."
-          }
-
-          rc=0
-          case "$TARGET" in
-            dev)  check DEV  "$BACKEND_ENV_DEV"  || rc=1 ;;
-            prod) check PROD "$BACKEND_ENV_PROD" || rc=1 ;;
-            both)
-              check DEV  "$BACKEND_ENV_DEV"  || rc=1
-              check PROD "$BACKEND_ENV_PROD" || rc=1
-              ;;
-            *) echo "::error::unknown environment '$TARGET'"; exit 1 ;;
-          esac
-
-          if [ "$checked" -eq 0 ]; then
-            echo "::error::No environment could be checked — both DSN secrets were missing."
-            exit 1
-          fi
-
-          # Non-zero fails the run, and a failing scheduled workflow is the alert.
-          # Release the units with the runbook, do not edit reserved_qty by hand.
-          if [ "$stranded_total" -gt 0 ]; then
-            echo "docs: handloom-admin runbook — inventory reconciliation"
-            exit 1
-          fi
-          exit $rc
+          go run ./scripts/reconcile-inventory --min-age "$MIN_AGE"
