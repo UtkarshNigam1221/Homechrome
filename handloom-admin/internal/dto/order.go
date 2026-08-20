@@ -78,12 +78,6 @@ type CancelOrderRequest struct {
 	Reason string `json:"reason" validate:"required"`
 }
 
-// RefundOrderRequest represents the refund request.
-type RefundOrderRequest struct {
-	Amount int64  `json:"amount" validate:"required,gt=0"`
-	Reason string `json:"reason" validate:"required"`
-}
-
 // CreateCustomerRequest represents the customer creation request.
 type CreateCustomerRequest struct {
 	FirstName string          `json:"first_name" validate:"required"`

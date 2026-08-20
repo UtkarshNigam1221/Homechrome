@@ -118,6 +118,10 @@ const (
 	PaymentStatusRefunded  PaymentStatus = "REFUNDED"
 	PaymentStatusInitiated PaymentStatus = "INITIATED"
 	PaymentStatusSuccess   PaymentStatus = "SUCCESS"
+
+	// PaymentStatusPartiallyRefunded means money went back for some lines while
+	// the rest of the order still stands — and still ships.
+	PaymentStatusPartiallyRefunded PaymentStatus = "PARTIALLY_REFUNDED"
 )
 
 // OrphanReservation is stock a reserve took and nothing gave back. No order
@@ -142,6 +146,10 @@ const (
 	InventoryTransactionTypeAdjust  InventoryTransactionType = "ADJUST"
 	InventoryTransactionTypeCommit  InventoryTransactionType = "COMMIT"
 	InventoryTransactionTypeReturn  InventoryTransactionType = "RETURN"
+
+	// InventoryTransactionTypeWriteOff is a refunded line whose goods are gone: reservation
+	// released, on-hand drops with it. Same arithmetic as a dispatch, different meaning.
+	InventoryTransactionTypeWriteOff InventoryTransactionType = "WRITE_OFF"
 )
 
 // ==================== BASE ENTITY ====================

@@ -17,7 +17,8 @@ const (
 
 // Reason labels for inventory_mutation_failed. One per swallowed-failure call
 const (
-	reasonCommit  = "commit"
-	reasonRelease = "release"
-	reasonRestock = "restock"
+	reasonCommit   = "commit"
+	reasonRelease  = "release"
+	reasonRestock  = "restock"
+	reasonWriteOff = "write_off"
 )

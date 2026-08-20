@@ -351,8 +351,10 @@ func TestCustomerService_Search(t *testing.T) {
 			},
 		}
 
+		// Search is a List with the term set; asserting the request proves the
+		// term is not dropped on the way through.
 		mockCustomerRepo.EXPECT().
-			Search(ctx, "John", pagination).
+			List(ctx, domain.ListCustomersRequest{Search: "John", Pagination: pagination}).
 			Return(expectedResponse, nil)
 
 		response, err := service.Search(ctx, "John", pagination)

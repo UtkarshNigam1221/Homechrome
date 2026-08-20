@@ -94,4 +94,38 @@ type WebhookOrder struct {
 	Amount          int64           `json:"amount"`
 	ExpireAt        int64           `json:"expireAt"`
 	PaymentDetails  []PaymentDetail `json:"paymentDetails"`
+
+	// Present on pg.refund.* only. The payload identifies a refund by PhonePe's refundId
+	// and never echoes ours, which is why refunds are indexed by the provider's id.
+	RefundID                string `json:"refundId,omitempty"`
+	OriginalMerchantOrderID string `json:"originalMerchantOrderId,omitempty"`
+	ErrorCode               string `json:"errorCode,omitempty"`
+	DetailedErrorCode       string `json:"detailedErrorCode,omitempty"`
 }
+
+// RefundResponse is what PhonePe returns when a refund is accepted. State is PENDING —
+// there is no "accepted" event, so RefundID is the only handle until it settles.
+type RefundResponse struct {
+	RefundID string `json:"refundId"`
+	Amount   int64  `json:"amount"`
+	State    string `json:"state"`
+}
+
+// RefundStatusResponse is the provider's current view of a refund, used when a
+// webhook never arrived or its initiation response was lost.
+type RefundStatusResponse struct {
+	OriginalMerchantOrderID string `json:"originalMerchantOrderId"`
+	RefundID                string `json:"refundId"`
+	Amount                  int64  `json:"amount"`
+	State                   string `json:"state"`
+	ErrorCode               string `json:"errorCode,omitempty"`
+	DetailedErrorCode       string `json:"detailedErrorCode,omitempty"`
+}
+
+// Refund states PhonePe reports.
+const (
+	RefundStatePending   = "PENDING"
+	RefundStateCompleted = "COMPLETED"
+	RefundStateConfirmed = "CONFIRMED"
+	RefundStateFailed    = "FAILED"
+)

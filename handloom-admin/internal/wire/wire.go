@@ -191,6 +191,8 @@ func InitializeOrderDeps(ctx context.Context, cfg *config.Config) (*OrderDeps, e
 		ProvideCartService,
 		ProvidePhonePeGateway,
 		ProvidePaymentService,
+		ProvideRefundRepository,
+		ProvideRefundService,
 		ProvideOrderHandler,
 		ProvideCustomerHandler,
 		ProvideAuthMiddleware,
@@ -562,6 +564,8 @@ func InitializeStoreWebhooksDeps(ctx context.Context, cfg *config.Config) (*Stor
 		ProvideCartService,
 		ProvidePhonePeGateway,
 		ProvidePaymentService,
+		ProvideRefundRepository,
+		ProvideRefundService,
 		ProvideStoreWebhookHandler,
 		wire.Struct(new(StoreWebhooksDeps), "*"),
 	)

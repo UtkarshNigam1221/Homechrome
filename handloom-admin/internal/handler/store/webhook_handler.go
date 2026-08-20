@@ -17,15 +17,17 @@ import (
 // WebhookHandler handles incoming webhook callbacks from external providers.
 type WebhookHandler struct {
 	paymentService  domain.PaymentService
+	refundService   domain.RefundService
 	phonePe         phonepe.Gateway
 	webhookUsername string
 	webhookPassword string
 }
 
 // NewWebhookHandler creates a new WebhookHandler.
-func NewWebhookHandler(paymentService domain.PaymentService, phonePe phonepe.Gateway, webhookUsername, webhookPassword string) *WebhookHandler {
+func NewWebhookHandler(paymentService domain.PaymentService, refundService domain.RefundService, phonePe phonepe.Gateway, webhookUsername, webhookPassword string) *WebhookHandler {
 	return &WebhookHandler{
 		paymentService:  paymentService,
+		refundService:   refundService,
 		phonePe:         phonePe,
 		webhookUsername: webhookUsername,
 		webhookPassword: webhookPassword,
@@ -106,6 +108,17 @@ func (h *WebhookHandler) PhonePeWebhook(w http.ResponseWriter, r *http.Request) 
 	case "checkout.order.pending":
 		if err := h.paymentService.HandlePaymentPending(ctx, evt); err != nil {
 			slog.ErrorContext(ctx, "failed to handle payment pending", "error", err)
+		}
+	case "pg.refund.completed":
+		if err := h.refundService.HandleRefundCompleted(ctx, webhookPayload.Payload.RefundID); err != nil {
+			slog.ErrorContext(ctx, "failed to handle refund completed",
+				"refund_id", webhookPayload.Payload.RefundID, "error", err)
+		}
+	case "pg.refund.failed":
+		if err := h.refundService.HandleRefundFailed(ctx, webhookPayload.Payload.RefundID,
+			webhookPayload.Payload.ErrorCode, webhookPayload.Payload.DetailedErrorCode); err != nil {
+			slog.ErrorContext(ctx, "failed to handle refund failed",
+				"refund_id", webhookPayload.Payload.RefundID, "error", err)
 		}
 	default:
 		slog.WarnContext(ctx, "Unhandled PhonePe webhook event", "event", webhookPayload.Event)

@@ -3,6 +3,7 @@ package phonepe
 import (
 	"context"
 	"fmt"
+	"log/slog"
 )
 
 // Gateway defines the methods that PaymentService uses from the PhonePe client.
@@ -10,6 +11,8 @@ import (
 type Gateway interface {
 	InitiatePayment(ctx context.Context, merchantTxnID, customerID string, amount int64, orderID string) (string, error)
 	CheckPaymentStatus(ctx context.Context, merchantTxnID string) (*StatusResponse, error)
+	InitiateRefund(ctx context.Context, merchantRefundID, originalMerchantOrderID string, amount int64) (*RefundResponse, error)
+	CheckRefundStatus(ctx context.Context, merchantRefundID string) (*RefundStatusResponse, error)
 	VerifyWebhookSignature(username, password, authHeader string) bool
 }
 
@@ -59,4 +62,27 @@ func (d *DevClient) CheckPaymentStatus(_ context.Context, merchantTxnID string) 
 
 func (d *DevClient) VerifyWebhookSignature(_, _, _ string) bool {
 	return true
+}
+
+// InitiateRefund settles immediately in development, the way DevClient treats
+// payments — there is no provider to wait on.
+func (d *DevClient) InitiateRefund(_ context.Context, merchantRefundID, originalMerchantOrderID string, amount int64) (*RefundResponse, error) {
+	slog.Info("DEV refund initiated",
+		"merchant_refund_id", merchantRefundID,
+		"original_merchant_order_id", originalMerchantOrderID,
+		"amount_paise", amount)
+
+	return &RefundResponse{
+		RefundID: "dev_refund_" + merchantRefundID,
+		Amount:   amount,
+		State:    RefundStateCompleted,
+	}, nil
+}
+
+// CheckRefundStatus reports the refund complete, matching InitiateRefund.
+func (d *DevClient) CheckRefundStatus(_ context.Context, merchantRefundID string) (*RefundStatusResponse, error) {
+	return &RefundStatusResponse{
+		RefundID: "dev_refund_" + merchantRefundID,
+		State:    RefundStateCompleted,
+	}, nil
 }

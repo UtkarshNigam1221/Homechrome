@@ -152,3 +152,114 @@ func TestNewClient_Defaults(t *testing.T) {
 	client := NewClient(Config{ClientID: "C", ClientSecret: "S"})
 	assert.Equal(t, "https://api-preprod.phonepe.com/apis/pg-sandbox", client.config.BaseURL)
 }
+
+func testRefundClient(baseURL string) *Client {
+	return NewClient(Config{
+		ClientID:      "TEST_CLIENT",
+		ClientSecret:  "test-secret",
+		ClientVersion: "1",
+		BaseURL:       baseURL,
+	})
+}
+
+func TestClient_InitiateRefund_Success(t *testing.T) {
+	var body map[string]any
+
+	server := httptest.NewServer(fakeTokenThenHandler(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodPost, r.Method)
+		assert.Equal(t, "/payments/v2/refund", r.URL.Path)
+		assert.Equal(t, "O-Bearer test-token", r.Header.Get("Authorization"))
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(RefundResponse{
+			RefundID: "OMR456",
+			Amount:   2500,
+			State:    RefundStatePending,
+		})
+	}))
+	defer server.Close()
+
+	resp, err := testRefundClient(server.URL).InitiateRefund(
+		context.Background(), "refund_abc", "txn_123", 2500)
+
+	require.NoError(t, err)
+	assert.Equal(t, "OMR456", resp.RefundID)
+	assert.Equal(t, RefundStatePending, resp.State)
+
+	// The body has to carry our id and the original order's, or the provider
+	// cannot tie the refund to the payment it reverses.
+	assert.Equal(t, "refund_abc", body["merchantRefundId"])
+	assert.Equal(t, "txn_123", body["originalMerchantOrderId"])
+	assert.EqualValues(t, 2500, body["amount"])
+}
+
+func TestClient_InitiateRefund_ProviderRejects(t *testing.T) {
+	server := httptest.NewServer(fakeTokenThenHandler(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"code":"AMOUNT_EXCEEDS"}`))
+	}))
+	defer server.Close()
+
+	_, err := testRefundClient(server.URL).InitiateRefund(
+		context.Background(), "refund_abc", "txn_123", 999999)
+
+	require.Error(t, err, "a rejected refund must not read as accepted")
+}
+
+func TestClient_CheckRefundStatus_Success(t *testing.T) {
+	server := httptest.NewServer(fakeTokenThenHandler(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodGet, r.Method)
+		// Keyed on our merchant refund id, which is the whole point of this
+		// endpoint: it works even when the initiation response was lost.
+		assert.Equal(t, "/payments/v2/refund/refund_abc/status", r.URL.Path)
+		assert.Equal(t, "O-Bearer test-token", r.Header.Get("Authorization"))
+
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(RefundStatusResponse{
+			OriginalMerchantOrderID: "txn_123",
+			RefundID:                "OMR456",
+			Amount:                  2500,
+			State:                   RefundStateCompleted,
+		})
+	}))
+	defer server.Close()
+
+	resp, err := testRefundClient(server.URL).CheckRefundStatus(context.Background(), "refund_abc")
+
+	require.NoError(t, err)
+	assert.Equal(t, RefundStateCompleted, resp.State)
+	assert.Equal(t, "OMR456", resp.RefundID)
+}
+
+func TestClient_CheckRefundStatus_CarriesFailureCodes(t *testing.T) {
+	server := httptest.NewServer(fakeTokenThenHandler(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"refundId":"OMR456","state":"FAILED",
+			"errorCode":"REFUND_FAILED","detailedErrorCode":"INSUFFICIENT_BALANCE"}`))
+	}))
+	defer server.Close()
+
+	resp, err := testRefundClient(server.URL).CheckRefundStatus(context.Background(), "refund_abc")
+
+	require.NoError(t, err, "a failed refund is a valid answer, not a transport error")
+	assert.Equal(t, RefundStateFailed, resp.State)
+	assert.Equal(t, "REFUND_FAILED", resp.ErrorCode)
+	assert.Equal(t, "INSUFFICIENT_BALANCE", resp.DetailedErrorCode)
+}
+
+// Development settles immediately: there is no provider to wait on, so a refund
+// that stayed PENDING locally would never move.
+func TestDevClient_RefundSettlesImmediately(t *testing.T) {
+	dev := &DevClient{}
+
+	initiated, err := dev.InitiateRefund(context.Background(), "refund_abc", "txn_123", 2500)
+	require.NoError(t, err)
+	assert.Equal(t, RefundStateCompleted, initiated.State)
+	assert.NotEmpty(t, initiated.RefundID)
+
+	status, err := dev.CheckRefundStatus(context.Background(), "refund_abc")
+	require.NoError(t, err)
+	assert.Equal(t, RefundStateCompleted, status.State)
+	assert.Equal(t, initiated.RefundID, status.RefundID, "the same refund must keep one id")
+}

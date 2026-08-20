@@ -264,6 +264,10 @@ type InventoryRepository interface {
 	CommitOrderStock(ctx context.Context, orderID string, quantities map[string]int) error
 	ReleaseOrderStock(ctx context.Context, orderID string, quantities map[string]int) error
 
+	// WriteOffStock releases the reservation and drops on-hand in one transaction. As a
+	// release then a remove, a crash between them puts the units back on sale.
+	WriteOffStock(ctx context.Context, productID string, quantity int, orderID string) (*InventoryTransaction, error)
+
 	// FindOrphanReservations lists reservations with no dispatch or release,
 	// older than minAge. A reservation seconds old is still in flight, not drift.
 	FindOrphanReservations(ctx context.Context, minAge time.Duration, limit int) ([]*OrphanReservation, error)

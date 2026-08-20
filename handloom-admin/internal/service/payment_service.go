@@ -375,11 +375,6 @@ func (s *PaymentService) GetByMerchantTxnID(ctx context.Context, merchantTxnID s
 	return s.paymentRepo.GetByMerchantTxnID(ctx, merchantTxnID)
 }
 
-// RefundPayment is a placeholder for refund functionality
-func (s *PaymentService) RefundPayment(_ context.Context, _ string, _ int64, _ string) error {
-	return errors.New(errors.ErrCodeInternal, "Refund functionality is not implemented yet")
-}
-
 // mapPaymentMode maps provider payment mode strings to domain PaymentMethod
 func mapPaymentMode(mode string) domain.PaymentMethod {
 	switch mode {

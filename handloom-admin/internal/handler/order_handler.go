@@ -15,14 +15,16 @@ import (
 type OrderHandler struct {
 	orderService   domain.OrderService
 	paymentService domain.PaymentService
+	refundService  domain.RefundService
 	validation     *middleware.Validation
 }
 
 // NewOrderHandler creates a new OrderHandler
-func NewOrderHandler(orderService domain.OrderService, paymentService domain.PaymentService, validation *middleware.Validation) *OrderHandler {
+func NewOrderHandler(orderService domain.OrderService, paymentService domain.PaymentService, refundService domain.RefundService, validation *middleware.Validation) *OrderHandler {
 	return &OrderHandler{
 		orderService:   orderService,
 		paymentService: paymentService,
+		refundService:  refundService,
 		validation:     validation,
 	}
 }
@@ -39,7 +41,9 @@ func (h *OrderHandler) Routes() chi.Router {
 	r.With(middleware.ValidateJSONTyped[AddOrderNoteRequest](h.validation)).Post("/{id}/notes", h.AddNote)
 	r.With(middleware.ValidateJSONTyped[UpdateTrackingRequest](h.validation)).Patch("/{id}/tracking", h.UpdateTracking)
 	r.With(middleware.ValidateJSONTyped[CancelOrderRequest](h.validation)).Post("/{id}/cancel", h.Cancel)
-	r.With(middleware.ValidateJSONTyped[RefundOrderRequest](h.validation)).Post("/{id}/refund", h.Refund)
+	r.With(middleware.ValidateJSONTyped[domain.CreateRefundRequest](h.validation)).Post("/{id}/refunds", h.CreateRefund)
+	r.Get("/{id}/refunds", h.ListRefunds)
+	r.Post("/{id}/refunds/{refundID}/recheck", h.RecheckRefund)
 
 	return r
 }
@@ -184,17 +188,45 @@ func (h *OrderHandler) Cancel(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, http.StatusOK, map[string]string{response.KeyMessage: "Order canceled successfully"})
 }
 
-// Refund handles initiating a refund
-func (h *OrderHandler) Refund(w http.ResponseWriter, r *http.Request) {
+// CreateRefund refunds part or all of an order. The body carries lines and quantities
+// only: the amount is derived server-side, because money is not a client input.
+func (h *OrderHandler) CreateRefund(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	id := chi.URLParam(r, "id")
-	req := middleware.MustGetValidatedBody[RefundOrderRequest](ctx)
+	req := middleware.MustGetValidatedBody[domain.CreateRefundRequest](ctx)
 
-	updatedBy := getUserIDFromContext(ctx)
-	if err := h.orderService.RefundOrder(ctx, id, req.Amount, req.Reason, updatedBy); err != nil {
+	refund, err := h.refundService.Create(ctx, id, *req, getUserIDFromContext(ctx))
+	if err != nil {
 		response.Error(w, err)
 		return
 	}
 
-	response.JSON(w, http.StatusOK, map[string]string{response.KeyMessage: "Refund initiated successfully"})
+	response.JSON(w, http.StatusCreated, refund)
+}
+
+// ListRefunds returns every refund raised against an order.
+func (h *OrderHandler) ListRefunds(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	refunds, err := h.refundService.ListByOrder(ctx, chi.URLParam(r, "id"))
+	if err != nil {
+		response.Error(w, err)
+		return
+	}
+
+	response.JSON(w, http.StatusOK, map[string]interface{}{"refunds": refunds})
+}
+
+// RecheckRefund asks the provider for a refund's current state: the escape hatch for a
+// webhook that never came, and the only recovery when no provider id was recorded.
+func (h *OrderHandler) RecheckRefund(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	refund, err := h.refundService.RecheckStatus(ctx, chi.URLParam(r, "refundID"))
+	if err != nil {
+		response.Error(w, err)
+		return
+	}
+
+	response.JSON(w, http.StatusOK, refund)
 }

@@ -155,12 +155,82 @@ func (c *Client) InitiatePayment(ctx context.Context, merchantTxnID, _ string, a
 
 // CheckPaymentStatus checks the status of a payment order
 func (c *Client) CheckPaymentStatus(ctx context.Context, merchantTxnID string) (*StatusResponse, error) {
+	return getAuthedJSON[StatusResponse](ctx, c,
+		fmt.Sprintf("/checkout/v2/order/%s/status?details=true", merchantTxnID),
+		"PhonePe status check failed")
+}
+
+// VerifyWebhookSignature checks the PhonePe webhook Authorization header, which is
+// SHA256(username:password). Computes the same and compares.
+func (c *Client) VerifyWebhookSignature(username, password, authHeader string) bool {
+	expected := fmt.Sprintf("%x", sha256.Sum256([]byte(username+":"+password)))
+	return subtle.ConstantTimeCompare([]byte(expected), []byte(authHeader)) == 1
+}
+
+// InitiateRefund asks PhonePe to send money back. originalMerchantOrderID is checkout's
+// MerchantTransactionID; merchantRefundID is ours, and the only handle if this is lost.
+func (c *Client) InitiateRefund(ctx context.Context, merchantRefundID, originalMerchantOrderID string, amount int64) (*RefundResponse, error) {
 	token, err := c.getToken(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	endpoint := fmt.Sprintf("/checkout/v2/order/%s/status?details=true", merchantTxnID)
+	payload, err := json.Marshal(map[string]any{
+		"merchantRefundId":        merchantRefundID,
+		"originalMerchantOrderId": originalMerchantOrderID,
+		"amount":                  amount,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to build refund request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		c.config.BaseURL+"/payments/v2/refund", bytes.NewReader(payload))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", contentTypeJSON)
+	req.Header.Set("Authorization", "O-Bearer "+token)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to call PhonePe: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		return nil, fmt.Errorf("PhonePe refund failed (status %d): %s", resp.StatusCode, string(body))
+	}
+
+	var refundResp RefundResponse
+	if err := json.Unmarshal(body, &refundResp); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	return &refundResp, nil
+}
+
+// CheckRefundStatus reads the provider's view of a refund, keyed on our merchantRefundID
+// rather than PhonePe's — which is what makes it the recovery path.
+func (c *Client) CheckRefundStatus(ctx context.Context, merchantRefundID string) (*RefundStatusResponse, error) {
+	return getAuthedJSON[RefundStatusResponse](ctx, c,
+		fmt.Sprintf("/payments/v2/refund/%s/status", merchantRefundID),
+		"PhonePe refund status check failed")
+}
+
+// getAuthedJSON performs an authenticated GET and decodes the body. The payment
+// and refund status calls differ only in path and response type.
+func getAuthedJSON[T any](ctx context.Context, c *Client, endpoint, failure string) (*T, error) {
+	token, err := c.getToken(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.config.BaseURL+endpoint, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
@@ -180,21 +250,12 @@ func (c *Client) CheckPaymentStatus(ctx context.Context, merchantTxnID string) (
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("PhonePe status check failed (status %d): %s", resp.StatusCode, string(body))
+		return nil, fmt.Errorf("%s (status %d): %s", failure, resp.StatusCode, string(body))
 	}
 
-	var statusResp StatusResponse
-	if err := json.Unmarshal(body, &statusResp); err != nil {
+	var out T
+	if err := json.Unmarshal(body, &out); err != nil {
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
-
-	return &statusResp, nil
-}
-
-// VerifyWebhookSignature verifies the Authorization header from a PhonePe webhook.
-// PhonePe sends: Authorization: SHA256(username:password)
-// We compute the same and compare.
-func (c *Client) VerifyWebhookSignature(username, password, authHeader string) bool {
-	expected := fmt.Sprintf("%x", sha256.Sum256([]byte(username+":"+password)))
-	return subtle.ConstantTimeCompare([]byte(expected), []byte(authHeader)) == 1
+	return &out, nil
 }

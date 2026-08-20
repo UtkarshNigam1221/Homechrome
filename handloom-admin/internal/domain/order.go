@@ -110,6 +110,10 @@ type OrderItem struct {
 	UnitPrice  int64 `json:"unit_price" dynamodbav:"unit_price"`
 	Quantity   int   `json:"quantity" dynamodbav:"quantity"`
 	TotalPrice int64 `json:"total_price" dynamodbav:"total_price"`
+
+	// RefundedQuantity is how much of this line has already gone back. Refunds
+	// are per line and repeatable, so the remainder is what bounds the next one.
+	RefundedQuantity int `json:"refunded_quantity" dynamodbav:"refunded_quantity"`
 }
 
 // OrderNote represents an internal note on an order
@@ -174,11 +178,11 @@ const (
 
 // Customer represents a customer
 type Customer struct {
-	ID         string `json:"id" dynamodbav:"id"`
-	PK         string `json:"-" dynamodbav:"PK"`
-	SK         string `json:"-" dynamodbav:"SK"`
-	GSI1PK     string `json:"-" dynamodbav:"GSI1PK"`
-	GSI1SK     string `json:"-" dynamodbav:"GSI1SK"`
+	ID string `json:"id" dynamodbav:"id"`
+	PK string `json:"-" dynamodbav:"PK"`
+	SK string `json:"-" dynamodbav:"SK"`
+	// No GSI1: email is a CustomerEmailIndex pointer item. Declaring the fields unused
+	// fails every write — DynamoDB rejects an empty indexed key attribute.
 	GSI2PK     string `json:"-" dynamodbav:"GSI2PK"`
 	GSI2SK     string `json:"-" dynamodbav:"GSI2SK"`
 	EntityType string `json:"-" dynamodbav:"entity_type"`
@@ -211,12 +215,8 @@ func (c *Customer) TableName() string {
 func (c *Customer) SetKeys() {
 	c.PK = "CUSTOMER#" + c.ID
 	c.SK = SKMetadata
-	c.GSI1PK = "CUSTOMER_EMAIL"
-	if c.Email != "" {
-		c.GSI1SK = c.Email
-	} else {
-		c.GSI1SK = "NONE#" + c.ID
-	}
+	// No GSI1: email lookup is a CustomerEmailIndex pointer item. The old shape needed a
+	// NONE#<id> placeholder for phone-OTP signups — index entries nothing read.
 	c.GSI2PK = "CUSTOMER#ALL"
 	c.GSI2SK = c.CreatedAt.Format("2006-01-02T15:04:05Z")
 	c.EntityType = "CUSTOMER"
@@ -252,4 +252,20 @@ func (c *CustomerPhoneIndex) SetKeys(phone string) {
 	c.PK = "CUSTOMER_PHONE#" + phone
 	c.SK = SKMetadata
 	c.EntityType = "CUSTOMER_PHONE_INDEX"
+}
+
+// CustomerEmailIndex finds customers by email and makes an address unique. A GSI could
+// do neither, and put every customer in one partition; phone has always worked this way.
+type CustomerEmailIndex struct {
+	PK         string `json:"-" dynamodbav:"PK"`
+	SK         string `json:"-" dynamodbav:"SK"`
+	EntityType string `json:"-" dynamodbav:"entity_type"`
+	CustomerID string `json:"customer_id" dynamodbav:"customer_id"`
+}
+
+// SetKeys sets the DynamoDB keys for CustomerEmailIndex.
+func (c *CustomerEmailIndex) SetKeys(email string) {
+	c.PK = "CUSTOMER_EMAIL#" + email
+	c.SK = SKMetadata
+	c.EntityType = "CUSTOMER_EMAIL_INDEX"
 }

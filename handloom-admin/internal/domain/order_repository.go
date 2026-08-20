@@ -77,7 +77,6 @@ type CustomerRepository interface {
 	List(ctx context.Context, req ListCustomersRequest) (*ListCustomersResponse, error)
 
 	// Search searches customers by query
-	Search(ctx context.Context, query string, pagination PaginationRequest) (*ListCustomersResponse, error)
 
 	// RecordPurchase atomically increments the customer's OrderCount by 1 and
 	// adds amountPaise to TotalSpent, returning the new count. Uses DynamoDB ADD
@@ -144,9 +143,6 @@ type OrderService interface {
 
 	// CancelOrder cancels an order
 	CancelOrder(ctx context.Context, id string, reason string, updatedBy string) error
-
-	// RefundOrder initiates a refund for an order
-	RefundOrder(ctx context.Context, id string, amount int64, reason string, updatedBy string) error
 }
 
 // CreateOrderRequest contains data for creating an order

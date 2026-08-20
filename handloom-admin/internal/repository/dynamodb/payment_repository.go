@@ -2,6 +2,7 @@ package dynamodb
 
 import (
 	"context"
+	"strconv"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -78,14 +79,15 @@ func (r *PaymentRepository) GetByID(ctx context.Context, id string) (*domain.Pay
 // GetByOrderID retrieves the most recent payment for an order using GSI1
 func (r *PaymentRepository) GetByOrderID(ctx context.Context, orderID string) (*domain.Payment, error) {
 	result, err := r.client.db.Query(ctx, &dynamodb.QueryInput{
-		TableName:              aws.String(r.client.ordersTable),
-		IndexName:              aws.String("GSI1"),
-		KeyConditionExpression: aws.String("GSI1PK = :pk"),
+		TableName: aws.String(r.client.ordersTable),
+		IndexName: aws.String("GSI1"),
+		// Narrow on the sort key, not a filter: this partition also holds refunds, and a
+		// filter runs after Limit — REFUND# sorts first, so limit 1 found no payment.
+		KeyConditionExpression: aws.String("GSI1PK = :pk AND begins_with(GSI1SK, :prefix)"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
-			exprPK: &types.AttributeValueMemberS{Value: "ORDER#" + orderID},
-			":et":  &types.AttributeValueMemberS{Value: "PAYMENT"},
+			exprPK:    &types.AttributeValueMemberS{Value: "ORDER#" + orderID},
+			":prefix": &types.AttributeValueMemberS{Value: "PAYMENT#"},
 		},
-		FilterExpression: aws.String("entity_type = :et"),
 		ScanIndexForward: aws.Bool(false), // newest first
 		Limit:            aws.Int32(1),
 	})
@@ -93,7 +95,6 @@ func (r *PaymentRepository) GetByOrderID(ctx context.Context, orderID string) (*
 		return nil, errors.Wrap(err, "Failed to query payment by order ID")
 	}
 
-	// Filter results to only payment entities (GSI1 is shared with orders)
 	var payments []domain.Payment
 	for _, item := range result.Items {
 		var p domain.Payment
@@ -117,10 +118,9 @@ func (r *PaymentRepository) GetByMerchantTxnID(ctx context.Context, merchantTxnI
 	result, err := r.client.db.Query(ctx, &dynamodb.QueryInput{
 		TableName:              aws.String(r.client.ordersTable),
 		IndexName:              aws.String("GSI2"),
-		KeyConditionExpression: aws.String("GSI2PK = :pk AND GSI2SK = :sk"),
+		KeyConditionExpression: aws.String("GSI2PK = :pk"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
-			exprPK: &types.AttributeValueMemberS{Value: "PAYMENT_TXN"},
-			exprSK: &types.AttributeValueMemberS{Value: merchantTxnID},
+			exprPK: &types.AttributeValueMemberS{Value: "MERCHANT_TXN#" + merchantTxnID},
 		},
 		Limit: aws.Int32(1),
 	})
@@ -170,3 +170,38 @@ func (r *PaymentRepository) UpdateStatus(ctx context.Context, id string, status 
 
 // Ensure interface compliance
 var _ domain.PaymentRepository = (*PaymentRepository)(nil)
+
+// AddRefundAmount implements domain.PaymentRepository.
+func (r *PaymentRepository) AddRefundAmount(ctx context.Context, id string, amount int64) (int64, error) {
+	result, err := r.client.db.UpdateItem(ctx, &dynamodb.UpdateItemInput{
+		TableName: aws.String(r.client.ordersTable),
+		Key: map[string]types.AttributeValue{
+			"PK": &types.AttributeValueMemberS{Value: "PAYMENT#" + id},
+			"SK": &types.AttributeValueMemberS{Value: skMetadata},
+		},
+		UpdateExpression: aws.String("ADD refund_amount :amount"),
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":amount": &types.AttributeValueMemberN{Value: strconv.FormatInt(amount, 10)},
+		},
+		ConditionExpression: aws.String("attribute_exists(PK)"),
+		ReturnValues:        types.ReturnValueUpdatedNew,
+	})
+	if err != nil {
+		if isConditionalCheckFailed(err) {
+			return 0, errors.NotFound("Payment not found")
+		}
+		return 0, errors.Wrap(err, "Failed to record refund amount")
+	}
+
+	attr, ok := result.Attributes["refund_amount"].(*types.AttributeValueMemberN)
+	if !ok {
+		return 0, errors.Internal("Failed to read refunded total")
+	}
+
+	total, err := strconv.ParseInt(attr.Value, 10, 64)
+	if err != nil {
+		return 0, errors.Internal("Failed to parse refunded total")
+	}
+
+	return total, nil
+}
