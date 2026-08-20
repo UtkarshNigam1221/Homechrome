@@ -13,7 +13,11 @@ this exists for lived in a seam:
 
 ## Running it
 
-Against dev, from CI: **Actions → E2E (dev) → Run workflow**. Also nightly.
+Against dev, from CI: **Actions → E2E (dev) → Run workflow**. Manual dispatch
+only — a run mutates dev inventory and leaves orders that cannot be deleted, so
+it happens when someone means it to. The workflow lives in #235 rather than
+here, because GitHub only makes `workflow_dispatch` available for files already
+on the default branch.
 
 Locally:
 
