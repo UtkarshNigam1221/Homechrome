@@ -2,6 +2,7 @@ import { APIRequestContext, expect, test } from '@playwright/test';
 
 import { adminClient, getInventory, getLedger, rowsForOrder } from '../../fixtures/api';
 import { destroyCatalog, seedCatalog, SeededCatalog } from '../../fixtures/catalog';
+import { expectAllLedgersBalance } from '../../fixtures/reconcile';
 import { attemptAdminOrder, createAdminOrder, resolveTestCustomerId } from '../../helpers/order';
 
 /**
@@ -23,6 +24,9 @@ test.describe('duplicate product lines', () => {
   });
 
   test.afterEach(async () => {
+    // #230 case 35: the ledger must replay to the live balance after every
+    // scenario, not only the ones that thought to check.
+    if (catalog) await expectAllLedgersBalance(api, catalog.products.map((p) => p.id));
     await destroyCatalog(api, catalog);
     catalog = undefined;
   });

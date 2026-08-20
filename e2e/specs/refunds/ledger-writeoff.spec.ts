@@ -2,6 +2,7 @@ import { APIRequestContext, expect, test } from '@playwright/test';
 
 import { adminClient, getInventory, getLedger, json, Refund, rowsForOrder } from '../../fixtures/api';
 import { buyProducts, PaidFixture, releaseFixture } from '../../helpers/paid-order';
+import { expectAllLedgersBalance } from '../../fixtures/reconcile';
 
 /**
  * The sixth manual check, API half. The UI half — that the ledger renders
@@ -21,6 +22,8 @@ test.describe('the ledger records a write-off as itself', () => {
   });
 
   test.afterEach(async () => {
+    // #230 case 35, before teardown removes the evidence.
+    if (fx) await expectAllLedgersBalance(fx.admin, fx.products.map((p) => p.id));
     await releaseFixture(fx);
     fx = undefined;
   });

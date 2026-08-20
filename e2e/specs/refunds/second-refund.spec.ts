@@ -2,6 +2,7 @@ import { APIRequestContext, expect, test } from '@playwright/test';
 
 import { adminClient, getInventory, getLedger, json, Refund, rowsForOrder } from '../../fixtures/api';
 import { buyProducts, PaidFixture, releaseFixture } from '../../helpers/paid-order';
+import { expectAllLedgersBalance } from '../../fixtures/reconcile';
 
 /**
  * The second manual check, and the reason migration 014 exists.
@@ -22,6 +23,8 @@ test.describe('a second refund on the same product', () => {
   });
 
   test.afterEach(async () => {
+    // #230 case 35, before teardown removes the evidence.
+    if (fx) await expectAllLedgersBalance(fx.admin, fx.products.map((p) => p.id));
     await releaseFixture(fx);
     fx = undefined;
   });

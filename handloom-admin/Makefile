@@ -194,10 +194,29 @@ test-unit:
 	@echo "Running unit tests..."
 	$(GOTEST) -v -race -cover ./internal/service/...
 
-## Run integration tests (requires DynamoDB Local)
+## Run integration tests (requires `make docker-up`: Postgres + DynamoDB Local)
+#
+# Fixes the four ways this target used to not do what its name said (#191):
+#   1. no `-tags integration`, so every tagged test was excluded from the build
+#   2. no POSTGRES_DSN, so the Postgres tests fell back to postgres:postgres and
+#      skipped — docker-compose provisions handloom:handloom
+#   3. the DynamoDB endpoint pointed at LocalStack (:4566) while testClient
+#      defaults to amazon/dynamodb-local (:8000)
+#   4. ./internal/repository/... excludes cmd/embedder/embedder, where the
+#      hybrid-search integration test lives, so it was unreachable through its
+#      own documented runner
+#
+# CI overrides both endpoints; these defaults match docker-compose.yml.
+INTEGRATION_POSTGRES_DSN ?= postgres://handloom:handloom@localhost:5432/handloom?sslmode=disable
+INTEGRATION_DYNAMODB_ENDPOINT ?= http://localhost:8000
+
 test-integration:
 	@echo "Running integration tests..."
-	DYNAMODB_LOCAL_ENDPOINT=http://localhost:4566 $(GOTEST) -v -race ./internal/repository/...
+	POSTGRES_DSN="$(INTEGRATION_POSTGRES_DSN)" \
+	DYNAMODB_LOCAL_ENDPOINT="$(INTEGRATION_DYNAMODB_ENDPOINT)" \
+	$(GOTEST) -v -race -tags integration \
+		./internal/repository/... \
+		./cmd/embedder/embedder/...
 
 ## Seed test data
 seed-data:

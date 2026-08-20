@@ -13,8 +13,10 @@ import (
 	"github.com/handloom/admin/internal/repository/postgres"
 )
 
-// TestSearcher_Hybrid_ReturnsKnownProduct needs a Postgres already seeded with
-// an embedded product; migrations alone are not enough, hence the build tag.
+// TestSearcher_Hybrid_ReturnsKnownProduct seeds its own product with a literal
+// unit vector, so it needs a migrated pgvector-enabled Postgres and nothing
+// else — no ONNX, no embedder assets. It is tagged because it needs a database,
+// not because it needs a fixture that does not exist (#192).
 func TestSearcher_Hybrid_ReturnsKnownProduct(t *testing.T) {
 	dsn := os.Getenv("POSTGRES_DSN")
 	if dsn == "" {
@@ -39,7 +41,9 @@ func TestSearcher_Hybrid_ReturnsKnownProduct(t *testing.T) {
 
 	_, err = pool.Exec(ctx, `
 		INSERT INTO products (id, name, slug, sku, category_id, status, base_price, selling_price, embedding, embedding_updated_at, created_by, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, 'active', 10000, 10000, $6, now(), 'tester', now(), now())
+		-- 'ACTIVE', not 'active': search.go filters on the uppercase form, so a
+		-- lowercase row is invisible to the very query under test.
+		VALUES ($1, $2, $3, $4, $5, 'ACTIVE', 10000, 10000, $6, now(), 'tester', now(), now())
 	`, id, "Silk Saree Test", "silk-saree-test-"+id, "TEST-SKU-"+id, catID, pgvector.NewVector(knownVec))
 	require.NoError(t, err)
 	t.Cleanup(func() { _, _ = pool.Exec(ctx, `DELETE FROM products WHERE id = $1`, id) })

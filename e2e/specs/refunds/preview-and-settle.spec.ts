@@ -2,6 +2,7 @@ import { APIRequestContext, expect, test } from '@playwright/test';
 
 import { adminClient, getOrder, json, Refund, RefundPreview } from '../../fixtures/api';
 import { buyProducts, PaidFixture, releaseFixture } from '../../helpers/paid-order';
+import { expectAllLedgersBalance } from '../../fixtures/reconcile';
 
 /**
  * The fifth manual check, plus #223 Tier 1.5.
@@ -20,6 +21,8 @@ test.describe('refund amounts and settlement', () => {
   });
 
   test.afterEach(async () => {
+    // #230 case 35, before teardown removes the evidence.
+    if (fx) await expectAllLedgersBalance(fx.admin, fx.products.map((p) => p.id));
     await releaseFixture(fx);
     fx = undefined;
   });

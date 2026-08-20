@@ -4,6 +4,7 @@ import { adminClient, getInventory, getLedger, getOrder, json, Refund, rowsForOr
 import { createProduct } from '../../fixtures/catalog';
 import { createAdminOrder, resolveTestCustomerId } from '../../helpers/order';
 import { buyProducts, PaidFixture, releaseFixture } from '../../helpers/paid-order';
+import { expectAllLedgersBalance } from '../../fixtures/reconcile';
 
 /**
  * The third manual check, and the regression guard for #222.
@@ -23,6 +24,8 @@ test.describe('cancelling a partly refunded order', () => {
   });
 
   test.afterEach(async () => {
+    // #230 case 35, before teardown removes the evidence.
+    if (fx) await expectAllLedgersBalance(fx.admin, fx.products.map((p) => p.id));
     await releaseFixture(fx);
     fx = undefined;
   });

@@ -95,6 +95,33 @@ scripts/     cleanup
 `api` specs are pure HTTP and need no browser; `admin-ui` specs drive Chromium.
 The projects are separate so the cheap tier can run on its own.
 
+## Coverage against #230
+
+Fully covered: 1, 2, 3, 6, 8, 9, 10, 11, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26,
+27, 28, 29, 30, 31, 32, 33, 34, 35, and the `limit` half of 14.
+
+Covered elsewhere, deliberately not duplicated here:
+
+- **13, 14** — reconciliation is not an endpoint or a UI panel. It is
+  `scripts/reconcile-inventory`, a weekly Go CLI driven by
+  `.github/workflows/inventory-reconciliation.yml` that exits non-zero when
+  stock is held against nothing. Its semantics are pinned in
+  `internal/repository/postgres/` against a disposable database, which is
+  deterministic in a way a shared dev environment is not.
+- **11, 33** — the migrations run once at deploy and cannot be re-applied. What
+  is asserted is the invariant they leave behind: that the unique index carries
+  `source_id`, that `source_id` is `NOT NULL` so nulls cannot defeat it, that a
+  same-quantity replay is a no-op, that a different-quantity replay is a
+  conflict, and that two refunds on one order both keep their stock movement.
+
+Not covered, with the reason stated in the spec rather than omitted:
+
+- **36** — a crash between the two datastores. See
+  `specs/inventory/cross-store-gap.spec.ts`: a deployed Lambda cannot be killed
+  mid-invocation, and adding a fault-injection seam would put a crash path into
+  production code. The *detection* half is covered by reconciliation.
+- **12, 15, 16** are browser specs and run only in the `admin-ui` project.
+
 ## Known divergence from #223
 
 #223 Tier 1.1 says the refund **list** must stay readable by an `OPERATOR` or
