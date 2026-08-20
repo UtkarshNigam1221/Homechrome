@@ -175,9 +175,8 @@ func (a *Auth) RequireRole(roles ...domain.UserRole) func(next http.Handler) htt
 	return RequireRole(roles...)
 }
 
-// RequireRole refuses anyone whose role is not listed. Package-level because it
-// reads nothing but the request context: a handler can then gate its own routes
-// instead of every mount site having to remember to.
+// RequireRole refuses anyone whose role is not listed. Package-level because it reads
+// only the request context, so a handler can gate its own routes.
 func RequireRole(roles ...domain.UserRole) func(next http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

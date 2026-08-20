@@ -71,10 +71,8 @@ func TestDeriveRefundAmount(t *testing.T) {
 		require.Equal(t, order.TotalAmount, got.Total)
 	})
 
-	// clearsOrder asks what is left on lines this refund does not name, and a claim
-	// counts there too. Reading only RefundedQuantity would call the order unfinished
-	// while a refund covering the rest is still in flight — so the last refund would
-	// never earn the shipping and the order would never reach fully refunded.
+	// clearsOrder asks what is left on lines this refund does not name, where a claim
+	// counts too — or the last refund never earns the shipping.
 	t.Run("a claim on another line can make this refund the one that clears the order", func(t *testing.T) {
 		order := refundTestOrder(0, 0, 5000, line("a", 10000, 1, 0), line("b", 20000, 1, 0))
 
@@ -246,9 +244,8 @@ func TestDeriveRefundAmount(t *testing.T) {
 	})
 }
 
-// A refund is PENDING from creation until the provider's webhook lands. Bounding
-// the next one on settled refunds alone let the same units go back twice — real
-// money out for goods refunded once.
+// A refund is PENDING until the webhook lands. Bounding the next on settled refunds
+// alone let the same units go back twice.
 func TestDeriveRefundAmount_CountsClaimedUnits(t *testing.T) {
 	t.Run("refuses units an unsettled refund already claimed", func(t *testing.T) {
 		order := refundTestOrder(0, 0, 0, line("a", 10000, 2, 0))

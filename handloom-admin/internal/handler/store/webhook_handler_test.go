@@ -13,9 +13,8 @@ import (
 	"github.com/handloom/admin/internal/gateway/phonepe"
 )
 
-// This handler is the seam between the provider and the money: it decides which
-// service call an event becomes. Getting the routing wrong settles the wrong
-// refund, or silently settles none.
+// This handler is the seam between the provider and the money: it decides which service
+// call an event becomes. Wrong routing settles the wrong refund, or silently none.
 type recordingRefundService struct {
 	completed []string
 	failed    []string

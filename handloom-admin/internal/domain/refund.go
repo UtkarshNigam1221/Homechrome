@@ -83,9 +83,8 @@ type Refund struct {
 	CompletedAt *time.Time `json:"completed_at,omitempty" dynamodbav:"completed_at,omitempty"`
 	CreatedBy   string     `json:"created_by" dynamodbav:"created_by"`
 
-	// CreatedByName is resolved when the list is read, not stored: created_by
-	// holds an opaque user id, which is no use to whoever reads back who sent
-	// money out. Empty for a refund no admin raised.
+	// CreatedByName is resolved on read, not stored: created_by is an opaque id, no use
+	// to whoever asks who sent money out. Empty for a refund no admin raised.
 	CreatedByName string `json:"created_by_name,omitempty" dynamodbav:"-"`
 }
 
@@ -134,15 +133,15 @@ type CreateRefundItemRequest struct {
 
 // CreateRefundRequest carries what to refund, never how much. A client-supplied
 // amount is not accepted: money is not a client input.
-// PreviewRefundRequest prices lines without raising a refund, so it carries no
-// reason: the reason labels a refund, it does not affect what the lines are worth.
-type PreviewRefundRequest struct {
-	Items []CreateRefundItemRequest `json:"items" validate:"required,min=1,dive"`
-}
-
 type CreateRefundRequest struct {
 	Reason RefundReason              `json:"reason" validate:"required"`
 	Items  []CreateRefundItemRequest `json:"items" validate:"required,min=1,dive"`
+}
+
+// PreviewRefundRequest prices lines without raising a refund, so it carries no
+// reason: a reason labels a refund, it does not change what the lines are worth.
+type PreviewRefundRequest struct {
+	Items []CreateRefundItemRequest `json:"items" validate:"required,min=1,dive"`
 }
 
 // RefundRepository persists refunds.
@@ -165,7 +164,6 @@ type RefundRepository interface {
 	Settle(ctx context.Context, id string, status RefundStatus, completedAt time.Time, errorCode, detailedErrorCode string) error
 }
 
-// RefundService owns the refund lifecycle.
 // RefundPreview is what a requested set of lines would cost. The amount is never
 // taken from the client, so this is the only figure a screen should show.
 type RefundPreview struct {
@@ -186,6 +184,7 @@ type RefundPreviewBreakdown struct {
 	Shipping  int64 `json:"shipping"`
 }
 
+// RefundService owns the refund lifecycle.
 type RefundService interface {
 	Create(ctx context.Context, orderID string, req CreateRefundRequest, createdBy string) (*Refund, error)
 
@@ -199,10 +198,7 @@ type RefundService interface {
 	HandleRefundCompleted(ctx context.Context, providerRefundID string) error
 	HandleRefundFailed(ctx context.Context, providerRefundID, errorCode, detailedErrorCode string) error
 
-	// RecheckStatus asks the provider directly: the escape hatch for a webhook that
-	// never came, and the only recovery when no provider id was ever stored.
-	//
-	// orderID is the one in the route: the refund must belong to it, or any refund
-	// would be reachable through any order's URL.
+	// RecheckStatus asks the provider directly: the escape hatch for a webhook that never
+	// came. orderID is the route's — the refund must belong to it, or any is reachable.
 	RecheckStatus(ctx context.Context, orderID, refundID string) (*Refund, error)
 }

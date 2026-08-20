@@ -219,9 +219,8 @@ func TestRefundService_Create(t *testing.T) {
 		require.NoError(t, err)
 	})
 
-	// The payment total is written at settlement and the refund rows at creation, so
-	// a settlement that half-completed leaves one ahead of the other. The bound has to
-	// be the pessimistic reading, or the gap is refundable twice.
+	// A half-completed settlement leaves the payment total ahead of the refund rows, so
+	// the bound has to be the pessimistic reading or the gap is refundable twice.
 	t.Run("bounds on the payment total when it is ahead of the refund rows", func(t *testing.T) {
 		h := newRefundHarness(t)
 		h.orders.EXPECT().GetByID(gomock.Any(), "order_1").Return(paidOrder(domain.OrderStatusConfirmed), nil)
@@ -348,8 +347,7 @@ func TestRefundService_Settlement(t *testing.T) {
 
 	// PhonePe retries webhooks. The loser of the conditional update must apply
 	// nothing, not fail the delivery.
-	// Recomputed from the order's refunds, not incremented: a redelivery that gets
-	// past the gate must not add the same units again. Only a non-zero starting
+	// Recomputed from the order's refunds, not incremented. Only a non-zero starting
 	// quantity tells the two apart.
 	t.Run("recomputes the refunded quantity rather than adding to it", func(t *testing.T) {
 		h := newRefundHarness(t)
@@ -466,9 +464,8 @@ func TestRefundService_RecheckStatus(t *testing.T) {
 	})
 }
 
-// A refund is a money movement, so the record has to say who raised it. created_by
-// holds an opaque user id, which is accurate and useless to whoever reads the
-// list back.
+// A refund is a money movement, so the record has to say who raised it — and an opaque
+// user id is accurate and useless to whoever reads the list back.
 func TestRefundService_ListByOrder_ResolvesActorNames(t *testing.T) {
 	ctx := context.Background()
 
@@ -548,9 +545,8 @@ func TestRefundService_ListByOrder_ResolvesActorNames(t *testing.T) {
 	})
 }
 
-// A refund is PENDING from creation until the provider's webhook lands. Bounding
-// the next one on settled figures alone meant the same units could go back
-// twice inside that window, and real money left twice.
+// A refund is PENDING until the webhook lands. Bounding the next on settled figures
+// alone let the same units go back twice inside that window.
 func TestRefundService_Create_CountsRefundsStillInFlight(t *testing.T) {
 	ctx := context.Background()
 

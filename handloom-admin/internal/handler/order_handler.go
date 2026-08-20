@@ -41,9 +41,8 @@ func (h *OrderHandler) Routes() chi.Router {
 	r.With(middleware.ValidateJSONTyped[AddOrderNoteRequest](h.validation)).Post("/{id}/notes", h.AddNote)
 	r.With(middleware.ValidateJSONTyped[UpdateTrackingRequest](h.validation)).Patch("/{id}/tracking", h.UpdateTracking)
 	r.With(middleware.ValidateJSONTyped[CancelOrderRequest](h.validation)).Post("/{id}/cancel", h.Cancel)
-	// Refunds are admin-only end to end, including the read: it is the money that
-	// went back. Gated here rather than at the mount site so the check travels with
-	// the routes into the monolith and the Lambda alike.
+	// Refunds are admin-only end to end, the read included. Gated here, not at the mount
+	// site, so the check travels with the routes into the monolith and the Lambda alike.
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.RequireRole(domain.UserRoleAdmin))
 		r.Get("/{id}/refunds", h.ListRefunds)
@@ -197,9 +196,8 @@ func (h *OrderHandler) Cancel(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, http.StatusOK, map[string]string{response.KeyMessage: "Order canceled successfully"})
 }
 
-// PreviewRefund prices a refund without raising one, so the screen an admin
-// authorizes from shows the same figure Create will use. Admin-only: it reads an
-// order's money and is the same body as the refund itself.
+// PreviewRefund prices a refund without raising one, so the screen an admin authorizes
+// from shows the figure Create will use. Admin-only: it reads an order's money.
 func (h *OrderHandler) PreviewRefund(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	req := middleware.MustGetValidatedBody[domain.PreviewRefundRequest](ctx)

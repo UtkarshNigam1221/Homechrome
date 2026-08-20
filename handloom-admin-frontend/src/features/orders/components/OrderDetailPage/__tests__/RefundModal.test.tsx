@@ -16,12 +16,8 @@ vi.mock('react-hot-toast', () => ({
   default: { success: vi.fn(), error: vi.fn() },
 }));
 
-/**
- * Stands in for the preview endpoint. The fixture order carries no discount, tax
- * or shipping, so a line is worth exactly its unit price times the quantity —
- * which is what lets these tests assert the wiring without restating the money
- * rules the server owns and tests itself.
- */
+// Stands in for the preview endpoint. The fixture has no discount, tax or shipping, so
+// a line is its unit price times quantity — the wiring is asserted, not the money.
 function fakePreview(subject: Order) {
   return async (_id: string, body: { items: { order_item_id: string; quantity: number }[] }) => {
     const lines = body.items.map((item) => {
@@ -178,9 +174,8 @@ describe('RefundModal', () => {
     });
   });
 
-  // The order refetches while the modal is open, so a pending refund settling
-  // shrinks what is left underneath a selection already made. The priced figure
-  // follows; the request has to follow with it.
+  // A pending refund settling under an open modal shrinks what is left beneath a
+  // selection already made, so the request has to follow the priced figure.
   it('submits the shrunken quantity when the remainder drops under an open modal', async () => {
     vi.mocked(ordersApi.createRefund).mockResolvedValue({
       id: 'refund_1',

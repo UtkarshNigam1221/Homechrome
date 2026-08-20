@@ -72,9 +72,8 @@ export function InventoryLedgerModal({ isOpen, onClose, product }: InventoryLedg
 
   const productID = product?.id ?? '';
 
-  // The modal stays mounted, so the cursor outlives it — and it is an OFFSET, not a
-  // key. Reset on reopen as well as on a change of product: leaving one open at page
-  // three and coming back to it lands mid-history just the same.
+  // The cursor is an OFFSET and the modal stays mounted, so reset on reopen as well as
+  // on a change of product — either way you would land mid-history.
   const [paged, setPaged] = useState({ productID, isOpen });
   if (paged.productID !== productID || paged.isOpen !== isOpen) {
     setPaged({ productID, isOpen });

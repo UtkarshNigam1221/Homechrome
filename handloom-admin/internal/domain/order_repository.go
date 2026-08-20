@@ -170,11 +170,8 @@ type OrderWithDetails struct {
 	Customer    *Customer          `json:"customer,omitempty"`
 	ItemDetails []OrderItemDetails `json:"item_details,omitempty"`
 
-	// RefundedAmount is what the payment says has actually gone back. The
-	// authority for "how much of this order is still refundable" — a client
-	// summing its own refund rows can drift from it if a settlement half
-	// completed, and would then show an amount that is not the one leaving the
-	// account.
+	// RefundedAmount is what the payment says has gone back, and the authority on what
+	// is still refundable: a client summing its own rows drifts on a half settlement.
 	RefundedAmount int64 `json:"refunded_amount"`
 }
 

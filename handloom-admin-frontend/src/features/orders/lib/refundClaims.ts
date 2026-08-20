@@ -1,10 +1,5 @@
-/**
- * What an order's refunds already account for, and what that leaves refundable.
- *
- * Quantity bookkeeping only. The money — proration, rounding, which refund earns
- * the shipping — is derived server-side and fetched, so there is one implementation
- * of it rather than two that have to be kept agreeing.
- */
+// What an order's refunds account for, and what that leaves refundable. Quantity
+// bookkeeping only: the money is derived server-side, so it exists in one place.
 
 export interface RefundableLine {
   id: string;
@@ -22,14 +17,8 @@ export interface ClaimingRefund {
   items: { order_item_id: string; quantity: number }[];
 }
 
-/**
- * Mirrors claimedByLive in internal/service/refund_service.go: a failed refund
- * returned nothing, so its units are free again.
- *
- * settledAmount is the payment's own figure, which wins when it is larger. A
- * settlement that half-completed leaves the rows ahead of the money or behind it,
- * and the refundable remainder has to be the pessimistic reading of both.
- */
+// Mirrors claimedByLive: a failed refund returned nothing, so its units are free.
+// settledAmount is the payment's figure, which wins when a half settlement runs ahead.
 export function claimedByLiveRefunds(
   refunds: ClaimingRefund[],
   settledAmount = 0
@@ -48,13 +37,8 @@ export function claimedByLiveRefunds(
   return { claims, amount: Math.max(amount, settledAmount) };
 }
 
-/**
- * What a line has left to refund.
- *
- * refunded_quantity counts settled refunds only, so a refund still in flight is
- * invisible to it — exactly the window in which the same units could go back
- * twice. claims carries those units, and the larger of the two wins.
- */
+// What a line has left to refund. refunded_quantity counts settled refunds only, so
+// claims carries the in-flight units and the larger of the two wins.
 export function unrefundedQuantity(line: RefundableLine, claims?: RefundClaims): number {
   const settled = line.refunded_quantity ?? 0;
   const claimed = claims?.[line.id] ?? 0;

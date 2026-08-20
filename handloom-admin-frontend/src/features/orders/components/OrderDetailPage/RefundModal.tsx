@@ -34,9 +34,8 @@ const REASON_OPTIONS = (Object.keys(REFUND_REASON_LABELS) as RefundReason[]).map
   label: REFUND_REASON_LABELS[value],
 }));
 
-// The statuses where a refund moves money only, matching the server's own skip list.
-// After dispatch CommitStock has consumed the reservation and RETURNED owns
-// restocking; after cancellation the release already happened.
+// Where a refund moves money only, matching the server's skip list: after dispatch
+// RETURNED owns restocking, and after cancellation the release already happened.
 function movesNoStock(order: Order): boolean {
   return ['SHIPPED', 'DELIVERED', 'RETURNED', 'CANCELLED'].includes(order.status);
 }
@@ -55,10 +54,8 @@ export function RefundModal({
   const [restock, setRestock] = useState<Record<string, boolean>>({});
   const [reason, setReason] = useState<RefundReason | ''>('');
 
-  // The modal stays mounted between openings, so nothing resets on its own —
-  // without this a second refund opens holding the first one's selection.
-  // Adjusted during render rather than in an effect, which would re-render the
-  // stale selection first.
+  // The modal stays mounted, so without this a second refund opens holding the first
+  // one's selection. Adjusted in render; an effect would show the stale one first.
   const [wasOpen, setWasOpen] = useState(isOpen);
   if (isOpen !== wasOpen) {
     setWasOpen(isOpen);
@@ -76,9 +73,8 @@ export function RefundModal({
   );
   const moneyOnly = movesNoStock(order);
 
-  // What the admin has asked for, in the shape the server prices — clamped to what
-  // each line still has. A pending refund settling under an open modal shrinks the
-  // remainder, and sending the stale figure would be refused rather than priced.
+  // What was asked for, in the shape the server prices, clamped to what each line has
+  // left: a pending refund settling under an open modal would make it stale.
   const requested = useMemo(
     () =>
       items

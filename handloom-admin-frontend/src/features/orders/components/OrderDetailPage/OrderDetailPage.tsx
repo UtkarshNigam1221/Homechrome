@@ -66,9 +66,8 @@ export function OrderDetailPage() {
     enabled: !!id,
   });
 
-  // Everything the order's refunds already account for, settled or in flight,
-  // reconciled against the payment's own figure. Derived the way the server
-  // derives it, so the amount on screen is the amount that will leave.
+  // What the order's refunds already account for, settled or in flight, reconciled
+  // against the payment's own figure — the same reading the server takes.
   const { claims: refundClaims, amount: priorRefunded } = claimedByLiveRefunds(
     refunds,
     order?.refunded_amount ?? 0

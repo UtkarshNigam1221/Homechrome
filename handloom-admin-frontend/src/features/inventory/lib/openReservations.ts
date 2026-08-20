@@ -1,14 +1,12 @@
 import type { InventoryTransaction } from '@/features/inventory/types';
 
-// A reservation settles when its order dispatches (COMMIT), gives the stock back
-// (RELEASE) or writes it off (WRITE_OFF); one that does none is the drift signature.
-// Settling rows sit on earlier pages, so only the newest page can conclude anything.
+// A reservation settles on COMMIT, RELEASE or WRITE_OFF; one that does none is the
+// drift signature. Settling rows sit on earlier pages, so only the newest page counts.
 export function openReservationIDs(rows: InventoryTransaction[], anchored: boolean): Set<string> {
   if (!anchored) return new Set();
 
-  // Netted rather than counted by presence: one unit released out of three
-  // leaves two still held, and treating any settlement as the whole story hides
-  // exactly the partial drift this is meant to catch.
+  // Netted, not counted by presence: one unit released out of three leaves two held,
+  // and treating any settlement as the whole story hides the partial drift.
   const outstanding = new Map<string, number>();
 
   for (const row of rows) {

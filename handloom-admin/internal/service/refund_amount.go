@@ -35,10 +35,7 @@ func prorate(value, lineSubtotal, subtotal int64) int64 {
 }
 
 // deriveRefundAmount computes the refund: each line less its prorated discount plus its
-// tax. The refund that clears the order also earns the shipping and the residual.
-//
-// claimed counts units already spoken for by refunds that have not failed, settled or
-// not — the authority over RefundedQuantity, which is blind to a refund still in flight.
+// tax, and claimed counts what refunds already spoke for, settled or in flight.
 func deriveRefundAmount(order *domain.Order, requested []domain.CreateRefundItemRequest, claimed map[string]int, priorRefunded int64) (*refundBreakdown, error) {
 	if len(requested) == 0 {
 		return nil, errors.BadRequest("A refund needs at least one line")
@@ -119,9 +116,8 @@ func deriveRefundAmount(order *domain.Order, requested []domain.CreateRefundItem
 	return breakdown, nil
 }
 
-// unrefundedBaseline is how much of a line is already spoken for before this
-// request: whatever refunds have claimed, or the settled counter when no claim
-// is supplied.
+// unrefundedBaseline is what a line is already spoken for before this request: what
+// refunds claimed, or the settled counter when no claim is supplied.
 func unrefundedBaseline(item *domain.OrderItem, claimed map[string]int) int {
 	if claimed == nil {
 		return item.RefundedQuantity

@@ -126,9 +126,8 @@ func (s *RefundService) Create(ctx context.Context, orderID string, req domain.C
 	return refund, nil
 }
 
-// audit records who sent the money back, with the lines it covered. Logged and
-// swallowed on failure: the refund is already live at the provider, and losing
-// the trail is not a reason to report the refund as failed.
+// audit records who sent the money back, with the lines it covered. Swallowed on
+// failure: the refund is already live, and losing the trail does not make it failed.
 func (s *RefundService) audit(ctx context.Context, refund *domain.Refund) {
 	if s.auditor == nil {
 		return
@@ -205,14 +204,8 @@ func (s *RefundService) price(ctx context.Context, orderID string, items []domai
 		return nil, nil, nil, errors.BadRequest("Order has not been paid")
 	}
 
-	// What every refund that has not failed already claims — settled or still in
-	// flight. Bounding on the settled figures alone left a window, between creating a
-	// refund and its webhook landing, in which the same units could go back twice.
-	//
-	// Best-effort, not a proof: ListByOrder reads GSI1, and a GSI is always
-	// eventually consistent. Two creates within the replication lag can each miss the
-	// other. Closing it needs the claim on a consistently-readable item — see the
-	// design's known gaps.
+	// What every non-failed refund claims, settled or in flight. Best-effort, not a
+	// proof: this reads a GSI, so two creates inside the lag can miss each other.
 	existing, err := s.refundRepo.ListByOrder(ctx, order.ID)
 	if err != nil {
 		return nil, nil, nil, err
@@ -417,10 +410,8 @@ func (s *RefundService) applyCompletion(ctx context.Context, refund *domain.Refu
 		return
 	}
 
-	// Derived from every completed refund rather than incremented by this one.
-	// Two refunds settling at once both read-modify-write this order, and an
-	// increment loses one of them; recomputing the total makes the write
-	// idempotent and self-healing instead.
+	// Derived from every completed refund, not incremented by this one: two settling at
+	// once both read-modify-write the order, and an increment loses one of them.
 	settled, err := s.refundRepo.ListByOrder(ctx, refund.OrderID)
 	if err != nil {
 		slog.ErrorContext(ctx, "Failed to total refunded quantities", "refund_id", refund.ID, "error", err)

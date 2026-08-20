@@ -558,13 +558,8 @@ func ProvideRefundService(
 		userRepo, auditService, notificationService, gateway)
 }
 
-// ProvideStoreRefundService builds the service without a user directory. The
-// store Lambda only settles refunds from webhooks — it never lists them, so
-// there is no actor to name, and the user repository has no business in a
-// customer-facing Lambda.
-// The store settles refunds from webhooks and raises none, so it needs no audit
-// trail or actor directory — but it does need the notifier: settlement is where the
-// customer is told the money is coming back, and webhooks are how settlement arrives.
+// ProvideStoreRefundService wires no auditor or actor directory — the store settles
+// refunds and raises none — but it does need the notifier, which settlement uses.
 func ProvideStoreRefundService(
 	refundRepo domain.RefundRepository,
 	orderRepo domain.OrderRepository,

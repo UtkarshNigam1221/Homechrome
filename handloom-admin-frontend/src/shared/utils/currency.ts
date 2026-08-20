@@ -16,9 +16,8 @@ const exactFormatter = new Intl.NumberFormat('en-IN', {
   maximumFractionDigits: 2,
 });
 
-// For a figure someone is authorising rather than skimming. Refunds are derived
-// to the paise and have to be shown to the paise, or the amount on screen is not
-// the amount that leaves the account.
+// For a figure someone authorizes rather than skims. Refunds are derived to the paise
+// and have to be shown to the paise, or the screen is not the amount that leaves.
 export function formatCurrencyExact(paise: number): string {
   return exactFormatter.format(paise / 100);
 }
