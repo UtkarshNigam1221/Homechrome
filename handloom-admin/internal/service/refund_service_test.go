@@ -204,6 +204,64 @@ func TestRefundService_Create(t *testing.T) {
 
 	// After dispatch the reservation is already consumed, and RETURNED owns
 	// restocking — a refund moving stock too would count the goods back twice.
+	// The admin create path allows one product on two lines, and movements are
+	// idempotent per product, so per-line calls would dedup to one and lose stock.
+	t.Run("aggregates two lines of one product into a single movement", func(t *testing.T) {
+		h := newRefundHarness(t)
+		twoLines := paidOrder(domain.OrderStatusConfirmed)
+		twoLines.Items = append(twoLines.Items, domain.OrderItem{
+			ID: "item_b", ProductID: "prod_a", UnitPrice: 10000, Quantity: 3,
+		})
+		twoLines.Subtotal, twoLines.TotalAmount = 50000, 50000
+		h.orders.EXPECT().GetByID(gomock.Any(), "order_1").Return(twoLines, nil)
+		h.payments.EXPECT().GetByOrderID(gomock.Any(), "order_1").Return(paidPayment(), nil)
+		h.refunds.EXPECT().ListByOrder(gomock.Any(), "order_1").Return(nil, nil)
+		h.refunds.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
+		h.refunds.EXPECT().SetProviderRefundID(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+
+		// One call for 5, not one for 2 and one for 3 — the second would be deduped
+		// into the first and 3 units of stock would never move.
+		h.inventory.EXPECT().WriteOffStock(gomock.Any(), "prod_a", 5, "order_1").
+			Return(&domain.InventoryTransaction{}, nil).Times(1)
+
+		_, err := h.svc.Create(ctx, "order_1", domain.CreateRefundRequest{
+			Reason: domain.RefundReasonOutOfStock,
+			Items: []domain.CreateRefundItemRequest{
+				{OrderItemID: "item_a", Quantity: 2},
+				{OrderItemID: "item_b", Quantity: 3},
+			},
+		}, "admin_1")
+		require.NoError(t, err)
+	})
+
+	// Restock picks the movement type, so lines going opposite ways stay apart.
+	t.Run("keeps a restocked line apart from a written-off one", func(t *testing.T) {
+		h := newRefundHarness(t)
+		twoLines := paidOrder(domain.OrderStatusConfirmed)
+		twoLines.Items = append(twoLines.Items, domain.OrderItem{
+			ID: "item_b", ProductID: "prod_a", UnitPrice: 10000, Quantity: 3,
+		})
+		twoLines.Subtotal, twoLines.TotalAmount = 50000, 50000
+		h.orders.EXPECT().GetByID(gomock.Any(), "order_1").Return(twoLines, nil)
+		h.payments.EXPECT().GetByOrderID(gomock.Any(), "order_1").Return(paidPayment(), nil)
+		h.refunds.EXPECT().ListByOrder(gomock.Any(), "order_1").Return(nil, nil)
+		h.refunds.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
+		h.refunds.EXPECT().SetProviderRefundID(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		h.inventory.EXPECT().ReleaseStock(gomock.Any(), "prod_a", 2, "order_1").
+			Return(&domain.InventoryTransaction{}, nil).Times(1)
+		h.inventory.EXPECT().WriteOffStock(gomock.Any(), "prod_a", 3, "order_1").
+			Return(&domain.InventoryTransaction{}, nil).Times(1)
+
+		_, err := h.svc.Create(ctx, "order_1", domain.CreateRefundRequest{
+			Reason: domain.RefundReasonOutOfStock,
+			Items: []domain.CreateRefundItemRequest{
+				{OrderItemID: "item_a", Quantity: 2, Restock: true},
+				{OrderItemID: "item_b", Quantity: 3},
+			},
+		}, "admin_1")
+		require.NoError(t, err)
+	})
+
 	// A cancellation already released the reservation. Releasing again would take the
 	// units out of some other order's holding, so the refund must move money only.
 	t.Run("moves no stock for an order already cancelled", func(t *testing.T) {

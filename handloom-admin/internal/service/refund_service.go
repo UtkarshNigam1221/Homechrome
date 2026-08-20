@@ -254,25 +254,42 @@ func (s *RefundService) applyInventoryEffect(ctx context.Context, order *domain.
 		return
 	}
 
-	for _, item := range refund.Items {
+	for group, quantity := range refundQuantities(refund.Items) {
 		var err error
 		reason := reasonWriteOff
-		if item.Restock {
+		if group.restock {
 			reason = reasonRelease
 			// Back on sale: the reservation is released and nothing else moves.
-			_, err = s.inventoryRepo.ReleaseStock(ctx, item.ProductID, item.Quantity, order.ID)
+			_, err = s.inventoryRepo.ReleaseStock(ctx, group.productID, quantity, order.ID)
 		} else {
 			// Written off: the goods are not there, so the reservation goes and
 			// on-hand falls with it.
-			_, err = s.inventoryRepo.WriteOffStock(ctx, item.ProductID, item.Quantity, order.ID)
+			_, err = s.inventoryRepo.WriteOffStock(ctx, group.productID, quantity, order.ID)
 		}
 		if err != nil {
 			slog.ErrorContext(ctx, "Failed to move stock for refund",
-				keyProductID, item.ProductID, "refund_id", refund.ID, "error", err)
+				keyProductID, group.productID, "refund_id", refund.ID, "error", err)
 			metrics.Record(ctx, "inventory_mutation_failed",
 				metrics.L{metrics.LabelReason: reason})
 		}
 	}
+}
+
+// movementGroup is one stock movement's worth of a refund: restock picks the type,
+// so two lines of one product only merge when they are going the same way.
+type movementGroup struct {
+	productID string
+	restock   bool
+}
+
+// refundQuantities aggregates a refund's lines by product, like orderQuantities does
+// for an order: movements are idempotent per product, so two lines would dedup to one.
+func refundQuantities(items []domain.RefundItem) map[movementGroup]int {
+	quantities := make(map[movementGroup]int, len(items))
+	for _, item := range items {
+		quantities[movementGroup{item.ProductID, item.Restock}] += item.Quantity
+	}
+	return quantities
 }
 
 // ListByOrder returns an order's refunds, with the admin behind each one named.
