@@ -204,8 +204,8 @@ func (s *RefundService) price(ctx context.Context, orderID string, items []domai
 		return nil, nil, nil, errors.BadRequest("Order has not been paid")
 	}
 
-	// What every non-failed refund claims, settled or in flight. Best-effort, not a
-	// proof: this reads a GSI, so two creates inside the lag can miss each other.
+	// What every non-failed refund claims, settled or in flight. Best-effort: this reads
+	// a GSI, and a single admin raising refunds by hand cannot race itself.
 	existing, err := s.refundRepo.ListByOrder(ctx, order.ID)
 	if err != nil {
 		return nil, nil, nil, err

@@ -407,16 +407,20 @@ The Refund action is hidden for non-`ADMIN` users, matching the server guard.
 - **No automatic retry of failed refunds.** The admin creates a new refund. Automatic
   retry would need the same idempotency guarantees against PhonePe that a fresh
   `merchantRefundId` sidesteps.
-- **The in-flight bound is best-effort.** `Create` folds every non-failed refund
-  into the remainder, which closes the window between creation and settlement that
-  the settled counters left open. It does not close the window entirely:
-  `ListByOrder` reads GSI1, a GSI is always eventually consistent, and there is no
-  conditional write serialising two creates. Two attempts inside the replication lag
-  can each fail to see the other. Closing it needs the claim carried on an item that
-  can be read consistently — an `ADD` counter on the payment, bounded by a
-  `ConditionExpression` — which is a change to how a refund is recorded, not to how
-  it is priced. Accepted for now because the window is sub-second and prod has no
-  orders; revisit before it does.
+- **The in-flight bound is best-effort, and that is the decision.** `Create` folds
+  every non-failed refund into the remainder, which closes the window between
+  creation and settlement that the settled counters left open. It does not close it
+  entirely: `ListByOrder` reads GSI1, a GSI is always eventually consistent, and no
+  conditional write serialises two creates, so two attempts inside the replication
+  lag can each fail to see the other.
+
+  Accepted, not deferred. Refunds are raised by hand by a single admin, so two
+  creates landing within a GSI replication lag is not a path the product has. The
+  fix — carrying the claim on a consistently-readable item, an `ADD` counter on the
+  payment bounded by a `ConditionExpression` — would change how a refund is
+  recorded rather than how it is priced, and buys nothing against a single operator.
+  Revisit only if refunds ever become concurrent: more than one admin raising them,
+  an automated retry, or a bulk tool.
 - **`Customer.TotalSpent` is not adjusted.** It is documented as gross order value; a
   refund does not reduce it. Changing that is a reporting decision beyond this scope.
 - **Refunds are per order, not per payment attempt.** An order has one successful
