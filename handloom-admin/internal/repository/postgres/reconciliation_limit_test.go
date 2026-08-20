@@ -12,7 +12,7 @@ import (
 
 // TestInventoryRepository_FindOrphanReservations_Limit covers the one part of
 // #230 case 14 that TestInventoryRepository_FindOrphanReservations does not:
-// that the row cap is honoured.
+// that the row cap is honored.
 //
 // It matters because scripts/reconcile-inventory warns when the result length
 // equals the limit — "there may be more" — and that warning is only meaningful

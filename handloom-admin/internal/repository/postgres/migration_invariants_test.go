@@ -2,9 +2,10 @@ package postgres_test
 
 import (
 	"context"
+	"testing"
+
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
-	"testing"
 
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/internal/repository/postgres"
@@ -151,5 +152,4 @@ func TestMigration_OrderScopedUniqueness(t *testing.T) {
 			t.Skip("no dedup archive on this database — it is created only where 013 found duplicates")
 		}
 	})
-
 }

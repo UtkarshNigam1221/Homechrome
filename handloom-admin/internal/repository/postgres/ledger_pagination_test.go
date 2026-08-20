@@ -34,8 +34,8 @@ func TestInventoryRepository_LedgerPagingIsStableOnTiedTimestamps(t *testing.T) 
 	// created_at to the same instant so the tie is guaranteed rather than hoped for.
 	const movements = 9
 	for i := 0; i < movements; i++ {
-		_, err := repo.ReserveStock(ctx, p.ID, 1, "order_tie_"+uuid.New().String()[:8])
-		require.NoError(t, err)
+		_, reserveErr := repo.ReserveStock(ctx, p.ID, 1, "order_tie_"+uuid.New().String()[:8])
+		require.NoError(t, reserveErr)
 	}
 	_, err = pool.Exec(ctx,
 		`UPDATE inventory_transactions SET created_at = NOW() WHERE product_id = $1`, p.ID)
@@ -48,11 +48,11 @@ func TestInventoryRepository_LedgerPagingIsStableOnTiedTimestamps(t *testing.T) 
 	cursor := ""
 
 	for guard := 0; guard < movements+pageSize; guard++ {
-		page, err := repo.GetTransactions(ctx, p.ID, domain.PaginationRequest{
+		page, pageErr := repo.GetTransactions(ctx, p.ID, domain.PaginationRequest{
 			Limit:  pageSize,
 			Cursor: cursor,
 		})
-		require.NoError(t, err)
+		require.NoError(t, pageErr)
 		if len(page.Transactions) == 0 {
 			break
 		}
