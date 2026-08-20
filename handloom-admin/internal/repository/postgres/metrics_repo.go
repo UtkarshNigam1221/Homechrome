@@ -39,6 +39,13 @@ func (r *MetricsRepository) UpsertCounters(ctx context.Context, rows []CounterRo
 		return nil
 	}
 
+	// Pre-aggregate before building the statement. Postgres refuses an
+	// INSERT ... ON CONFLICT whose VALUES name the same conflict target twice
+	// ("cannot affect row a second time", SQLSTATE 21000) — and a counter batch
+	// repeating one key is the normal case, not an edge one: that is what a
+	// counter is. Without this the whole flush fails and the batch is lost.
+	rows = aggregateCounterRows(rows)
+
 	sql := `INSERT INTO metric_counters
               (metric, labels, label_hash, bucket_start, count, sum_value, retention_class)
             VALUES `
@@ -77,4 +84,33 @@ func (r *MetricsRepository) UpsertCounters(ctx context.Context, rows []CounterRo
 		return fmt.Errorf("upsert counters: %w", err)
 	}
 	return tx.Commit(ctx)
+}
+
+// aggregateCounterRows sums rows sharing a conflict target
+// (metric, label_hash, bucket_start), so each key appears once in the
+// statement. Input order is preserved for the first occurrence of each key,
+// which keeps the generated SQL stable and diffable.
+func aggregateCounterRows(rows []CounterRow) []CounterRow {
+	// label_hash is []byte, so it cannot be a map key directly; the string
+	// conversion is a value copy, which is what a key needs anyway.
+	type key struct {
+		metric    string
+		labelHash string
+		bucket    time.Time
+	}
+
+	index := make(map[key]int, len(rows))
+	out := make([]CounterRow, 0, len(rows))
+
+	for _, row := range rows {
+		k := key{row.Metric, string(row.LabelHash), row.BucketStart}
+		if at, seen := index[k]; seen {
+			out[at].Count += row.Count
+			out[at].SumValue += row.SumValue
+			continue
+		}
+		index[k] = len(out)
+		out = append(out, row)
+	}
+	return out
 }

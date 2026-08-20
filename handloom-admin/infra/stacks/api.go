@@ -36,12 +36,12 @@ type APIStackProps struct {
 
 	// Non-secret gateway config, baked per-env in infra/cmd/config.go and
 	// injected into Lambda env. Secrets still come from the deploy shell.
-	PhonePeBaseURL          string
-	PhonePeCallbackURL      string
-	PhonePeRedirectURL      string
-	PhonePeClientVersion    string
-	MSG91BaseURL            string
-	MSG91OTPTemplateID      string
+	PhonePeBaseURL       string
+	PhonePeCallbackURL   string
+	PhonePeRedirectURL   string
+	PhonePeClientVersion string
+	MSG91BaseURL         string
+	MSG91OTPTemplateID   string
 
 	// Telemetry — community-published OTel Collector layer ARN + SSM parameter
 	// names for Grafana Cloud credentials. All three must be set together; if
@@ -165,12 +165,12 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 	// deploy-time env var needed. Empty values fall through to each gateway's
 	// DevClient at runtime.
 	gatewayConfig := map[string]string{
-		"PHONEPE_BASE_URL":          props.PhonePeBaseURL,
-		"PHONEPE_CALLBACK_URL":      props.PhonePeCallbackURL,
-		"PHONEPE_REDIRECT_URL":      props.PhonePeRedirectURL,
-		"PHONEPE_CLIENT_VERSION":    props.PhonePeClientVersion,
-		"MSG91_BASE_URL":            props.MSG91BaseURL,
-		"MSG91_OTP_TEMPLATE_ID":     props.MSG91OTPTemplateID,
+		"PHONEPE_BASE_URL":       props.PhonePeBaseURL,
+		"PHONEPE_CALLBACK_URL":   props.PhonePeCallbackURL,
+		"PHONEPE_REDIRECT_URL":   props.PhonePeRedirectURL,
+		"PHONEPE_CLIENT_VERSION": props.PhonePeClientVersion,
+		"MSG91_BASE_URL":         props.MSG91BaseURL,
+		"MSG91_OTP_TEMPLATE_ID":  props.MSG91OTPTemplateID,
 	}
 	for k, v := range gatewayConfig {
 		if v != "" {
@@ -188,6 +188,19 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 	for _, key := range gatewaySecretKeys {
 		if v := os.Getenv(key); v != "" {
 			commonEnv[key] = jsii.String(v)
+		}
+	}
+
+	// E2E OTP short-circuit. Deliberately gated on isProd here, not merely left
+	// unset in the prod env file: the variables are then absent from the prod
+	// Lambdas entirely, so no console edit or SSM drift can switch the bypass on
+	// without changing this code. The backend refuses to start if they ever do
+	// appear in prod (config.Validate), making this the outer of two guards.
+	if !isProd {
+		for _, key := range []string{"STORE_TEST_PHONES", "STORE_TEST_OTP"} {
+			if v := os.Getenv(key); v != "" {
+				commonEnv[key] = jsii.String(v)
+			}
 		}
 	}
 

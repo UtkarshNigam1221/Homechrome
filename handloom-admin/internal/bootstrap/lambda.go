@@ -4,6 +4,7 @@ package bootstrap
 
 import (
 	"context"
+	"log"
 	"log/slog"
 	"os"
 	"time"
@@ -27,6 +28,13 @@ type LambdaContext struct {
 // "handloom-unknown").
 func InitLambda(serviceName string) *LambdaContext {
 	cfg := config.Load()
+
+	// Die on cold start rather than serve traffic with a test bypass live. This
+	// is the inner of the two guards on STORE_TEST_PHONES; CDK never setting the
+	// variable on the prod stack is the outer one.
+	if err := cfg.Validate(); err != nil {
+		log.Fatalf("invalid configuration: %v", err)
+	}
 
 	if cfg.Telemetry.ServiceName == "" || cfg.Telemetry.ServiceName == "handloom-unknown" {
 		cfg.Telemetry.ServiceName = serviceName
