@@ -12,6 +12,7 @@ import {
   Text,
   TextInput,
 } from '@mantine/core';
+import { isAxiosError } from 'axios';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
@@ -19,7 +20,19 @@ import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { useAuthStore } from '@/stores/auth';
 
-const OTP_RESEND_SECONDS = 30;
+// Matches domain.OTPSendCooldown on the backend. Offering resend sooner just
+// invites a refusal.
+const OTP_RESEND_SECONDS = 60;
+
+// "Please try again" is wrong advice at the cap, so show what the server said.
+// Everything else keeps generic copy rather than leaking backend wording.
+function otpSendError(err: unknown, fallback: string): string {
+  if (isAxiosError(err) && err.response?.status === 429) {
+    const message = err.response.data?.error?.message;
+    if (typeof message === 'string' && message) return message;
+  }
+  return fallback;
+}
 
 function LoginForm() {
   const router = useRouter();
@@ -75,8 +88,8 @@ function LoginForm() {
       await sendOTP(`+91${cleaned}`);
       setStep('otp');
       startCountdown(OTP_RESEND_SECONDS);
-    } catch {
-      setError('Failed to send OTP. Please try again.');
+    } catch (err) {
+      setError(otpSendError(err, 'Failed to send OTP. Please try again.'));
     } finally {
       setSending(false);
     }
@@ -108,8 +121,8 @@ function LoginForm() {
     try {
       await sendOTP(`+91${cleaned}`);
       startCountdown(OTP_RESEND_SECONDS);
-    } catch {
-      setError('Failed to resend OTP. Please try again.');
+    } catch (err) {
+      setError(otpSendError(err, 'Failed to resend OTP. Please try again.'));
     } finally {
       setSending(false);
     }

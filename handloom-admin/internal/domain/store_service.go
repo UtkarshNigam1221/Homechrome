@@ -17,6 +17,8 @@ type CustomerTokenClaims struct {
 // CustomerAuthService defines customer authentication operations
 type CustomerAuthService interface {
 	SendOTP(ctx context.Context, phone string) error
+	// OTPSendRateLimitKey is the key SendOTP is limited on, "" when exempt.
+	OTPSendRateLimitKey(phone string) string
 	VerifyOTP(ctx context.Context, phone, code string) (*Customer, *TokenPair, bool, error)
 	RefreshToken(ctx context.Context, refreshToken string) (*Customer, *TokenPair, error)
 	Logout(ctx context.Context, customerID, refreshToken string) error

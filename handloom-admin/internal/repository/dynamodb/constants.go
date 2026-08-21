@@ -30,4 +30,8 @@ const (
 
 	// skMetadata aliases domain.SKMetadata so dynamodb-layer reads short.
 	skMetadata = domain.SKMetadata
+
+	// Expression-attribute-value placeholders shared across repositories.
+	valTTL = ":ttl"
+	valOne = ":one"
 )

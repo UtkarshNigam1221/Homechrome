@@ -136,7 +136,7 @@ Uses a tmp-then-finalize S3 pattern:
 
 ### B2C Store Routes
 Mounted at `/api/v1/store/*` in the monolith (`cmd/api/main.go`):
-- `/auth/*` — OTP send/verify, refresh, logout (rate-limited: 30/min)
+- `/auth/*` — OTP send/verify, refresh, logout. The 30/min `httprate` limiter is **monolith-only**: `cmd/api/main.go` applies it, `internal/router/store_auth.go` does not, so no deployed (Lambda) environment has it — and an in-memory limiter would be per-container there anyway. Deployed protection is API Gateway method throttling (10 rps / 20 burst on `/api/v1/store/auth/{proxy+}`) plus a per-phone cooldown and hourly cap enforced in `CustomerAuthService.SendOTP`
 - `/catalog/*` — Public product/category browsing
 - `/cart/*` — Cart CRUD (customer-authenticated)
 - `/checkout/*` — Order placement + payment initiation (customer-authenticated)
