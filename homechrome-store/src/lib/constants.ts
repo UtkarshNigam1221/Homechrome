@@ -9,11 +9,11 @@ export const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:808
 // Catalog page size (SSR first page + scroll pages); backend caps limit at 100.
 export const PRODUCTS_PAGE_SIZE = 24;
 
-// Support / social contacts. wa.me wants digits only (incl. country code);
-// phone stays env-overridable (placeholder number for now).
-export const SUPPORT_WHATSAPP = (
-  process.env.NEXT_PUBLIC_SUPPORT_PHONE || '+919690965200'
-).replace(/\D/g, '');
+// Support contacts. One number drives all three: display, tel: (wants the
+// +country form) and wa.me (wants bare digits). Env-overridable per environment.
+export const SUPPORT_PHONE = process.env.NEXT_PUBLIC_SUPPORT_PHONE || '+91-6396223764';
+export const SUPPORT_WHATSAPP = SUPPORT_PHONE.replace(/\D/g, '');
+export const SUPPORT_PHONE_TEL = `+${SUPPORT_WHATSAPP}`;
 export const SUPPORT_EMAIL = 'info@homechrome.in';
 export const INSTAGRAM_URL = 'https://www.instagram.com/_home.chrome_';
 
