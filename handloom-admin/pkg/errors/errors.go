@@ -55,6 +55,9 @@ const (
 	// Inventory errors
 	ErrCodeInsufficientStock ErrorCode = "INSUFFICIENT_STOCK"
 	ErrCodeInventoryNotFound ErrorCode = "INVENTORY_NOT_FOUND"
+
+	// Rate limiting
+	ErrCodeRateLimited ErrorCode = "RATE_LIMITED"
 )
 
 // AppError represents an application error
@@ -191,6 +194,8 @@ func codeToHTTPStatus(code ErrorCode) int {
 		return http.StatusUnauthorized
 	case ErrCodeForbidden:
 		return http.StatusForbidden
+	case ErrCodeRateLimited:
+		return http.StatusTooManyRequests
 	case ErrCodeNotFound, ErrCodeUserNotFound, ErrCodeCategoryNotFound,
 		ErrCodeProductNotFound, ErrCodePricingRuleNotFound, ErrCodeQuoteNotFound, ErrCodeInventoryNotFound:
 		return http.StatusNotFound

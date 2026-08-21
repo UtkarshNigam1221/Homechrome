@@ -11,6 +11,7 @@ import { Product } from '@/types';
 interface ApiResponse<T> {
   success: boolean;
   data: T;
+  error?: { code: string; message: string };
   meta?: {
     limit: number;
     next_cursor: string;
@@ -76,8 +77,12 @@ client.interceptors.response.use(
       _retryCount?: number;
     };
 
-    // 429 Too Many Requests — retry with exponential backoff
-    if (error.response?.status === 429) {
+    // 429 — retry with backoff, except RATE_LIMITED: the per-phone OTP cap is
+    // a deliberate refusal, so retrying burns ~7s on the same error.
+    if (
+      error.response?.status === 429 &&
+      error.response.data?.error?.code !== 'RATE_LIMITED'
+    ) {
       const retryCount = originalRequest._retryCount ?? 0;
       if (retryCount < MAX_429_RETRIES) {
         originalRequest._retryCount = retryCount + 1;

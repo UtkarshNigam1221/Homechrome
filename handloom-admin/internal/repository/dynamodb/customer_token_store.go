@@ -92,7 +92,7 @@ func (s *CustomerTokenStore) ClaimRotation(ctx context.Context, customerID, toke
 		},
 		ExpressionAttributeValues: map[string]types.AttributeValue{
 			":successor": &types.AttributeValueMemberS{Value: successorHash},
-			":ttl":       &types.AttributeValueMemberN{Value: strconv.FormatInt(graceTTL, 10)},
+			valTTL:       &types.AttributeValueMemberN{Value: strconv.FormatInt(graceTTL, 10)},
 		},
 		// Splits the two failure modes: item present = already rotated,
 		// item absent = revoked.

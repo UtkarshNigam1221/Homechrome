@@ -136,6 +136,7 @@ generate-mocks:
 	mockgen -source=internal/domain/token_store.go -destination=internal/mocks/token_store_mock.go -package=mocks
 	mockgen -source=internal/domain/store_service.go -destination=internal/mocks/store_service_mock.go -package=mocks
 	mockgen -source=internal/domain/store_repository.go -destination=internal/mocks/store_repository_mock.go -package=mocks
+	mockgen -source=internal/domain/rate_limit.go -destination=internal/mocks/rate_limit_mock.go -package=mocks
 	mockgen -source=internal/domain/refund.go -destination=internal/mocks/refund_mock.go -package=mocks
 
 ## Run linter
