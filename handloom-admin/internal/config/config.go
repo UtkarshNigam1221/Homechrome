@@ -43,6 +43,7 @@ type StoreConfig struct {
 	PhonePeClientSecret    string
 	PhonePeClientVersion   string
 	PhonePeBaseURL         string
+	PhonePeAuthBaseURL     string
 	PhonePeCallbackURL     string
 	PhonePeRedirectURL     string
 	PhonePeWebhookUsername string
@@ -174,10 +175,13 @@ func Load() *Config {
 			ModelVersion: getEnv("EMBEDDING_MODEL_VERSION", "l3cube-indic-sbert-nli-v1"),
 		},
 		Store: StoreConfig{
-			PhonePeClientID:        getEnv("PHONEPE_CLIENT_ID", ""),
-			PhonePeClientSecret:    getEnv("PHONEPE_CLIENT_SECRET", ""),
-			PhonePeClientVersion:   getEnv("PHONEPE_CLIENT_VERSION", "1"),
-			PhonePeBaseURL:         getEnv("PHONEPE_BASE_URL", "https://api-preprod.phonepe.com/apis/pg-sandbox"),
+			PhonePeClientID:      getEnv("PHONEPE_CLIENT_ID", ""),
+			PhonePeClientSecret:  getEnv("PHONEPE_CLIENT_SECRET", ""),
+			PhonePeClientVersion: getEnv("PHONEPE_CLIENT_VERSION", "1"),
+			// No defaults: a sandbox host silently used in production would take real
+			// payments to a test gateway. Missing values fail at startup instead.
+			PhonePeBaseURL:         getEnv("PHONEPE_BASE_URL", ""),
+			PhonePeAuthBaseURL:     getEnv("PHONEPE_AUTH_BASE_URL", ""),
 			PhonePeCallbackURL:     getEnv("PHONEPE_CALLBACK_URL", ""),
 			PhonePeRedirectURL:     getEnv("PHONEPE_REDIRECT_URL", ""),
 			PhonePeWebhookUsername: getEnv("PHONEPE_WEBHOOK_USERNAME", ""),

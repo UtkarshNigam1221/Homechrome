@@ -31,12 +31,13 @@ type EnvConfig struct {
 	// deploy-time env var. SECRETS (client secret, passwords, auth keys,
 	// POSTGRES_DSN, JWT secrets) stay in the BACKEND_ENV_* deploy secret and are
 	// read from the shell in infra/stacks/api.go.
-	PhonePeBaseURL          string
-	PhonePeCallbackURL      string
-	PhonePeRedirectURL      string
-	PhonePeClientVersion    string
-	MSG91BaseURL            string
-	MSG91OTPTemplateID      string
+	PhonePeBaseURL       string
+	PhonePeAuthBaseURL   string
+	PhonePeCallbackURL   string
+	PhonePeRedirectURL   string
+	PhonePeClientVersion string
+	MSG91BaseURL         string
+	MSG91OTPTemplateID   string
 }
 
 var envConfigs = map[string]EnvConfig{
@@ -51,12 +52,13 @@ var envConfigs = map[string]EnvConfig{
 		EmbedderFnName:   "handloom-embedder-dev",
 		GrafanaEndpoint:  "https://otlp-gateway-prod-ap-south-1.grafana.net/otlp",
 
-		PhonePeBaseURL:          "https://api-preprod.phonepe.com/apis/pg-sandbox",
-		PhonePeCallbackURL:      "https://dev-api.homechrome.in/api/v1/store/webhooks/phonepe",
-		PhonePeRedirectURL:      "https://dev-store.homechrome.in/checkout/confirmation",
-		PhonePeClientVersion:    "1",
-		MSG91BaseURL:            "https://control.msg91.com",
-		MSG91OTPTemplateID:      "6a04664c95bc5e4fa90fb332",
+		PhonePeBaseURL:       "https://api-preprod.phonepe.com/apis/pg-sandbox",
+		PhonePeAuthBaseURL:   "https://api-preprod.phonepe.com/apis/pg-sandbox",
+		PhonePeCallbackURL:   "https://dev-api.homechrome.in/api/v1/store/webhooks/phonepe",
+		PhonePeRedirectURL:   "https://dev-store.homechrome.in/checkout/confirmation",
+		PhonePeClientVersion: "1",
+		MSG91BaseURL:         "https://control.msg91.com",
+		MSG91OTPTemplateID:   "6a04664c95bc5e4fa90fb332",
 	},
 	"prod": {
 		CertArn:        "arn:aws:acm:ap-south-1:163053486005:certificate/c20f97ff-ba58-4821-8f3d-6f50f772df89",
@@ -71,12 +73,15 @@ var envConfigs = map[string]EnvConfig{
 
 		// when this was filled — confirm against BACKEND_ENV_PROD before the next
 		// prod deploy. The URLs below follow the prod domain pattern.
-		PhonePeBaseURL:          "https://api-preprod.phonepe.com/apis/pg-sandbox", // live PhonePe — VERIFY
-		PhonePeCallbackURL:      "https://api.homechrome.in/api/v1/store/webhooks/phonepe",
-		PhonePeRedirectURL:      "https://www.homechrome.in/checkout/confirmation",
-		PhonePeClientVersion:    "1",
-		MSG91BaseURL:            "https://control.msg91.com",
-		MSG91OTPTemplateID:      "6a04664c95bc5e4fa90fb332", // VERIFY prod template
+		// Production splits these: the token comes from identity-manager, everything
+		// else from pg. UAT serves both from pg-sandbox, which hid the difference.
+		PhonePeBaseURL:       "https://api.phonepe.com/apis/pg",
+		PhonePeAuthBaseURL:   "https://api.phonepe.com/apis/identity-manager",
+		PhonePeCallbackURL:   "https://api.homechrome.in/api/v1/store/webhooks/phonepe",
+		PhonePeRedirectURL:   "https://www.homechrome.in/checkout/confirmation",
+		PhonePeClientVersion: "1",
+		MSG91BaseURL:         "https://control.msg91.com",
+		MSG91OTPTemplateID:   "6a04664c95bc5e4fa90fb332", // VERIFY prod template
 	},
 }
 
@@ -90,6 +95,7 @@ func (c EnvConfig) validate(env string) error {
 		"FrontendOrigin":       c.FrontendOrigin,
 		"StoreFrontHost":       c.StoreFrontHost,
 		"PhonePeBaseURL":       c.PhonePeBaseURL,
+		"PhonePeAuthBaseURL":   c.PhonePeAuthBaseURL,
 		"PhonePeCallbackURL":   c.PhonePeCallbackURL,
 		"PhonePeRedirectURL":   c.PhonePeRedirectURL,
 		"PhonePeClientVersion": c.PhonePeClientVersion,

@@ -34,14 +34,19 @@ type Client struct {
 }
 
 // NewClient creates a new PhonePe Standard Checkout client
-func NewClient(config Config) *Client {
+// NewClient fails rather than defaulting. A sandbox host quietly standing in for
+// production is not a degraded mode — it sends real money to a test gateway.
+func NewClient(config Config) (*Client, error) {
 	if config.BaseURL == "" {
-		config.BaseURL = "https://api-preprod.phonepe.com/apis/pg-sandbox"
+		return nil, fmt.Errorf("phonepe: BaseURL is required")
+	}
+	if config.AuthBaseURL == "" {
+		return nil, fmt.Errorf("phonepe: AuthBaseURL is required")
 	}
 	return &Client{
 		config:     config,
 		httpClient: metricsmw.NewInstrumentedClient(30*time.Second, "phonepe"),
-	}
+	}, nil
 }
 
 // getToken returns a valid OAuth access token, refreshing if expired.
@@ -61,7 +66,7 @@ func (c *Client) getToken(ctx context.Context) (string, error) {
 		"grant_type":     {"client_credentials"},
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.config.BaseURL+"/v1/oauth/token", strings.NewReader(data.Encode()))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.config.AuthBaseURL+"/v1/oauth/token", strings.NewReader(data.Encode()))
 	if err != nil {
 		return "", fmt.Errorf("failed to create token request: %w", err)
 	}

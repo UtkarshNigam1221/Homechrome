@@ -626,15 +626,16 @@ func ProvideCartService(
 }
 
 // ProvidePhonePeGateway creates the PhonePe gateway (real or dev client)
-func ProvidePhonePeGateway(cfg *config.Config) phonepe.Gateway {
+func ProvidePhonePeGateway(cfg *config.Config) (phonepe.Gateway, error) {
 	if cfg.Store.PhonePeClientID == "" || cfg.Store.PhonePeClientSecret == "" {
-		return phonepe.NewDevClient(cfg.Store.PhonePeRedirectURL)
+		return phonepe.NewDevClient(cfg.Store.PhonePeRedirectURL), nil
 	}
 	return phonepe.NewClient(phonepe.Config{
 		ClientID:      cfg.Store.PhonePeClientID,
 		ClientSecret:  cfg.Store.PhonePeClientSecret,
 		ClientVersion: cfg.Store.PhonePeClientVersion,
 		BaseURL:       cfg.Store.PhonePeBaseURL,
+		AuthBaseURL:   cfg.Store.PhonePeAuthBaseURL,
 		CallbackURL:   cfg.Store.PhonePeCallbackURL,
 		RedirectURL:   cfg.Store.PhonePeRedirectURL,
 	})
