@@ -7,9 +7,12 @@ type Config struct {
 	ClientID      string
 	ClientSecret  string
 	ClientVersion string
-	BaseURL       string
-	CallbackURL   string
-	RedirectURL   string
+
+	BaseURL     string
+	AuthBaseURL string
+
+	CallbackURL string
+	RedirectURL string
 }
 
 // --- OAuth Token ---

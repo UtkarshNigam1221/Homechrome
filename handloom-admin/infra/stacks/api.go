@@ -37,6 +37,7 @@ type APIStackProps struct {
 	// Non-secret gateway config, baked per-env in infra/cmd/config.go and
 	// injected into Lambda env. Secrets still come from the deploy shell.
 	PhonePeBaseURL       string
+	PhonePeAuthBaseURL   string
 	PhonePeCallbackURL   string
 	PhonePeRedirectURL   string
 	PhonePeClientVersion string
@@ -166,6 +167,7 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 	// DevClient at runtime.
 	gatewayConfig := map[string]string{
 		"PHONEPE_BASE_URL":       props.PhonePeBaseURL,
+		"PHONEPE_AUTH_BASE_URL":  props.PhonePeAuthBaseURL,
 		"PHONEPE_CALLBACK_URL":   props.PhonePeCallbackURL,
 		"PHONEPE_REDIRECT_URL":   props.PhonePeRedirectURL,
 		"PHONEPE_CLIENT_VERSION": props.PhonePeClientVersion,

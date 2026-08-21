@@ -43,6 +43,7 @@ type StoreConfig struct {
 	PhonePeClientSecret    string
 	PhonePeClientVersion   string
 	PhonePeBaseURL         string
+	PhonePeAuthBaseURL     string
 	PhonePeCallbackURL     string
 	PhonePeRedirectURL     string
 	PhonePeWebhookUsername string
@@ -177,7 +178,8 @@ func Load() *Config {
 			PhonePeClientID:        getEnv("PHONEPE_CLIENT_ID", ""),
 			PhonePeClientSecret:    getEnv("PHONEPE_CLIENT_SECRET", ""),
 			PhonePeClientVersion:   getEnv("PHONEPE_CLIENT_VERSION", "1"),
-			PhonePeBaseURL:         getEnv("PHONEPE_BASE_URL", "https://api-preprod.phonepe.com/apis/pg-sandbox"),
+			PhonePeBaseURL:         getEnv("PHONEPE_BASE_URL", ""),
+			PhonePeAuthBaseURL:     getEnv("PHONEPE_AUTH_BASE_URL", ""),
 			PhonePeCallbackURL:     getEnv("PHONEPE_CALLBACK_URL", ""),
 			PhonePeRedirectURL:     getEnv("PHONEPE_REDIRECT_URL", ""),
 			PhonePeWebhookUsername: getEnv("PHONEPE_WEBHOOK_USERNAME", ""),

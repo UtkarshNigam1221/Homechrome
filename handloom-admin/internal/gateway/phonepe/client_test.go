@@ -49,6 +49,7 @@ func TestClient_InitiatePayment_Success(t *testing.T) {
 		ClientSecret:  "test-secret",
 		ClientVersion: "1",
 		BaseURL:       server.URL,
+		AuthBaseURL:   server.URL,
 		RedirectURL:   "https://example.com/confirmation",
 	})
 
@@ -72,6 +73,7 @@ func TestClient_InitiatePayment_Failure(t *testing.T) {
 		ClientSecret:  "test-secret",
 		ClientVersion: "1",
 		BaseURL:       server.URL,
+		AuthBaseURL:   server.URL,
 	})
 
 	_, err := client.InitiatePayment(context.Background(), "txn_123", "cust_456", 10000, "order_789")
@@ -119,6 +121,7 @@ func TestClient_CheckPaymentStatus(t *testing.T) {
 		ClientSecret:  "test-secret",
 		ClientVersion: "1",
 		BaseURL:       server.URL,
+		AuthBaseURL:   server.URL,
 	})
 
 	status, err := client.CheckPaymentStatus(context.Background(), "txn_123")
@@ -141,16 +144,12 @@ func TestClient_CheckPaymentStatus_Error(t *testing.T) {
 		ClientSecret:  "test-secret",
 		ClientVersion: "1",
 		BaseURL:       server.URL,
+		AuthBaseURL:   server.URL,
 	})
 
 	_, err := client.CheckPaymentStatus(context.Background(), "bad_txn")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "status 404")
-}
-
-func TestNewClient_Defaults(t *testing.T) {
-	client := NewClient(Config{ClientID: "C", ClientSecret: "S"})
-	assert.Equal(t, "https://api-preprod.phonepe.com/apis/pg-sandbox", client.config.BaseURL)
 }
 
 func testRefundClient(baseURL string) *Client {
@@ -159,6 +158,7 @@ func testRefundClient(baseURL string) *Client {
 		ClientSecret:  "test-secret",
 		ClientVersion: "1",
 		BaseURL:       baseURL,
+		AuthBaseURL:   baseURL,
 	})
 }
 
@@ -262,4 +262,60 @@ func TestDevClient_RefundSettlesImmediately(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, RefundStateCompleted, status.State)
 	assert.Equal(t, initiated.RefundID, status.RefundID, "the same refund must keep one id")
+}
+
+func TestClient_TokenAndAPIHostsAreSeparate(t *testing.T) {
+	var authPath, payPath string
+
+	auth := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		authPath = r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"access_token":"t","expires_at":9999999999}`))
+	}))
+	defer auth.Close()
+
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		payPath = r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"refundId":"OMR_1","amount":100,"state":"PENDING"}`))
+	}))
+	defer api.Close()
+
+	client := NewClient(Config{
+		ClientID: "id", ClientSecret: "secret", ClientVersion: "1",
+		BaseURL:     api.URL + "/apis/pg",
+		AuthBaseURL: auth.URL + "/apis/identity-manager",
+	})
+
+	_, err := client.InitiateRefund(context.Background(), "mref_1", "txn_1", 100)
+	require.NoError(t, err)
+
+	require.Equal(t, "/apis/identity-manager/v1/oauth/token", authPath,
+		"the token must come from the auth host")
+	require.Equal(t, "/apis/pg/payments/v2/refund", payPath,
+		"and everything else from the API host")
+}
+
+func TestClient_UATServesBothFromOneHost(t *testing.T) {
+	var paths []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/apis/pg-sandbox/v1/oauth/token" {
+			_, _ = w.Write([]byte(`{"access_token":"t","expires_at":9999999999}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"refundId":"OMR_1","amount":100,"state":"PENDING"}`))
+	}))
+	defer server.Close()
+
+	client := NewClient(Config{
+		ClientID: "id", ClientSecret: "secret", ClientVersion: "1",
+		BaseURL:     server.URL + "/apis/pg-sandbox",
+		AuthBaseURL: server.URL + "/apis/pg-sandbox",
+	})
+
+	_, err := client.InitiateRefund(context.Background(), "mref_1", "txn_1", 100)
+	require.NoError(t, err)
+	require.Equal(t, []string{"/apis/pg-sandbox/v1/oauth/token", "/apis/pg-sandbox/payments/v2/refund"}, paths)
 }

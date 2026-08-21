@@ -635,6 +635,7 @@ func ProvidePhonePeGateway(cfg *config.Config) phonepe.Gateway {
 		ClientSecret:  cfg.Store.PhonePeClientSecret,
 		ClientVersion: cfg.Store.PhonePeClientVersion,
 		BaseURL:       cfg.Store.PhonePeBaseURL,
+		AuthBaseURL:   cfg.Store.PhonePeAuthBaseURL,
 		CallbackURL:   cfg.Store.PhonePeCallbackURL,
 		RedirectURL:   cfg.Store.PhonePeRedirectURL,
 	})

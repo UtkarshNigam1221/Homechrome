@@ -35,9 +35,6 @@ type Client struct {
 
 // NewClient creates a new PhonePe Standard Checkout client
 func NewClient(config Config) *Client {
-	if config.BaseURL == "" {
-		config.BaseURL = "https://api-preprod.phonepe.com/apis/pg-sandbox"
-	}
 	return &Client{
 		config:     config,
 		httpClient: metricsmw.NewInstrumentedClient(30*time.Second, "phonepe"),
@@ -61,7 +58,7 @@ func (c *Client) getToken(ctx context.Context) (string, error) {
 		"grant_type":     {"client_credentials"},
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.config.BaseURL+"/v1/oauth/token", strings.NewReader(data.Encode()))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.config.AuthBaseURL+"/v1/oauth/token", strings.NewReader(data.Encode()))
 	if err != nil {
 		return "", fmt.Errorf("failed to create token request: %w", err)
 	}
