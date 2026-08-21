@@ -2,6 +2,7 @@
 package store
 
 import (
+	"context"
 	stderrors "errors"
 	"log/slog"
 	"net/http"
@@ -21,14 +22,16 @@ type AuthHandler struct {
 	customerAuthService domain.CustomerAuthService
 	cartService         domain.CartService
 	validation          *middleware.Validation
+	rateLimiter         domain.RateLimiter
 }
 
 // NewAuthHandler creates a new store AuthHandler
-func NewAuthHandler(customerAuthService domain.CustomerAuthService, cartService domain.CartService, validation *middleware.Validation) *AuthHandler {
+func NewAuthHandler(customerAuthService domain.CustomerAuthService, cartService domain.CartService, validation *middleware.Validation, rateLimiter domain.RateLimiter) *AuthHandler {
 	return &AuthHandler{
 		customerAuthService: customerAuthService,
 		cartService:         cartService,
 		validation:          validation,
+		rateLimiter:         rateLimiter,
 	}
 }
 
@@ -38,7 +41,15 @@ func (h *AuthHandler) Routes(authenticate func(http.Handler) http.Handler) chi.R
 	r := chi.NewRouter()
 
 	// Public routes (no auth required)
-	r.With(middleware.ValidateJSONTyped[domain.SendOTPRequest](h.validation)).Post("/otp/send", h.SendOTP)
+	// Rate limit after validation: the key is the request body's phone, which
+	// validation has already decoded into the context.
+	r.With(
+		middleware.ValidateJSONTyped[domain.SendOTPRequest](h.validation),
+		middleware.RateLimit(h.rateLimiter, domain.OTPSendRule, func(ctx context.Context) string {
+			return h.customerAuthService.OTPSendRateLimitKey(
+				middleware.MustGetValidatedBody[domain.SendOTPRequest](ctx).Phone)
+		}),
+	).Post("/otp/send", h.SendOTP)
 	r.With(middleware.ValidateJSONTyped[domain.VerifyOTPRequest](h.validation)).Post("/otp/verify", h.VerifyOTP)
 	r.Post("/refresh", h.RefreshToken)
 
