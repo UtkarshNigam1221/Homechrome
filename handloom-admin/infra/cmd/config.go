@@ -71,10 +71,6 @@ var envConfigs = map[string]EnvConfig{
 		EmbedderFnName:   "handloom-embedder-prod",
 		GrafanaEndpoint:  "https://otlp-gateway-prod-ap-south-1.grafana.net/otlp",
 
-		// when this was filled — confirm against BACKEND_ENV_PROD before the next
-		// prod deploy. The URLs below follow the prod domain pattern.
-		// Production splits these: the token comes from identity-manager, everything
-		// else from pg. UAT serves both from pg-sandbox, which hid the difference.
 		PhonePeBaseURL:       "https://api.phonepe.com/apis/pg",
 		PhonePeAuthBaseURL:   "https://api.phonepe.com/apis/identity-manager",
 		PhonePeCallbackURL:   "https://api.homechrome.in/api/v1/store/webhooks/phonepe",
@@ -115,5 +111,6 @@ func (c EnvConfig) validate(env string) error {
 		sort.Strings(missing)
 		return fmt.Errorf("env %q config has empty required field(s): %s", env, strings.Join(missing, ", "))
 	}
+
 	return nil
 }

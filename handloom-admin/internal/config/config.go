@@ -175,11 +175,9 @@ func Load() *Config {
 			ModelVersion: getEnv("EMBEDDING_MODEL_VERSION", "l3cube-indic-sbert-nli-v1"),
 		},
 		Store: StoreConfig{
-			PhonePeClientID:      getEnv("PHONEPE_CLIENT_ID", ""),
-			PhonePeClientSecret:  getEnv("PHONEPE_CLIENT_SECRET", ""),
-			PhonePeClientVersion: getEnv("PHONEPE_CLIENT_VERSION", "1"),
-			// No defaults: a sandbox host silently used in production would take real
-			// payments to a test gateway. Missing values fail at startup instead.
+			PhonePeClientID:        getEnv("PHONEPE_CLIENT_ID", ""),
+			PhonePeClientSecret:    getEnv("PHONEPE_CLIENT_SECRET", ""),
+			PhonePeClientVersion:   getEnv("PHONEPE_CLIENT_VERSION", "1"),
 			PhonePeBaseURL:         getEnv("PHONEPE_BASE_URL", ""),
 			PhonePeAuthBaseURL:     getEnv("PHONEPE_AUTH_BASE_URL", ""),
 			PhonePeCallbackURL:     getEnv("PHONEPE_CALLBACK_URL", ""),

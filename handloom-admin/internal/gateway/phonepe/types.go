@@ -8,10 +8,6 @@ type Config struct {
 	ClientSecret  string
 	ClientVersion string
 
-	// BaseURL serves pay, status and refund. AuthBaseURL serves the OAuth token, and
-	// is separate because production splits them: the token lives under
-	// /apis/identity-manager while the rest live under /apis/pg. UAT puts both under
-	// /apis/pg-sandbox, which is why one value appeared to be enough.
 	BaseURL     string
 	AuthBaseURL string
 

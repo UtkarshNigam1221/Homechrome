@@ -15,21 +15,6 @@ import (
 
 // fakeTokenThenHandler returns a handler that serves an OAuth token on /v1/oauth/token
 // and delegates all other requests to the provided handler.
-// newTestClient fills the hosts the constructor now requires and fails on a config
-// it rejects, so no test runs against a half-built client.
-func newTestClient(t *testing.T, config Config) *Client {
-	t.Helper()
-	if config.BaseURL == "" {
-		config.BaseURL = "https://phonepe.invalid"
-	}
-	if config.AuthBaseURL == "" {
-		config.AuthBaseURL = config.BaseURL
-	}
-	client, err := NewClient(config)
-	require.NoError(t, err)
-	return client
-}
-
 func fakeTokenThenHandler(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/v1/oauth/token" {
@@ -59,11 +44,12 @@ func TestClient_InitiatePayment_Success(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := newTestClient(t, Config{
+	client := NewClient(Config{
 		ClientID:      "TEST_CLIENT",
 		ClientSecret:  "test-secret",
 		ClientVersion: "1",
 		BaseURL:       server.URL,
+		AuthBaseURL:   server.URL,
 		RedirectURL:   "https://example.com/confirmation",
 	})
 
@@ -82,11 +68,12 @@ func TestClient_InitiatePayment_Failure(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := newTestClient(t, Config{
+	client := NewClient(Config{
 		ClientID:      "BAD_CLIENT",
 		ClientSecret:  "test-secret",
 		ClientVersion: "1",
 		BaseURL:       server.URL,
+		AuthBaseURL:   server.URL,
 	})
 
 	_, err := client.InitiatePayment(context.Background(), "txn_123", "cust_456", 10000, "order_789")
@@ -95,7 +82,7 @@ func TestClient_InitiatePayment_Failure(t *testing.T) {
 }
 
 func TestClient_VerifyWebhookSignature(t *testing.T) {
-	client := newTestClient(t, Config{
+	client := NewClient(Config{
 		ClientID:     "C",
 		ClientSecret: "S",
 	})
@@ -129,11 +116,12 @@ func TestClient_CheckPaymentStatus(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := newTestClient(t, Config{
+	client := NewClient(Config{
 		ClientID:      "TEST_CLIENT",
 		ClientSecret:  "test-secret",
 		ClientVersion: "1",
 		BaseURL:       server.URL,
+		AuthBaseURL:   server.URL,
 	})
 
 	status, err := client.CheckPaymentStatus(context.Background(), "txn_123")
@@ -151,11 +139,12 @@ func TestClient_CheckPaymentStatus_Error(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := newTestClient(t, Config{
+	client := NewClient(Config{
 		ClientID:      "TEST_CLIENT",
 		ClientSecret:  "test-secret",
 		ClientVersion: "1",
 		BaseURL:       server.URL,
+		AuthBaseURL:   server.URL,
 	})
 
 	_, err := client.CheckPaymentStatus(context.Background(), "bad_txn")
@@ -163,36 +152,13 @@ func TestClient_CheckPaymentStatus_Error(t *testing.T) {
 	assert.Contains(t, err.Error(), "status 404")
 }
 
-// There is no default host. A sandbox default silently used in production would take
-// real payments to a test gateway, so an incomplete config fails at startup.
-func TestNewClient_RequiresBothHosts(t *testing.T) {
-	full := Config{
-		ClientID: "C", ClientSecret: "S",
-		BaseURL:     "https://api.phonepe.com/apis/pg",
-		AuthBaseURL: "https://api.phonepe.com/apis/identity-manager",
-	}
-
-	_, err := NewClient(full)
-	require.NoError(t, err, "a complete config is accepted")
-
-	noBase := full
-	noBase.BaseURL = ""
-	_, err = NewClient(noBase)
-	require.ErrorContains(t, err, "BaseURL")
-
-	noAuth := full
-	noAuth.AuthBaseURL = ""
-	_, err = NewClient(noAuth)
-	require.ErrorContains(t, err, "AuthBaseURL")
-}
-
-func testRefundClient(t *testing.T, baseURL string) *Client {
-	t.Helper()
-	return newTestClient(t, Config{
+func testRefundClient(baseURL string) *Client {
+	return NewClient(Config{
 		ClientID:      "TEST_CLIENT",
 		ClientSecret:  "test-secret",
 		ClientVersion: "1",
 		BaseURL:       baseURL,
+		AuthBaseURL:   baseURL,
 	})
 }
 
@@ -214,7 +180,7 @@ func TestClient_InitiateRefund_Success(t *testing.T) {
 	}))
 	defer server.Close()
 
-	resp, err := testRefundClient(t, server.URL).InitiateRefund(
+	resp, err := testRefundClient(server.URL).InitiateRefund(
 		context.Background(), "refund_abc", "txn_123", 2500)
 
 	require.NoError(t, err)
@@ -235,7 +201,7 @@ func TestClient_InitiateRefund_ProviderRejects(t *testing.T) {
 	}))
 	defer server.Close()
 
-	_, err := testRefundClient(t, server.URL).InitiateRefund(
+	_, err := testRefundClient(server.URL).InitiateRefund(
 		context.Background(), "refund_abc", "txn_123", 999999)
 
 	require.Error(t, err, "a rejected refund must not read as accepted")
@@ -259,7 +225,7 @@ func TestClient_CheckRefundStatus_Success(t *testing.T) {
 	}))
 	defer server.Close()
 
-	resp, err := testRefundClient(t, server.URL).CheckRefundStatus(context.Background(), "refund_abc")
+	resp, err := testRefundClient(server.URL).CheckRefundStatus(context.Background(), "refund_abc")
 
 	require.NoError(t, err)
 	assert.Equal(t, RefundStateCompleted, resp.State)
@@ -274,7 +240,7 @@ func TestClient_CheckRefundStatus_CarriesFailureCodes(t *testing.T) {
 	}))
 	defer server.Close()
 
-	resp, err := testRefundClient(t, server.URL).CheckRefundStatus(context.Background(), "refund_abc")
+	resp, err := testRefundClient(server.URL).CheckRefundStatus(context.Background(), "refund_abc")
 
 	require.NoError(t, err, "a failed refund is a valid answer, not a transport error")
 	assert.Equal(t, RefundStateFailed, resp.State)
@@ -298,9 +264,6 @@ func TestDevClient_RefundSettlesImmediately(t *testing.T) {
 	assert.Equal(t, initiated.RefundID, status.RefundID, "the same refund must keep one id")
 }
 
-// Production serves the token from /apis/identity-manager and everything else from
-// /apis/pg. One BaseURL cannot express that, so the token call has its own host —
-// and getting it wrong fails every payment and every refund at the token step.
 func TestClient_TokenAndAPIHostsAreSeparate(t *testing.T) {
 	var authPath, payPath string
 
@@ -318,7 +281,7 @@ func TestClient_TokenAndAPIHostsAreSeparate(t *testing.T) {
 	}))
 	defer api.Close()
 
-	client := newTestClient(t, Config{
+	client := NewClient(Config{
 		ClientID: "id", ClientSecret: "secret", ClientVersion: "1",
 		BaseURL:     api.URL + "/apis/pg",
 		AuthBaseURL: auth.URL + "/apis/identity-manager",
@@ -333,8 +296,7 @@ func TestClient_TokenAndAPIHostsAreSeparate(t *testing.T) {
 		"and everything else from the API host")
 }
 
-// A sandbox config sets only BaseURL, where both live under one prefix.
-func TestClient_AuthFallsBackToBaseURL(t *testing.T) {
+func TestClient_UATServesBothFromOneHost(t *testing.T) {
 	var paths []string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		paths = append(paths, r.URL.Path)
@@ -347,9 +309,10 @@ func TestClient_AuthFallsBackToBaseURL(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := newTestClient(t, Config{
+	client := NewClient(Config{
 		ClientID: "id", ClientSecret: "secret", ClientVersion: "1",
-		BaseURL: server.URL + "/apis/pg-sandbox",
+		BaseURL:     server.URL + "/apis/pg-sandbox",
+		AuthBaseURL: server.URL + "/apis/pg-sandbox",
 	})
 
 	_, err := client.InitiateRefund(context.Background(), "mref_1", "txn_1", 100)

@@ -132,10 +132,7 @@ func InitializeOrderDeps(ctx context.Context, cfg *config.Config) (*OrderDeps, e
 	orderService := ProvideOrderService(orderRepository, customerRepository, productRepository, inventoryRepository, priceQuoteRepository, paymentRepository, pricingService)
 	cartRepository := ProvideCartRepository(client)
 	cartService := ProvideCartService(cartRepository, productRepository, inventoryRepository)
-	gateway, err := ProvidePhonePeGateway(cfg)
-	if err != nil {
-		return nil, err
-	}
+	gateway := ProvidePhonePeGateway(cfg)
 	paymentService := ProvidePaymentService(paymentRepository, orderRepository, inventoryRepository, cartService, customerRepository, gateway)
 	refundRepository := ProvideRefundRepository(client)
 	userRepository := ProvideUserRepository(client)
@@ -476,10 +473,7 @@ func InitializeStoreCheckoutDeps(ctx context.Context, cfg *config.Config) (*Stor
 	orderRepository := ProvideOrderRepository(client)
 	paymentRepository := ProvidePaymentRepository(client)
 	customerRepository := ProvideCustomerRepository(client)
-	gateway, err := ProvidePhonePeGateway(cfg)
-	if err != nil {
-		return nil, err
-	}
+	gateway := ProvidePhonePeGateway(cfg)
 	paymentService := ProvidePaymentService(paymentRepository, orderRepository, inventoryRepository, cartService, customerRepository, gateway)
 	checkoutService := ProvideCheckoutService(cartService, orderRepository, paymentService, inventoryRepository, customerRepository)
 	service := ProvideValidator()
@@ -585,10 +579,7 @@ func InitializeStoreWebhooksDeps(ctx context.Context, cfg *config.Config) (*Stor
 	productRepository := ProvideProductRepository(pool)
 	cartService := ProvideCartService(cartRepository, productRepository, inventoryRepository)
 	customerRepository := ProvideCustomerRepository(client)
-	gateway, err := ProvidePhonePeGateway(cfg)
-	if err != nil {
-		return nil, err
-	}
+	gateway := ProvidePhonePeGateway(cfg)
 	paymentService := ProvidePaymentService(paymentRepository, orderRepository, inventoryRepository, cartService, customerRepository, gateway)
 	refundRepository := ProvideRefundRepository(client)
 	notificationRepository := ProvideNotificationRepository(client)
@@ -673,10 +664,7 @@ func InitializeMonolithDeps(ctx context.Context, cfg *config.Config) (*MonolithD
 	orderService := ProvideOrderService(orderRepository, customerRepository, productRepository, inventoryRepository, priceQuoteRepository, paymentRepository, pricingService)
 	cartRepository := ProvideCartRepository(client)
 	cartService := ProvideCartService(cartRepository, productRepository, inventoryRepository)
-	gateway, err := ProvidePhonePeGateway(cfg)
-	if err != nil {
-		return nil, err
-	}
+	gateway := ProvidePhonePeGateway(cfg)
 	paymentService := ProvidePaymentService(paymentRepository, orderRepository, inventoryRepository, cartService, customerRepository, gateway)
 	refundRepository := ProvideRefundRepository(client)
 	auditRepository := ProvideAuditRepository(client)
