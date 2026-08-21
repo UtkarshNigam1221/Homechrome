@@ -71,7 +71,6 @@ type PaymentService interface {
 	InitiatePayment(ctx context.Context, req InitiatePaymentRequest) (*PaymentResponse, error)
 	HandlePaymentSuccess(ctx context.Context, evt PaymentWebhookEvent) error
 	HandlePaymentFailure(ctx context.Context, evt PaymentWebhookEvent) error
-	HandlePaymentPending(ctx context.Context, evt PaymentWebhookEvent) error
 	GetByOrderID(ctx context.Context, orderID string) (*Payment, error)
 	GetByMerchantTxnID(ctx context.Context, merchantTxnID string) (*Payment, error)
 	CheckProviderStatus(ctx context.Context, orderID string) (*ProviderPaymentStatus, error)

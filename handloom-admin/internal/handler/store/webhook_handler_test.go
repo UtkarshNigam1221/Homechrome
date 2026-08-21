@@ -58,10 +58,6 @@ func (p *recordingPaymentService) HandlePaymentFailure(context.Context, domain.P
 	p.calls++
 	return nil
 }
-func (p *recordingPaymentService) HandlePaymentPending(context.Context, domain.PaymentWebhookEvent) error {
-	p.calls++
-	return nil
-}
 func (p *recordingPaymentService) GetByOrderID(context.Context, string) (*domain.Payment, error) {
 	return nil, nil
 }
@@ -100,6 +96,19 @@ func TestPhonePeWebhook_RoutesRefundEvents(t *testing.T) {
 		require.Equal(t, []string{"OMR_9"}, refunds.completed)
 		require.Empty(t, refunds.failed)
 		require.Zero(t, payments.calls, "a refund event must not touch the payment path")
+	})
+
+	// PhonePe documents exactly four events, and a pending one is not among them. An
+	// event we do not model must be acknowledged and dropped, not routed anywhere.
+	t.Run("acknowledges an event it does not model without touching either path", func(t *testing.T) {
+		h, refunds, payments := newWebhookHandler(t)
+
+		rec := postWebhook(t, h, `{"event":"checkout.order.pending","payload":{"orderId":"OMO_1"}}`)
+
+		require.Equal(t, http.StatusOK, rec.Code, "answering 200 stops PhonePe retrying forever")
+		require.Zero(t, payments.calls)
+		require.Empty(t, refunds.completed)
+		require.Empty(t, refunds.failed)
 	})
 
 	t.Run("fails the refund a failed event names", func(t *testing.T) {

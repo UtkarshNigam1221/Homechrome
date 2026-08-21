@@ -244,34 +244,6 @@ func (s *PaymentService) HandlePaymentFailure(ctx context.Context, evt domain.Pa
 	return nil
 }
 
-// HandlePaymentPending processes a pending payment webhook event — PhonePe has the
-// attempt but it's still processing (UPI mandate pending, bank processing).
-func (s *PaymentService) HandlePaymentPending(ctx context.Context, evt domain.PaymentWebhookEvent) error {
-	payment, err := s.resolvePayment(ctx, evt.MerchantTxnID, domain.PaymentStatusInitiated)
-	if err != nil {
-		if err == errPaymentAlreadyProcessed {
-			return nil // Idempotent — not an error
-		}
-		return err
-	}
-
-	if err := s.updatePaymentStatus(ctx, payment.ID, domain.PaymentStatusPending, evt, nil); err != nil {
-		return err
-	}
-
-	// Update order payment status to PENDING (order status stays PENDING)
-	if _, err := s.updateOrderStatus(ctx, payment.OrderID, domain.OrderStatusPending, domain.PaymentStatusPending, payment.ID); err != nil {
-		slog.ErrorContext(ctx, "Failed to update order status for pending payment", "order_id", payment.OrderID, "error", err)
-		return err
-	}
-
-	metrics.Record(ctx, "payment_outcome", metrics.L{
-		metrics.LabelGateway: gatewayPhonePe, metrics.LabelOutcome: "pending", metrics.LabelCountry: middleware.GetCountry(ctx),
-	})
-	slog.InfoContext(ctx, "Payment pending", "payment_id", payment.ID, "order_id", payment.OrderID)
-	return nil
-}
-
 // --- internal helpers ---
 
 // resolvePayment looks up a payment and checks idempotency.
