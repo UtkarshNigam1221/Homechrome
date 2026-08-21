@@ -1,6 +1,6 @@
 'use client';
 
-import { EnvelopeIcon } from '@heroicons/react/24/outline';
+import { EnvelopeIcon, PhoneIcon } from '@heroicons/react/24/outline';
 import {
   ActionIcon,
   Anchor,
@@ -17,7 +17,13 @@ import Link from 'next/link';
 
 import logo80 from '@/assets/logo-80.webp';
 import { WhatsAppIcon } from '@/components/ui/whatsapp-icon';
-import { INSTAGRAM_URL, SUPPORT_EMAIL, SUPPORT_WHATSAPP } from '@/lib/constants';
+import {
+  INSTAGRAM_URL,
+  SUPPORT_EMAIL,
+  SUPPORT_PHONE,
+  SUPPORT_PHONE_TEL,
+  SUPPORT_WHATSAPP,
+} from '@/lib/constants';
 
 export default function Footer() {
   return (
@@ -85,6 +91,11 @@ export default function Footer() {
               </FooterLink>
               <FooterLink href={`mailto:${SUPPORT_EMAIL}`} icon={<EnvelopeIcon width={15} height={15} />}>
                 Email us
+              </FooterLink>
+              {/* The number itself is the label: payment-gateway review wants a
+                  contact number visible on the page, not behind a "Call us". */}
+              <FooterLink href={`tel:${SUPPORT_PHONE_TEL}`} icon={<PhoneIcon width={15} height={15} />}>
+                {SUPPORT_PHONE}
               </FooterLink>
             </FooterColumn>
           </SimpleGrid>

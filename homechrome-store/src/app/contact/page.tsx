@@ -1,4 +1,4 @@
-import { EnvelopeIcon } from '@heroicons/react/24/outline';
+import { EnvelopeIcon, PhoneIcon } from '@heroicons/react/24/outline';
 import { Anchor, Card, Container, Group, Stack, Text, ThemeIcon, Title } from '@mantine/core';
 import type { Metadata } from 'next';
 
@@ -9,12 +9,14 @@ import {
   LEGAL_ADDRESS,
   LEGAL_ENTITY_NAME,
   SUPPORT_EMAIL,
+  SUPPORT_PHONE,
+  SUPPORT_PHONE_TEL,
   SUPPORT_WHATSAPP,
 } from '@/lib/constants';
 
 export const metadata: Metadata = {
   title: 'Contact Us | Homechrome',
-  description: 'Reach Homechrome support on WhatsApp or by email.',
+  description: 'Reach Homechrome support by phone, WhatsApp or email.',
 };
 
 export default function ContactPage() {
@@ -24,7 +26,7 @@ export default function ContactPage() {
     <Container size="sm" py="xl">
       <PageHeader
         title="Contact Us"
-        description="We're here to help. Reach us on WhatsApp or email and we'll get back to you as soon as we can."
+        description="We're here to help. Call us, or reach us on WhatsApp or email, and we'll get back to you as soon as we can."
       />
       <Stack gap="md">
         <ContactOption
@@ -34,6 +36,13 @@ export default function ContactPage() {
           icon={<WhatsAppIcon />}
           title="WhatsApp"
           detail="Chat with us — fastest way to reach support"
+        />
+        <ContactOption
+          href={`tel:${SUPPORT_PHONE_TEL}`}
+          color="navy"
+          icon={<PhoneIcon width={24} height={24} aria-hidden="true" />}
+          title="Phone"
+          detail={SUPPORT_PHONE}
         />
         <ContactOption
           href={`mailto:${SUPPORT_EMAIL}`}
@@ -57,6 +66,9 @@ export default function ContactPage() {
           </Text>
           <Text size="sm" c="dimmed">
             {LEGAL_ADDRESS}
+          </Text>
+          <Text size="sm">
+            Phone: <Anchor href={`tel:${SUPPORT_PHONE_TEL}`}>{SUPPORT_PHONE}</Anchor>
           </Text>
           <Text size="sm">
             Email: <Anchor href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</Anchor>
