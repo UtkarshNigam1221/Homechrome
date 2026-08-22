@@ -38,6 +38,13 @@ export const ALLOWED_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
   CANCELLED: [],
   RETURNED: [],
 };
+/**
+ * The moves the backend gates on payment, mirroring forwardStatuses in
+ * internal/service/order_service.go. DELIVERED and RETURNED are absent: the goods
+ * have already gone, so recording what happened to them is never blocked.
+ */
+export const FORWARD_STATUSES: OrderStatus[] = ['CONFIRMED', 'PROCESSING', 'SHIPPED'];
+
 export type PaymentStatus =
   | 'PENDING'
   // Written by the gateway path, not the checkout one — the union has to carry

@@ -25,7 +25,7 @@ import { getStatusBadgeVariant } from '@/shared/utils/badge';
 import { formatCurrency, formatCurrencyExact } from '@/shared/utils/currency';
 
 import type { OrderStatus, ProviderPaymentStatus } from '../../types';
-import { ALLOWED_TRANSITIONS } from '../../types';
+import { ALLOWED_TRANSITIONS, FORWARD_STATUSES } from '../../types';
 import { OrderNotes } from './OrderNotes';
 import { OrderRefunds } from './OrderRefunds';
 import { OrderTimeline } from './OrderTimeline';
@@ -174,7 +174,12 @@ export function OrderDetailPage() {
   // Up to dispatch, matching CancelOrder's own guard. This is the only route to a
   // cancellation now that the status dropdown does not offer one.
   const canCancel = ['PENDING', 'CONFIRMED', 'PROCESSING'].includes(order.status);
-  const nextStatuses = ALLOWED_TRANSITIONS[order.status];
+  // A failed payment is the one case the page can be sure the backend will refuse.
+  // PENDING is not: it may be an admin order with no payment at all, which passes.
+  const paymentFailed = order.payment_status === 'FAILED';
+  const nextStatuses = ALLOWED_TRANSITIONS[order.status].filter(
+    (s) => !paymentFailed || !FORWARD_STATUSES.includes(s)
+  );
 
   // Refunding is gated on the money having arrived, and on the role. The backend
   // enforces both; hiding the button just stops the pointless attempt.
@@ -223,7 +228,9 @@ export function OrderDetailPage() {
         <Button
           variant="secondary"
           leftIcon={<Edit className="w-4 h-4" />}
-          disabled={nextStatuses.length === 0}
+          // Stays clickable on a failed payment even with nothing to offer: the modal
+          // is where the reason lives, and a dead grey button explains nothing.
+          disabled={nextStatuses.length === 0 && !paymentFailed}
           onClick={() => {
             // Seed with the first legal next status — the current one is not an
             // option, since the backend rejects a no-op transition.
@@ -481,7 +488,9 @@ export function OrderDetailPage() {
         <div className="space-y-4">
           {nextStatuses.length === 0 ? (
             <p className="text-sm text-gray-600">
-              An order that is {order.status.toLowerCase()} cannot move to another status.
+              {paymentFailed
+                ? 'This order cannot move forward while its payment has failed. Cancel it instead, or collect the payment first.'
+                : `An order that is ${order.status.toLowerCase()} cannot move to another status.`}
             </p>
           ) : (
             <Select
