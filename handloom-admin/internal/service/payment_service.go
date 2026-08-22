@@ -339,9 +339,8 @@ func (s *PaymentService) CheckProviderStatus(ctx context.Context, orderID string
 		payment = updated
 	}
 
-	// The handlers above no-op once the payment is terminal, and the failure path
-	// used to settle a payment without touching the order at all. So a re-check has
-	// to converge the order itself rather than trust that a handler did it.
+	// The handlers no-op once the payment is terminal, and the old failure path
+	// never wrote the order, so the re-check has to converge it itself.
 	if err := s.syncOrderPaymentStatus(ctx, payment); err != nil {
 		return nil, err
 	}
@@ -386,10 +385,8 @@ func (s *PaymentService) reconcile(ctx context.Context, payment *domain.Payment,
 	return nil
 }
 
-// syncOrderPaymentStatus brings the order's copy of the payment status in line with
-// the payment. Only the two outcomes the gateway reports are mapped: refund statuses
-// belong to the refund flow, and a payment still in flight has nothing to copy.
-// Deliberately does not move order.Status — confirming or canceling is a decision.
+// syncOrderPaymentStatus brings the order's copy in line with the payment, writing
+// only on a real difference. Never moves order.Status — that is the admin's call.
 func (s *PaymentService) syncOrderPaymentStatus(ctx context.Context, payment *domain.Payment) error {
 	var want domain.PaymentStatus
 	switch payment.Status {

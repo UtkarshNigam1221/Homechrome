@@ -158,17 +158,14 @@ func TestCheckProviderStatus(t *testing.T) {
 		h.payments.EXPECT().GetByOrderID(gomock.Any(), "order_1").Return(failed, nil).Times(2)
 		h.payments.EXPECT().GetByMerchantTxnID(gomock.Any(), "HC-1").Return(failed, nil)
 		h.orders.EXPECT().GetByID(gomock.Any(), "order_1").Return(agreed, nil)
-		h.orders.EXPECT().Update(gomock.Any(), gomock.Any()).Times(0)
-		h.inventory.EXPECT().ReleaseOrderStock(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
 
 		result, err := h.svc.CheckProviderStatus(ctx, "order_1")
 		require.NoError(t, err)
 		require.Equal(t, string(domain.PaymentStatusFailed), result.LocalStatus)
 	})
 
-	// The reported regression: the pre-fix webhook settled the payment and never
-	// touched the order, so the handlers now short-circuit as already-processed and
-	// the order was left reading PENDING however many times an admin re-checked.
+	// Pre-fix webhook settled the payment and left the order stale, so the handlers
+	// short-circuit and no number of re-checks ever repaired it.
 	t.Run("repairs an order the old failure path left behind", func(t *testing.T) {
 		h := newPaymentHarness(t, phonepe.PaymentStateFailed)
 
@@ -186,8 +183,6 @@ func TestCheckProviderStatus(t *testing.T) {
 				require.Equal(t, domain.OrderStatusPending, o.Status)
 				return nil
 			})
-		// The handler already released the stock when it first settled the payment.
-		h.inventory.EXPECT().ReleaseOrderStock(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
 
 		result, err := h.svc.CheckProviderStatus(ctx, "order_1")
 		require.NoError(t, err)
