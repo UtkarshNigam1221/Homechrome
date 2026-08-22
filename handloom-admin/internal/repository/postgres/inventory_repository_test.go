@@ -183,11 +183,19 @@ func TestInventoryRepository_OrderScopedIdempotency(t *testing.T) {
 
 	// A payment re-check can find a shipped order's payment FAILED, and the failure
 	// path releases. The goods are already gone, so the release must move nothing.
+	//
+	// Reserved through the repository, not seeded onto the row: the clamp that makes
+	// this a no-op is driven by the order's RESERVE ledger row, so seeding
+	// reserved_qty directly would leave nothing to bound against and release in full.
 	t.Run("release after a dispatch moves nothing back", func(t *testing.T) {
-		productID := newProduct(t, 10, 5) // X holds 2, Y holds 3
+		productID := newProduct(t, 10, 0)
+		require.NoError(t, repo.ReserveOrderStock(ctx, "order_X", map[string]int{productID: 2}))
+		require.NoError(t, repo.ReserveOrderStock(ctx, "order_Y", map[string]int{productID: 3}))
 
 		require.NoError(t, repo.CommitOrderStock(ctx, "order_X", map[string]int{productID: 2}))
 		qtyAfterShip, reservedAfterShip, _ := readInventory(t, pool, productID)
+		require.Equal(t, 8, qtyAfterShip, "the dispatch takes X's 2 units off the shelf")
+		require.Equal(t, 3, reservedAfterShip, "only Y is still holding a reservation")
 
 		require.NoError(t, repo.ReleaseOrderStock(ctx, "order_X", map[string]int{productID: 2}))
 
