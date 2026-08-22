@@ -181,6 +181,32 @@ func TestInventoryRepository_OrderScopedIdempotency(t *testing.T) {
 		require.Equal(t, 0, reserved)
 	})
 
+	// A payment re-check can find a shipped order's payment FAILED, and the failure
+	// path releases. The goods are already gone, so the release must move nothing.
+	//
+	// Reserved through the repository, not seeded onto the row: the clamp that makes
+	// this a no-op is driven by the order's RESERVE ledger row, so seeding
+	// reserved_qty directly would leave nothing to bound against and release in full.
+	t.Run("release after a dispatch moves nothing back", func(t *testing.T) {
+		productID := newProduct(t, 10, 0)
+		require.NoError(t, repo.ReserveOrderStock(ctx, "order_X", map[string]int{productID: 2}))
+		require.NoError(t, repo.ReserveOrderStock(ctx, "order_Y", map[string]int{productID: 3}))
+
+		require.NoError(t, repo.CommitOrderStock(ctx, "order_X", map[string]int{productID: 2}))
+		qtyAfterShip, reservedAfterShip, _ := readInventory(t, pool, productID)
+		require.Equal(t, 8, qtyAfterShip, "the dispatch takes X's 2 units off the shelf")
+		require.Equal(t, 3, reservedAfterShip, "only Y is still holding a reservation")
+
+		require.NoError(t, repo.ReleaseOrderStock(ctx, "order_X", map[string]int{productID: 2}))
+
+		qty, reserved, _ := readInventory(t, pool, productID)
+		require.Equal(t, qtyAfterShip, qty, "dispatched goods must not come back on a release")
+		require.Equal(t, reservedAfterShip, reserved, "the reservation was already settled by the commit")
+		require.Equal(t, 3, reserved, "order Y's reservation must survive")
+		require.Equal(t, 0, ledgerRows(t, productID, "order_X", domain.InventoryTransactionTypeRelease),
+			"nothing was outstanding, so no release row may be written")
+	})
+
 	t.Run("repeat release does not free another order's reservation", func(t *testing.T) {
 		productID := newProduct(t, 10, 5)
 

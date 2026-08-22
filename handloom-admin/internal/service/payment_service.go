@@ -237,7 +237,7 @@ func (s *PaymentService) HandlePaymentFailure(ctx context.Context, evt domain.Pa
 	metrics.Record(ctx, "payment_outcome", metrics.L{
 		metrics.LabelGateway: gatewayPhonePe, metrics.LabelOutcome: "failed", metrics.LabelCountry: middleware.GetCountry(ctx),
 	})
-	s.releaseOrderInventory(ctx, payment.OrderID)
+	s.failOrderPayment(ctx, payment.OrderID)
 
 	slog.InfoContext(ctx, "Payment failed", "payment_id", payment.ID, "order_id", payment.OrderID)
 	span.End()
@@ -295,20 +295,30 @@ func (s *PaymentService) updateOrderStatus(ctx context.Context, orderID string, 
 	return order, nil
 }
 
-// releaseOrderInventory releases reserved stock for each item in an order.
-func (s *PaymentService) releaseOrderInventory(ctx context.Context, orderID string) {
+// failOrderPayment marks the order's payment FAILED and hands back its reserved
+// stock. The order keeps its own copy of the status; leaving it PENDING read as
+// a payment still in flight. Order status is untouched — canceling is a decision.
+func (s *PaymentService) failOrderPayment(ctx context.Context, orderID string) {
 	order, err := s.orderRepo.GetByID(ctx, orderID)
 	if err != nil {
-		slog.ErrorContext(ctx, "Failed to get order for inventory release", "order_id", orderID, "error", err)
+		slog.ErrorContext(ctx, "Failed to get order after payment failure", keyOrderID, orderID, "error", err)
 		return
 	}
+
+	order.PaymentStatus = domain.PaymentStatusFailed
+	if err := s.orderRepo.Update(ctx, order); err != nil {
+		slog.ErrorContext(ctx, "Failed to mark order payment failed", keyOrderID, orderID, "error", err)
+	}
+
 	if err := s.inventoryRepo.ReleaseOrderStock(ctx, orderID, orderQuantities(order.Items)); err != nil {
 		slog.ErrorContext(ctx, "Failed to release inventory", keyOrderID, orderID, "error", err)
 		metrics.Record(ctx, "inventory_mutation_failed", metrics.L{metrics.LabelReason: reasonRelease})
 	}
 }
 
-// CheckProviderStatus fetches the payment status directly from PhonePe for a given order
+// CheckProviderStatus asks PhonePe directly and applies what it says. The escape
+// hatch for a webhook that never came: a customer who abandons the PhonePe page
+// leaves the payment INITIATED with nothing else to move it.
 func (s *PaymentService) CheckProviderStatus(ctx context.Context, orderID string) (*domain.ProviderPaymentStatus, error) {
 	payment, err := s.paymentRepo.GetByOrderID(ctx, orderID)
 	if err != nil {
@@ -318,6 +328,15 @@ func (s *PaymentService) CheckProviderStatus(ctx context.Context, orderID string
 	statusResp, err := s.phonePe.CheckPaymentStatus(ctx, payment.MerchantTransactionID)
 	if err != nil {
 		return nil, errors.Wrap(err, "Failed to check provider payment status")
+	}
+
+	if err := s.reconcile(ctx, payment, statusResp); err != nil {
+		return nil, err
+	}
+
+	// Re-read so LocalStatus reports what the reconcile left, not what it found.
+	if updated, readErr := s.paymentRepo.GetByOrderID(ctx, orderID); readErr == nil && updated != nil {
+		payment = updated
 	}
 
 	result := &domain.ProviderPaymentStatus{
@@ -335,6 +354,29 @@ func (s *PaymentService) CheckProviderStatus(ctx context.Context, orderID string
 	}
 
 	return result, nil
+}
+
+// reconcile applies a terminal provider state through the webhook handlers. Both
+// are idempotent on the payment's current status, so re-checking an outcome that
+// already landed is a no-op. A state still PENDING at the provider applies nothing.
+func (s *PaymentService) reconcile(ctx context.Context, payment *domain.Payment, statusResp *phonepe.StatusResponse) error {
+	evt := domain.PaymentWebhookEvent{MerchantTxnID: payment.MerchantTransactionID}
+	if len(statusResp.PaymentDetails) > 0 {
+		evt.TransactionID = statusResp.PaymentDetails[0].TransactionID
+		evt.PaymentMode = statusResp.PaymentDetails[0].PaymentMode
+	}
+
+	switch statusResp.State {
+	case phonepe.PaymentStateCompleted:
+		if err := s.HandlePaymentSuccess(ctx, evt); err != nil {
+			return errors.Wrap(err, "Failed to apply the provider's success")
+		}
+	case phonepe.PaymentStateFailed:
+		if err := s.HandlePaymentFailure(ctx, evt); err != nil {
+			return errors.Wrap(err, "Failed to apply the provider's failure")
+		}
+	}
+	return nil
 }
 
 // GetByOrderID retrieves payment by order ID

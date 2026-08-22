@@ -82,6 +82,9 @@ func createS3OnlyStack(stack awscdk.Stack, props *FrontendStackProps, isProd boo
 		},
 		DestinationBucket: bucket,
 		Prune:             jsii.Bool(true),
+		// The default 128MB starves the sync: Lambda scales CPU and network with
+		// memory, and concurrent uploads then stall until S3 closes the sockets.
+		MemoryLimit: jsii.Number(1024),
 	})
 
 	// Website URL (HTTP only)
@@ -239,6 +242,8 @@ func createCloudFrontStack(stack awscdk.Stack, props *FrontendStackProps, isProd
 		Distribution:      distribution,
 		DistributionPaths: jsii.Strings("/*"),
 		Prune:             jsii.Bool(true),
+		// See the S3-only deployment above: 128MB could not finish a 9.5MB sync.
+		MemoryLimit: jsii.Number(1024),
 	})
 
 	// Outputs

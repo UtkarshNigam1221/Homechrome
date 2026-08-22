@@ -323,6 +323,11 @@ func (s *OrderService) UpdateStatus(ctx context.Context, id string, status domai
 		return transitionErr
 	}
 
+	if err := s.guardPaymentSettled(ctx, order, status); err != nil {
+		span.EndWithError(err)
+		return err
+	}
+
 	// Update status
 	order.Status = status
 	order.UpdatedBy = updatedBy
@@ -352,6 +357,47 @@ func (s *OrderService) UpdateStatus(ctx context.Context, id string, status domai
 	slog.InfoContext(ctx, "Updated order status", "order_id", id, "status", status)
 	span.End()
 	return nil
+}
+
+// forwardStatuses are the moves that commit us to fulfilling an order, and so the
+// ones worth blocking while the money is not in. DELIVERED is absent: the goods
+// have already gone, and recording their arrival changes nothing. CANCELLED and
+// RETURNED are the recovery paths and must stay open.
+var forwardStatuses = map[domain.OrderStatus]bool{
+	domain.OrderStatusConfirmed:  true,
+	domain.OrderStatusProcessing: true,
+	domain.OrderStatusShipped:    true,
+}
+
+// guardPaymentSettled refuses to move an order forward on money that never
+// arrived. An order with no payment record was placed through the admin, where
+// payment is handled off-platform — gating those would strand every phone order.
+func (s *OrderService) guardPaymentSettled(ctx context.Context, order *domain.Order, status domain.OrderStatus) error {
+	if !forwardStatuses[status] {
+		return nil
+	}
+
+	payment, err := s.paymentRepo.GetByOrderID(ctx, order.ID)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			return nil
+		}
+		return errors.Wrap(err, "Failed to read the order's payment")
+	}
+	if payment == nil {
+		return nil
+	}
+
+	switch payment.Status {
+	case domain.PaymentStatusPaid, domain.PaymentStatusSuccess, domain.PaymentStatusPartiallyRefunded:
+		return nil
+	}
+
+	// The payment's own status, not the order's copy: the order's can be stale until
+	// someone re-checks the provider, and that staleness is what shipped unpaid goods.
+	return errors.BadRequest(fmt.Sprintf(
+		"Cannot move the order to %s while its payment is %s — re-check the payment, then cancel or collect",
+		status, payment.Status))
 }
 
 // retryOnce runs fn again after a short pause if it fails, unless the failure is

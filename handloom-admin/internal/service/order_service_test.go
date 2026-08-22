@@ -323,6 +323,13 @@ func TestOrderService_UpdateStatus(t *testing.T) {
 	)
 	ctx := context.Background()
 
+	// These orders carry no payment record, which is the admin-placed case the
+	// payment gate lets through. The gate's own cases live in their own test.
+	mockPaymentRepo.EXPECT().
+		GetByOrderID(gomock.Any(), gomock.Any()).
+		Return(nil, errors.NotFound("Payment not found")).
+		AnyTimes()
+
 	t.Run("valid status transition: pending to confirmed", func(t *testing.T) {
 		order := &domain.Order{
 			ID:     "order_123",
@@ -487,6 +494,13 @@ func TestOrderService_UpdateStatus_Inventory(t *testing.T) {
 		mockPricingService,
 	)
 	ctx := context.Background()
+
+	// These orders carry no payment record, which is the admin-placed case the
+	// payment gate lets through. The gate's own cases live in their own test.
+	mockPaymentRepo.EXPECT().
+		GetByOrderID(gomock.Any(), gomock.Any()).
+		Return(nil, errors.NotFound("Payment not found")).
+		AnyTimes()
 
 	t.Run("shipping commits stock for every item", func(t *testing.T) {
 		order := &domain.Order{
@@ -1206,5 +1220,110 @@ func TestRetryOnce(t *testing.T) {
 		})
 		require.Error(t, err)
 		require.Equal(t, 1, calls, "a cancelled context must not wait to retry")
+	})
+}
+
+// The incident this gate exists for: a storefront order whose payment failed at the
+// gateway while the order's own copy still read PENDING, shipped anyway.
+func TestOrderService_UpdateStatus_PaymentGate(t *testing.T) {
+	ctx := context.Background()
+
+	newService := func(t *testing.T) (*OrderService, *mocks.MockOrderRepository, *mocks.MockPaymentRepository, *mocks.MockInventoryRepository) {
+		t.Helper()
+		ctrl := gomock.NewController(t)
+		orders := mocks.NewMockOrderRepository(ctrl)
+		payments := mocks.NewMockPaymentRepository(ctrl)
+		inventory := mocks.NewMockInventoryRepository(ctrl)
+		svc := NewOrderService(orders, mocks.NewMockCustomerRepository(ctrl),
+			mocks.NewMockProductRepository(ctrl), inventory,
+			mocks.NewMockPriceQuoteRepository(ctrl), payments,
+			mocks.NewMockPricingService(ctrl))
+		return svc, orders, payments, inventory
+	}
+
+	storefrontOrder := func(status domain.OrderStatus) *domain.Order {
+		return &domain.Order{
+			ID: "order_123", Status: status,
+			// The stale copy. The gate reads the payment, not this.
+			PaymentStatus: domain.PaymentStatusPending,
+			Items:         []domain.OrderItem{{ProductID: "prod_a", Quantity: 2}},
+		}
+	}
+
+	for _, tc := range []struct {
+		name   string
+		from   domain.OrderStatus
+		to     domain.OrderStatus
+		status domain.PaymentStatus
+	}{
+		{"confirming on a failed payment", domain.OrderStatusPending, domain.OrderStatusConfirmed, domain.PaymentStatusFailed},
+		{"confirming on an unfinished payment", domain.OrderStatusPending, domain.OrderStatusConfirmed, domain.PaymentStatusInitiated},
+		{"processing on a failed payment", domain.OrderStatusConfirmed, domain.OrderStatusProcessing, domain.PaymentStatusFailed},
+		{"shipping on a failed payment", domain.OrderStatusConfirmed, domain.OrderStatusShipped, domain.PaymentStatusFailed},
+	} {
+		t.Run("refuses "+tc.name, func(t *testing.T) {
+			svc, orders, payments, inventory := newService(t)
+			orders.EXPECT().GetByID(gomock.Any(), "order_123").Return(storefrontOrder(tc.from), nil)
+			payments.EXPECT().GetByOrderID(gomock.Any(), "order_123").
+				Return(&domain.Payment{ID: "pay_1", OrderID: "order_123", Status: tc.status}, nil)
+			// The refusal must land before anything moves.
+			orders.EXPECT().Update(gomock.Any(), gomock.Any()).Times(0)
+			inventory.EXPECT().CommitOrderStock(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+
+			err := svc.UpdateStatus(ctx, "order_123", tc.to, "admin_1")
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "while its payment is")
+		})
+	}
+
+	for _, paid := range []domain.PaymentStatus{
+		domain.PaymentStatusPaid, domain.PaymentStatusSuccess, domain.PaymentStatusPartiallyRefunded,
+	} {
+		t.Run("allows shipping once the payment is "+string(paid), func(t *testing.T) {
+			svc, orders, payments, inventory := newService(t)
+			orders.EXPECT().GetByID(gomock.Any(), "order_123").Return(storefrontOrder(domain.OrderStatusConfirmed), nil)
+			payments.EXPECT().GetByOrderID(gomock.Any(), "order_123").
+				Return(&domain.Payment{ID: "pay_1", OrderID: "order_123", Status: paid}, nil)
+			orders.EXPECT().Update(gomock.Any(), gomock.Any()).Return(nil)
+			inventory.EXPECT().CommitOrderStock(gomock.Any(), "order_123", map[string]int{"prod_a": 2}).Return(nil)
+
+			require.NoError(t, svc.UpdateStatus(ctx, "order_123", domain.OrderStatusShipped, "admin_1"))
+		})
+	}
+
+	// The recovery paths stay open, or an unpaid order would have nowhere to go and
+	// a shipped one could never be recorded as arrived or returned.
+	for _, tc := range []struct {
+		name string
+		from domain.OrderStatus
+		to   domain.OrderStatus
+	}{
+		{"canceling an unpaid order", domain.OrderStatusConfirmed, domain.OrderStatusCancelled},
+		{"delivering an order already shipped", domain.OrderStatusShipped, domain.OrderStatusDelivered},
+		{"returning an order already shipped", domain.OrderStatusShipped, domain.OrderStatusReturned},
+	} {
+		t.Run("still allows "+tc.name, func(t *testing.T) {
+			svc, orders, payments, inventory := newService(t)
+			orders.EXPECT().GetByID(gomock.Any(), "order_123").Return(storefrontOrder(tc.from), nil)
+			orders.EXPECT().Update(gomock.Any(), gomock.Any()).Return(nil)
+			// Never consulted: these are not forward moves.
+			payments.EXPECT().GetByOrderID(gomock.Any(), gomock.Any()).Times(0)
+			inventory.EXPECT().ReleaseOrderStock(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+			inventory.EXPECT().RestockOrderStock(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+
+			require.NoError(t, svc.UpdateStatus(ctx, "order_123", tc.to, "admin_1"))
+		})
+	}
+
+	// An admin-placed order has no payment record at all; payment is off-platform.
+	t.Run("allows an order with no payment record", func(t *testing.T) {
+		svc, orders, payments, inventory := newService(t)
+		orders.EXPECT().GetByID(gomock.Any(), "order_123").Return(storefrontOrder(domain.OrderStatusConfirmed), nil)
+		payments.EXPECT().GetByOrderID(gomock.Any(), "order_123").
+			Return(nil, errors.NotFound("Payment not found"))
+		orders.EXPECT().Update(gomock.Any(), gomock.Any()).Return(nil)
+		inventory.EXPECT().CommitOrderStock(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+
+		require.NoError(t, svc.UpdateStatus(ctx, "order_123", domain.OrderStatusShipped, "admin_1"))
 	})
 }

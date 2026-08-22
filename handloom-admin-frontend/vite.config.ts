@@ -9,6 +9,8 @@ export default defineConfig(({ mode }) => {
   // Keep browser console.* in non-prod builds so the AWS dev deploy is
   // debuggable from devtools. `build:dev` / `build:prod` map to mode
   // 'dev' / 'prod'; the default `build` (no mode) lands as 'production'.
+  // No source maps in any build: they were 80% of the dev upload and starved
+  // the BucketDeployment Lambda's sync. Vite defaults sourcemap to false.
   const stripConsole = mode === 'prod' || mode === 'production';
 
   return {
@@ -80,11 +82,6 @@ export default defineConfig(({ mode }) => {
           entryFileNames: 'assets/js/[name]-[hash].js',
         },
       },
-
-      // Generate source maps for non-prod builds so devtools can resolve
-      // minified frames back to readable code. Skipped in prod to keep the
-      // shipped bundle small and to avoid leaking source.
-      sourcemap: !stripConsole,
 
       // Target modern browsers for smaller bundles
       target: 'es2020',

@@ -19,13 +19,13 @@ import { addressFullName } from '@/features/customers/lib/displayName';
 import { ordersApi } from '@/features/orders/api';
 import { claimedByLiveRefunds } from '@/features/orders/lib/refundClaims';
 import { getErrorMessage } from '@/shared/api/client';
-import { Badge, Button, Card, ConfirmModal, Input, Modal, Select } from '@/shared/components/ui';
+import { Badge, Button, Card, Input, Modal, Select } from '@/shared/components/ui';
 import { useAuthStore } from '@/shared/stores/authStore';
 import { getStatusBadgeVariant } from '@/shared/utils/badge';
 import { formatCurrency, formatCurrencyExact } from '@/shared/utils/currency';
 
 import type { OrderStatus, ProviderPaymentStatus } from '../../types';
-import { ALLOWED_TRANSITIONS } from '../../types';
+import { ALLOWED_TRANSITIONS, FORWARD_STATUSES } from '../../types';
 import { OrderNotes } from './OrderNotes';
 import { OrderRefunds } from './OrderRefunds';
 import { OrderTimeline } from './OrderTimeline';
@@ -47,6 +47,7 @@ export function OrderDetailPage() {
   const [carrier, setCarrier] = useState('');
   const [trackingUrl, setTrackingUrl] = useState('');
   const [noteText, setNoteText] = useState('');
+  const [cancelReason, setCancelReason] = useState('');
   const [noteIsInternal, setNoteIsInternal] = useState(true);
 
   // Fetch order
@@ -123,12 +124,13 @@ export function OrderDetailPage() {
 
   // Cancel order mutation
   const cancelMutation = useMutation({
-    mutationFn: (id: string) => ordersApi.cancel(id),
+    mutationFn: ({ id, reason }: { id: string; reason: string }) => ordersApi.cancel(id, reason),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['order', id] });
       queryClient.invalidateQueries({ queryKey: ['orders'] });
       toast.success('Order cancelled');
       setShowCancelModal(false);
+      setCancelReason('');
     },
     onError: (error) => toast.error(getErrorMessage(error)),
   });
@@ -139,6 +141,10 @@ export function OrderDetailPage() {
   const checkPaymentMutation = useMutation({
     mutationFn: (id: string) => ordersApi.checkPaymentStatus(id),
     onSuccess: (data) => {
+      // The re-check reconciles the payment server-side, so the order on screen
+      // is stale the moment it returns.
+      queryClient.invalidateQueries({ queryKey: ['order', id] });
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
       setPaymentStatus(data);
       setShowPaymentModal(true);
     },
@@ -168,7 +174,12 @@ export function OrderDetailPage() {
   // Up to dispatch, matching CancelOrder's own guard. This is the only route to a
   // cancellation now that the status dropdown does not offer one.
   const canCancel = ['PENDING', 'CONFIRMED', 'PROCESSING'].includes(order.status);
-  const nextStatuses = ALLOWED_TRANSITIONS[order.status];
+  // A failed payment is the one case the page can be sure the backend will refuse.
+  // PENDING is not: it may be an admin order with no payment at all, which passes.
+  const paymentFailed = order.payment_status === 'FAILED';
+  const nextStatuses = ALLOWED_TRANSITIONS[order.status].filter(
+    (s) => !paymentFailed || !FORWARD_STATUSES.includes(s)
+  );
 
   // Refunding is gated on the money having arrived, and on the role. The backend
   // enforces both; hiding the button just stops the pointless attempt.
@@ -217,7 +228,9 @@ export function OrderDetailPage() {
         <Button
           variant="secondary"
           leftIcon={<Edit className="w-4 h-4" />}
-          disabled={nextStatuses.length === 0}
+          // Stays clickable on a failed payment even with nothing to offer: the modal
+          // is where the reason lives, and a dead grey button explains nothing.
+          disabled={nextStatuses.length === 0 && !paymentFailed}
           onClick={() => {
             // Seed with the first legal next status — the current one is not an
             // option, since the backend rejects a no-op transition.
@@ -475,7 +488,9 @@ export function OrderDetailPage() {
         <div className="space-y-4">
           {nextStatuses.length === 0 ? (
             <p className="text-sm text-gray-600">
-              An order that is {order.status.toLowerCase()} cannot move to another status.
+              {paymentFailed
+                ? 'This order cannot move forward while its payment has failed. Cancel it instead, or collect the payment first.'
+                : `An order that is ${order.status.toLowerCase()} cannot move to another status.`}
             </p>
           ) : (
             <Select
@@ -661,16 +676,40 @@ export function OrderDetailPage() {
         )}
       </Modal>
 
-      {/* Cancel Order Modal */}
-      <ConfirmModal
+      {/* Cancel Order Modal. Asks for a reason because the backend requires one —
+          and because this is the only cancellation path that records it. */}
+      <Modal
         isOpen={showCancelModal}
         onClose={() => setShowCancelModal(false)}
-        onConfirm={() => cancelMutation.mutate(order.id)}
         title="Cancel Order"
-        message={`Are you sure you want to cancel order #${order.order_number || order.id.slice(0, 8)}? This action cannot be undone.`}
-        confirmText="Cancel Order"
-        loading={cancelMutation.isPending}
-      />
+        size="sm"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600">
+            Cancel order #{order.order_number || order.id.slice(0, 8)}? This releases the reserved
+            stock and cannot be undone.
+          </p>
+          <Input
+            label="Reason"
+            value={cancelReason}
+            onChange={(e) => setCancelReason(e.target.value)}
+            placeholder="e.g. payment failed at the gateway"
+          />
+          <div className="flex justify-end gap-3">
+            <Button variant="secondary" onClick={() => setShowCancelModal(false)}>
+              Keep Order
+            </Button>
+            <Button
+              variant="danger"
+              onClick={() => cancelMutation.mutate({ id: order.id, reason: cancelReason.trim() })}
+              loading={cancelMutation.isPending}
+              disabled={!cancelReason.trim()}
+            >
+              Cancel Order
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }
