@@ -339,6 +339,13 @@ func (s *PaymentService) CheckProviderStatus(ctx context.Context, orderID string
 		payment = updated
 	}
 
+	// The handlers above no-op once the payment is terminal, and the failure path
+	// used to settle a payment without touching the order at all. So a re-check has
+	// to converge the order itself rather than trust that a handler did it.
+	if err := s.syncOrderPaymentStatus(ctx, payment); err != nil {
+		return nil, err
+	}
+
 	result := &domain.ProviderPaymentStatus{
 		OrderID:         orderID,
 		MerchantTxnID:   payment.MerchantTransactionID,
@@ -376,6 +383,39 @@ func (s *PaymentService) reconcile(ctx context.Context, payment *domain.Payment,
 			return errors.Wrap(err, "Failed to apply the provider's failure")
 		}
 	}
+	return nil
+}
+
+// syncOrderPaymentStatus brings the order's copy of the payment status in line with
+// the payment. Only the two outcomes the gateway reports are mapped: refund statuses
+// belong to the refund flow, and a payment still in flight has nothing to copy.
+// Deliberately does not move order.Status — confirming or canceling is a decision.
+func (s *PaymentService) syncOrderPaymentStatus(ctx context.Context, payment *domain.Payment) error {
+	var want domain.PaymentStatus
+	switch payment.Status {
+	case domain.PaymentStatusFailed:
+		want = domain.PaymentStatusFailed
+	case domain.PaymentStatusSuccess, domain.PaymentStatusPaid:
+		want = domain.PaymentStatusPaid
+	default:
+		return nil
+	}
+
+	order, err := s.orderRepo.GetByID(ctx, payment.OrderID)
+	if err != nil {
+		return errors.Wrap(err, "Failed to get order for payment status sync")
+	}
+	if order.PaymentStatus == want {
+		return nil
+	}
+
+	order.PaymentStatus = want
+	if err := s.orderRepo.Update(ctx, order); err != nil {
+		return errors.Wrap(err, "Failed to sync the order's payment status")
+	}
+
+	slog.InfoContext(ctx, "Repaired the order's payment status",
+		keyOrderID, order.ID, "payment_id", payment.ID, "payment_status", want)
 	return nil
 }
 
