@@ -127,6 +127,12 @@ type RefundStatusResponse struct {
 	DetailedErrorCode       string `json:"detailedErrorCode,omitempty"`
 }
 
+// Order states PhonePe reports on a payment.
+const (
+	PaymentStateCompleted = "COMPLETED"
+	PaymentStateFailed    = "FAILED"
+)
+
 // Refund states PhonePe reports.
 const (
 	RefundStatePending   = "PENDING"

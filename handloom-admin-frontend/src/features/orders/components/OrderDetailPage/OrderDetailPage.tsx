@@ -19,7 +19,7 @@ import { addressFullName } from '@/features/customers/lib/displayName';
 import { ordersApi } from '@/features/orders/api';
 import { claimedByLiveRefunds } from '@/features/orders/lib/refundClaims';
 import { getErrorMessage } from '@/shared/api/client';
-import { Badge, Button, Card, ConfirmModal, Input, Modal, Select } from '@/shared/components/ui';
+import { Badge, Button, Card, Input, Modal, Select } from '@/shared/components/ui';
 import { useAuthStore } from '@/shared/stores/authStore';
 import { getStatusBadgeVariant } from '@/shared/utils/badge';
 import { formatCurrency, formatCurrencyExact } from '@/shared/utils/currency';
@@ -47,6 +47,7 @@ export function OrderDetailPage() {
   const [carrier, setCarrier] = useState('');
   const [trackingUrl, setTrackingUrl] = useState('');
   const [noteText, setNoteText] = useState('');
+  const [cancelReason, setCancelReason] = useState('');
   const [noteIsInternal, setNoteIsInternal] = useState(true);
 
   // Fetch order
@@ -123,12 +124,13 @@ export function OrderDetailPage() {
 
   // Cancel order mutation
   const cancelMutation = useMutation({
-    mutationFn: (id: string) => ordersApi.cancel(id),
+    mutationFn: ({ id, reason }: { id: string; reason: string }) => ordersApi.cancel(id, reason),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['order', id] });
       queryClient.invalidateQueries({ queryKey: ['orders'] });
       toast.success('Order cancelled');
       setShowCancelModal(false);
+      setCancelReason('');
     },
     onError: (error) => toast.error(getErrorMessage(error)),
   });
@@ -139,6 +141,10 @@ export function OrderDetailPage() {
   const checkPaymentMutation = useMutation({
     mutationFn: (id: string) => ordersApi.checkPaymentStatus(id),
     onSuccess: (data) => {
+      // The re-check reconciles the payment server-side, so the order on screen
+      // is stale the moment it returns.
+      queryClient.invalidateQueries({ queryKey: ['order', id] });
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
       setPaymentStatus(data);
       setShowPaymentModal(true);
     },
@@ -661,16 +667,40 @@ export function OrderDetailPage() {
         )}
       </Modal>
 
-      {/* Cancel Order Modal */}
-      <ConfirmModal
+      {/* Cancel Order Modal. Asks for a reason because the backend requires one —
+          and because this is the only cancellation path that records it. */}
+      <Modal
         isOpen={showCancelModal}
         onClose={() => setShowCancelModal(false)}
-        onConfirm={() => cancelMutation.mutate(order.id)}
         title="Cancel Order"
-        message={`Are you sure you want to cancel order #${order.order_number || order.id.slice(0, 8)}? This action cannot be undone.`}
-        confirmText="Cancel Order"
-        loading={cancelMutation.isPending}
-      />
+        size="sm"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600">
+            Cancel order #{order.order_number || order.id.slice(0, 8)}? This releases the reserved
+            stock and cannot be undone.
+          </p>
+          <Input
+            label="Reason"
+            value={cancelReason}
+            onChange={(e) => setCancelReason(e.target.value)}
+            placeholder="e.g. payment failed at the gateway"
+          />
+          <div className="flex justify-end gap-3">
+            <Button variant="secondary" onClick={() => setShowCancelModal(false)}>
+              Keep Order
+            </Button>
+            <Button
+              variant="danger"
+              onClick={() => cancelMutation.mutate({ id: order.id, reason: cancelReason.trim() })}
+              loading={cancelMutation.isPending}
+              disabled={!cancelReason.trim()}
+            >
+              Cancel Order
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }
