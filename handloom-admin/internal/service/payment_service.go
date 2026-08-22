@@ -339,6 +339,12 @@ func (s *PaymentService) CheckProviderStatus(ctx context.Context, orderID string
 		payment = updated
 	}
 
+	// The handlers no-op once the payment is terminal, and the old failure path
+	// never wrote the order, so the re-check has to converge it itself.
+	if err := s.syncOrderPaymentStatus(ctx, payment); err != nil {
+		return nil, err
+	}
+
 	result := &domain.ProviderPaymentStatus{
 		OrderID:         orderID,
 		MerchantTxnID:   payment.MerchantTransactionID,
@@ -376,6 +382,37 @@ func (s *PaymentService) reconcile(ctx context.Context, payment *domain.Payment,
 			return errors.Wrap(err, "Failed to apply the provider's failure")
 		}
 	}
+	return nil
+}
+
+// syncOrderPaymentStatus brings the order's copy in line with the payment, writing
+// only on a real difference. Never moves order.Status — that is the admin's call.
+func (s *PaymentService) syncOrderPaymentStatus(ctx context.Context, payment *domain.Payment) error {
+	var want domain.PaymentStatus
+	switch payment.Status {
+	case domain.PaymentStatusFailed:
+		want = domain.PaymentStatusFailed
+	case domain.PaymentStatusSuccess, domain.PaymentStatusPaid:
+		want = domain.PaymentStatusPaid
+	default:
+		return nil
+	}
+
+	order, err := s.orderRepo.GetByID(ctx, payment.OrderID)
+	if err != nil {
+		return errors.Wrap(err, "Failed to get order for payment status sync")
+	}
+	if order.PaymentStatus == want {
+		return nil
+	}
+
+	order.PaymentStatus = want
+	if err := s.orderRepo.Update(ctx, order); err != nil {
+		return errors.Wrap(err, "Failed to sync the order's payment status")
+	}
+
+	slog.InfoContext(ctx, "Repaired the order's payment status",
+		keyOrderID, order.ID, "payment_id", payment.ID, "payment_status", want)
 	return nil
 }
 

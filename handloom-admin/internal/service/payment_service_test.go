@@ -106,6 +106,10 @@ func TestCheckProviderStatus(t *testing.T) {
 		h.inventory.EXPECT().ReleaseOrderStock(gomock.Any(), "order_1", map[string]int{"prod_a": 2}).Return(nil)
 		// Re-read so the response carries the settled status, not the stale one.
 		h.payments.EXPECT().GetByOrderID(gomock.Any(), "order_1").Return(failed, nil)
+		// The sync then reads back what the handler wrote and finds nothing to do.
+		failedOrder := pendingOrder()
+		failedOrder.PaymentStatus = domain.PaymentStatusFailed
+		h.orders.EXPECT().GetByID(gomock.Any(), "order_1").Return(failedOrder, nil)
 
 		result, err := h.svc.CheckProviderStatus(ctx, "order_1")
 		require.NoError(t, err)
@@ -133,6 +137,9 @@ func TestCheckProviderStatus(t *testing.T) {
 		h.customers.EXPECT().GetByID(gomock.Any(), "cust_1").Return(&domain.Customer{ID: "cust_1"}, nil).AnyTimes()
 		h.customers.EXPECT().RecordPurchase(gomock.Any(), "cust_1", gomock.Any()).Return(int64(1), nil).AnyTimes()
 		h.payments.EXPECT().GetByOrderID(gomock.Any(), "order_1").Return(paid, nil)
+		paidOrder := pendingOrder()
+		paidOrder.Status, paidOrder.PaymentStatus = domain.OrderStatusConfirmed, domain.PaymentStatusPaid
+		h.orders.EXPECT().GetByID(gomock.Any(), "order_1").Return(paidOrder, nil)
 
 		result, err := h.svc.CheckProviderStatus(ctx, "order_1")
 		require.NoError(t, err)
@@ -140,7 +147,26 @@ func TestCheckProviderStatus(t *testing.T) {
 	})
 
 	// Re-checking a settled payment must not release stock or move money twice.
-	t.Run("is a no-op on a payment already settled", func(t *testing.T) {
+	t.Run("writes nothing when payment and order already agree", func(t *testing.T) {
+		h := newPaymentHarness(t, phonepe.PaymentStateFailed)
+
+		failed := abandonedPayment()
+		failed.Status = domain.PaymentStatusFailed
+		agreed := pendingOrder()
+		agreed.PaymentStatus = domain.PaymentStatusFailed
+
+		h.payments.EXPECT().GetByOrderID(gomock.Any(), "order_1").Return(failed, nil).Times(2)
+		h.payments.EXPECT().GetByMerchantTxnID(gomock.Any(), "HC-1").Return(failed, nil)
+		h.orders.EXPECT().GetByID(gomock.Any(), "order_1").Return(agreed, nil)
+
+		result, err := h.svc.CheckProviderStatus(ctx, "order_1")
+		require.NoError(t, err)
+		require.Equal(t, string(domain.PaymentStatusFailed), result.LocalStatus)
+	})
+
+	// Pre-fix webhook settled the payment and left the order stale, so the handlers
+	// short-circuit and no number of re-checks ever repaired it.
+	t.Run("repairs an order the old failure path left behind", func(t *testing.T) {
 		h := newPaymentHarness(t, phonepe.PaymentStateFailed)
 
 		failed := abandonedPayment()
@@ -148,6 +174,15 @@ func TestCheckProviderStatus(t *testing.T) {
 
 		h.payments.EXPECT().GetByOrderID(gomock.Any(), "order_1").Return(failed, nil).Times(2)
 		h.payments.EXPECT().GetByMerchantTxnID(gomock.Any(), "HC-1").Return(failed, nil)
+		// Order still carries the stale copy.
+		h.orders.EXPECT().GetByID(gomock.Any(), "order_1").Return(pendingOrder(), nil)
+		h.orders.EXPECT().Update(gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, o *domain.Order) error {
+				require.Equal(t, domain.PaymentStatusFailed, o.PaymentStatus)
+				// Still not a cancellation: that stays the admin's call.
+				require.Equal(t, domain.OrderStatusPending, o.Status)
+				return nil
+			})
 
 		result, err := h.svc.CheckProviderStatus(ctx, "order_1")
 		require.NoError(t, err)
