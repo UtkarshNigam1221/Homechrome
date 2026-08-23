@@ -15,6 +15,7 @@ import {
 } from '@/lib/constants';
 
 export const metadata: Metadata = {
+  alternates: { canonical: '/contact' },
   title: 'Contact Us | Homechrome',
   description: 'Reach Homechrome support by phone, WhatsApp or email.',
 };

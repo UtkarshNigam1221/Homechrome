@@ -4,37 +4,39 @@ import { API_BASE, IS_INDEXABLE, SITE_URL } from '@/lib/constants';
 import { ROUTES } from '@/lib/routes';
 import { Category, Product } from '@/types';
 
-async function getAllCategories(): Promise<Category[]> {
+// Cursor-paged catalog fetch. The API defaults to limit=20 and caps it at
+// 100, so a single un-paged call silently truncates the sitemap.
+async function fetchAllPages<T>(path: string): Promise<T[]> {
+  const out: T[] = [];
+  let cursor: string | undefined;
   try {
-    const res = await fetch(`${API_BASE}${ROUTES.CATALOG.CATEGORIES}`, {
-      next: { revalidate: 3600 },
-    });
-    if (!res.ok) return [];
-    const json = await res.json();
-    return json.data || [];
+    // Bounded so a repeating next_cursor cannot spin the build forever.
+    for (let page = 0; page < 100; page++) {
+      const qs = new URLSearchParams({ limit: '100' });
+      if (cursor) qs.set('cursor', cursor);
+      const res = await fetch(`${API_BASE}${path}?${qs}`, {
+        next: { revalidate: 3600 },
+      });
+      if (!res.ok) break;
+      const json = await res.json();
+      out.push(...(json.data ?? []));
+      if (!json.meta?.has_more || !json.meta?.next_cursor) break;
+      cursor = json.meta.next_cursor as string;
+    }
   } catch {
-    return [];
+    // Partial sitemap beats an empty one; static routes still ship.
   }
-}
-
-async function getAllProducts(): Promise<Product[]> {
-  try {
-    const res = await fetch(`${API_BASE}${ROUTES.CATALOG.PRODUCTS}`, {
-      next: { revalidate: 3600 },
-    });
-    if (!res.ok) return [];
-    const json = await res.json();
-    return json.data || [];
-  } catch {
-    return [];
-  }
+  return out;
 }
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   // Non-prod hosts are disallowed in robots; don't expose their URLs here either.
   if (!IS_INDEXABLE) return [];
 
-  const [categories, products] = await Promise.all([getAllCategories(), getAllProducts()]);
+  const [categories, products] = await Promise.all([
+    fetchAllPages<Category>(ROUTES.CATALOG.CATEGORIES),
+    fetchAllPages<Product>(ROUTES.CATALOG.PRODUCTS),
+  ]);
 
   const staticRoutes: MetadataRoute.Sitemap = [
     {
@@ -57,6 +59,13 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     },
     {
       url: `${SITE_URL}/contact`,
+      lastModified: new Date(),
+      changeFrequency: 'monthly',
+      priority: 0.3,
+    },
+    // Public order-lookup form — no auth, so it is indexable.
+    {
+      url: `${SITE_URL}/track`,
       lastModified: new Date(),
       changeFrequency: 'monthly',
       priority: 0.3,

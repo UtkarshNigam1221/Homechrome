@@ -11,6 +11,7 @@ import {
 } from '@/lib/constants';
 
 export const metadata: Metadata = {
+  alternates: { canonical: '/privacy-policy' },
   title: 'Privacy Policy | Homechrome',
   description:
     'How Homechrome collects, uses, and protects your personal data, and your rights under the DPDP Act, 2023.',

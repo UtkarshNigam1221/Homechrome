@@ -6,6 +6,7 @@ import { LegalPageLayout, LegalSection } from '@/components/legal/LegalPageLayou
 import { DAMAGE_CLAIM_WINDOW_HOURS, REFUND_DAYS, SUPPORT_EMAIL } from '@/lib/constants';
 
 export const metadata: Metadata = {
+  alternates: { canonical: '/refund-policy' },
   title: 'Refund, Replacement & Cancellation Policy | Homechrome',
   description:
     'Replacement for damaged or defective items, unboxing-video requirement, claim window, and order cancellation terms.',

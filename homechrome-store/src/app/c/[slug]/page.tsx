@@ -65,6 +65,9 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   }
   return {
     title: `${category.name} | Homechrome`,
+    // Filters live only in the query string and render identical HTML, so
+    // every filtered variant points back at the clean category URL.
+    alternates: { canonical: `/c/${slug}` },
     description: category.description || `Browse ${category.name} handloom textiles at Homechrome.`,
     openGraph: {
       title: `${category.name} | Homechrome`,
