@@ -182,6 +182,13 @@ func (s *PaymentService) HandlePaymentSuccess(ctx context.Context, evt domain.Pa
 			utmSource: utmSource,
 		})
 
+		// Revenue books here, not at checkout-initiate: an abandoned or failed
+		// payment leaves an order nobody paid for, and nothing retracts a metric
+		// already counted. resolvePayment de-duped the replay, so this runs once.
+		metrics.RecordSum(ctx, "orders_value", order.TotalAmount, metrics.L{
+			metrics.LabelCountry: country, metrics.LabelCity: city, metrics.LabelGateway: gatewayPhonePe,
+		})
+
 		// payment_completed carries utm_source (ROAS) + device_type, both read from
 		// the order — webhook ctx has no browser headers.
 		metrics.Record(ctx, "payment_completed", metrics.L{
@@ -201,8 +208,8 @@ func (s *PaymentService) HandlePaymentSuccess(ctx context.Context, evt domain.Pa
 		metrics.LabelGateway: gatewayPhonePe, metrics.LabelOutcome: "success", metrics.LabelCountry: middleware.GetCountry(ctx),
 	})
 
-	// RecordOrderPlaced moved to CheckoutService.Initiate so it also fires on the
-	// DevClient path where this webhook never runs. Don't emit here.
+	// orders_placed stays in CheckoutService.Initiate — it counts placements, and
+	// firing it there also covers the DevClient path this webhook never reaches.
 
 	span.SetAttribute("entity.id", payment.ID)
 	span.SetAttribute("order.id", payment.OrderID)
