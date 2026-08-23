@@ -4,6 +4,7 @@ package service
 import (
 	"context"
 	"log/slog"
+	"slices"
 	"strings"
 	"time"
 
@@ -156,7 +157,7 @@ func (s *CouponService) List(ctx context.Context, req domain.ListCouponsRequest)
 }
 
 // Validate validates a coupon for an order
-func (s *CouponService) Validate(ctx context.Context, code string, orderTotal int64, customerID string, productIDs []string) (*domain.CouponValidationResult, error) {
+func (s *CouponService) Validate(ctx context.Context, code string, orderTotal int64, customerID string, lines []domain.CouponLine) (*domain.CouponValidationResult, error) {
 	// Normalise the code label to keep metric cardinality bounded to real codes.
 	codeLabel := strings.ToUpper(strings.TrimSpace(code))
 	if codeLabel == "" {
@@ -242,6 +243,13 @@ func (s *CouponService) Validate(ctx context.Context, code string, orderTotal in
 		}
 	}
 
+	// Applicability. The lists were stored and editable long before anything read
+	// them, so a coupon scoped to one category discounted every order.
+	if reason := checkApplicability(coupon, lines); reason != "" {
+		outcome = outcomeInvalid
+		return &domain.CouponValidationResult{Valid: false, Code: code, ErrorMessage: reason}, nil
+	}
+
 	// Calculate discount
 	var discount int64
 	if coupon.Type == domain.CouponTypePercentage {
@@ -251,9 +259,15 @@ func (s *CouponService) Validate(ctx context.Context, code string, orderTotal in
 		}
 	} else {
 		discount = coupon.Value
-		if discount > orderTotal {
-			discount = orderTotal
-		}
+	}
+	// Never more than the order is worth. A percentage above 100, or a fixed amount
+	// above the total, otherwise produces a discount the lines cannot carry — which
+	// the allocator refuses outright rather than approximating.
+	if discount > orderTotal {
+		discount = orderTotal
+	}
+	if discount < 0 {
+		discount = 0
 	}
 
 	return &domain.CouponValidationResult{
@@ -294,6 +308,45 @@ func (s *CouponService) Apply(ctx context.Context, couponID string, orderID stri
 
 	slog.InfoContext(ctx, "Applied coupon", "coupon_code", coupon.Code, "order_id", orderID, "discount", discount)
 	return nil
+}
+
+// checkApplicability reports why coupon does not apply to these lines, or "" when it
+// does. Empty lists mean "everything", and exclusion beats inclusion: an excluded item
+// in the basket refuses the coupon rather than being quietly skipped, because a coupon
+// that silently discounts less than it advertised reads as a pricing bug.
+//
+// Lines carry their own category so this needs no product read — which also keeps the
+// coupon Lambda free of a Postgres pool, since products do not live in DynamoDB.
+func checkApplicability(coupon *domain.Coupon, lines []domain.CouponLine) string {
+	scoped := len(coupon.ApplicableProducts) > 0 || len(coupon.ExcludedProducts) > 0 ||
+		len(coupon.ApplicableCategories) > 0 || len(coupon.ExcludedCategories) > 0
+	if !scoped {
+		return ""
+	}
+	if len(lines) == 0 {
+		return "This coupon applies to specific items"
+	}
+
+	const notForThese = "This coupon does not apply to one or more items in your order"
+	for _, line := range lines {
+		if slices.Contains(coupon.ExcludedProducts, line.ProductID) ||
+			slices.Contains(coupon.ExcludedCategories, line.CategoryID) {
+			return notForThese
+		}
+	}
+
+	// An inclusion list needs at least one line inside it, or the coupon is simply
+	// not for this basket.
+	if len(coupon.ApplicableProducts) > 0 || len(coupon.ApplicableCategories) > 0 {
+		for _, line := range lines {
+			if slices.Contains(coupon.ApplicableProducts, line.ProductID) ||
+				slices.Contains(coupon.ApplicableCategories, line.CategoryID) {
+				return ""
+			}
+		}
+		return "This coupon applies to specific items"
+	}
+	return ""
 }
 
 func (s *CouponService) invalidCouponResult(code, message string) *domain.CouponValidationResult {

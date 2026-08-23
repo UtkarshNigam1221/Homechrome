@@ -172,7 +172,7 @@ type CouponService interface {
 	List(ctx context.Context, req ListCouponsRequest) (*ListCouponsResponse, error)
 
 	// Validate validates a coupon for an order
-	Validate(ctx context.Context, code string, orderTotal int64, customerID string, productIDs []string) (*CouponValidationResult, error)
+	Validate(ctx context.Context, code string, orderTotal int64, customerID string, lines []CouponLine) (*CouponValidationResult, error)
 
 	// Apply applies a coupon to an order
 	Apply(ctx context.Context, couponID string, orderID string, customerID string, discount int64) error
@@ -212,6 +212,13 @@ type UpdateCouponRequest struct {
 	ValidFrom            *time.Time    `json:"valid_from,omitempty"`
 	ValidUntil           *time.Time    `json:"valid_until,omitempty"`
 	Status               *CouponStatus `json:"status,omitempty"`
+}
+
+// CouponLine is what a coupon needs to know about one order line to scope itself.
+// Carries the category so validation needs no product read.
+type CouponLine struct {
+	ProductID  string `json:"product_id"`
+	CategoryID string `json:"category_id"`
 }
 
 // CouponValidationResult contains the result of coupon validation

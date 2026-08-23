@@ -137,7 +137,14 @@ func (h *CouponHandler) List(w http.ResponseWriter, r *http.Request) {
 func (h *CouponHandler) Validate(w http.ResponseWriter, r *http.Request) {
 	req := middleware.MustGetValidatedBody[ValidateCouponRequest](r.Context())
 
-	result, err := h.couponService.Validate(r.Context(), req.Code, req.OrderTotal, req.CustomerID, req.ProductIDs)
+	lines := req.Lines
+	if len(lines) == 0 {
+		for _, id := range req.ProductIDs {
+			lines = append(lines, domain.CouponLine{ProductID: id})
+		}
+	}
+
+	result, err := h.couponService.Validate(r.Context(), req.Code, req.OrderTotal, req.CustomerID, lines)
 	if err != nil {
 		response.Error(w, err)
 		return

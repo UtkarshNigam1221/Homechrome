@@ -52,10 +52,14 @@ type CancelOrderRequest struct {
 
 // ValidateCouponRequest is the request body for validating a coupon
 type ValidateCouponRequest struct {
-	Code       string   `json:"code" validate:"required"`
-	OrderTotal int64    `json:"order_total"`
-	CustomerID string   `json:"customer_id"`
-	ProductIDs []string `json:"product_ids"`
+	Code       string `json:"code" validate:"required"`
+	OrderTotal int64  `json:"order_total"`
+	CustomerID string `json:"customer_id"`
+	// Lines carry each item's product and category so a scoped coupon can be checked.
+	// ProductIDs stays for callers that predate scoping; it cannot evaluate a
+	// category rule, so a category-scoped coupon reads as not applicable without Lines.
+	ProductIDs []string            `json:"product_ids"`
+	Lines      []domain.CouponLine `json:"lines"`
 }
 
 // ApplyCouponRequest is the request body for applying a coupon

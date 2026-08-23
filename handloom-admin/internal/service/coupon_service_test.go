@@ -607,3 +607,122 @@ func TestCouponService_Apply(t *testing.T) {
 		require.Error(t, err)
 	})
 }
+
+// The four applicability lists were stored, editable in the admin, and read by
+// nothing — a coupon scoped to one category discounted every order.
+func TestCouponService_ValidateApplicability(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	repo := mocks.NewMockCouponRepository(ctrl)
+	svc := NewCouponService(repo)
+	ctx := context.Background()
+
+	scoped := func(c *domain.Coupon) *domain.Coupon {
+		c.Code, c.Status, c.Type, c.Value = "SCOPED", domain.CouponStatusActive, domain.CouponTypeFixed, 10000
+		c.ValidFrom, c.ValidUntil = time.Now().Add(-time.Hour), time.Now().Add(time.Hour)
+		return c
+	}
+	validate := func(t *testing.T, c *domain.Coupon, lines []domain.CouponLine) *domain.CouponValidationResult {
+		t.Helper()
+		repo.EXPECT().GetByCode(gomock.Any(), "SCOPED").Return(scoped(c), nil)
+		got, err := svc.Validate(ctx, "SCOPED", 500000, "cust_1", lines)
+		require.NoError(t, err)
+		return got
+	}
+
+	saree := domain.CouponLine{ProductID: "p_saree", CategoryID: "cat_sarees"}
+	shawl := domain.CouponLine{ProductID: "p_shawl", CategoryID: "cat_shawls"}
+
+	t.Run("an unscoped coupon applies to anything", func(t *testing.T) {
+		require.True(t, validate(t, &domain.Coupon{}, []domain.CouponLine{shawl}).Valid)
+	})
+
+	t.Run("a category-scoped coupon needs a line in that category", func(t *testing.T) {
+		c := &domain.Coupon{ApplicableCategories: []string{"cat_sarees"}}
+		require.True(t, validate(t, c, []domain.CouponLine{saree}).Valid)
+
+		c2 := &domain.Coupon{ApplicableCategories: []string{"cat_sarees"}}
+		got := validate(t, c2, []domain.CouponLine{shawl})
+		require.False(t, got.Valid, "a shawl-only basket is not for a saree coupon")
+	})
+
+	t.Run("a mixed basket qualifies on one matching line", func(t *testing.T) {
+		c := &domain.Coupon{ApplicableCategories: []string{"cat_sarees"}}
+		require.True(t, validate(t, c, []domain.CouponLine{shawl, saree}).Valid)
+	})
+
+	t.Run("a product-scoped coupon needs that product", func(t *testing.T) {
+		c := &domain.Coupon{ApplicableProducts: []string{"p_saree"}}
+		require.True(t, validate(t, c, []domain.CouponLine{saree}).Valid)
+
+		c2 := &domain.Coupon{ApplicableProducts: []string{"p_saree"}}
+		require.False(t, validate(t, c2, []domain.CouponLine{shawl}).Valid)
+	})
+
+	// Exclusion refuses the whole coupon rather than quietly discounting less than
+	// it advertised, which would read as a pricing bug to the customer.
+	t.Run("an excluded item refuses the coupon", func(t *testing.T) {
+		c := &domain.Coupon{ExcludedCategories: []string{"cat_shawls"}}
+		require.False(t, validate(t, c, []domain.CouponLine{saree, shawl}).Valid)
+
+		c2 := &domain.Coupon{ExcludedProducts: []string{"p_shawl"}}
+		require.False(t, validate(t, c2, []domain.CouponLine{shawl}).Valid)
+	})
+
+	t.Run("exclusion beats inclusion", func(t *testing.T) {
+		c := &domain.Coupon{
+			ApplicableCategories: []string{"cat_sarees"},
+			ExcludedProducts:     []string{"p_saree"},
+		}
+		require.False(t, validate(t, c, []domain.CouponLine{saree}).Valid)
+	})
+
+	t.Run("a scoped coupon with no lines cannot be checked, so it is refused", func(t *testing.T) {
+		c := &domain.Coupon{ApplicableCategories: []string{"cat_sarees"}}
+		require.False(t, validate(t, c, nil).Valid)
+	})
+}
+
+// A discount above the order total leaves the allocator nothing it can distribute,
+// so it is capped here rather than refused downstream.
+func TestCouponService_ValidateCapsDiscount(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	repo := mocks.NewMockCouponRepository(ctrl)
+	svc := NewCouponService(repo)
+	ctx := context.Background()
+
+	live := func(c *domain.Coupon) *domain.Coupon {
+		c.Code, c.Status = "CAP", domain.CouponStatusActive
+		c.ValidFrom, c.ValidUntil = time.Now().Add(-time.Hour), time.Now().Add(time.Hour)
+		return c
+	}
+
+	t.Run("a percentage over 100 is capped at the order total", func(t *testing.T) {
+		// Value is percentage * 100, so 15000 is 150%.
+		repo.EXPECT().GetByCode(gomock.Any(), "CAP").
+			Return(live(&domain.Coupon{Type: domain.CouponTypePercentage, Value: 15000}), nil)
+		got, err := svc.Validate(ctx, "CAP", 100000, "cust_1", nil)
+		require.NoError(t, err)
+		require.True(t, got.Valid)
+		require.Equal(t, int64(100000), got.DiscountAmount, "never more than the order is worth")
+	})
+
+	t.Run("a fixed amount over the total is capped", func(t *testing.T) {
+		repo.EXPECT().GetByCode(gomock.Any(), "CAP").
+			Return(live(&domain.Coupon{Type: domain.CouponTypeFixed, Value: 999999}), nil)
+		got, err := svc.Validate(ctx, "CAP", 100000, "cust_1", nil)
+		require.NoError(t, err)
+		require.Equal(t, int64(100000), got.DiscountAmount)
+	})
+
+	t.Run("a negative coupon value discounts nothing", func(t *testing.T) {
+		repo.EXPECT().GetByCode(gomock.Any(), "CAP").
+			Return(live(&domain.Coupon{Type: domain.CouponTypeFixed, Value: -5000}), nil)
+		got, err := svc.Validate(ctx, "CAP", 100000, "cust_1", nil)
+		require.NoError(t, err)
+		require.Equal(t, int64(0), got.DiscountAmount)
+	})
+}
