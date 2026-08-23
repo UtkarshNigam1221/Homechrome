@@ -67,11 +67,12 @@ export function CouponsPage() {
     setShowFormModal(true);
   };
 
-  const formatDiscount = (coupon: Coupon) => {
-    if (coupon.type === 'PERCENTAGE') return `${coupon.discount_value}% off`;
-    if (coupon.type === 'FIXED_AMOUNT') return `${formatCurrency(coupon.discount_value)} off`;
-    return 'Free Shipping';
-  };
+  // value is percentage * 100 for PERCENTAGE and paise for FIXED, so both divide
+  // by 100 — formatCurrency does that itself for the money case.
+  const formatDiscount = (coupon: Coupon) =>
+    coupon.type === 'PERCENTAGE'
+      ? `${coupon.value / 100}% off`
+      : `${formatCurrency(coupon.value)} off`;
 
   return (
     <div className="space-y-6">
@@ -143,16 +144,16 @@ export function CouponsPage() {
                     <span className="font-medium text-green-600">{formatDiscount(coupon)}</span>
                   </TableCell>
                   <TableCell>
-                    {coupon.used_count || 0} / {coupon.max_uses || '∞'}
+                    {coupon.usage_count || 0} / {coupon.usage_limit || '∞'}
                   </TableCell>
                   <TableCell>
                     {coupon.min_order_value ? formatCurrency(coupon.min_order_value) : '-'}
                   </TableCell>
                   <TableCell>
-                    {coupon.expiry_date ? (
+                    {coupon.valid_until ? (
                       <div className="flex items-center gap-1 text-sm">
                         <Calendar className="w-3 h-3" />
-                        {format(new Date(coupon.expiry_date), 'MMM d, yyyy')}
+                        {format(new Date(coupon.valid_until), 'MMM d, yyyy')}
                       </div>
                     ) : (
                       <span className="text-gray-400">No expiry</span>

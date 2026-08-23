@@ -1,33 +1,75 @@
 import { zodResolver } from '@hookform/resolvers/zod';
+import { useQuery } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 
+import { categoriesApi } from '@/features/categories/api';
 import { couponsApi } from '@/features/coupons/api';
-import { Button, Input, Modal, Select } from '@/shared/components/ui';
+import { productsApi } from '@/features/products/api';
+import { Button, Input, Modal, MultiSelect, Select } from '@/shared/components/ui';
 import { useFormMutation } from '@/shared/hooks';
 
+import { toCreateRequest, toFormValues } from '../lib/toCreateRequest';
 import type { Coupon, CreateCouponRequest } from '../types';
 
-const couponSchema = z.object({
-  code: z
-    .string()
-    .min(3, 'Code must be at least 3 characters')
-    .max(20, 'Code must be less than 20 characters')
-    .regex(
-      /^[A-Z0-9_-]+$/,
-      'Code must be uppercase letters, numbers, underscores, and hyphens only'
-    ),
-  type: z.enum(['PERCENTAGE', 'FIXED_AMOUNT', 'FREE_SHIPPING']),
-  discount_value: z.number().min(0, 'Discount value must be positive'),
-  max_uses: z.number().min(0).optional(),
-  min_order_value: z.number().min(0).optional(),
-  max_discount: z.number().min(0).optional(),
-  expiry_date: z.string().optional(),
-  status: z.enum(['ACTIVE', 'INACTIVE', 'EXPIRED']),
-});
+const couponSchema = z
+  .object({
+    code: z
+      .string()
+      .min(3, 'Code must be at least 3 characters')
+      .max(20, 'Code must be less than 20 characters')
+      .regex(
+        /^[A-Z0-9_-]+$/,
+        'Code must be uppercase letters, numbers, underscores, and hyphens only'
+      ),
+    name: z.string().min(1, 'Name is required'),
+    description: z.string().optional(),
+    type: z.enum(['PERCENTAGE', 'FIXED']),
+    value: z.number().gt(0, 'Discount must be greater than zero'),
+    min_order_value: z.number().min(0).optional(),
+    max_discount: z.number().min(0).optional(),
+    usage_limit: z.number().min(0).optional(),
+    usage_per_user: z.number().min(0).optional(),
+    applicable_categories: z.array(z.string()).optional(),
+    applicable_products: z.array(z.string()).optional(),
+    excluded_categories: z.array(z.string()).optional(),
+    excluded_products: z.array(z.string()).optional(),
+    valid_from: z.string().min(1, 'Start date is required'),
+    valid_until: z.string().min(1, 'End date is required'),
+    status: z.enum(['ACTIVE', 'INACTIVE', 'EXPIRED']),
+  })
+  .refine((v) => v.type !== 'PERCENTAGE' || v.value <= 100, {
+    message: 'A percentage cannot exceed 100',
+    path: ['value'],
+  })
+  .refine((v) => new Date(v.valid_until) >= new Date(v.valid_from), {
+    message: 'End date must be on or after the start date',
+    path: ['valid_until'],
+  });
 
 type CouponFormData = z.infer<typeof couponSchema>;
+
+const today = () => new Date().toISOString().split('T')[0];
+
+const emptyForm = (): CouponFormData => ({
+  code: '',
+  name: '',
+  description: '',
+  type: 'PERCENTAGE',
+  value: 10,
+  min_order_value: 0,
+  max_discount: 0,
+  usage_limit: 0,
+  usage_per_user: 0,
+  applicable_categories: [],
+  applicable_products: [],
+  excluded_categories: [],
+  excluded_products: [],
+  valid_from: today(),
+  valid_until: today(),
+  status: 'ACTIVE',
+});
 
 interface CouponFormModalProps {
   isOpen: boolean;
@@ -46,48 +88,36 @@ export function CouponFormModal({ isOpen, onClose, coupon }: CouponFormModalProp
     formState: { errors },
   } = useForm<CouponFormData>({
     resolver: zodResolver(couponSchema),
-    defaultValues: {
-      code: '',
-      type: 'PERCENTAGE',
-      discount_value: 10,
-      max_uses: 0,
-      min_order_value: 0,
-      max_discount: 0,
-      expiry_date: '',
-      status: 'ACTIVE',
-    },
+    defaultValues: emptyForm(),
   });
 
   const couponType = watch('type');
 
-  // Reset form when modal opens/closes or coupon changes
+  // Scoping needs something to scope to. Only fetched while the modal is open.
+  const { data: categories } = useQuery({
+    queryKey: ['categories', 'coupon-scope'],
+    queryFn: () => categoriesApi.list({ limit: 200 }),
+    enabled: isOpen,
+  });
+  const { data: products } = useQuery({
+    queryKey: ['products', 'coupon-scope'],
+    queryFn: () => productsApi.list({ limit: 200 }),
+    enabled: isOpen,
+  });
+
+  const categoryOptions = (categories?.items ?? []).map((c) => ({ value: c.id, label: c.name }));
+  const productOptions = (products?.items ?? []).map((p) => ({
+    value: p.id,
+    label: `${p.name} (${p.sku})`,
+  }));
+
   useEffect(() => {
-    if (isOpen) {
-      if (coupon?.id) {
-        reset({
-          code: coupon.code,
-          type: coupon.type,
-          discount_value:
-            coupon.type === 'FIXED_AMOUNT' ? coupon.discount_value / 100 : coupon.discount_value,
-          max_uses: coupon.max_uses || 0,
-          min_order_value: coupon.min_order_value ? coupon.min_order_value / 100 : 0,
-          max_discount: coupon.max_discount ? coupon.max_discount / 100 : 0,
-          expiry_date: coupon.expiry_date ? coupon.expiry_date.split('T')[0] : '',
-          status: coupon.status,
-        });
-      } else {
-        reset({
-          code: '',
-          type: 'PERCENTAGE',
-          discount_value: 10,
-          max_uses: 0,
-          min_order_value: 0,
-          max_discount: 0,
-          expiry_date: '',
-          status: 'ACTIVE',
-        });
-      }
+    if (!isOpen) return;
+    if (!coupon?.id) {
+      reset(emptyForm());
+      return;
     }
+    reset(toFormValues(coupon));
   }, [isOpen, coupon, reset]);
 
   const { isLoading, onSubmit: submitMutation } = useFormMutation<
@@ -102,18 +132,7 @@ export function CouponFormModal({ isOpen, onClose, coupon }: CouponFormModalProp
   });
 
   const onSubmit = (data: CouponFormData) => {
-    const requestData: CreateCouponRequest = {
-      code: data.code.toUpperCase(),
-      type: data.type,
-      discount_value:
-        data.type === 'FIXED_AMOUNT' ? Math.round(data.discount_value * 100) : data.discount_value,
-      max_uses: data.max_uses || undefined,
-      min_order_value: data.min_order_value ? Math.round(data.min_order_value * 100) : undefined,
-      max_discount: data.max_discount ? Math.round(data.max_discount * 100) : undefined,
-      expiry_date: data.expiry_date || undefined,
-      status: data.status,
-    };
-
+    const requestData = toCreateRequest(data);
     submitMutation(coupon?.id, requestData, requestData);
   };
 
@@ -122,55 +141,60 @@ export function CouponFormModal({ isOpen, onClose, coupon }: CouponFormModalProp
       isOpen={isOpen}
       onClose={onClose}
       title={isEditing ? 'Edit Coupon' : 'Create Coupon'}
-      size="md"
+      size="lg"
     >
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-        <Input
-          label="Coupon Code"
-          placeholder="e.g., SUMMER20"
-          hint="Uppercase letters, numbers, underscores, and hyphens only"
-          error={errors.code?.message}
-          required
-          {...register('code')}
-        />
-
-        <Select
-          label="Discount Type"
-          options={[
-            { value: 'PERCENTAGE', label: 'Percentage Discount' },
-            { value: 'FIXED_AMOUNT', label: 'Fixed Amount Off' },
-            { value: 'FREE_SHIPPING', label: 'Free Shipping' },
-          ]}
-          error={errors.type?.message}
-          required
-          {...register('type')}
-        />
-
-        {couponType !== 'FREE_SHIPPING' && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Input
-            label={couponType === 'PERCENTAGE' ? 'Discount Percentage' : 'Discount Amount (₹)'}
+            label="Coupon Code"
+            placeholder="e.g., SUMMER20"
+            hint="Uppercase letters, numbers, underscores and hyphens"
+            error={errors.code?.message}
+            required
+            {...register('code')}
+          />
+          <Input
+            label="Name"
+            placeholder="e.g., Summer Sale 20% off"
+            hint="Shown in the admin, not to customers"
+            error={errors.name?.message}
+            required
+            {...register('name')}
+          />
+        </div>
+
+        <Input
+          label="Description"
+          placeholder="Optional note about this campaign"
+          error={errors.description?.message}
+          {...register('description')}
+        />
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Select
+            label="Discount Type"
+            options={[
+              { value: 'PERCENTAGE', label: 'Percentage Discount' },
+              { value: 'FIXED', label: 'Fixed Amount Off' },
+            ]}
+            error={errors.type?.message}
+            required
+            {...register('type')}
+          />
+          <Input
+            label={couponType === 'PERCENTAGE' ? 'Discount Percentage (%)' : 'Discount Amount (₹)'}
             type="number"
-            step={couponType === 'PERCENTAGE' ? '1' : '0.01'}
+            step="0.01"
             min="0"
             max={couponType === 'PERCENTAGE' ? '100' : undefined}
             placeholder={couponType === 'PERCENTAGE' ? '10' : '100'}
-            error={errors.discount_value?.message}
+            error={errors.value?.message}
             required
-            {...register('discount_value', { valueAsNumber: true })}
+            {...register('value', { valueAsNumber: true })}
           />
-        )}
+        </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Input
-            label="Maximum Uses"
-            type="number"
-            min="0"
-            placeholder="Unlimited"
-            hint="Leave 0 for unlimited"
-            error={errors.max_uses?.message}
-            {...register('max_uses', { valueAsNumber: true })}
-          />
-
           <Input
             label="Minimum Order Value (₹)"
             type="number"
@@ -180,40 +204,98 @@ export function CouponFormModal({ isOpen, onClose, coupon }: CouponFormModalProp
             error={errors.min_order_value?.message}
             {...register('min_order_value', { valueAsNumber: true })}
           />
+          {couponType === 'PERCENTAGE' && (
+            <Input
+              label="Maximum Discount (₹)"
+              type="number"
+              step="0.01"
+              min="0"
+              placeholder="No cap"
+              hint="Caps what a percentage can take off"
+              error={errors.max_discount?.message}
+              {...register('max_discount', { valueAsNumber: true })}
+            />
+          )}
         </div>
-
-        {couponType === 'PERCENTAGE' && (
-          <Input
-            label="Maximum Discount (₹)"
-            type="number"
-            step="0.01"
-            min="0"
-            placeholder="No cap"
-            hint="Cap the maximum discount amount"
-            error={errors.max_discount?.message}
-            {...register('max_discount', { valueAsNumber: true })}
-          />
-        )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Input
-            label="Expiry Date"
-            type="date"
-            error={errors.expiry_date?.message}
-            {...register('expiry_date')}
+            label="Total Uses"
+            type="number"
+            min="0"
+            placeholder="Unlimited"
+            hint="0 for unlimited"
+            error={errors.usage_limit?.message}
+            {...register('usage_limit', { valueAsNumber: true })}
           />
-
-          <Select
-            label="Status"
-            options={[
-              { value: 'ACTIVE', label: 'Active' },
-              { value: 'INACTIVE', label: 'Inactive' },
-              { value: 'EXPIRED', label: 'Expired' },
-            ]}
-            required
-            {...register('status')}
+          <Input
+            label="Uses Per Customer"
+            type="number"
+            min="0"
+            placeholder="Unlimited"
+            hint="0 for unlimited"
+            error={errors.usage_per_user?.message}
+            {...register('usage_per_user', { valueAsNumber: true })}
           />
         </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Input
+            label="Valid From"
+            type="date"
+            error={errors.valid_from?.message}
+            required
+            {...register('valid_from')}
+          />
+          <Input
+            label="Valid Until"
+            type="date"
+            error={errors.valid_until?.message}
+            required
+            {...register('valid_until')}
+          />
+        </div>
+
+        <div className="pt-2 border-t border-gray-200">
+          <p className="text-sm font-medium text-gray-900 mb-1">Scope</p>
+          <p className="text-xs text-gray-500 mb-3">
+            Leave empty to apply to everything. An include list requires at least one matching item
+            in the order; anything excluded refuses the coupon outright.
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <MultiSelect
+              label="Include Categories"
+              options={categoryOptions}
+              {...register('applicable_categories')}
+            />
+            <MultiSelect
+              label="Exclude Categories"
+              options={categoryOptions}
+              {...register('excluded_categories')}
+            />
+            <MultiSelect
+              label="Include Products"
+              options={productOptions}
+              {...register('applicable_products')}
+            />
+            <MultiSelect
+              label="Exclude Products"
+              options={productOptions}
+              {...register('excluded_products')}
+            />
+          </div>
+        </div>
+
+        <Select
+          label="Status"
+          options={[
+            { value: 'ACTIVE', label: 'Active' },
+            { value: 'INACTIVE', label: 'Inactive' },
+            { value: 'EXPIRED', label: 'Expired' },
+          ]}
+          required
+          {...register('status')}
+        />
 
         <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
           <Button variant="secondary" onClick={onClose} disabled={isLoading}>
