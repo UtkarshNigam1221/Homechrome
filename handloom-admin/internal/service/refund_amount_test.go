@@ -291,3 +291,181 @@ func TestDeriveRefundAmount_CountsClaimedUnits(t *testing.T) {
 		require.True(t, got.IsFinal)
 	})
 }
+
+// Per-line discounts are what buy-N-get-M needs: the discount belongs to the line
+// that earned it, not to the order in proportion.
+func TestDeriveRefundAmount_PerLineDiscount(t *testing.T) {
+	// Mirrors what a discount writer must produce: lines carrying the figure, the
+	// order agreeing, and the marker set.
+	perLineOrder := func(tax, shipping int64, items ...domain.OrderItem) *domain.Order {
+		var subtotal, discount int64
+		for _, it := range items {
+			subtotal += it.UnitPrice * int64(it.Quantity)
+			discount += it.DiscountAmount
+		}
+		return &domain.Order{
+			ID: "order_1", Items: items,
+			Subtotal: subtotal, DiscountAmount: discount,
+			TaxAmount: tax, ShippingAmount: shipping,
+			TotalAmount:       subtotal - discount + tax + shipping,
+			DiscountAllocated: true,
+		}
+	}
+
+	// The whole point: line b carries the entire discount, so refunding a must not
+	// get a share of it. Proration would have handed a two thirds of it.
+	t.Run("a line's discount stays on that line", func(t *testing.T) {
+		order := perLineOrder(0, 0,
+			domain.OrderItem{ID: "a", ProductID: "pa", UnitPrice: 2000, Quantity: 1},
+			domain.OrderItem{ID: "b", ProductID: "pb", UnitPrice: 1000, Quantity: 1, DiscountAmount: 1000},
+		)
+		got, err := deriveRefundAmount(order, []domain.CreateRefundItemRequest{{OrderItemID: "a", Quantity: 1}}, nil, 0)
+		require.NoError(t, err)
+		require.Equal(t, int64(0), got.Discount, "line a was not discounted")
+		require.Equal(t, int64(2000), got.Total)
+	})
+
+	t.Run("a fully discounted line refunds nothing", func(t *testing.T) {
+		order := perLineOrder(0, 0,
+			domain.OrderItem{ID: "a", ProductID: "pa", UnitPrice: 2000, Quantity: 1},
+			domain.OrderItem{ID: "b", ProductID: "pb", UnitPrice: 1000, Quantity: 1, DiscountAmount: 1000},
+		)
+		got, err := deriveRefundAmount(order, []domain.CreateRefundItemRequest{{OrderItemID: "b", Quantity: 1}}, nil, 0)
+		require.NoError(t, err)
+		require.Equal(t, int64(0), got.Total, "the free unit cost nothing, so nothing goes back")
+	})
+
+	t.Run("a partial refund takes its share of the line's discount", func(t *testing.T) {
+		order := perLineOrder(0, 0,
+			domain.OrderItem{ID: "a", ProductID: "pa", UnitPrice: 1000, Quantity: 3, DiscountAmount: 1000},
+		)
+		got, err := deriveRefundAmount(order, []domain.CreateRefundItemRequest{{OrderItemID: "a", Quantity: 1}}, nil, 0)
+		require.NoError(t, err)
+		require.Equal(t, int64(333), got.Discount, "one of three units, half-up")
+		require.Equal(t, int64(667), got.Total)
+	})
+
+	// The branch most likely to leak money, and it had no coverage: the per-line
+	// discount alongside tax, shipping and the clearing adjustment.
+	t.Run("a clearing refund still lands exactly on the order total", func(t *testing.T) {
+		for _, order := range []string{"discounted line last", "discounted line first"} {
+			t.Run(order, func(t *testing.T) {
+				items := []domain.OrderItem{
+					{ID: "a", ProductID: "pa", UnitPrice: 2000, Quantity: 1},
+					{ID: "b", ProductID: "pb", UnitPrice: 1000, Quantity: 1, DiscountAmount: 400},
+				}
+				if order == "discounted line first" {
+					items[0], items[1] = items[1], items[0]
+				}
+				o := perLineOrder(180, 500, items...)
+
+				var refunded int64
+				for _, it := range o.Items {
+					got, err := deriveRefundAmount(o,
+						[]domain.CreateRefundItemRequest{{OrderItemID: it.ID, Quantity: 1}},
+						map[string]int{items[0].ID: 0, items[1].ID: 0}, refunded)
+					require.NoError(t, err)
+					refunded += got.Total
+					// Mark it settled so the next call sees the remainder.
+					for i := range o.Items {
+						if o.Items[i].ID == it.ID {
+							o.Items[i].RefundedQuantity = o.Items[i].Quantity
+						}
+					}
+				}
+				require.Equal(t, o.TotalAmount, refunded,
+					"refunds must sum to the order, shipping and residual included")
+			})
+		}
+	})
+
+	// Repeated partial refunds of one multi-unit line, which was untested.
+	t.Run("repeated partial refunds of a discounted line stay bounded", func(t *testing.T) {
+		order := perLineOrder(0, 0,
+			domain.OrderItem{ID: "a", ProductID: "pa", UnitPrice: 1000, Quantity: 3, DiscountAmount: 1000},
+			domain.OrderItem{ID: "b", ProductID: "pb", UnitPrice: 500, Quantity: 1},
+		)
+		var refunded int64
+		for i := 0; i < 3; i++ {
+			got, err := deriveRefundAmount(order,
+				[]domain.CreateRefundItemRequest{{OrderItemID: "a", Quantity: 1}}, nil, refunded)
+			require.NoError(t, err)
+			refunded += got.Total
+			order.Items[0].RefundedQuantity++
+		}
+		// 667*3 = 2001 against a line worth 3000 less 1000. Rounding per call is
+		// off by a paisa; a clearing refund absorbs it, which is why b is left.
+		require.Equal(t, int64(2001), refunded)
+		require.LessOrEqual(t, refunded, order.TotalAmount)
+	})
+
+	// Corrupt stored data must not refund more than the line is worth.
+	t.Run("a stored discount outside the line's range is clamped", func(t *testing.T) {
+		order := perLineOrder(0, 0,
+			domain.OrderItem{ID: "a", ProductID: "pa", UnitPrice: 1000, Quantity: 1, DiscountAmount: -500},
+			domain.OrderItem{ID: "b", ProductID: "pb", UnitPrice: 1000, Quantity: 1, DiscountAmount: 500},
+		)
+		got, err := deriveRefundAmount(order, []domain.CreateRefundItemRequest{{OrderItemID: "a", Quantity: 1}}, nil, 0)
+		require.NoError(t, err)
+		require.Equal(t, int64(1000), got.Total, "never above the line's own value")
+
+		order.Items[0].DiscountAmount = 99999
+		got, err = deriveRefundAmount(order, []domain.CreateRefundItemRequest{{OrderItemID: "a", Quantity: 1}}, nil, 0)
+		require.NoError(t, err)
+		require.Equal(t, int64(0), got.Total, "never below zero")
+	})
+
+	// An order written before per-line allocation leaves the marker false.
+	t.Run("a legacy order-level discount still prorates", func(t *testing.T) {
+		order := &domain.Order{
+			ID: "order_legacy",
+			Items: []domain.OrderItem{
+				{ID: "a", ProductID: "pa", UnitPrice: 2000, Quantity: 1},
+				{ID: "b", ProductID: "pb", UnitPrice: 1000, Quantity: 1},
+			},
+			Subtotal: 3000, DiscountAmount: 300, TotalAmount: 2700,
+		}
+		require.False(t, order.DiscountAllocated)
+		got, err := deriveRefundAmount(order, []domain.CreateRefundItemRequest{{OrderItemID: "a", Quantity: 1}}, nil, 0)
+		require.NoError(t, err)
+		require.Equal(t, int64(200), got.Discount, "two thirds of 300")
+		require.Equal(t, int64(1800), got.Total)
+	})
+}
+
+// The round trip the design rests on: what allocateDiscount writes is what the
+// refund path reads back, with no gap between them.
+func TestAllocateThenRefund_RoundTrip(t *testing.T) {
+	items := []domain.OrderItem{
+		{ID: "a", ProductID: "pa", UnitPrice: 999, Quantity: 1},
+		{ID: "b", ProductID: "pb", UnitPrice: 333, Quantity: 2},
+		{ID: "c", ProductID: "pc", UnitPrice: 111, Quantity: 3},
+	}
+	var subtotal int64
+	for _, it := range items {
+		subtotal += it.UnitPrice * int64(it.Quantity)
+	}
+
+	for total := int64(0); total <= subtotal; total += 13 {
+		shares, err := allocateDiscount(items, total)
+		require.NoError(t, err)
+
+		order := &domain.Order{ID: "o", Items: append([]domain.OrderItem(nil), items...),
+			Subtotal: subtotal, DiscountAmount: total,
+			TotalAmount: subtotal - total, DiscountAllocated: true}
+		for i := range order.Items {
+			order.Items[i].DiscountAmount = shares[i]
+		}
+
+		var refunded int64
+		for i := range order.Items {
+			got, err := deriveRefundAmount(order,
+				[]domain.CreateRefundItemRequest{{OrderItemID: order.Items[i].ID, Quantity: order.Items[i].Quantity}},
+				nil, refunded)
+			require.NoError(t, err, "total=%d line=%s", total, order.Items[i].ID)
+			refunded += got.Total
+			order.Items[i].RefundedQuantity = order.Items[i].Quantity
+		}
+		require.Equal(t, order.TotalAmount, refunded, "discount=%d", total)
+	}
+}
