@@ -63,6 +63,13 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       changeFrequency: 'monthly',
       priority: 0.3,
     },
+    // Public order-lookup form — no auth, so it is indexable.
+    {
+      url: `${SITE_URL}/track`,
+      lastModified: new Date(),
+      changeFrequency: 'monthly',
+      priority: 0.3,
+    },
     // Legal/policy pages — low priority, rarely change.
     ...['privacy-policy', 'terms', 'refund-policy', 'shipping-policy'].map((slug) => ({
       url: `${SITE_URL}/${slug}`,
