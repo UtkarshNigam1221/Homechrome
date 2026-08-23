@@ -148,18 +148,17 @@ func (s *CheckoutService) Initiate(ctx context.Context, customerID string, req d
 		return nil, createErr
 	}
 
-	// Order placed — record business KPI.
+	// Order placed — record business KPI. A count only: the order has reserved
+	// stock and nothing more, so no money is booked here.
 	metrics.Record(ctx, "orders_placed", metrics.L{metrics.LabelCountry: country, metrics.LabelCity: city})
-	metrics.RecordSum(ctx, "orders_value", order.TotalAmount, metrics.L{
-		metrics.LabelCountry: country, metrics.LabelCity: city, metrics.LabelGateway: gatewayPhonePe,
-	})
 	metrics.Record(ctx, "cart_size", metrics.L{
 		metrics.LabelCountry: country,
 		metrics.LabelBucket:  metrics.BucketForCartSize(order.ItemCount),
 	})
 
-	// Per-product counts, coupon-redeemed, first-purchase and order geomap fire in
-	// HandlePaymentSuccess — emitting here inflates KPIs on failed payments.
+	// orders_value, per-product counts, coupon-redeemed, first-purchase and order
+	// geomap fire in HandlePaymentSuccess — emitting here inflates KPIs on failed
+	// payments, and orders_value is what the dashboard reports as revenue.
 
 	// 11. Initiate payment
 	paymentResp, err := s.paymentService.InitiatePayment(ctx, domain.InitiatePaymentRequest{
