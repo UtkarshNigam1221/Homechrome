@@ -48,6 +48,7 @@ func deriveRefundAmount(order *domain.Order, requested []domain.CreateRefundItem
 
 	seen := make(map[string]bool, len(requested))
 	remaining := make(map[string]int, len(requested))
+	perLine := order.DiscountAllocated
 
 	breakdown := &refundBreakdown{Items: make([]domain.RefundItem, 0, len(requested))}
 	var runningTotal int64
@@ -72,7 +73,20 @@ func deriveRefundAmount(order *domain.Order, requested []domain.CreateRefundItem
 		remaining[req.OrderItemID] = left - req.Quantity
 
 		lineSubtotal := item.UnitPrice * int64(req.Quantity)
-		lineDiscount := prorate(order.DiscountAmount, lineSubtotal, order.Subtotal)
+		var lineDiscount int64
+		if perLine {
+			// The refunded units' share of what this line was discounted. Clamped
+			// because this reads stored data: the order-level path divided one
+			// figure by one subtotal and was self-bounding, this is not.
+			//
+			// Rounds per call against the original quantity, so refunding a line in
+			// separate parts can differ from refunding it at once by under a paisa
+			// per unit. A clearing refund absorbs the difference.
+			lineDiscount = prorate(item.DiscountAmount, int64(req.Quantity), int64(item.Quantity))
+			lineDiscount = min(max(lineDiscount, 0), lineSubtotal)
+		} else {
+			lineDiscount = prorate(order.DiscountAmount, lineSubtotal, order.Subtotal)
+		}
 		lineTax := prorate(order.TaxAmount, lineSubtotal, order.Subtotal)
 		amount := lineSubtotal - lineDiscount + lineTax
 

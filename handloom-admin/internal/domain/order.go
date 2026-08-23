@@ -39,6 +39,10 @@ type Order struct {
 	CouponID   *string `json:"coupon_id,omitempty" dynamodbav:"coupon_id,omitempty"`
 	CouponCode *string `json:"coupon_code,omitempty" dynamodbav:"coupon_code,omitempty"`
 
+	// DiscountAllocated marks that DiscountAmount is recorded on the lines. Orders
+	// written before per-line allocation leave it false and prorate on refund.
+	DiscountAllocated bool `json:"discount_allocated" dynamodbav:"discount_allocated"`
+
 	// Status
 	Status        OrderStatus   `json:"status" dynamodbav:"status"`
 	PaymentStatus PaymentStatus `json:"payment_status" dynamodbav:"payment_status"`
@@ -114,6 +118,10 @@ type OrderItem struct {
 	// RefundedQuantity is how much of this line has already gone back. Refunds
 	// are per line and repeatable, so the remainder is what bounds the next one.
 	RefundedQuantity int `json:"refunded_quantity" dynamodbav:"refunded_quantity"`
+
+	// DiscountAmount is this line's whole share of the order's discount, in paise.
+	// Authoritative: Order.DiscountAmount is the sum of these.
+	DiscountAmount int64 `json:"discount_amount" dynamodbav:"discount_amount"`
 }
 
 // OrderNote represents an internal note on an order
