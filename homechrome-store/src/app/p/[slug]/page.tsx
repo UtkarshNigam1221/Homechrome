@@ -55,6 +55,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
   return {
     title: `${product.name} | Homechrome`,
+    alternates: { canonical: `/p/${slug}` },
     description: product.description || `Shop ${product.name} at Homechrome.`,
     openGraph: {
       title: `${product.name} | Homechrome`,

@@ -6,6 +6,7 @@ import { LegalPageLayout, LegalSection } from '@/components/legal/LegalPageLayou
 import { DELIVERY_DAYS, DISPATCH_DAYS } from '@/lib/constants';
 
 export const metadata: Metadata = {
+  alternates: { canonical: '/shipping-policy' },
   title: 'Shipping & Delivery Policy | Homechrome',
   description: 'Free shipping across India — dispatch and delivery timelines, tracking, and failed-delivery handling.',
 };

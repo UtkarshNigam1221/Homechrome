@@ -1,9 +1,15 @@
+import type { Metadata } from 'next';
+
 import { Category, Product } from '@/types';
 
 import { API_BASE } from '@/lib/constants';
 import { ROUTES } from '@/lib/routes';
 
 import HomeView from './HomeView';
+
+export const metadata: Metadata = {
+  alternates: { canonical: '/' },
+};
 
 async function getCategories(): Promise<Category[]> {
   try {

@@ -6,6 +6,7 @@ import { LegalPageLayout, LegalSection } from '@/components/legal/LegalPageLayou
 import { GSTIN, LEGAL_ADDRESS, LEGAL_ENTITY_NAME, LEGAL_PROPRIETOR, SUPPORT_EMAIL } from '@/lib/constants';
 
 export const metadata: Metadata = {
+  alternates: { canonical: '/terms' },
   title: 'Terms & Conditions | Homechrome',
   description: 'Terms and conditions governing the use of www.homechrome.in.',
 };
