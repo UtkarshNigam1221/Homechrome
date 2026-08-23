@@ -8,7 +8,7 @@
     "dev:lambda": "cp .env.local-lambda .env.local && next dev --port 3000",
     "build": "next build",
     "build:dev": "NEXT_PUBLIC_API_URL=https://dev-api.homechrome.in NEXT_PUBLIC_SITE_URL=https://dev-store.homechrome.in next build",
-    "build:prod": "NEXT_PUBLIC_API_URL=https://api.homechrome.in NEXT_PUBLIC_SITE_URL=https://homechrome.in next build",
+    "build:prod": "NEXT_PUBLIC_API_URL=https://api.homechrome.in NEXT_PUBLIC_SITE_URL=https://www.homechrome.in next build",
     "open-next:build": "SHARP_VERSION=0.35.0 npx @opennextjs/aws build && cp ../handloom-admin/infra/configs/otel-collector.yaml .open-next/server-functions/default/otel.yaml",
     "start": "next start",
     "lint": "eslint",
