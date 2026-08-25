@@ -20,7 +20,6 @@ export const ROUTES = {
     LIST: '/admin/coupons',
     DETAIL: (id: string) => `/admin/coupons/${id}`,
     BY_CODE: (code: string) => `/admin/coupons/code/${code}`,
-    VALIDATE: '/admin/coupons/validate',
   },
 
   CUSTOMERS: {

@@ -32,7 +32,7 @@ func (h *CouponHandler) Routes() chi.Router {
 	r.Get("/", h.List)
 	r.With(middleware.ValidateJSONTyped[domain.CreateCouponRequest](h.validation)).Post("/", h.Create)
 	r.Get("/{id}", h.GetByID)
-	r.With(middleware.ValidateJSONTyped[domain.UpdateCouponRequest](h.validation)).Put("/{id}", h.Update)
+	r.With(middleware.ValidateJSONTyped[domain.UpdateCouponRequest](h.validation)).Patch("/{id}", h.Update)
 	r.Delete("/{id}", h.Delete)
 	r.With(middleware.ValidateJSONTyped[ValidateCouponRequest](h.validation)).Post("/validate", h.Validate)
 	r.With(middleware.ValidateJSONTyped[RedeemCouponRequest](h.validation)).Post("/redeem", h.Redeem)
