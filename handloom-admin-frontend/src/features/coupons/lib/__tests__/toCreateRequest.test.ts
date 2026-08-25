@@ -4,6 +4,7 @@ import type { Coupon } from '../../types';
 import {
   type CouponFormValues,
   couponToFormValues,
+  dateOnlyToEndOfDayInstant,
   defaultCouponFormValues,
   fromStoredAmount,
   instantToDateOnly,
@@ -59,6 +60,49 @@ describe('date conversion is TZ-independent', () => {
   it('pulls the calendar date back out of an instant', () => {
     expect(instantToDateOnly('2026-01-15T00:00:00.000Z')).toBe('2026-01-15');
     expect(instantToDateOnly('2026-01-15T18:30:00.000Z')).toBe('2026-01-15');
+  });
+
+  it('turns a date-only string into an end-of-IST-day instant', () => {
+    expect(dateOnlyToEndOfDayInstant('2026-01-15')).toBe('2026-01-15T18:29:59.999Z');
+  });
+
+  it('an end-of-day instant still slices back to its own calendar date', () => {
+    expect(instantToDateOnly(dateOnlyToEndOfDayInstant('2026-01-15'))).toBe('2026-01-15');
+  });
+});
+
+// coupon_service.go rejects a coupon when `now.After(*ValidUntil)`, so what the mapper
+// puts in valid_until decides the moment the coupon dies. Date.UTC is used for the
+// expected values because it does not consult the runner's zone.
+describe('an expiry date means the end of that day, not its start', () => {
+  it('lands on the last millisecond of the Indian calendar day', () => {
+    const req = toCreateRequest({ ...baseForm, noEndDate: false, expiryDate: '2026-12-31' });
+    // IST is UTC+5:30, so 2026-12-31 IST ends the instant before 2026-12-31T18:30:00Z.
+    expect(Date.parse(req.valid_until!)).toBe(Date.UTC(2026, 11, 31, 18, 30, 0, 0) - 1);
+  });
+
+  it('is still in the future at midday on its own expiry day', () => {
+    const req = toCreateRequest({ ...baseForm, noEndDate: false, expiryDate: '2026-06-15' });
+    const middayIST = Date.UTC(2026, 5, 15, 6, 30); // 12:00 IST on 2026-06-15
+    expect(Date.parse(req.valid_until!)).toBeGreaterThan(middayIST);
+    // The mapping this replaces was already 6.5 hours in the past by the same moment,
+    // which is how "expires 31 Dec" died at 05:30 IST on the 31st.
+    expect(Date.parse('2026-06-15T00:00:00.000Z')).toBeLessThan(middayIST);
+  });
+
+  it('leaves valid_from at the start of its day', () => {
+    const req = toCreateRequest({ ...baseForm, validFrom: '2026-06-15' });
+    expect(req.valid_from).toBe('2026-06-15T00:00:00.000Z');
+  });
+
+  it('spans a whole single-day coupon rather than collapsing to one instant', () => {
+    const req = toCreateRequest({
+      ...baseForm,
+      validFrom: '2026-06-15',
+      noEndDate: false,
+      expiryDate: '2026-06-15',
+    });
+    expect(Date.parse(req.valid_until!)).toBeGreaterThan(Date.parse(req.valid_from));
   });
 });
 
@@ -118,7 +162,9 @@ describe('audience and validity', () => {
   it('sends the end date when there is one', () => {
     const req = toCreateRequest({ ...baseForm, noEndDate: false, expiryDate: '2026-12-31' });
     expect(req.valid_until).not.toBeNull();
-    expect(req.valid_until).toBe('2026-12-31T00:00:00.000Z');
+    // Was T00:00:00.000Z, which expired the coupon at 05:30 IST on the 31st — 18.5
+    // hours into the day the operator advertised. End-of-IST-day instead.
+    expect(req.valid_until).toBe('2026-12-31T18:29:59.999Z');
   });
 
   // Off unless deliberately turned on: buy-2-get-1 is a third off before any code.
@@ -156,7 +202,9 @@ describe('toUpdateRequest', () => {
 
   it('sends the end date, with clear_valid_until unset, when there is one', () => {
     const req = toUpdateRequest({ ...baseForm, noEndDate: false, expiryDate: '2026-12-31' });
-    expect(req.valid_until).toBe('2026-12-31T00:00:00.000Z');
+    // Same end-of-IST-day instant as the create path: an edit that only renames a
+    // coupon must not quietly shorten its life by 18.5 hours.
+    expect(req.valid_until).toBe('2026-12-31T18:29:59.999Z');
     expect(req.clear_valid_until).toBeUndefined();
   });
 
@@ -193,7 +241,8 @@ describe('round-trip stability', () => {
     audience: 'ALL',
     combines_with_offers: false,
     valid_from: '2026-01-01T00:00:00.000Z',
-    valid_until: '2026-12-31T00:00:00.000Z',
+    // What a coupon created through this form now carries: end of the IST day.
+    valid_until: '2026-12-31T18:29:59.999Z',
     status: 'ACTIVE',
     created_at: '2026-01-01T00:00:00.000Z',
     updated_at: '2026-01-01T00:00:00.000Z',

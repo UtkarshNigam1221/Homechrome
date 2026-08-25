@@ -66,7 +66,17 @@ export function dateOnlyToInstant(dateOnly: string): string {
   return `${dateOnly}T00:00:00.000Z`;
 }
 
-// Inverse of dateOnlyToInstant: sliced, not parsed, for the same reason.
+// The last instant of that calendar date in IST. coupon_service.go rejects on
+// `now.After(*ValidUntil)`, so a midnight-UTC expiry killed "expires 31 Dec" at 05:30
+// IST on the 31st, and an expiry set to today was born dead. 18:29:59.999Z is
+// 23:59:59.999 IST — the store sells only in India, so "expires on the 31st" should
+// mean the whole Indian 31st and not a minute of the 1st.
+export function dateOnlyToEndOfDayInstant(dateOnly: string): string {
+  return `${dateOnly}T18:29:59.999Z`;
+}
+
+// Inverse of both: sliced, not parsed, for the same reason. Both instants carry the
+// same YYYY-MM-DD prefix, so the round trip is stable either way.
 export function instantToDateOnly(instant: string): string {
   return instant.slice(0, 10);
 }
@@ -101,7 +111,7 @@ export function toCreateRequest(form: CouponFormValues): CreateCouponRequest {
     valid_from: dateOnlyToInstant(form.validFrom),
     // Explicit null, not an omitted key — kept consistent with the update path below,
     // where the distinction is load-bearing.
-    valid_until: form.noEndDate ? null : dateOnlyToInstant(form.expiryDate),
+    valid_until: form.noEndDate ? null : dateOnlyToEndOfDayInstant(form.expiryDate),
   };
 }
 
@@ -130,7 +140,7 @@ export function toUpdateRequest(form: CouponFormValues): UpdateCouponRequest {
   if (form.noEndDate) {
     req.clear_valid_until = true;
   } else {
-    req.valid_until = dateOnlyToInstant(form.expiryDate);
+    req.valid_until = dateOnlyToEndOfDayInstant(form.expiryDate);
   }
 
   return req;
