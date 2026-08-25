@@ -35,7 +35,7 @@ func (h *CouponHandler) Routes() chi.Router {
 	r.With(middleware.ValidateJSONTyped[domain.UpdateCouponRequest](h.validation)).Put("/{id}", h.Update)
 	r.Delete("/{id}", h.Delete)
 	r.With(middleware.ValidateJSONTyped[ValidateCouponRequest](h.validation)).Post("/validate", h.Validate)
-	r.With(middleware.ValidateJSONTyped[ApplyCouponRequest](h.validation)).Post("/apply", h.Apply)
+	r.With(middleware.ValidateJSONTyped[RedeemCouponRequest](h.validation)).Post("/redeem", h.Redeem)
 	r.Get("/code/{code}", h.GetByCode)
 
 	return r
@@ -132,12 +132,16 @@ func (h *CouponHandler) List(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, http.StatusOK, result)
 }
 
-// Validate validates a coupon for an order
+// Validate validates a coupon for a cart
 // POST /admin/coupons/validate
 func (h *CouponHandler) Validate(w http.ResponseWriter, r *http.Request) {
 	req := middleware.MustGetValidatedBody[ValidateCouponRequest](r.Context())
 
-	result, err := h.couponService.Validate(r.Context(), req.Code, req.OrderTotal, req.CustomerID, req.ProductIDs)
+	result, err := h.couponService.Validate(r.Context(), req.Code, domain.CouponContext{
+		CartTotal:         req.CartTotal,
+		CustomerID:        req.CustomerID,
+		HasAutomaticOffer: req.HasAutomaticOffer,
+	})
 	if err != nil {
 		response.Error(w, err)
 		return
@@ -146,17 +150,22 @@ func (h *CouponHandler) Validate(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, http.StatusOK, result)
 }
 
-// Apply applies a coupon to an order
-// POST /admin/coupons/apply
-func (h *CouponHandler) Apply(w http.ResponseWriter, r *http.Request) {
-	req := middleware.MustGetValidatedBody[ApplyCouponRequest](r.Context())
+// Redeem records a redemption
+// POST /admin/coupons/redeem
+func (h *CouponHandler) Redeem(w http.ResponseWriter, r *http.Request) {
+	req := middleware.MustGetValidatedBody[RedeemCouponRequest](r.Context())
 
-	if err := h.couponService.Apply(r.Context(), req.CouponID, req.OrderID, req.CustomerID, req.Discount); err != nil {
+	claimed, err := h.couponService.Redeem(r.Context(), req.CouponID, req.OrderID, req.CustomerID, req.Discount)
+	if err != nil {
 		response.Error(w, err)
 		return
 	}
+	if !claimed {
+		response.JSON(w, http.StatusOK, map[string]string{response.KeyStatus: "exhausted"})
+		return
+	}
 
-	response.JSON(w, http.StatusOK, map[string]string{response.KeyStatus: "applied"})
+	response.JSON(w, http.StatusOK, map[string]string{response.KeyStatus: "redeemed"})
 }
 
 // GetByCode retrieves a coupon by code

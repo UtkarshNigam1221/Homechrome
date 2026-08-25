@@ -317,7 +317,9 @@ func NewDatabaseStack(scope constructs.Construct, id string, props *DatabaseStac
 	})
 
 	awscdk.NewCfnOutput(stack, jsii.String("CouponsTableName"), &awscdk.CfnOutputProps{
-		Value: couponsTable.TableName(),
+		Value:       couponsTable.TableName(),
+		Description: jsii.String("Coupons DynamoDB table name"),
+		ExportName:  jsii.String("handloom-coupons-table-" + props.Environment),
 	})
 
 	awscdk.NewCfnOutput(stack, jsii.String("OrdersTableName"), &awscdk.CfnOutputProps{
