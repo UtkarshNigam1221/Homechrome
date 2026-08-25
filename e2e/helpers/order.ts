@@ -6,19 +6,21 @@ import { payWithSandbox } from '../pages/phonepe-sandbox';
 import { TARGETS } from '../playwright.config';
 
 /**
- * Two ways to get an order, because they exercise different code and only one
- * of them can be refunded.
- *
- * `createAdminOrder` goes through POST /admin/orders. It is the only path that
- * can put the same product on two lines, which is the oversell #226 fixes. It
- * produces a PENDING order with no payment, so it cannot be refunded.
+ * How the suite gets an order.
  *
  * `placePaidOrder` drives the storefront: OTP login, cart, address, checkout,
- * payment. Slower, but a refund needs a real payment row to exist.
+ * payment. It is the only path any spec should reach for now — every fixture
+ * in this suite builds its order through it, and a refund needs the real
+ * payment row it produces.
+ *
+ * `attemptAdminOrder` and `resolveTestCustomerId` survive only because
+ * specs/inventory/concurrency.spec.ts still races POST /admin/orders directly
+ * to test its reserve-step concurrency. They are not general-purpose fixture
+ * helpers; once that spec is migrated or retired, delete this whole section.
  */
 
 // ---------------------------------------------------------------------------
-// Admin path
+// Admin path — kept alive for concurrency.spec.ts only, see above
 // ---------------------------------------------------------------------------
 
 export interface AdminOrderLine {
@@ -63,31 +65,6 @@ export async function resolveTestCustomerId(api: APIRequestContext): Promise<str
     );
   }
   return created.id;
-}
-
-export async function createAdminOrder(
-  api: APIRequestContext,
-  customerId: string,
-  lines: AdminOrderLine[]
-): Promise<Order> {
-  return json<Order>(
-    await api.post('/admin/orders', {
-      data: {
-        customer_id: customerId,
-        items: lines.map((l) => ({ product_id: l.productId, quantity: l.quantity })),
-        shipping_address: {
-          first_name: 'E2E',
-          last_name: 'Suite',
-          phone: '9999900001',
-          address_line1: '1 Test Street',
-          city: 'Mumbai',
-          state: 'Maharashtra',
-          postal_code: '400001',
-          country: 'India',
-        },
-      },
-    })
-  );
 }
 
 /** POST /admin/orders as a raw response, for specs asserting a rejection. */

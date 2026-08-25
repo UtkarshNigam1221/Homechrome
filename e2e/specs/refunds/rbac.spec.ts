@@ -3,7 +3,6 @@ import { APIRequestContext, expect, test } from '@playwright/test';
 import { adminClient, operatorClient } from '../../fixtures/api';
 import { expectLedgerBalances } from '../../fixtures/reconcile';
 import { destroyCatalog, seedCatalog, SeededCatalog } from '../../fixtures/catalog';
-import { createAdminOrder, resolveTestCustomerId } from '../../helpers/order';
 
 /**
  * #223 Tier 1.1, and the API half of the fourth manual check.
@@ -16,30 +15,28 @@ import { createAdminOrder, resolveTestCustomerId } from '../../helpers/order';
  * GET inside the admin group: "admin-only end to end, the read included". This
  * asserts what #232 actually does. If the operator order page is meant to show
  * refunds, that is a product decision to settle on #232, not a test to soften.
+ *
+ * orderId below is a fixture, not a real order. RequireRole (order_handler.go)
+ * is mounted with r.Use ahead of every handler in the group and checks only
+ * the caller's role, and ListByOrder (refund_service.go) queries refunds by
+ * order_id with no existence check — so every case here, refusal and success
+ * alike, resolves without a real order behind the id. unauthenticated.spec.ts
+ * uses the same trick one layer below this.
  */
 test.describe('refund routes are admin-only', () => {
   let admin: APIRequestContext;
   let operator: APIRequestContext;
   let catalog: SeededCatalog | undefined;
-  let orderId: string;
+  const orderId = 'order_rbac_probe';
 
   test.beforeAll(async () => {
     admin = await adminClient();
     operator = await operatorClient();
-
-    const customerId = await resolveTestCustomerId(admin);
     catalog = await seedCatalog(admin, [5]);
-    const order = await createAdminOrder(admin, customerId, [
-      { productId: catalog.products[0]!.id, quantity: 1 },
-    ]);
-    orderId = order.id;
   });
 
   test.afterAll(async () => {
-    if (catalog) {
-      await admin.post(`/admin/orders/${orderId}/cancel`, { data: { reason: 'e2e teardown' } });
-      await destroyCatalog(admin, catalog);
-    }
+    await destroyCatalog(admin, catalog);
     await operator.dispose();
   });
 
