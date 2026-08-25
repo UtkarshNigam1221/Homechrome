@@ -14,6 +14,7 @@ import (
 
 const (
 	testCoreTable          = "handloom-core-test"
+	testCouponsTable       = "handloom-coupons-test"
 	testOrdersTable        = "handloom-orders-test"
 	testSessionsTable      = "handloom-sessions-test"
 	testAuditTable         = "handloom-audit-test"
@@ -128,6 +129,7 @@ func testWrappedClient(t *testing.T) (*Client, *dynamodb.Client) {
 	wrapped := &Client{
 		db:                 raw,
 		coreTable:          testCoreTable,
+		couponsTable:       testCouponsTable,
 		ordersTable:        testOrdersTable,
 		sessionsTable:      testSessionsTable,
 		auditTable:         testAuditTable,

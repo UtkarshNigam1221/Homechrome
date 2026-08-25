@@ -140,6 +140,7 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 		"DYNAMODB_SESSIONS_TABLE":      props.DatabaseStack.SessionsTable.TableName(),
 		"DYNAMODB_AUDIT_TABLE":         props.DatabaseStack.AuditTable.TableName(),
 		"DYNAMODB_NOTIFICATIONS_TABLE": props.DatabaseStack.NotificationsTable.TableName(),
+		"DYNAMODB_COUPONS_TABLE":       props.DatabaseStack.CouponsTable.TableName(),
 		"POSTGRES_DSN":                 props.DatabaseStack.PostgresDSN,
 		"S3_ASSETS_BUCKET":             assetsBucket.BucketName(),
 		"CDN_DOMAIN":                   jsii.String(props.StorageStack.CDNDomain),
@@ -278,6 +279,7 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 		props.DatabaseStack.SessionsTable.GrantReadWriteData(lambdaFn)
 		props.DatabaseStack.AuditTable.GrantReadWriteData(lambdaFn)
 		props.DatabaseStack.NotificationsTable.GrantReadWriteData(lambdaFn)
+		props.DatabaseStack.CouponsTable.GrantReadWriteData(lambdaFn)
 		assetsBucket.GrantReadWrite(lambdaFn, nil)
 		// Every service Lambda may end up invoking the ImageResizer because
 		// AssetService is wired into product/category services (catalog Lambda)

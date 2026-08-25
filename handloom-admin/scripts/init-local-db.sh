@@ -14,7 +14,7 @@ export AWS_SECRET_ACCESS_KEY="${AWS_SECRET_ACCESS_KEY:-local}"
 
 echo "Creating DynamoDB tables at $ENDPOINT..."
 
-# Core Table (Users, Pricing Rules, Coupons)
+# Core Table (Users, Pricing Rules)
 aws dynamodb create-table \
     --endpoint-url $ENDPOINT \
     --region $REGION \
@@ -51,6 +51,34 @@ echo "Created handloom-core table"
 
 # NOTE: Catalog data (Categories, Products, Inventory) now lives in PostgreSQL.
 # Tables are auto-created via migrations/001_catalog_schema.sql when postgres container starts.
+
+# Coupons Table (Coupons, code pointers, redemption counters, redemption history, bulk
+# batches). No TTL, deliberately: expired coupons and redemption history must stay visible.
+aws dynamodb create-table \
+    --endpoint-url $ENDPOINT \
+    --region $REGION \
+    --table-name handloom-coupons \
+    --attribute-definitions \
+        AttributeName=PK,AttributeType=S \
+        AttributeName=SK,AttributeType=S \
+        AttributeName=GSI1PK,AttributeType=S \
+        AttributeName=GSI1SK,AttributeType=S \
+    --key-schema \
+        AttributeName=PK,KeyType=HASH \
+        AttributeName=SK,KeyType=RANGE \
+    --global-secondary-indexes \
+        "[
+            {
+                \"IndexName\": \"GSI1\",
+                \"KeySchema\": [{\"AttributeName\":\"GSI1PK\",\"KeyType\":\"HASH\"},{\"AttributeName\":\"GSI1SK\",\"KeyType\":\"RANGE\"}],
+                \"Projection\": {\"ProjectionType\":\"ALL\"},
+                \"ProvisionedThroughput\": {\"ReadCapacityUnits\": 5, \"WriteCapacityUnits\": 5}
+            }
+        ]" \
+    --provisioned-throughput ReadCapacityUnits=5,WriteCapacityUnits=5 \
+    2>/dev/null || echo "Table handloom-coupons already exists"
+
+echo "Created handloom-coupons table"
 
 # Notifications Table (Notifications)
 aws dynamodb create-table \

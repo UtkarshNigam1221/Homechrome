@@ -23,6 +23,7 @@ type DatabaseStackProps struct {
 type DatabaseStack struct {
 	awscdk.Stack
 	CoreTable          awsdynamodb.Table
+	CouponsTable       awsdynamodb.Table
 	OrdersTable        awsdynamodb.Table
 	SessionsTable      awsdynamodb.Table
 	AuditTable         awsdynamodb.Table
@@ -97,6 +98,43 @@ func NewDatabaseStack(scope constructs.Construct, id string, props *DatabaseStac
 		},
 		SortKey: &awsdynamodb.Attribute{
 			Name: jsii.String("GSI2SK"),
+			Type: awsdynamodb.AttributeType_STRING,
+		},
+		ProjectionType: awsdynamodb.ProjectionType_ALL,
+	})
+
+	// Coupons Table — coupons, the code pointer, per-customer redemption counters,
+	// redemption history, and bulk batches.
+	//
+	// No TimeToLiveAttribute, deliberately. The core table sets one "for pricing/coupon
+	// expiry"; redemption records are financial history and expired coupons stay visible
+	// to the admin, so neither may ever be reaped. Omitting the attribute makes that
+	// impossible rather than merely unintended.
+	couponsTable := awsdynamodb.NewTable(stack, jsii.String("CouponsTable"), &awsdynamodb.TableProps{
+		TableName:     jsii.String("handloom-coupons-" + props.Environment),
+		BillingMode:   billingMode,
+		RemovalPolicy: removalPolicy,
+		PartitionKey: &awsdynamodb.Attribute{
+			Name: jsii.String("PK"),
+			Type: awsdynamodb.AttributeType_STRING,
+		},
+		SortKey: &awsdynamodb.Attribute{
+			Name: jsii.String("SK"),
+			Type: awsdynamodb.AttributeType_STRING,
+		},
+		PointInTimeRecoverySpecification: &awsdynamodb.PointInTimeRecoverySpecification{
+			PointInTimeRecoveryEnabled: jsii.Bool(false),
+		},
+	})
+
+	couponsTable.AddGlobalSecondaryIndex(&awsdynamodb.GlobalSecondaryIndexProps{
+		IndexName: jsii.String("GSI1"),
+		PartitionKey: &awsdynamodb.Attribute{
+			Name: jsii.String("GSI1PK"),
+			Type: awsdynamodb.AttributeType_STRING,
+		},
+		SortKey: &awsdynamodb.Attribute{
+			Name: jsii.String("GSI1SK"),
 			Type: awsdynamodb.AttributeType_STRING,
 		},
 		ProjectionType: awsdynamodb.ProjectionType_ALL,
@@ -278,6 +316,10 @@ func NewDatabaseStack(scope constructs.Construct, id string, props *DatabaseStac
 		ExportName:  jsii.String("handloom-core-table-" + props.Environment),
 	})
 
+	awscdk.NewCfnOutput(stack, jsii.String("CouponsTableName"), &awscdk.CfnOutputProps{
+		Value: couponsTable.TableName(),
+	})
+
 	awscdk.NewCfnOutput(stack, jsii.String("OrdersTableName"), &awscdk.CfnOutputProps{
 		Value:       ordersTable.TableName(),
 		Description: jsii.String("Orders DynamoDB table name"),
@@ -299,6 +341,7 @@ func NewDatabaseStack(scope constructs.Construct, id string, props *DatabaseStac
 	return &DatabaseStack{
 		Stack:              stack,
 		CoreTable:          coreTable,
+		CouponsTable:       couponsTable,
 		OrdersTable:        ordersTable,
 		SessionsTable:      sessionsTable,
 		AuditTable:         auditTable,
