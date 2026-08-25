@@ -6,8 +6,11 @@ import (
 	"github.com/handloom/admin/internal/handler"
 )
 
-// NewCouponRouter creates routes for the coupon service
-// Routes are mounted via h.Routes() which includes validation middleware
+// NewCouponRouter creates routes for the coupon service.
+// Mounted at /admin/* to match API Gateway resource paths — the Lambda receives the full
+// path, so mounting at /coupons would 404 every request.
 func NewCouponRouter(r *chi.Mux, h *handler.CouponHandler) {
-	r.Mount("/coupons", h.Routes())
+	r.Route("/admin/coupons", func(r chi.Router) {
+		r.Mount("/", h.Routes())
+	})
 }

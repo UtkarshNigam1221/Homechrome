@@ -248,7 +248,7 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 		// "inventory",
 		// "analytics",
 		// "notification",
-		// "coupon",
+		"coupon",
 		// "report",
 		// "audit",
 	}
@@ -751,6 +751,18 @@ func setupAPIRoutes(api awsapigateway.RestApi, lambdas map[string]*ServiceLambda
 		}
 	}
 
+	// Coupon routes
+	couponIntegration := awsapigateway.NewLambdaIntegration(lambdas["coupon"].Function, nil)
+	coupons := admin.AddResource(jsii.String("coupons"), nil)
+	addResourceRoutes(coupons, couponIntegration)
+	// Literal siblings take precedence over {id} in API Gateway, so these resolve
+	// correctly alongside /coupons/{id}.
+	coupons.AddResource(jsii.String("validate"), nil).AddMethod(jsii.String("POST"), couponIntegration, nil)
+	coupons.AddResource(jsii.String("redeem"), nil).AddMethod(jsii.String("POST"), couponIntegration, nil)
+	coupons.AddResource(jsii.String("code"), nil).
+		AddResource(jsii.String("{code}"), nil).
+		AddMethod(jsii.String("GET"), couponIntegration, nil)
+
 	// TODO: Uncomment routes as services are implemented
 	/*
 		// API v1 - public routes
@@ -796,10 +808,6 @@ func setupAPIRoutes(api awsapigateway.RestApi, lambdas map[string]*ServiceLambda
 		// Notification routes
 		notificationIntegration := awsapigateway.NewLambdaIntegration(lambdas["notification"].Function, nil)
 		addResourceRoutes(admin.AddResource(jsii.String("notifications"), nil), notificationIntegration)
-
-		// Coupon routes
-		couponIntegration := awsapigateway.NewLambdaIntegration(lambdas["coupon"].Function, nil)
-		addResourceRoutes(admin.AddResource(jsii.String("coupons"), nil), couponIntegration)
 
 		// Artisan routes
 		artisanIntegration := awsapigateway.NewLambdaIntegration(lambdas["artisan"].Function, nil)
