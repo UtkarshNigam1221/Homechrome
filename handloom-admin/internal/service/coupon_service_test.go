@@ -74,8 +74,10 @@ func TestCouponService_Validate(t *testing.T) {
 	})
 
 	// The allocator refuses a discount larger than the order rather than approximating
-	// one, so the cap has to happen here, at the source.
-	t.Run("a discount never exceeds the cart", func(t *testing.T) {
+	// one, and the gateway refuses a zero total, so the cap has to happen here.
+	// Was 100000 (the whole cart) before the payable floor existed: a discount equal to
+	// the cart zeroed the total and killed the payment after the order row was written.
+	t.Run("a discount never exceeds the cart, less the payable floor", func(t *testing.T) {
 		c := activeCoupon()
 		c.Type = domain.CouponTypeFixed
 		c.Value = 500000 // ₹5000 off a ₹1000 cart
@@ -83,7 +85,8 @@ func TestCouponService_Validate(t *testing.T) {
 
 		res, err := s.Validate(ctx, "FESTIVE20", domain.CouponContext{CartTotal: 100000})
 		require.NoError(t, err)
-		require.Equal(t, int64(100000), res.DiscountAmount)
+		require.Equal(t, int64(99900), res.DiscountAmount)
+		require.True(t, res.Valid, "a coupon problem must never refuse the sale")
 	})
 
 	t.Run("rejects a cart below the minimum, saying how much more to add", func(t *testing.T) {
@@ -177,6 +180,92 @@ func TestCouponService_Validate(t *testing.T) {
 		res, err := s.Validate(ctx, "NOPE", domain.CouponContext{CartTotal: 300000})
 		require.NoError(t, err, "an unknown code is a rejection, not a server error")
 		require.False(t, res.Valid)
+	})
+}
+
+// A discount that clears the cart used to zero TotalAmount, which made
+// InitiatePayment(Amount: 0) fail: stock released, sale lost, and a PENDING order left
+// behind at total 0. The coupon succeeded and the sale died anyway — the one real breach
+// of "a coupon problem never fails a checkout". So the discount yields to the gateway's
+// floor and the coupon stays valid.
+func TestCouponService_Validate_LeavesSomethingToPay(t *testing.T) {
+	ctx := context.Background()
+
+	setup := func(t *testing.T, c *domain.Coupon) *CouponService {
+		t.Helper()
+		ctrl := gomock.NewController(t)
+		repo := mocks.NewMockCouponRepository(ctrl)
+		repo.EXPECT().GetByCode(gomock.Any(), "FESTIVE20").Return(c, nil).AnyTimes()
+		repo.EXPECT().GetCustomerUsage(gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(0, nil).AnyTimes()
+		return NewCouponService(repo)
+	}
+
+	// ₹500 off a ₹450 cart. No malice needed and no invalid data — just a fixed-amount
+	// coupon meeting a small order.
+	t.Run("a fixed coupon worth more than the cart leaves the floor payable", func(t *testing.T) {
+		c := activeCoupon()
+		c.Type = domain.CouponTypeFixed
+		c.Value = 50000 // ₹500
+		s := setup(t, c)
+
+		res, err := s.Validate(ctx, "FESTIVE20", domain.CouponContext{CartTotal: 45000})
+		require.NoError(t, err)
+		require.True(t, res.Valid)
+		require.Equal(t, int64(44900), res.DiscountAmount)
+		require.Equal(t, int64(100), 45000-res.DiscountAmount, "₹1 must remain payable")
+		require.NotEmpty(t, res.Notice, "the shortfall has to reach the customer")
+	})
+
+	// A percentage above 100 is refused at creation now, but coupons created before that
+	// ceiling existed are still in the table, so the arithmetic has to hold anyway.
+	t.Run("a percentage above 100 cannot clear the cart", func(t *testing.T) {
+		c := activeCoupon()
+		c.Value = 15000 // 150.00%
+		s := setup(t, c)
+
+		res, err := s.Validate(ctx, "FESTIVE20", domain.CouponContext{CartTotal: 300000})
+		require.NoError(t, err)
+		require.True(t, res.Valid)
+		require.Equal(t, int64(299900), res.DiscountAmount)
+		require.NotEmpty(t, res.Notice)
+	})
+
+	t.Run("a coupon worth exactly the cart still leaves the floor", func(t *testing.T) {
+		c := activeCoupon()
+		c.Type = domain.CouponTypeFixed
+		c.Value = 300000
+		s := setup(t, c)
+
+		res, err := s.Validate(ctx, "FESTIVE20", domain.CouponContext{CartTotal: 300000})
+		require.NoError(t, err)
+		require.Equal(t, int64(299900), res.DiscountAmount)
+	})
+
+	// The floor must not creep into ordinary coupons: a 20% code on a ₹3,000 cart is
+	// nowhere near the cart total and must be untouched, notice included.
+	t.Run("an ordinary coupon is untouched and carries no notice", func(t *testing.T) {
+		s := setup(t, activeCoupon())
+
+		res, err := s.Validate(ctx, "FESTIVE20", domain.CouponContext{CartTotal: 300000})
+		require.NoError(t, err)
+		require.Equal(t, int64(60000), res.DiscountAmount)
+		require.Empty(t, res.Notice, "a coupon that fits must say nothing")
+	})
+
+	// A cart smaller than the floor can support no discount at all. The coupon still
+	// validates — refusing would be the failure mode this whole fix removes.
+	t.Run("a cart at or below the floor yields no discount but still validates", func(t *testing.T) {
+		c := activeCoupon()
+		c.Type = domain.CouponTypeFixed
+		c.Value = 50000
+		s := setup(t, c)
+
+		res, err := s.Validate(ctx, "FESTIVE20", domain.CouponContext{CartTotal: 100})
+		require.NoError(t, err)
+		require.True(t, res.Valid)
+		require.Zero(t, res.DiscountAmount)
+		require.NotEmpty(t, res.Notice)
 	})
 }
 

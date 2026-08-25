@@ -2,12 +2,12 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { format } from 'date-fns';
 import { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
-import { z } from 'zod';
 
 import { couponsApi } from '@/features/coupons/api';
 import { Button, Input, Modal, Select, type SelectOption } from '@/shared/components/ui';
 import { useFormMutation } from '@/shared/hooks';
 
+import { couponSchema } from '../lib/couponSchema';
 import {
   type CouponFormValues,
   couponToFormValues,
@@ -17,46 +17,6 @@ import {
 } from '../lib/toCreateRequest';
 import type { Coupon, CreateCouponRequest, UpdateCouponRequest } from '../types';
 
-const couponSchema = z
-  .object({
-    code: z
-      .string()
-      .min(3, 'Code must be at least 3 characters')
-      .max(20, 'Code must be less than 20 characters')
-      .regex(
-        /^[A-Z0-9_-]+$/,
-        'Code must be uppercase letters, numbers, underscores, and hyphens only'
-      ),
-    name: z.string().min(1, 'Name is required'),
-    description: z.string(),
-    type: z.enum(['PERCENTAGE', 'FIXED']),
-    value: z.number().gt(0, 'Must be greater than 0'),
-    minOrderValue: z.number().min(0),
-    maxDiscount: z.number().min(0),
-    usageLimit: z.number().min(0),
-    usagePerUser: z.number().min(0),
-    audience: z.enum(['ALL', 'FIRST_ORDER', 'RETURNING', 'SPECIFIC_CUSTOMER']),
-    customerId: z.string(),
-    combinesWithOffers: z.boolean(),
-    validFrom: z.string().min(1, 'Valid from date is required'),
-    noEndDate: z.boolean(),
-    expiryDate: z.string(),
-    status: z.enum(['ACTIVE', 'INACTIVE', 'EXPIRED']),
-  })
-  .refine((data) => data.audience !== 'SPECIFIC_CUSTOMER' || data.customerId.trim().length > 0, {
-    message: 'Choose a customer for a single-customer coupon',
-    path: ['customerId'],
-  })
-  .refine((data) => data.noEndDate || data.expiryDate.trim().length > 0, {
-    message: 'Set an end date, or mark this coupon open-ended',
-    path: ['expiryDate'],
-  });
-
-// Nothing enforces an audience yet: CouponService.Validate never reads the field, so a
-// FIRST_ORDER or RETURNING coupon would work for everyone, and a SPECIFIC_CUSTOMER one
-// lands in a GSI1 partition the admin list never queries — unreachable, with no off
-// switch. Shown but disabled so the capability is visible and honest. Phase 3 adds
-// enforcement; re-enabling is deleting `disabled` and restoring a customer picker.
 const audienceOptions: SelectOption[] = [
   { value: 'ALL', label: 'Everyone' },
   { value: 'FIRST_ORDER', label: 'First order only (Phase 3)', disabled: true },

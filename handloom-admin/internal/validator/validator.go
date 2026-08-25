@@ -137,6 +137,8 @@ func (s *Service) errorMessage(e validator.FieldError) string {
 		return field + " must be a valid user role"
 	case "valid_user_status":
 		return field + " must be a valid user status"
+	case "coupon_value":
+		return field + " must not exceed 100% on a percentage coupon"
 	case "dive":
 		return field + " contains invalid items"
 	default:
@@ -160,6 +162,9 @@ func (s *Service) registerCustomValidations() {
 
 	// Register custom validation for coupon type
 	_ = s.validate.RegisterValidation("valid_coupon_type", validateCouponType)
+
+	// Register the percentage ceiling on a coupon's value
+	_ = s.validate.RegisterValidation("coupon_value", validateCouponValue)
 
 	// Register custom validation for entity type
 	_ = s.validate.RegisterValidation("valid_entity_type", validateEntityType)

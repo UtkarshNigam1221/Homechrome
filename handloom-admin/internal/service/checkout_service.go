@@ -250,7 +250,9 @@ func (s *CheckoutService) resolveCoupon(
 	case !res.Valid:
 		return 0, nil, nil, res.ErrorMessage
 	default:
-		return res.DiscountAmount, &res.CouponID, &res.Code, ""
+		// Notice is non-empty when the discount was applied but reduced, so the
+		// shortfall reaches the customer instead of just the smaller number.
+		return res.DiscountAmount, &res.CouponID, &res.Code, res.Notice
 	}
 }
 

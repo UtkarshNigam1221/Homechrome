@@ -259,7 +259,7 @@ type CreateCouponRequest struct {
 	Name               string         `json:"name" validate:"required"`
 	Description        string         `json:"description,omitempty"`
 	Type               CouponType     `json:"type" validate:"required"`
-	Value              int64          `json:"value" validate:"required,gt=0"`
+	Value              int64          `json:"value" validate:"required,gt=0,coupon_value"`
 	MinOrderValue      int64          `json:"min_order_value"`
 	MaxDiscount        int64          `json:"max_discount,omitempty"`
 	UsageLimit         int            `json:"usage_limit"`
@@ -293,4 +293,9 @@ type CouponValidationResult struct {
 	Code           string `json:"code"`
 	DiscountAmount int64  `json:"discount_amount,omitempty"`
 	ErrorMessage   string `json:"error_message,omitempty"`
+
+	// Notice explains a discount that was applied but reduced — a code worth more than
+	// the order still has to leave something payable. Set only on a valid result;
+	// ErrorMessage carries the reason a coupon was refused outright.
+	Notice string `json:"notice,omitempty"`
 }

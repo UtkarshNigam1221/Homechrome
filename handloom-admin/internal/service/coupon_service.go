@@ -19,6 +19,13 @@ import (
 // coupon validation outcome label (repeated across validation branches).
 const outcomeInvalid = "invalid"
 
+// minPayableAmount is the smallest total the payment gateway will accept, in paise.
+// A discount that cleared the cart made InitiatePayment(Amount: 0) fail: stock was
+// released, the sale was lost, and the PENDING order row survived at total 0. A coupon
+// problem must never cost a sale, so the discount yields instead — ₹1 charged beats
+// nothing charged.
+const minPayableAmount int64 = 100
+
 // CouponService implements domain.CouponService
 type CouponService struct {
 	couponRepo domain.CouponRepository
@@ -240,29 +247,48 @@ func (s *CouponService) Validate(
 		return reject(outcomeInvalid, "This code can't be used with the offer already in your cart")
 	}
 
-	discount := computeCouponDiscount(coupon, cc.CartTotal)
+	discount, trimmed := computeCouponDiscount(coupon, cc.CartTotal)
 
-	return &domain.CouponValidationResult{
+	result := &domain.CouponValidationResult{
 		Valid:          true,
 		CouponID:       coupon.ID,
 		Code:           coupon.Code,
 		DiscountAmount: discount,
-	}, nil
+	}
+	// Applied, not refused. The code is worth more than the order, so it pays out what
+	// it can and says so, rather than zeroing a total the gateway would then reject.
+	if trimmed > 0 {
+		result.Notice = fmt.Sprintf(
+			"This code is worth more than your order, so we've taken off %s and left %s to pay",
+			formatPaise(discount), formatPaise(minPayableAmount))
+	}
+	return result, nil
 }
 
-// computeCouponDiscount is clamped to the cart total because allocateDiscount refuses a
-// discount larger than the order outright rather than approximating one.
-func computeCouponDiscount(coupon *domain.Coupon, cartTotal int64) int64 {
-	var discount int64
+// computeCouponDiscount returns the discount to apply, plus how much of the coupon's
+// face value had to be given up to leave something payable.
+//
+// The ceiling is the cart less minPayableAmount, not the cart itself: allocateDiscount
+// refuses a discount larger than the order, and the gateway refuses a zero total. Both
+// are reachable without malice — a FIXED coupon worth more than the cart (₹500 off a
+// ₹450 cart), or a percentage coupon stored before the 100% ceiling existed.
+func computeCouponDiscount(coupon *domain.Coupon, cartTotal int64) (discount, trimmed int64) {
+	var raw int64
 	if coupon.Type == domain.CouponTypePercentage {
-		discount = cartTotal * coupon.Value / 10000 // Value is percentage × 100
-		if coupon.MaxDiscount > 0 && discount > coupon.MaxDiscount {
-			discount = coupon.MaxDiscount
+		raw = cartTotal * coupon.Value / 10000 // Value is percentage × 100
+		if coupon.MaxDiscount > 0 && raw > coupon.MaxDiscount {
+			raw = coupon.MaxDiscount
 		}
 	} else {
-		discount = coupon.Value
+		raw = coupon.Value
 	}
-	return min(max(discount, 0), cartTotal)
+	raw = max(raw, 0)
+
+	ceiling := max(cartTotal-minPayableAmount, 0)
+	if raw > ceiling {
+		return ceiling, raw - ceiling
+	}
+	return raw, 0
 }
 
 // formatPaise renders paise as rupees with Indian digit grouping, for customer-facing

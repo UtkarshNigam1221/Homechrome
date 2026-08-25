@@ -78,13 +78,13 @@ describe('an expiry date means the end of that day, not its start', () => {
   it('lands on the last millisecond of the Indian calendar day', () => {
     const req = toCreateRequest({ ...baseForm, noEndDate: false, expiryDate: '2026-12-31' });
     // IST is UTC+5:30, so 2026-12-31 IST ends the instant before 2026-12-31T18:30:00Z.
-    expect(Date.parse(req.valid_until!)).toBe(Date.UTC(2026, 11, 31, 18, 30, 0, 0) - 1);
+    expect(Date.parse(String(req.valid_until))).toBe(Date.UTC(2026, 11, 31, 18, 30, 0, 0) - 1);
   });
 
   it('is still in the future at midday on its own expiry day', () => {
     const req = toCreateRequest({ ...baseForm, noEndDate: false, expiryDate: '2026-06-15' });
     const middayIST = Date.UTC(2026, 5, 15, 6, 30); // 12:00 IST on 2026-06-15
-    expect(Date.parse(req.valid_until!)).toBeGreaterThan(middayIST);
+    expect(Date.parse(String(req.valid_until))).toBeGreaterThan(middayIST);
     // The mapping this replaces was already 6.5 hours in the past by the same moment,
     // which is how "expires 31 Dec" died at 05:30 IST on the 31st.
     expect(Date.parse('2026-06-15T00:00:00.000Z')).toBeLessThan(middayIST);
@@ -102,7 +102,7 @@ describe('an expiry date means the end of that day, not its start', () => {
       noEndDate: false,
       expiryDate: '2026-06-15',
     });
-    expect(Date.parse(req.valid_until!)).toBeGreaterThan(Date.parse(req.valid_from));
+    expect(Date.parse(String(req.valid_until))).toBeGreaterThan(Date.parse(req.valid_from));
   });
 });
 

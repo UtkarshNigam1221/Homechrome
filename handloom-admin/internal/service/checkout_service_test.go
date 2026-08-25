@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -222,6 +223,79 @@ func TestCheckoutService_AppliesCoupon(t *testing.T) {
 
 	// Tax is extracted from the discounted total, never added to it.
 	require.Equal(t, extractTax(270000), order.TaxAmount)
+}
+
+// The whole point of the floor is that the sale survives. This runs the real
+// CouponService and the real allocator through Initiate, so nothing about the payable
+// total is supplied by a mock: a ₹5,000 FIXED coupon meets a ₹3,000 cart and the order
+// still reaches the gateway, for ₹1.
+func TestCheckoutService_CouponWorthMoreThanTheCartStillCompletes(t *testing.T) {
+	ctrl := gomock.NewController(t)
+
+	cartSvc := mocks.NewMockCartService(ctrl)
+	orderRepo := mocks.NewMockOrderRepository(ctrl)
+	paymentSvc := mocks.NewMockPaymentService(ctrl)
+	inventoryRepo := mocks.NewMockInventoryRepository(ctrl)
+	customerRepo := mocks.NewMockCustomerRepository(ctrl)
+	couponRepo := mocks.NewMockCouponRepository(ctrl)
+
+	end := time.Now().Add(24 * time.Hour)
+	couponRepo.EXPECT().GetByCode(gomock.Any(), "BIGONE").Return(&domain.Coupon{
+		ID: "coupon_big", Code: "BIGONE", Type: domain.CouponTypeFixed,
+		Value:    500000, // ₹5,000 off a ₹3,000 cart
+		Audience: domain.AudienceAll, ValidFrom: time.Now().Add(-time.Hour),
+		ValidUntil: &end, Status: domain.CouponStatusActive,
+	}, nil)
+
+	customerRepo.EXPECT().GetByID(gomock.Any(), "cust_1").Return(&domain.Customer{
+		ID: "cust_1", FirstName: "Test", LastName: "Buyer", Phone: "+919000000000",
+		Addresses: []domain.Address{{ID: "addr_1", City: "Mumbai", Country: "India"}},
+	}, nil)
+	cartSvc.EXPECT().GetCart(gomock.Any(), "cust_1", false).Return(&domain.CartWithItems{
+		Cart: &domain.Cart{Subtotal: 300000},
+		Items: []domain.CartItem{
+			{ProductID: "p1", ProductName: "A", Quantity: 1, UnitPrice: 100000, TotalPrice: 100000},
+			{ProductID: "p2", ProductName: "B", Quantity: 1, UnitPrice: 200000, TotalPrice: 200000},
+		},
+	}, nil)
+	inventoryRepo.EXPECT().ReserveOrderStock(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+	// Releasing stock here would mean the sale was lost, which is the defect.
+	inventoryRepo.EXPECT().ReleaseOrderStock(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+
+	var saved *domain.Order
+	orderRepo.EXPECT().Create(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, o *domain.Order) error {
+			saved = o
+			return nil
+		})
+
+	var chargedAmount int64
+	paymentSvc.EXPECT().InitiatePayment(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, req domain.InitiatePaymentRequest) (*domain.PaymentResponse, error) {
+			chargedAmount = req.Amount
+			return &domain.PaymentResponse{RedirectURL: "https://pay.example/x", MerchantTxnID: "txn_1"}, nil
+		})
+
+	svc := NewCheckoutService(cartSvc, orderRepo, paymentSvc, inventoryRepo, customerRepo,
+		NewCouponService(couponRepo))
+
+	result, err := svc.Initiate(context.Background(), "cust_1", domain.CheckoutRequest{
+		ShippingAddressID: "addr_1", CouponCode: ptr("BIGONE"),
+	})
+	require.NoError(t, err, "a coupon worth more than the cart must not lose the sale")
+
+	require.Equal(t, int64(299900), result.Order.DiscountAmount)
+	require.Equal(t, int64(100), result.Order.TotalAmount, "₹1 stays payable")
+	require.Equal(t, int64(100), chargedAmount, "the gateway is never asked for 0")
+	require.NotEmpty(t, result.CouponNotice, "the shortfall surfaces in the notice")
+
+	// Rule 9 still holds at the extreme: the per-line shares sum to the order discount.
+	var lineSum int64
+	for _, item := range saved.Items {
+		lineSum += item.DiscountAmount
+	}
+	require.Equal(t, saved.DiscountAmount, lineSum)
+	require.Equal(t, extractTax(100), saved.TaxAmount)
 }
 
 // The cart total the coupon sees must be the cart's, not something the client sent.

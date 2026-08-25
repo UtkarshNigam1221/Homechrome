@@ -96,6 +96,51 @@ func validCreateCouponRequest() CreateCouponRequest {
 	}
 }
 
+// Value carried no upper bound, so 150% stored happily and then produced a discount
+// larger than any cart. The ceiling only applies to PERCENTAGE — a FIXED coupon's value
+// is paise, where 10000 is a routine ₹100.
+func TestCreateCouponRequest_ValueCeiling(t *testing.T) {
+	v := validator.New()
+	ctx := context.Background()
+
+	t.Run("a percentage above 100% is rejected", func(t *testing.T) {
+		req := validCreateCouponRequest()
+		req.Type = CouponTypePercentage
+		req.Value = 10001 // 100.01%
+		require.Error(t, v.Validate(ctx, &req),
+			"a discount over 100% cannot be honored by any cart")
+	})
+
+	t.Run("150% is rejected", func(t *testing.T) {
+		req := validCreateCouponRequest()
+		req.Type = CouponTypePercentage
+		req.Value = 15000
+		require.Error(t, v.Validate(ctx, &req))
+	})
+
+	t.Run("exactly 100% is allowed", func(t *testing.T) {
+		req := validCreateCouponRequest()
+		req.Type = CouponTypePercentage
+		req.Value = 10000
+		require.NoError(t, v.Validate(ctx, &req),
+			"a full-value coupon is a legitimate giveaway; the payable floor handles it")
+	})
+
+	t.Run("a fixed amount far above the percentage ceiling is allowed", func(t *testing.T) {
+		req := validCreateCouponRequest()
+		req.Type = CouponTypeFixed
+		req.Value = 5000000 // ₹50,000 off
+		require.NoError(t, v.Validate(ctx, &req),
+			"the ceiling is a percentage rule; paise have no such bound")
+	})
+
+	t.Run("a zero value is still rejected", func(t *testing.T) {
+		req := validCreateCouponRequest()
+		req.Value = 0
+		require.Error(t, v.Validate(ctx, &req))
+	})
+}
+
 // These exercise the actual validate tags through the same Validator the middleware
 // runs in production (internal/validator.Service wrapping go-playground/validator),
 // rather than asserting on the tag strings themselves.
