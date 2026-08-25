@@ -180,6 +180,7 @@ func createRouter(d *wire.MonolithDeps) *chi.Mux {
 
 			r.Mount("/notifications", d.NotificationHandler.Routes())
 			r.Mount("/coupons", d.CouponHandler.Routes())
+			r.Mount("/utm-links", d.UTMLinkHandler.Routes())
 			r.Mount("/assets", d.AssetHandler.Routes())
 			r.Mount("/reports", d.ReportHandler.Routes())
 		})

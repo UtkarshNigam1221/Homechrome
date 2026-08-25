@@ -259,6 +259,29 @@ func InitializeCouponDeps(ctx context.Context, cfg *config.Config) (*CouponDeps,
 	return couponDeps, nil
 }
 
+// InitializeUTMDeps creates UTM link Lambda dependencies
+func InitializeUTMDeps(ctx context.Context, cfg *config.Config) (*UTMDeps, error) {
+	client, err := ProvideDynamoDBClient(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+	utmLinkRepository := ProvideUTMLinkRepository(client)
+	utmLinkService := ProvideUTMLinkService(utmLinkRepository)
+	service := ProvideValidator()
+	validation := ProvideValidation(service)
+	utmLinkHandler := ProvideUTMLinkHandler(utmLinkService, validation)
+	userRepository := ProvideUserRepository(client)
+	tokenStore := ProvideTokenStore(client)
+	authService := ProvideAuthService(userRepository, tokenStore, cfg)
+	auth := ProvideAuthMiddleware(authService)
+	utmDeps := &UTMDeps{
+		Config:         cfg,
+		Handler:        utmLinkHandler,
+		AuthMiddleware: auth,
+	}
+	return utmDeps, nil
+}
+
 // InitializeAssetDeps creates Asset Lambda dependencies
 func InitializeAssetDeps(ctx context.Context, cfg *config.Config) (*AssetDeps, error) {
 	s3Client, err := ProvideS3Client(ctx, cfg)
@@ -680,6 +703,9 @@ func InitializeMonolithDeps(ctx context.Context, cfg *config.Config) (*MonolithD
 	couponRepository := ProvideCouponRepository(client)
 	couponService := ProvideCouponService(couponRepository)
 	couponHandler := ProvideCouponHandler(couponService, validation)
+	utmLinkRepository := ProvideUTMLinkRepository(client)
+	utmLinkService := ProvideUTMLinkService(utmLinkRepository)
+	utmLinkHandler := ProvideUTMLinkHandler(utmLinkService, validation)
 	assetHandler := ProvideAssetHandler(assetService, validation)
 	reportRepository := ProvideReportRepository(client)
 	reportService := ProvideReportService(reportRepository, orderService, productService, customerService, inventoryService)
@@ -715,6 +741,7 @@ func InitializeMonolithDeps(ctx context.Context, cfg *config.Config) (*MonolithD
 		AuditHandler:           auditHandler,
 		NotificationHandler:    notificationHandler,
 		CouponHandler:          couponHandler,
+		UTMLinkHandler:         utmLinkHandler,
 		AssetHandler:           assetHandler,
 		ReportHandler:          reportHandler,
 		StoreAuthHandler:       storeAuthHandler,
@@ -827,6 +854,13 @@ type CouponDeps struct {
 	AuthMiddleware *middleware.Auth
 }
 
+// UTMDeps holds dependencies for the UTM link Lambda
+type UTMDeps struct {
+	Config         *config.Config
+	Handler        *handler.UTMLinkHandler
+	AuthMiddleware *middleware.Auth
+}
+
 // AssetDeps holds dependencies for the Asset Lambda
 type AssetDeps struct {
 	Config         *config.Config
@@ -924,6 +958,7 @@ type MonolithDeps struct {
 	AuditHandler        *handler.AuditHandler
 	NotificationHandler *handler.NotificationHandler
 	CouponHandler       *handler.CouponHandler
+	UTMLinkHandler      *handler.UTMLinkHandler
 
 	AssetHandler  *handler.AssetHandler
 	ReportHandler *handler.ReportHandler

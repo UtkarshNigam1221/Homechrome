@@ -81,6 +81,13 @@ type CouponDeps struct {
 	AuthMiddleware *middleware.Auth
 }
 
+// UTMDeps holds dependencies for the UTM link Lambda
+type UTMDeps struct {
+	Config         *config.Config
+	Handler        *handler.UTMLinkHandler
+	AuthMiddleware *middleware.Auth
+}
+
 // AssetDeps holds dependencies for the Asset Lambda
 type AssetDeps struct {
 	Config         *config.Config
@@ -277,6 +284,25 @@ func InitializeCouponDeps(ctx context.Context, cfg *config.Config) (*CouponDeps,
 	)
 	return nil, nil
 }
+
+// InitializeUTMDeps creates UTM link Lambda dependencies
+func InitializeUTMDeps(ctx context.Context, cfg *config.Config) (*UTMDeps, error) {
+	wire.Build(
+		CoreSet,
+		ProvideValidator,
+		ProvideValidation,
+		ProvideUserRepository,
+		ProvideTokenStore,
+		ProvideUTMLinkRepository,
+		ProvideAuthService,
+		ProvideUTMLinkService,
+		ProvideUTMLinkHandler,
+		ProvideAuthMiddleware,
+		wire.Struct(new(UTMDeps), "*"),
+	)
+	return nil, nil
+}
+
 
 // InitializeAssetDeps creates Asset Lambda dependencies
 func InitializeAssetDeps(ctx context.Context, cfg *config.Config) (*AssetDeps, error) {
@@ -614,6 +640,7 @@ type MonolithDeps struct {
 	AuditHandler        *handler.AuditHandler
 	NotificationHandler *handler.NotificationHandler
 	CouponHandler       *handler.CouponHandler
+	UTMLinkHandler      *handler.UTMLinkHandler
 
 	AssetHandler  *handler.AssetHandler
 	ReportHandler *handler.ReportHandler

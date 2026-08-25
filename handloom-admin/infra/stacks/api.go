@@ -242,6 +242,7 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 		"store-events",
 		"store-webhooks",
 		"order",
+		"utm",
 		// "pricing",
 		// "inventory",
 		// "analytics",
@@ -583,6 +584,29 @@ func setupAPIRoutes(api awsapigateway.RestApi, lambdas map[string]*ServiceLambda
 		AnyMethod:          jsii.Bool(true),
 		DefaultIntegration: catalogIntegration,
 	})
+
+	// UTM campaign link routes — single wildcard permission, same reason as catalog:
+	// per-route permissions would push the Lambda resource policy toward its 20KB cap.
+	if utmLambda, ok := lambdas["utm"]; ok {
+		utmLambda.Function.AddPermission(jsii.String("UTMApiInvoke"), &awslambda.Permission{
+			Principal: awsiam.NewServicePrincipal(jsii.String("apigateway.amazonaws.com"), nil),
+			Action:    jsii.String("lambda:InvokeFunction"),
+			SourceArn: jsii.String(fmt.Sprintf("arn:aws:execute-api:%s:%s:%s/*",
+				*awscdk.Aws_REGION(),
+				*awscdk.Aws_ACCOUNT_ID(),
+				*api.RestApiId(),
+			)),
+		})
+		utmIntegration := awsapigateway.NewLambdaIntegration(utmLambda.Function, &awsapigateway.LambdaIntegrationOptions{
+			Proxy: jsii.Bool(true),
+		})
+		utmLinks := admin.AddResource(jsii.String("utm-links"), nil)
+		utmLinks.AddMethod(jsii.String("ANY"), utmIntegration, &awsapigateway.MethodOptions{})
+		utmLinks.AddProxy(&awsapigateway.ProxyResourceOptions{
+			AnyMethod:          jsii.Bool(true),
+			DefaultIntegration: utmIntegration,
+		})
+	}
 
 	// Asset routes
 	if assetLambda, ok := lambdas["asset"]; ok {

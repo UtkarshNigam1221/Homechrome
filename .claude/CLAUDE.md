@@ -126,7 +126,7 @@ domain/ (entities + interfaces) ← handler/ → service/ → repository/{dynamo
 - Admin Frontend CDK: S3 static hosting (dev) or CloudFront + S3 (prod), custom domain via ACM cert
 - Storefront CDK: CloudFront + S3 + Server Lambda + Image Lambda (OpenNext architecture), custom domain via ACM cert (requires `certArn` context param in us-east-1)
 - All backend Lambdas: ARM64, `provided.al2023`, 128MB (dev) / 256MB (prod)
-- Lambda count: 22 in dev (12 admin + 9 store + 1 migrator)
+- Lambda count: 23 in dev (13 admin + 9 store + 1 migrator)
 - Region: `ap-south-1` (Mumbai)
 
 ## Environment Promotion (dev → prod)
