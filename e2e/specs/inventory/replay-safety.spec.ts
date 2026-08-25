@@ -3,7 +3,7 @@ import { APIRequestContext, expect, test } from '@playwright/test';
 import { adminClient, getInventory, getLedger, rowsForOrder } from '../../fixtures/api';
 import { destroyCatalog, seedCatalog, SeededCatalog } from '../../fixtures/catalog';
 import { expectAllLedgersBalance } from '../../fixtures/reconcile';
-import { customerClient, placePaidOrder } from '../../helpers/order';
+import { customerClient, placePaidOrder, placeUnpaidOrder } from '../../helpers/order';
 
 /**
  * #230 cases 6, 8 and 9.
@@ -59,14 +59,17 @@ test.describe('replay safety', () => {
   });
 
   test('cancel releases once, from each cancellable status', async () => {
-    catalog = await seedCatalog(api, [10, 10]);
-    // PENDING dropped: placePaidOrder always returns a CONFIRMED order, so
-    // it's no longer a reachable starting point through this fixture.
-    const statuses = ['CONFIRMED', 'PROCESSING'] as const;
+    catalog = await seedCatalog(api, [10, 10, 10]);
+    const statuses = ['PENDING', 'CONFIRMED', 'PROCESSING'] as const;
 
     for (const [i, status] of statuses.entries()) {
       const product = catalog.products[i]!;
-      const { order } = await placePaidOrder(store, [{ productId: product.id, quantity: 3 }]);
+      // PENDING is the real pre-payment window; CONFIRMED/PROCESSING need a
+      // paid order, since only payment success advances status off PENDING.
+      const order =
+        status === 'PENDING'
+          ? await placeUnpaidOrder(store, [{ productId: product.id, quantity: 3 }])
+          : (await placePaidOrder(store, [{ productId: product.id, quantity: 3 }])).order;
 
       if (status === 'PROCESSING') {
         await api.patch(`/admin/orders/${order.id}/status`, { data: { status: 'PROCESSING' } });
