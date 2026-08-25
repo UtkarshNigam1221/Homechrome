@@ -41,8 +41,8 @@ export default function CouponInput({
         onApplied(data.code, data.discount_amount ?? 0);
         setCode('');
       } else {
-        // Server wording, verbatim — the copy lives in one place.
-        setError(data.error_message ?? '');
+        // Server wording, verbatim when present — the copy lives in one place.
+        setError(data.error_message || 'That code is not valid.');
       }
     } catch {
       setError("We couldn't check that code. Try again.");

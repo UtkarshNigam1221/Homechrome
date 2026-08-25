@@ -3,11 +3,12 @@
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useReducer, useState } from 'react';
 
+import { CART_COUPON_STORAGE_KEY } from '@/hooks/useCoupon';
 import api from '@/lib/api';
 import { ROUTES } from '@/lib/routes';
 import { previewTotal } from '@/lib/utils';
 import { useAuthStore } from '@/stores/auth';
-import { Address, CartWithItems, CheckoutResult } from '@/types';
+import { Address, CartWithItems, CheckoutResult, CouponValidationResult } from '@/types';
 
 import {
   checkoutReducer,
@@ -59,6 +60,34 @@ export function useCheckoutState() {
       });
     }
   }, [addresses, state.selectedAddressId]);
+
+  // Carries a cart-applied coupon into checkout. Re-validates rather than
+  // trusting the cart-time figure, which may be stale by now.
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const stashed = sessionStorage.getItem(CART_COUPON_STORAGE_KEY);
+    if (!stashed) return;
+    sessionStorage.removeItem(CART_COUPON_STORAGE_KEY);
+
+    let code: string | undefined;
+    try {
+      ({ code } = JSON.parse(stashed) as { code?: string });
+    } catch {
+      return;
+    }
+    if (!code) return;
+
+    api
+      .post<CouponValidationResult>(ROUTES.CHECKOUT.VALIDATE_COUPON, { code })
+      .then(({ data }) => {
+        if (data.valid) {
+          dispatch({ type: 'COUPON_APPLIED', code: data.code, discount: data.discount_amount ?? 0 });
+        }
+      })
+      .catch(() => {
+        // Best-effort — the customer can re-enter it in the review step.
+      });
+  }, [isAuthenticated]);
 
   const handleAddressNext = useCallback(() => {
     if (!state.selectedAddressId) return;
