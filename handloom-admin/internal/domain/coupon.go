@@ -204,8 +204,10 @@ type CouponRepository interface {
 	// GetCustomerUsage returns how many times this customer has redeemed this coupon.
 	GetCustomerUsage(ctx context.Context, customerID, couponID string) (int, error)
 
-	// IncrementCustomerUsage bumps this customer's count for this coupon.
-	IncrementCustomerUsage(ctx context.Context, customerID, couponID string) error
+	// IncrementCustomerUsage claims one of this customer's allowance for this coupon,
+	// under the same kind of condition IncrementUsage uses for the global limit.
+	// Returns false when the allowance is already spent. A limit of 0 is unlimited.
+	IncrementCustomerUsage(ctx context.Context, customerID, couponID string, limit int) (claimed bool, err error)
 }
 
 // ListCouponsRequest contains parameters for listing coupons

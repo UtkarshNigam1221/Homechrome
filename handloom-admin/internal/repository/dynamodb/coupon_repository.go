@@ -3,6 +3,7 @@ package dynamodb
 import (
 	"context"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -398,9 +399,19 @@ func (r *CouponRepository) GetCustomerUsage(ctx context.Context, customerID, cou
 	return counter.Count, nil
 }
 
-// IncrementCustomerUsage bumps the counter, creating it on first use.
-func (r *CouponRepository) IncrementCustomerUsage(ctx context.Context, customerID, couponID string) error {
-	_, err := r.client.db.UpdateItem(ctx, &dynamodb.UpdateItemInput{
+// IncrementCustomerUsage claims one of this customer's allowance, creating the counter
+// on first use. Conditional, like IncrementUsage: an unconditional ADD made
+// usage_per_user advisory only, and because redemptions are counted at payment success
+// the bypass window was the whole initiate-to-payment interval rather than a race. A
+// customer could initiate twice, pay both, and a limit of 1 would end at 2.
+//
+// "One per customer" is a stronger promise than "500 total", so unlike the global limit
+// this overshoot is not accepted — the order still keeps its quoted price, but the
+// counter stays truthful and the caller can see it happened.
+func (r *CouponRepository) IncrementCustomerUsage(
+	ctx context.Context, customerID, couponID string, limit int,
+) (bool, error) {
+	input := &dynamodb.UpdateItemInput{
 		TableName: aws.String(r.client.couponsTable),
 		Key: map[string]types.AttributeValue{
 			"PK": &types.AttributeValueMemberS{Value: "CUSTOMER#" + customerID},
@@ -415,11 +426,23 @@ func (r *CouponRepository) IncrementCustomerUsage(ctx context.Context, customerI
 			":cust":   &types.AttributeValueMemberS{Value: customerID},
 			":coupon": &types.AttributeValueMemberS{Value: couponID},
 		},
-	})
-	if err != nil {
-		return errors.Wrap(err, "Failed to record coupon usage for the customer")
 	}
-	return nil
+	// 0 is unlimited, so there is nothing to condition on. The counter still moves —
+	// the audit value of knowing how often a customer used a code does not depend on
+	// there being a cap.
+	if limit > 0 {
+		input.ConditionExpression = aws.String("attribute_not_exists(#count) OR #count < :limit")
+		input.ExpressionAttributeValues[":limit"] =
+			&types.AttributeValueMemberN{Value: strconv.Itoa(limit)}
+	}
+
+	if _, err := r.client.db.UpdateItem(ctx, input); err != nil {
+		if isConditionalCheckFailed(err) {
+			return false, nil // spent, not broken
+		}
+		return false, errors.Wrap(err, "Failed to record coupon usage for the customer")
+	}
+	return true, nil
 }
 
 // Ensure interface compliance

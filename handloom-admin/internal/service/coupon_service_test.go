@@ -334,7 +334,9 @@ func TestCouponService_Redeem(t *testing.T) {
 				require.Equal(t, int64(60000), u.Discount)
 				return nil
 			})
-		repo.EXPECT().IncrementCustomerUsage(gomock.Any(), "cust_1", "coupon_1").Return(nil)
+		repo.EXPECT().
+			IncrementCustomerUsage(gomock.Any(), "cust_1", "coupon_1", 0).
+			Return(true, nil)
 
 		s := NewCouponService(repo)
 		claimed, err := s.Redeem(ctx, "coupon_1", "order_9", "cust_1", 60000)
@@ -358,6 +360,45 @@ func TestCouponService_Redeem(t *testing.T) {
 		require.NoError(t, err, "exhaustion is an outcome, not an error")
 		require.False(t, claimed)
 	})
+}
+
+// usage_per_user is claimed under a condition, so a second redemption by the same
+// customer reports not-claimed instead of silently pushing the counter past the limit.
+// The order still keeps the price it was quoted — the point is that the counter stays
+// truthful and the overshoot is visible.
+func TestCouponService_Redeem_PerCustomerLimit(t *testing.T) {
+	ctx := context.Background()
+
+	c := activeCoupon()
+	c.UsagePerUser = 1
+
+	ctrl := gomock.NewController(t)
+	repo := mocks.NewMockCouponRepository(ctrl)
+	repo.EXPECT().IncrementUsage(gomock.Any(), "coupon_1").Return(true, nil).Times(2)
+	repo.EXPECT().GetByID(gomock.Any(), "coupon_1").Return(c, nil).Times(2)
+	repo.EXPECT().RecordUsage(gomock.Any(), gomock.Any()).Return(nil).Times(2)
+
+	// The limit reaches the repository, which is what lets the condition exist at all.
+	gomock.InOrder(
+		repo.EXPECT().
+			IncrementCustomerUsage(gomock.Any(), "cust_1", "coupon_1", 1).
+			Return(true, nil),
+		repo.EXPECT().
+			IncrementCustomerUsage(gomock.Any(), "cust_1", "coupon_1", 1).
+			Return(false, nil),
+	)
+
+	s := NewCouponService(repo)
+
+	claimed, err := s.Redeem(ctx, "coupon_1", "order_1", "cust_1", 60000)
+	require.NoError(t, err)
+	require.True(t, claimed)
+
+	// Second order by the same customer, paid inside the same initiate-to-payment
+	// window. The redemption is still recorded and the order is untouched.
+	claimed, err = s.Redeem(ctx, "coupon_1", "order_2", "cust_1", 60000)
+	require.NoError(t, err, "a spent per-customer allowance is an outcome, not an error")
+	require.True(t, claimed, "the order keeps the price it was quoted")
 }
 
 func TestCouponService_Update_ClearValidUntilPrecedence(t *testing.T) {

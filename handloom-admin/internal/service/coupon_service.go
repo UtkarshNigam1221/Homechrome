@@ -352,8 +352,19 @@ func (s *CouponService) Redeem(
 	}
 
 	if customerID != "" {
-		if err := s.couponRepo.IncrementCustomerUsage(ctx, customerID, couponID); err != nil {
-			return true, err
+		perUserClaimed, usageErr := s.couponRepo.IncrementCustomerUsage(
+			ctx, customerID, couponID, coupon.UsagePerUser)
+		if usageErr != nil {
+			return true, usageErr
+		}
+		if !perUserClaimed {
+			// The order keeps the price it was quoted, so this does not undo anything.
+			// What it does is stop the counter drifting past the limit unnoticed: the
+			// customer got through the initiate-to-payment window twice, and that is
+			// worth seeing rather than absorbing.
+			slog.WarnContext(ctx, "Per-customer coupon allowance already spent at payment success",
+				"coupon_id", couponID, "customer_id", customerID, keyOrderID, orderID,
+				"usage_per_user", coupon.UsagePerUser)
 		}
 	}
 

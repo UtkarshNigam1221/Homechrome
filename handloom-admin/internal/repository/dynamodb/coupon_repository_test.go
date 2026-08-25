@@ -456,10 +456,15 @@ func TestCouponRepository_CustomerUsage(t *testing.T) {
 	})
 
 	t.Run("counts per customer per coupon", func(t *testing.T) {
-		require.NoError(t, repo.IncrementCustomerUsage(ctx, "cust_1", "coupon_a"))
-		require.NoError(t, repo.IncrementCustomerUsage(ctx, "cust_1", "coupon_a"))
-		require.NoError(t, repo.IncrementCustomerUsage(ctx, "cust_1", "coupon_b"))
-		require.NoError(t, repo.IncrementCustomerUsage(ctx, "cust_2", "coupon_a"))
+		// limit 0 is unlimited, so every claim succeeds.
+		for _, args := range [][2]string{
+			{"cust_1", "coupon_a"}, {"cust_1", "coupon_a"},
+			{"cust_1", "coupon_b"}, {"cust_2", "coupon_a"},
+		} {
+			claimed, err := repo.IncrementCustomerUsage(ctx, args[0], args[1], 0)
+			require.NoError(t, err)
+			require.True(t, claimed)
+		}
 
 		n, err := repo.GetCustomerUsage(ctx, "cust_1", "coupon_a")
 		require.NoError(t, err)
@@ -472,5 +477,73 @@ func TestCouponRepository_CustomerUsage(t *testing.T) {
 		n, err = repo.GetCustomerUsage(ctx, "cust_2", "coupon_a")
 		require.NoError(t, err)
 		require.Equal(t, 1, n)
+	})
+
+	// The counter only moves at payment success, so the window between a customer
+	// initiating twice and paying both is wide open — seconds or minutes, not a race.
+	// The condition is what closes it.
+	t.Run("refuses a second claim against a limit of one", func(t *testing.T) {
+		claimed, err := repo.IncrementCustomerUsage(ctx, "cust_once", "coupon_once", 1)
+		require.NoError(t, err)
+		require.True(t, claimed)
+
+		claimed, err = repo.IncrementCustomerUsage(ctx, "cust_once", "coupon_once", 1)
+		require.NoError(t, err, "a spent allowance is an outcome, not an error")
+		require.False(t, claimed)
+
+		n, err := repo.GetCustomerUsage(ctx, "cust_once", "coupon_once")
+		require.NoError(t, err)
+		require.Equal(t, 1, n, "the refused claim must not have moved the counter")
+	})
+
+	t.Run("claims up to a higher limit and then refuses", func(t *testing.T) {
+		for i := 1; i <= 3; i++ {
+			claimed, err := repo.IncrementCustomerUsage(ctx, "cust_three", "coupon_three", 3)
+			require.NoError(t, err)
+			require.True(t, claimed, "claim %d should succeed", i)
+		}
+
+		claimed, err := repo.IncrementCustomerUsage(ctx, "cust_three", "coupon_three", 3)
+		require.NoError(t, err)
+		require.False(t, claimed)
+	})
+
+	t.Run("treats a zero limit as unlimited", func(t *testing.T) {
+		for i := 0; i < 5; i++ {
+			claimed, err := repo.IncrementCustomerUsage(ctx, "cust_unl", "coupon_unl", 0)
+			require.NoError(t, err)
+			require.True(t, claimed)
+		}
+
+		n, err := repo.GetCustomerUsage(ctx, "cust_unl", "coupon_unl")
+		require.NoError(t, err)
+		require.Equal(t, 5, n)
+	})
+
+	// Same reasoning as the global limit's race test: a read-then-write guard would let
+	// every racer read 0, decide it is under the limit, and all succeed.
+	t.Run("lets exactly one of many concurrent claims win on a limit of one", func(t *testing.T) {
+		const racers = 16
+		var (
+			wg     sync.WaitGroup
+			mu     sync.Mutex
+			claims int
+		)
+		for i := 0; i < racers; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				claimed, err := repo.IncrementCustomerUsage(
+					context.Background(), "cust_race", "coupon_race_pu", 1)
+				if err == nil && claimed {
+					mu.Lock()
+					claims++
+					mu.Unlock()
+				}
+			}()
+		}
+		wg.Wait()
+
+		require.Equal(t, 1, claims, "usage_per_user 1 must be claimable once")
 	})
 }
