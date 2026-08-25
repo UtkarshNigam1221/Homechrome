@@ -120,6 +120,120 @@ func TestCouponRepository_Update(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, "Renamed", found.Name)
 	})
+
+	// The reason Update is an UpdateItem rather than a PutItem. CouponService reads the
+	// coupon, applies the edit and writes it back; the PhonePe webhook increments
+	// usage_count atomically in the same window. A whole-item put carries the count the
+	// service read and erases whatever landed in between.
+	t.Run("an increment between the read and the write survives", func(t *testing.T) {
+		c := newTestCoupon("coupon_race_edit", "RACEEDIT")
+		require.NoError(t, repo.Create(ctx, c))
+
+		// The service's read.
+		read, err := repo.GetByID(ctx, "coupon_race_edit")
+		require.NoError(t, err)
+		require.Equal(t, 0, read.UsageCount)
+
+		// A payment succeeds while the operator has the form open.
+		claimed, err := repo.IncrementUsage(ctx, "coupon_race_edit")
+		require.NoError(t, err)
+		require.True(t, claimed)
+
+		// The service's write, carrying the stale count it read above.
+		read.Name = "Renamed mid-flight"
+		require.NoError(t, repo.Update(ctx, read))
+
+		after, err := repo.GetByID(ctx, "coupon_race_edit")
+		require.NoError(t, err)
+		require.Equal(t, 1, after.UsageCount,
+			"an admin edit must not roll back a redemption the webhook already counted")
+		require.Equal(t, "Renamed mid-flight", after.Name, "the edit must still land")
+	})
+
+	// Everything the request cannot change must come back untouched, and everything it
+	// can must actually move — an UpdateItem that names too few fields fails silently.
+	t.Run("writes every mutable field and leaves the immutable ones alone", func(t *testing.T) {
+		c := newTestCoupon("coupon_fields", "FIELDS")
+		c.Description = "Original"
+		c.MaxDiscount = 50000
+		c.UsageLimit = 10
+		require.NoError(t, repo.Create(ctx, c))
+
+		read, err := repo.GetByID(ctx, "coupon_fields")
+		require.NoError(t, err)
+
+		newEnd := time.Date(2027, 3, 1, 18, 29, 59, 0, time.UTC)
+		read.Name = "Edited name"
+		read.Description = "Edited description"
+		read.MinOrderValue = 250000
+		read.MaxDiscount = 75000
+		read.UsageLimit = 20
+		read.UsagePerUser = 3
+		read.CombinesWithOffers = true
+		read.ValidUntil = &newEnd
+		read.Status = domain.CouponStatusInactive
+		read.UpdatedBy = "user_admin"
+		require.NoError(t, repo.Update(ctx, read))
+
+		after, err := repo.GetByID(ctx, "coupon_fields")
+		require.NoError(t, err)
+		require.Equal(t, "Edited name", after.Name)
+		require.Equal(t, "Edited description", after.Description)
+		require.Equal(t, int64(250000), after.MinOrderValue)
+		require.Equal(t, int64(75000), after.MaxDiscount)
+		require.Equal(t, 20, after.UsageLimit)
+		require.Equal(t, 3, after.UsagePerUser)
+		require.True(t, after.CombinesWithOffers)
+		require.NotNil(t, after.ValidUntil)
+		require.True(t, newEnd.Equal(*after.ValidUntil))
+		require.Equal(t, domain.CouponStatusInactive, after.Status)
+		require.Equal(t, "user_admin", after.UpdatedBy)
+
+		require.Equal(t, "FIELDS", after.Code, "the code is immutable — its pointer is not repointed")
+		require.Equal(t, domain.CouponTypePercentage, after.Type)
+		require.Equal(t, int64(2000), after.Value)
+		require.Equal(t, domain.AudienceAll, after.Audience)
+
+		// A new expiry has to move the sort key, or the wallet's `GSI1SK >= now` range
+		// still sees the coupon under its old end date.
+		require.Contains(t, after.GSI1SK, "2027-03-01", "GSI1SK must follow valid_until")
+		require.Equal(t, "COUPON#ALL", after.GSI1PK)
+		require.Equal(t, "COUPON", after.EntityType)
+	})
+
+	// Clearing a field has to remove the attribute, matching the omitempty shape Create
+	// writes, rather than parking a zero in it.
+	t.Run("clearing the expiry makes the coupon open-ended", func(t *testing.T) {
+		c := newTestCoupon("coupon_clear", "CLEARME")
+		require.NoError(t, repo.Create(ctx, c))
+
+		read, err := repo.GetByID(ctx, "coupon_clear")
+		require.NoError(t, err)
+		require.NotNil(t, read.ValidUntil)
+
+		read.ValidUntil = nil
+		read.Description = ""
+		read.MaxDiscount = 0
+		require.NoError(t, repo.Update(ctx, read))
+
+		after, err := repo.GetByID(ctx, "coupon_clear")
+		require.NoError(t, err)
+		require.Nil(t, after.ValidUntil, "open-ended must not become a zero time")
+		require.Empty(t, after.Description)
+		require.Zero(t, after.MaxDiscount)
+		require.Contains(t, after.GSI1SK, "9999-12-31",
+			"an open-ended coupon must sort last so it stays inside the wallet's range")
+	})
+
+	t.Run("reports an unknown id as not found", func(t *testing.T) {
+		ghost := newTestCoupon("coupon_ghost", "GHOST")
+		err := repo.Update(ctx, ghost)
+		require.Error(t, err)
+
+		appErr, ok := errors.AsAppError(err)
+		require.True(t, ok)
+		require.Equal(t, errors.ErrCodeNotFound, appErr.Code)
+	})
 }
 
 // Deleting a coupon must free its code. The pointer item is what Create's

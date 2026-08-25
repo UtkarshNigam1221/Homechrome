@@ -8,6 +8,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
+	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/expression"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 
@@ -144,20 +145,64 @@ func (r *CouponRepository) GetByCode(ctx context.Context, code string) (*domain.
 	return r.GetByID(ctx, idx.CouponID)
 }
 
-// Update updates a coupon
+// Update writes only the fields an admin edit may change.
+//
+// It is an UpdateItem, not a PutItem, because usage_count must survive it. CouponService
+// reads the coupon, applies the request and writes it back; a whole-item put carries the
+// count it read moments earlier, so any ADD usage_count the PhonePe webhook landed in
+// between was silently erased. The racing writer is a payment webhook, not a second
+// operator, so this is not the single-operator case. Not naming usage_count here is what
+// makes the two writers disjoint, the same way IncrementUsage only ever touches it.
+//
+// Also absent: code, type, value, audience, customer_id and everything created-at-write
+// time. None of them is reachable through UpdateCouponRequest, and the code in particular
+// must not move without repointing CODE#<code> (see CouponService.Update's guard).
 func (r *CouponRepository) Update(ctx context.Context, coupon *domain.Coupon) error {
 	coupon.UpdatedAt = time.Now()
 	coupon.SetKeys()
 
-	av, err := attributevalue.MarshalMap(coupon)
+	update := expression.
+		Set(expression.Name("name"), expression.Value(coupon.Name)).
+		Set(expression.Name("min_order_value"), expression.Value(coupon.MinOrderValue)).
+		Set(expression.Name("usage_limit"), expression.Value(coupon.UsageLimit)).
+		Set(expression.Name("usage_per_user"), expression.Value(coupon.UsagePerUser)).
+		Set(expression.Name("combines_with_offers"), expression.Value(coupon.CombinesWithOffers)).
+		Set(expression.Name("valid_from"), expression.Value(coupon.ValidFrom)).
+		Set(expression.Name("status"), expression.Value(coupon.Status)).
+		Set(expression.Name("updated_at"), expression.Value(coupon.UpdatedAt)).
+		// SetKeys derives these three. A new expiry moves GSI1SK and an audience change
+		// moves the GSI1 partition, so they have to travel with the edit or the coupon
+		// stays indexed under its old life.
+		Set(expression.Name("GSI1PK"), expression.Value(coupon.GSI1PK)).
+		Set(expression.Name("GSI1SK"), expression.Value(coupon.GSI1SK)).
+		Set(expression.Name("entity_type"), expression.Value(coupon.EntityType))
+
+	// These four carry dynamodbav omitempty, so Create leaves them out of the item
+	// entirely. Clearing one has to remove the attribute rather than store a zero, or an
+	// edited coupon and a fresh one end up with different shapes for the same state.
+	update = setOrRemove(update, "description", coupon.Description, coupon.Description == "")
+	update = setOrRemove(update, "max_discount", coupon.MaxDiscount, coupon.MaxDiscount == 0)
+	update = setOrRemove(update, "updated_by", coupon.UpdatedBy, coupon.UpdatedBy == "")
+	update = setOrRemove(update, "valid_until", coupon.ValidUntil, coupon.ValidUntil == nil)
+
+	expr, err := expression.NewBuilder().
+		WithUpdate(update).
+		WithCondition(expression.AttributeExists(expression.Name("PK"))).
+		Build()
 	if err != nil {
-		return errors.Internal("Failed to marshal coupon")
+		return errors.Internal("Failed to build the coupon update")
 	}
 
-	_, err = r.client.db.PutItem(ctx, &dynamodb.PutItemInput{
-		TableName:           aws.String(r.client.couponsTable),
-		Item:                av,
-		ConditionExpression: aws.String("attribute_exists(PK)"),
+	_, err = r.client.db.UpdateItem(ctx, &dynamodb.UpdateItemInput{
+		TableName: aws.String(r.client.couponsTable),
+		Key: map[string]types.AttributeValue{
+			"PK": &types.AttributeValueMemberS{Value: "COUPON#" + coupon.ID},
+			"SK": &types.AttributeValueMemberS{Value: skMetadata},
+		},
+		UpdateExpression:          expr.Update(),
+		ConditionExpression:       expr.Condition(),
+		ExpressionAttributeNames:  expr.Names(),
+		ExpressionAttributeValues: expr.Values(),
 	})
 	if err != nil {
 		if isConditionalCheckFailed(err) {
@@ -167,6 +212,17 @@ func (r *CouponRepository) Update(ctx context.Context, coupon *domain.Coupon) er
 	}
 
 	return nil
+}
+
+// setOrRemove sets an attribute, or removes it when the value is the empty one that
+// dynamodbav omitempty would have dropped on a fresh write.
+func setOrRemove(
+	u expression.UpdateBuilder, attr string, value interface{}, empty bool,
+) expression.UpdateBuilder {
+	if empty {
+		return u.Remove(expression.Name(attr))
+	}
+	return u.Set(expression.Name(attr), expression.Value(value))
 }
 
 // Delete removes the coupon and its code pointer in one transaction. Removing only
