@@ -1,9 +1,21 @@
 import { OrderStatus } from '@/types';
 
-const priceFormatter = new Intl.NumberFormat('en-IN', { minimumFractionDigits: 0 });
+// Two formatters, one entry point. maximumFractionDigits defaults to 3, so a lone
+// minimumFractionDigits: 0 trims trailing zeros and renders 29990 paise as "₹299.9".
+// Percentage coupons make non-round paise routine, so a rupee figure gets no decimals
+// and anything with paise gets exactly two.
+const wholeRupeeFormatter = new Intl.NumberFormat('en-IN', {
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 0,
+});
+const withPaiseFormatter = new Intl.NumberFormat('en-IN', {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
 
 export function formatPrice(paise: number): string {
-  return `₹${priceFormatter.format(paise / 100)}`;
+  const formatter = paise % 100 === 0 ? wholeRupeeFormatter : withPaiseFormatter;
+  return `₹${formatter.format(paise / 100)}`;
 }
 
 export function formatDate(dateStr: string): string {
