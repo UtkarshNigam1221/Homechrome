@@ -11,6 +11,8 @@ export interface CheckoutState {
   addressSaving: boolean;
   initiating: boolean;
   error: string | null;
+  couponCode: string | null;
+  couponDiscount: number;
 }
 
 export type CheckoutAction =
@@ -24,7 +26,9 @@ export type CheckoutAction =
   | { type: 'ADDRESS_SAVE_FAILED'; error: string }
   | { type: 'PAYMENT_START' }
   | { type: 'PAYMENT_FAILED'; error: string }
-  | { type: 'CLEAR_ERROR' };
+  | { type: 'CLEAR_ERROR' }
+  | { type: 'COUPON_APPLIED'; code: string; discount: number }
+  | { type: 'COUPON_REMOVED' };
 
 export const initialCheckoutState: CheckoutState = {
   cart: null,
@@ -35,6 +39,8 @@ export const initialCheckoutState: CheckoutState = {
   addressSaving: false,
   initiating: false,
   error: null,
+  couponCode: null,
+  couponDiscount: 0,
 };
 
 export function checkoutReducer(state: CheckoutState, action: CheckoutAction): CheckoutState {
@@ -66,6 +72,10 @@ export function checkoutReducer(state: CheckoutState, action: CheckoutAction): C
       return { ...state, initiating: false, error: action.error };
     case 'CLEAR_ERROR':
       return { ...state, error: null };
+    case 'COUPON_APPLIED':
+      return { ...state, couponCode: action.code, couponDiscount: action.discount };
+    case 'COUPON_REMOVED':
+      return { ...state, couponCode: null, couponDiscount: 0 };
     default:
       return state;
   }

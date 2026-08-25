@@ -7,6 +7,7 @@ import {
   XCircleIcon,
 } from '@heroicons/react/24/outline';
 import {
+  Alert,
   Anchor,
   Button,
   Container,
@@ -71,6 +72,7 @@ function ConfirmationContent() {
   const [orderNumber, setOrderNumber] = useState<string>('');
   const [polling, setPolling] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [couponNotice, setCouponNotice] = useState<string | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollCountRef = useRef(0);
   const checkStatusRef = useRef<() => Promise<void>>(undefined);
@@ -82,6 +84,19 @@ function ConfirmationContent() {
       intervalRef.current = null;
     }
   }, []);
+
+  useEffect(() => {
+    // handlePayNow stashed this before redirecting to the payment gateway,
+    // since that navigation drops the initiate response. One-shot read.
+    if (!orderId) return;
+    const key = `coupon_notice:${orderId}`;
+    const stored = sessionStorage.getItem(key);
+    if (stored) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot hydration, not a subscription
+      setCouponNotice(stored);
+      sessionStorage.removeItem(key);
+    }
+  }, [orderId]);
 
   useEffect(() => {
     checkStatusRef.current = async () => {
@@ -134,6 +149,12 @@ function ConfirmationContent() {
   return (
     <Container size="sm" py="xl">
       <Stack align="center" gap="md" ta="center">
+        {couponNotice && (
+          <Alert color="yellow" title="About your coupon" w="100%" ta="left">
+            {couponNotice}
+          </Alert>
+        )}
+
         {polling && (status === 'PENDING' || status === 'INITIATED') && (
           <>
             <LoadingSpinner size="lg" />

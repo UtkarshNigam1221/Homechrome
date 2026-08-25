@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useReducer, useState } from 'react';
 
 import api from '@/lib/api';
 import { ROUTES } from '@/lib/routes';
+import { previewTotal } from '@/lib/utils';
 import { useAuthStore } from '@/stores/auth';
 import { Address, CartWithItems, CheckoutResult } from '@/types';
 
@@ -23,6 +24,12 @@ export function useCheckoutState() {
 
   const addresses = useMemo(() => customer?.addresses || [], [customer?.addresses]);
   const selectedAddress = addresses.find((a) => a.id === state.selectedAddressId) || null;
+
+  // Preview only — checkout/initiate re-prices authoritatively below.
+  const orderTotal = useMemo(
+    () => (state.cart ? previewTotal(state.cart.cart.subtotal, state.couponDiscount) : 0),
+    [state.cart, state.couponDiscount],
+  );
 
   const fetchCart = useCallback(async () => {
     dispatch({ type: 'CART_LOADING' });
@@ -86,7 +93,13 @@ export function useCheckoutState() {
     try {
       const { data } = await api.post<CheckoutResult>(ROUTES.CHECKOUT.INITIATE, {
         shipping_address_id: state.selectedAddressId,
+        coupon_code: state.couponCode ?? undefined,
       });
+      // The browser is about to leave for the payment gateway and lose this
+      // response — stash the notice so the confirmation page can show it.
+      if (data.coupon_notice) {
+        sessionStorage.setItem(`coupon_notice:${data.order.id}`, data.coupon_notice);
+      }
       redirecting = true;
       window.location.href = data.redirect_url;
     } catch {
@@ -97,7 +110,15 @@ export function useCheckoutState() {
     } finally {
       if (!redirecting) setInitiatingCheckout(false);
     }
-  }, [state.selectedAddressId]);
+  }, [state.selectedAddressId, state.couponCode]);
+
+  const handleCouponApplied = useCallback((code: string, discount: number) => {
+    dispatch({ type: 'COUPON_APPLIED', code, discount });
+  }, []);
+
+  const handleCouponRemoved = useCallback(() => {
+    dispatch({ type: 'COUPON_REMOVED' });
+  }, []);
 
   const goToStep = useCallback((step: 'address' | 'review') => {
     if (step === 'review' && !state.selectedAddressId) return;
@@ -110,10 +131,13 @@ export function useCheckoutState() {
     router,
     addresses,
     selectedAddress,
+    orderTotal,
     fetchCart,
     handleAddressNext,
     handleAddAddress,
     handlePayNow,
+    handleCouponApplied,
+    handleCouponRemoved,
     goToStep,
     creatingAddress,
     initiatingCheckout,

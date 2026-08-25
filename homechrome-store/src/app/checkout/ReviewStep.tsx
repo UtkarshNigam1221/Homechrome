@@ -2,6 +2,7 @@
 
 import { Anchor, Box, Button, Card, Group, Stack, Text, Title } from '@mantine/core';
 
+import CouponInput from '@/components/cart/CouponInput';
 import InlineLoaderOverlay from '@/components/ui/InlineLoaderOverlay';
 import { formatPrice } from '@/lib/utils';
 import { Address, CartItem } from '@/types';
@@ -11,8 +12,12 @@ interface ReviewStepProps {
   items: CartItem[];
   initiating: boolean;
   initiatingCheckout: boolean;
+  couponCode: string | null;
+  couponDiscount: number;
   onChangeAddress: () => void;
   onPayNow: () => void;
+  onCouponApplied: (code: string, discount: number) => void;
+  onCouponRemoved: () => void;
 }
 
 export function ReviewStep({
@@ -20,8 +25,12 @@ export function ReviewStep({
   items,
   initiating,
   initiatingCheckout,
+  couponCode,
+  couponDiscount,
   onChangeAddress,
   onPayNow,
+  onCouponApplied,
+  onCouponRemoved,
 }: ReviewStepProps) {
   return (
     <Box pos="relative">
@@ -47,6 +56,16 @@ export function ReviewStep({
               <Text size="sm" c="navy.7">{formatPrice(item.total_price)}</Text>
             </Group>
           ))}
+        </Stack>
+
+        <Stack gap="xs">
+          <Title order={3} size="sm">Coupon</Title>
+          <CouponInput
+            appliedCode={couponCode ?? undefined}
+            appliedDiscount={couponDiscount}
+            onApplied={onCouponApplied}
+            onRemoved={onCouponRemoved}
+          />
         </Stack>
 
         <Group gap="sm">

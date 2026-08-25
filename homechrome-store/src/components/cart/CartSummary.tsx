@@ -12,6 +12,8 @@ import {
 } from '@mantine/core';
 import Link from 'next/link';
 
+import CouponInput from '@/components/cart/CouponInput';
+import { useCoupon } from '@/hooks/useCoupon';
 import { formatPrice } from '@/lib/utils';
 
 interface CartSummaryProps {
@@ -22,12 +24,19 @@ interface CartSummaryProps {
 
 export default function CartSummary({ subtotal, itemCount, isAuthenticated }: CartSummaryProps) {
   // Shipping is free — deliveries are scheduled manually.
-  const total = subtotal;
+  const coupon = useCoupon(subtotal);
 
   return (
     <Card shadow="sm" radius="lg" padding="md">
       <Stack gap="md">
         <Title order={2} size="md">Order Summary</Title>
+
+        <CouponInput
+          appliedCode={coupon.code}
+          appliedDiscount={coupon.discount}
+          onApplied={coupon.apply}
+          onRemoved={coupon.remove}
+        />
 
         <Stack gap="xs">
           <Group justify="space-between">
@@ -36,6 +45,17 @@ export default function CartSummary({ subtotal, itemCount, isAuthenticated }: Ca
             </Text>
             <Text size="sm" fw={500} c="navy.7">{formatPrice(subtotal)}</Text>
           </Group>
+
+          {/* Rows render only when non-zero — a discount-free cart looks exactly
+              as it did before. No tax row: prices are tax-inclusive. */}
+          {coupon.discount > 0 && (
+            <Group justify="space-between">
+              <Text size="sm" c="dimmed">
+                Discount{coupon.code ? ` (${coupon.code})` : ''}
+              </Text>
+              <Text size="sm" fw={500} c="teal.7">-{formatPrice(coupon.discount)}</Text>
+            </Group>
+          )}
 
           <Group justify="space-between">
             <Text size="sm" c="dimmed">Shipping</Text>
@@ -46,7 +66,7 @@ export default function CartSummary({ subtotal, itemCount, isAuthenticated }: Ca
 
           <Group justify="space-between">
             <Text fw={600} c="navy.7">Total</Text>
-            <Text fw={700} c="navy.7">{formatPrice(total)}</Text>
+            <Text fw={700} c="navy.7">{formatPrice(coupon.total)}</Text>
           </Group>
         </Stack>
 

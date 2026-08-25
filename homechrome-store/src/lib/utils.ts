@@ -29,6 +29,12 @@ export function calculateDiscountPercent(mrp: number, sellingPrice: number): num
   return Math.round(((mrp - sellingPrice) / mrp) * 100);
 }
 
+// Preview only — checkout/initiate re-prices authoritatively. Both operands
+// already came from the server, so this only composes them for display.
+export function previewTotal(subtotal: number, discount: number): number {
+  return subtotal - discount;
+}
+
 export const statusBadgeColor: Record<OrderStatus, string> = {
   PENDING: 'yellow',
   CONFIRMED: 'blue',
