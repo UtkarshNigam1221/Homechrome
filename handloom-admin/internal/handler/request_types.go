@@ -63,6 +63,6 @@ type ValidateCouponRequest struct {
 type RedeemCouponRequest struct {
 	CouponID   string `json:"coupon_id" validate:"required"`
 	OrderID    string `json:"order_id" validate:"required"`
-	CustomerID string `json:"customer_id"`
-	Discount   int64  `json:"discount"`
+	CustomerID string `json:"customer_id" validate:"required"`
+	Discount   int64  `json:"discount" validate:"required,gt=0"`
 }

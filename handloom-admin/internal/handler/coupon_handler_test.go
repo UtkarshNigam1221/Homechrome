@@ -1,10 +1,13 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/handloom/admin/internal/validator"
 )
 
 // The validate endpoint takes a cart total, not a product list. Coupons carry no item
@@ -20,4 +23,46 @@ func TestValidateCouponRequest_Shape(t *testing.T) {
 	require.Equal(t, int64(300000), req.CartTotal)
 	require.Equal(t, "cust_1", req.CustomerID)
 	require.True(t, req.HasAutomaticOffer)
+}
+
+// validRedeemCouponRequest satisfies every field's tag on its own, so each subtest below
+// only has to break one field.
+func validRedeemCouponRequest() RedeemCouponRequest {
+	return RedeemCouponRequest{
+		CouponID:   "coupon_1",
+		OrderID:    "order_1",
+		CustomerID: "cust_1",
+		Discount:   500,
+	}
+}
+
+// RedeemCouponRequest replaced ApplyCouponRequest, which required CustomerID and a
+// positive Discount. These exercise the actual validate tags through the same Validator
+// the middleware runs in production, not by asserting on the tag strings themselves.
+//
+// A missing CustomerID matters beyond a bare validation gap: CouponService.Redeem only
+// bumps the per-customer usage counter when customerID != "", so a redemption that skips
+// this check would count against the coupon's global limit while silently never counting
+// against usage_per_user — exactly how a customer slips past that limit.
+func TestRedeemCouponRequest_Validation(t *testing.T) {
+	v := validator.New()
+	ctx := context.Background()
+
+	t.Run("a valid request passes", func(t *testing.T) {
+		req := validRedeemCouponRequest()
+		require.NoError(t, v.Validate(ctx, &req))
+	})
+
+	t.Run("an empty customer id is rejected", func(t *testing.T) {
+		req := validRedeemCouponRequest()
+		req.CustomerID = ""
+		require.Error(t, v.Validate(ctx, &req),
+			"an empty CustomerID would let a redemption skip the per-customer usage counter")
+	})
+
+	t.Run("a zero discount is rejected", func(t *testing.T) {
+		req := validRedeemCouponRequest()
+		req.Discount = 0
+		require.Error(t, v.Validate(ctx, &req))
+	})
 }
