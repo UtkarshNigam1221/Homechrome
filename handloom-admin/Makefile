@@ -33,7 +33,7 @@ BINARY_PATH=./bin/$(BINARY_NAME)
 # Lambda build parameters
 LAMBDA_BUILD_FLAGS=CGO_ENABLED=0 GOOS=linux GOARCH=arm64
 LAMBDA_OUT_DIR=./bin/lambda
-LAMBDA_SERVICES=auth user catalog order pricing inventory analytics notification coupon asset report audit \
+LAMBDA_SERVICES=auth user catalog order utm pricing inventory analytics notification coupon asset report audit \
 	store-auth store-catalog store-cart store-checkout store-orders store-tracking store-profile store-events store-webhooks \
 	worker-metrics-consumer \
 	migrator
