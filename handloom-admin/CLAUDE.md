@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Handloom Admin is a Go serverless backend for the Homechrome handloom e-commerce platform. It powers both the admin dashboard and the B2C customer storefront. It runs as 22 Lambda services in dev (12 admin + 9 store + 1 migrator), and a single monolithic server locally (port 8081). Go module: `github.com/handloom/admin`, Go 1.25.
+Handloom Admin is a Go serverless backend for the Homechrome handloom e-commerce platform. It powers both the admin dashboard and the B2C customer storefront. It runs as 23 Lambda services in dev (13 admin + 9 store + 1 migrator), and a single monolithic server locally (port 8081). Go module: `github.com/handloom/admin`, Go 1.25.
 
 ## Common Commands
 
@@ -84,7 +84,7 @@ Hybrid storage: DynamoDB (5 tables) for core/transactional data + Neon PostgreSQ
 All using PK/SK composite keys with GSIs:
 | Table | Env Name | Content |
 |-------|----------|---------|
-| `handloom-core-{env}` | `DYNAMODB_CORE_TABLE` | Users, Pricing Rules, Coupons |
+| `handloom-core-{env}` | `DYNAMODB_CORE_TABLE` | Users, Pricing Rules, Coupons, UTM Links |
 | `handloom-orders-{env}` | `DYNAMODB_ORDERS_TABLE` | Orders, Customers, PriceQuotes |
 | `handloom-audit-{env}` | `DYNAMODB_AUDIT_TABLE` | Audit logs (TTL-based expiry) |
 | `handloom-notifications-{env}` | `DYNAMODB_NOTIFICATIONS_TABLE` | Notifications |
@@ -155,7 +155,7 @@ Mounted at `/api/v1/store/*` in the monolith (`cmd/api/main.go`):
 - To add a migration: create `migrations/NNN_description.sql`, then `make cdk-deploy-dev`
 
 ### Infrastructure (infra/)
-AWS CDK in Go. Stacks per environment: LogsStack, DatabaseStack, StorageStack, EmbedderStack, MetricsStack, APIStack. All Lambdas use ARM64/128MB(dev)/256MB(prod)/provided.al2023. Lambda count: 22 in dev (12 admin + 9 store + 1 migrator).
+AWS CDK in Go. Stacks per environment: LogsStack, DatabaseStack, StorageStack, EmbedderStack, MetricsStack, APIStack. All Lambdas use ARM64/128MB(dev)/256MB(prod)/provided.al2023. Lambda count: 23 in dev (13 admin + 9 store + 1 migrator).
 
 Gateway credentials are propagated from the deploy-time shell environment to every Lambda's `Environment.Variables` via `gatewayEnvKeys` in `infra/stacks/api.go` (PhonePe + MSG91 + Shiprocket keys). Empty values fall through to each gateway's DevClient. `make cdk-deploy-{dev,prod}` sources `.env.{dev,prod}` first; the GitHub workflow injects `MSG91_AUTH_KEY` (secret) + `MSG91_OTP_TEMPLATE_ID` (variable) at the step level.
 

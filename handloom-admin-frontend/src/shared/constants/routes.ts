@@ -86,6 +86,11 @@ export const ROUTES = {
     ORDERS: '/admin/reports/orders',
   },
 
+  UTM_LINKS: {
+    LIST: '/admin/utm-links',
+    DETAIL: (id: string) => `/admin/utm-links/${id}`,
+  },
+
   SETTINGS: {
     USERS: {
       LIST: '/admin/users',

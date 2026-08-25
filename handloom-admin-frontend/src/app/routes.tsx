@@ -43,6 +43,9 @@ const PricingRules = withSuspense(
 const Coupons = withSuspense(
   lazy(() => import('@/features/coupons').then((m) => ({ default: m.CouponsPage })))
 );
+const UTMLinks = withSuspense(
+  lazy(() => import('@/features/utm').then((m) => ({ default: m.UTMLinksPage })))
+);
 const Inventory = withSuspense(
   lazy(() => import('@/features/inventory').then((m) => ({ default: m.InventoryPage })))
 );
@@ -172,6 +175,7 @@ export function AppRoutes() {
           {/* Marketing */}
           <Route path="/pricing" element={<PricingRules />} />
           <Route path="/coupons" element={<Coupons />} />
+          <Route path="/utm-links" element={<UTMLinks />} />
 
           {/* Reports */}
           <Route path="/reports" element={<Reports />} />

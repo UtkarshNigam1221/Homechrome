@@ -158,6 +158,11 @@ func ProvideCouponRepository(client *dynamodb.Client) domain.CouponRepository {
 	return dynamodb.NewCouponRepository(client)
 }
 
+// ProvideUTMLinkRepository creates a new UTMLinkRepository
+func ProvideUTMLinkRepository(client *dynamodb.Client) domain.UTMLinkRepository {
+	return dynamodb.NewUTMLinkRepository(client)
+}
+
 // ProvideReportRepository creates a new ReportRepository
 func ProvideReportRepository(client *dynamodb.Client) domain.ReportRepository {
 	return dynamodb.NewReportRepository(client)
@@ -184,6 +189,7 @@ var RepositorySet = wire.NewSet(
 	ProvidePriceQuoteRepository,
 	ProvideNotificationRepository,
 	ProvideCouponRepository,
+	ProvideUTMLinkRepository,
 	ProvideReportRepository,
 	ProvideAuditRepository,
 )
@@ -306,6 +312,13 @@ func ProvideCouponService(
 	return service.NewCouponService(couponRepo)
 }
 
+// ProvideUTMLinkService creates a new UTMLinkService
+func ProvideUTMLinkService(
+	linkRepo domain.UTMLinkRepository,
+) *service.UTMLinkService {
+	return service.NewUTMLinkService(linkRepo)
+}
+
 // ProvideAssetService creates a new AssetService
 func ProvideAssetService(
 	s3Client *s3client.S3Client,
@@ -353,6 +366,7 @@ var ServiceSet = wire.NewSet(
 	ProvidePricingService,
 	ProvideNotificationService,
 	ProvideCouponService,
+	ProvideUTMLinkService,
 	ProvideAssetService,
 	ProvideReportService,
 	ProvideAuditService,
@@ -450,6 +464,14 @@ func ProvideCouponHandler(
 	return handler.NewCouponHandler(couponService, validation)
 }
 
+// ProvideUTMLinkHandler creates a new UTMLinkHandler
+func ProvideUTMLinkHandler(
+	linkService *service.UTMLinkService,
+	validation *middleware.Validation,
+) *handler.UTMLinkHandler {
+	return handler.NewUTMLinkHandler(linkService, validation)
+}
+
 // ProvideAssetHandler creates a new AssetHandler
 func ProvideAssetHandler(
 	assetService *service.AssetService,
@@ -486,6 +508,7 @@ var HandlerSet = wire.NewSet(
 
 	ProvideNotificationHandler,
 	ProvideCouponHandler,
+	ProvideUTMLinkHandler,
 	ProvideAssetHandler,
 	ProvideReportHandler,
 	ProvideAuditHandler,

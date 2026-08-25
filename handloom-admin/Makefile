@@ -33,13 +33,13 @@ BINARY_PATH=./bin/$(BINARY_NAME)
 # Lambda build parameters
 LAMBDA_BUILD_FLAGS=CGO_ENABLED=0 GOOS=linux GOARCH=arm64
 LAMBDA_OUT_DIR=./bin/lambda
-LAMBDA_SERVICES=auth user catalog order pricing inventory analytics notification coupon asset report audit \
+LAMBDA_SERVICES=auth user catalog order utm pricing inventory analytics notification coupon asset report audit \
 	store-auth store-catalog store-cart store-checkout store-orders store-tracking store-profile store-events store-webhooks \
 	worker-metrics-consumer \
 	migrator
 
 # Active services for deployment
-LAMBDA_SERVICES_ACTIVE=auth user catalog asset order store-auth store-catalog store-cart store-checkout store-orders store-tracking store-profile store-events store-webhooks migrator worker-metrics-consumer worker-embedding-backfill
+LAMBDA_SERVICES_ACTIVE=auth user catalog asset order utm store-auth store-catalog store-cart store-checkout store-orders store-tracking store-profile store-events store-webhooks migrator worker-metrics-consumer worker-embedding-backfill
 
 # Main package path
 MAIN_PKG=./cmd/api
@@ -137,6 +137,7 @@ generate-mocks:
 	mockgen -source=internal/domain/store_service.go -destination=internal/mocks/store_service_mock.go -package=mocks
 	mockgen -source=internal/domain/store_repository.go -destination=internal/mocks/store_repository_mock.go -package=mocks
 	mockgen -source=internal/domain/refund.go -destination=internal/mocks/refund_mock.go -package=mocks
+	mockgen -source=internal/domain/utm_link.go -destination=internal/mocks/utm_link_mock.go -package=mocks
 
 ## Run linter
 lint:
