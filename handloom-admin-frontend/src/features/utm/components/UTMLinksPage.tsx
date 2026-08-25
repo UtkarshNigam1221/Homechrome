@@ -149,7 +149,16 @@ export function UTMLinksPage() {
                     </p>
                   </TableCell>
                   <TableCell>
-                    <p className="font-mono text-xs break-all max-w-xs text-gray-600">{link.url}</p>
+                    {/* TableCell forces whitespace-nowrap, so the URL cannot wrap.
+                        Cap the width and ellipsize instead, or a ~90 char link
+                        pushes the Actions column off the row. Full value on hover
+                        and via Copy. */}
+                    <span
+                      className="block max-w-[22rem] truncate font-mono text-xs text-gray-600"
+                      title={link.url}
+                    >
+                      {link.url}
+                    </span>
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center justify-end gap-1">
