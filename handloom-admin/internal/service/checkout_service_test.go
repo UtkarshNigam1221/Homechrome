@@ -289,3 +289,79 @@ func TestCheckoutService_NoCouponIsUnchanged(t *testing.T) {
 	require.Equal(t, result.Order.Subtotal, result.Order.TotalAmount)
 	require.Empty(t, result.CouponNotice)
 }
+
+// If allocateDiscount cannot honor the discount, the checkout must abort and release
+// whatever stock it already reserved. Writing the order anyway would leave lines that
+// disagree with the total — permanently un-refundable, since every later refund reads
+// the mismatch and rejects itself. Recipe: a cart subtotal the coupon prices against,
+// but zero-priced lines, so allocateDiscount has no line value to carry the discount.
+func TestCheckoutService_AllocationFailureReleasesStockAndAborts(t *testing.T) {
+	ctrl := gomock.NewController(t)
+
+	cartSvc := mocks.NewMockCartService(ctrl)
+	orderRepo := mocks.NewMockOrderRepository(ctrl)
+	paymentSvc := mocks.NewMockPaymentService(ctrl)
+	inventoryRepo := mocks.NewMockInventoryRepository(ctrl)
+	customerRepo := mocks.NewMockCustomerRepository(ctrl)
+	couponSvc := mocks.NewMockCouponService(ctrl)
+
+	customerRepo.EXPECT().GetByID(gomock.Any(), "cust_1").Return(&domain.Customer{
+		ID: "cust_1", FirstName: "Test", LastName: "Buyer",
+		Addresses: []domain.Address{{ID: "addr_1"}},
+	}, nil)
+
+	cartSvc.EXPECT().GetCart(gomock.Any(), "cust_1", false).Return(&domain.CartWithItems{
+		Cart:  &domain.Cart{Subtotal: 300000},
+		Items: []domain.CartItem{{ProductID: "p1", Quantity: 1, UnitPrice: 0, TotalPrice: 0}},
+	}, nil)
+
+	couponSvc.EXPECT().Validate(gomock.Any(), "FESTIVE20", gomock.Any()).Return(&domain.CouponValidationResult{
+		Valid: true, CouponID: "c1", Code: "FESTIVE20", DiscountAmount: 30000,
+	}, nil)
+
+	var reservedOrderID, releasedOrderID string
+	inventoryRepo.EXPECT().ReserveOrderStock(gomock.Any(), gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, orderID string, _ map[string]int) error {
+			reservedOrderID = orderID
+			return nil
+		})
+	inventoryRepo.EXPECT().ReleaseOrderStock(gomock.Any(), gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, orderID string, _ map[string]int) error {
+			releasedOrderID = orderID
+			return nil
+		})
+	// No EXPECT on orderRepo.Create or paymentSvc.InitiatePayment: gomock fails the
+	// test if either is called — an allocation failure must never reach them.
+
+	svc := NewCheckoutService(cartSvc, orderRepo, paymentSvc, inventoryRepo, customerRepo, couponSvc)
+
+	result, err := svc.Initiate(context.Background(), "cust_1", domain.CheckoutRequest{
+		ShippingAddressID: "addr_1", CouponCode: ptr("FESTIVE20"),
+	})
+
+	require.Error(t, err, "an allocation failure must abort the checkout, not price around it")
+	require.Nil(t, result)
+	require.NotEmpty(t, releasedOrderID, "the reservation must be released before aborting")
+	require.Equal(t, reservedOrderID, releasedOrderID, "release must free the same reservation that was taken")
+}
+
+// The service method itself must read the cart server-side, same as Initiate — there
+// is no client-supplied total anywhere to accidentally start trusting.
+func TestCheckoutService_PreviewCoupon(t *testing.T) {
+	f := newCheckoutFixture(t)
+	f.couponSvc.EXPECT().
+		Validate(gomock.Any(), "FESTIVE20", gomock.Any()).
+		DoAndReturn(func(_ context.Context, _ string, cc domain.CouponContext) (*domain.CouponValidationResult, error) {
+			require.Equal(t, int64(300000), cc.CartTotal)
+			require.Equal(t, "cust_1", cc.CustomerID)
+			require.False(t, cc.HasAutomaticOffer)
+			return &domain.CouponValidationResult{
+				Valid: true, CouponID: "c1", Code: "FESTIVE20", DiscountAmount: 30000,
+			}, nil
+		})
+
+	got, err := f.svc.PreviewCoupon(context.Background(), "cust_1", "FESTIVE20")
+	require.NoError(t, err)
+	require.True(t, got.Valid)
+	require.Equal(t, int64(30000), got.DiscountAmount)
+}
