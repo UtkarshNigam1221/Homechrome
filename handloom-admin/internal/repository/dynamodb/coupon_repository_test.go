@@ -120,3 +120,77 @@ func TestCouponRepository_Update(t *testing.T) {
 		require.Equal(t, "Renamed", found.Name)
 	})
 }
+
+func TestCouponRepository_List(t *testing.T) {
+	wrapped, raw := testWrappedClient(t)
+	skipIfNoLocal(t, raw)
+	setupTestTable(t, raw, testCouponsTable)
+
+	repo := NewCouponRepository(wrapped)
+	ctx := context.Background()
+
+	active := newTestCoupon("coupon_l1", "LISTONE")
+	inactive := newTestCoupon("coupon_l2", "LISTTWO")
+	inactive.Status = domain.CouponStatusInactive
+	fixed := newTestCoupon("coupon_l3", "LISTTHREE")
+	fixed.Type = domain.CouponTypeFixed
+
+	// A personal code. It must never appear in the admin listing partition, or a batch
+	// of a thousand would bury the handful of public promos.
+	personal := newTestCoupon("coupon_l4", "PERSONAL1")
+	personal.Audience = domain.AudienceSpecificCustomer
+	personal.CustomerID = "cust_1"
+
+	for _, c := range []*domain.Coupon{active, inactive, fixed, personal} {
+		require.NoError(t, repo.Create(ctx, c))
+	}
+
+	t.Run("returns the public coupons", func(t *testing.T) {
+		res, err := repo.List(ctx, domain.ListCouponsRequest{
+			PaginationRequest: domain.PaginationRequest{Limit: 50},
+		})
+		require.NoError(t, err)
+		require.Len(t, res.Coupons, 3, "the personal code must not be listed")
+	})
+
+	t.Run("filters by status", func(t *testing.T) {
+		status := domain.CouponStatusInactive
+		res, err := repo.List(ctx, domain.ListCouponsRequest{
+			PaginationRequest: domain.PaginationRequest{Limit: 50},
+			Status:            &status,
+		})
+		require.NoError(t, err)
+		require.Len(t, res.Coupons, 1)
+		require.Equal(t, "coupon_l2", res.Coupons[0].ID)
+	})
+
+	t.Run("filters by type", func(t *testing.T) {
+		ct := domain.CouponTypeFixed
+		res, err := repo.List(ctx, domain.ListCouponsRequest{
+			PaginationRequest: domain.PaginationRequest{Limit: 50},
+			Type:              &ct,
+		})
+		require.NoError(t, err)
+		require.Len(t, res.Coupons, 1)
+		require.Equal(t, "coupon_l3", res.Coupons[0].ID)
+	})
+
+	t.Run("searches by code and name", func(t *testing.T) {
+		res, err := repo.List(ctx, domain.ListCouponsRequest{
+			PaginationRequest: domain.PaginationRequest{Limit: 50},
+			Search:            "listthree",
+		})
+		require.NoError(t, err)
+		require.Len(t, res.Coupons, 1)
+		require.Equal(t, "coupon_l3", res.Coupons[0].ID)
+	})
+
+	t.Run("paginates", func(t *testing.T) {
+		res, err := repo.List(ctx, domain.ListCouponsRequest{
+			PaginationRequest: domain.PaginationRequest{Limit: 2},
+		})
+		require.NoError(t, err)
+		require.Len(t, res.Coupons, 2)
+		require.True(t, res.Pagination.HasMore)
+	})
+}

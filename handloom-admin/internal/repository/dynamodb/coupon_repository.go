@@ -2,6 +2,7 @@ package dynamodb
 
 import (
 	"context"
+	"sort"
 	"strings"
 	"time"
 
@@ -188,12 +189,55 @@ func (r *CouponRepository) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
-// List lists coupons with filters
+// List reads the public listing partition. Personal codes carry a different GSI1PK, so
+// they are absent by construction rather than by filter.
+//
+// Reads the partition whole because the filters and sort below are applied in Go — a
+// DynamoDB cursor would only order the page it returned, not the whole list. Correct
+// while public coupons number in the dozens; past a few hundred, status belongs in the
+// partition key.
 func (r *CouponRepository) List(ctx context.Context, req domain.ListCouponsRequest) (*domain.ListCouponsResponse, error) {
-	// TODO: Implement with DynamoDB scan/query
+	all, err := QueryAll[domain.Coupon](ctx, r.client.db, &dynamodb.QueryInput{
+		TableName:              aws.String(r.client.couponsTable),
+		IndexName:              aws.String("GSI1"),
+		KeyConditionExpression: aws.String("GSI1PK = :pk"),
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			exprPK: &types.AttributeValueMemberS{Value: "COUPON#ALL"},
+		},
+	}, "Failed to list coupons")
+	if err != nil {
+		return nil, err
+	}
+
+	filtered := all[:0]
+	for _, c := range all {
+		if req.Status != nil && c.Status != *req.Status {
+			continue
+		}
+		if req.Type != nil && c.Type != *req.Type {
+			continue
+		}
+		if req.IsActive != nil && (c.Status == domain.CouponStatusActive) != *req.IsActive {
+			continue
+		}
+		if req.Search != "" &&
+			!containsIgnoreCase(c.Code, req.Search) &&
+			!containsIgnoreCase(c.Name, req.Search) {
+			continue
+		}
+		filtered = append(filtered, c)
+	}
+
+	// Newest first, matching every other admin list.
+	sort.Slice(filtered, func(i, j int) bool {
+		return filtered[i].CreatedAt.After(filtered[j].CreatedAt)
+	})
+
+	page, pagination := InMemoryPaginate(filtered, req.PaginationRequest)
+
 	return &domain.ListCouponsResponse{
-		Coupons:    []*domain.Coupon{},
-		Pagination: domain.PaginationResponse{},
+		Coupons:    page,
+		Pagination: pagination,
 	}, nil
 }
 
