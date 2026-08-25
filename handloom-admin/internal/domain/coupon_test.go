@@ -1,10 +1,13 @@
 package domain
 
 import (
+	"context"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/handloom/admin/internal/validator"
 )
 
 // GSI1PK decides which index partition a coupon lands in, and that decision is what
@@ -78,4 +81,60 @@ func TestCouponUseCounter_SetKeys(t *testing.T) {
 
 	require.Equal(t, "CUSTOMER#cust_1", u.PK)
 	require.Equal(t, "USE#coupon_abc", u.SK)
+}
+
+// validCreateCouponRequest returns a request that satisfies every field's tag on its
+// own, so each subtest below only has to vary Audience/CustomerID.
+func validCreateCouponRequest() CreateCouponRequest {
+	return CreateCouponRequest{
+		Code:      "FESTIVE20",
+		Name:      "Festive 20",
+		Type:      CouponTypePercentage,
+		Value:     2000,
+		Audience:  AudienceAll,
+		ValidFrom: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+	}
+}
+
+// These exercise the actual validate tags through the same Validator the middleware
+// runs in production (internal/validator.Service wrapping go-playground/validator),
+// rather than asserting on the tag strings themselves.
+func TestCreateCouponRequest_AudienceValidation(t *testing.T) {
+	v := validator.New()
+	ctx := context.Background()
+
+	t.Run("a valid audience passes", func(t *testing.T) {
+		req := validCreateCouponRequest()
+		require.NoError(t, v.Validate(ctx, &req))
+	})
+
+	t.Run("an unknown audience string is rejected", func(t *testing.T) {
+		req := validCreateCouponRequest()
+		req.Audience = CouponAudience("BANANA")
+		require.Error(t, v.Validate(ctx, &req),
+			"a typo'd audience must not fail open to ALL")
+	})
+
+	t.Run("SPECIFIC_CUSTOMER with an empty CustomerID is rejected", func(t *testing.T) {
+		req := validCreateCouponRequest()
+		req.Audience = AudienceSpecificCustomer
+		req.CustomerID = ""
+		require.Error(t, v.Validate(ctx, &req),
+			"otherwise SetKeys would produce an unreachable GSI1PK of just \"CUSTOMER_COUPON#\"")
+	})
+
+	t.Run("SPECIFIC_CUSTOMER with a customer id passes", func(t *testing.T) {
+		req := validCreateCouponRequest()
+		req.Audience = AudienceSpecificCustomer
+		req.CustomerID = "cust_9"
+		require.NoError(t, v.Validate(ctx, &req))
+	})
+
+	t.Run("a non-specific audience with an empty CustomerID passes", func(t *testing.T) {
+		req := validCreateCouponRequest()
+		req.Audience = AudienceReturning
+		req.CustomerID = ""
+		require.NoError(t, v.Validate(ctx, &req),
+			"CustomerID must stay optional for every audience except SPECIFIC_CUSTOMER")
+	})
 }

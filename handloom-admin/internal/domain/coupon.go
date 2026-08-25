@@ -264,8 +264,8 @@ type CreateCouponRequest struct {
 	MaxDiscount        int64          `json:"max_discount,omitempty"`
 	UsageLimit         int            `json:"usage_limit"`
 	UsagePerUser       int            `json:"usage_per_user"`
-	Audience           CouponAudience `json:"audience" validate:"required"`
-	CustomerID         string         `json:"customer_id,omitempty"`
+	Audience           CouponAudience `json:"audience" validate:"required,oneof=ALL FIRST_ORDER RETURNING SPECIFIC_CUSTOMER"`
+	CustomerID         string         `json:"customer_id,omitempty" validate:"required_if=Audience SPECIFIC_CUSTOMER"`
 	CombinesWithOffers bool           `json:"combines_with_offers"`
 	ValidFrom          time.Time      `json:"valid_from" validate:"required"`
 	ValidUntil         *time.Time     `json:"valid_until,omitempty"` // nil = open-ended
