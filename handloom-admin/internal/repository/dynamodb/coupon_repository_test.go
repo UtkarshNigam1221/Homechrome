@@ -122,6 +122,54 @@ func TestCouponRepository_Update(t *testing.T) {
 	})
 }
 
+// Deleting a coupon must free its code. The pointer item is what Create's
+// attribute_not_exists(PK) tests, so a Delete that leaves it behind burns the code
+// permanently — "Coupon code already exists" for a coupon that does not.
+func TestCouponRepository_Delete(t *testing.T) {
+	wrapped, raw := testWrappedClient(t)
+	skipIfNoLocal(t, raw)
+	setupTestTable(t, raw, testCouponsTable)
+
+	repo := NewCouponRepository(wrapped)
+	ctx := context.Background()
+
+	t.Run("frees the code for a new coupon", func(t *testing.T) {
+		require.NoError(t, repo.Create(ctx, newTestCoupon("coupon_d1", "REUSEME")))
+		require.NoError(t, repo.Delete(ctx, "coupon_d1"))
+
+		_, err := repo.GetByCode(ctx, "REUSEME")
+		require.Error(t, err, "the pointer must go with the coupon")
+
+		require.NoError(t, repo.Create(ctx, newTestCoupon("coupon_d2", "REUSEME")),
+			"the same code must be usable again by a different coupon")
+
+		found, err := repo.GetByCode(ctx, "REUSEME")
+		require.NoError(t, err)
+		require.Equal(t, "coupon_d2", found.ID, "the code must resolve to the new coupon")
+	})
+
+	t.Run("reports an unknown id as not found", func(t *testing.T) {
+		err := repo.Delete(ctx, "coupon_nope")
+		require.Error(t, err)
+
+		appErr, ok := errors.AsAppError(err)
+		require.True(t, ok)
+		require.Equal(t, errors.ErrCodeNotFound, appErr.Code)
+	})
+
+	// Deleting one coupon must not disturb another's pointer, which the transaction's
+	// key set decides — a wrong PK here would silently unhook a live code.
+	t.Run("leaves another coupon's code alone", func(t *testing.T) {
+		require.NoError(t, repo.Create(ctx, newTestCoupon("coupon_keep", "KEEPME")))
+		require.NoError(t, repo.Create(ctx, newTestCoupon("coupon_drop", "DROPME")))
+		require.NoError(t, repo.Delete(ctx, "coupon_drop"))
+
+		found, err := repo.GetByCode(ctx, "KEEPME")
+		require.NoError(t, err)
+		require.Equal(t, "coupon_keep", found.ID)
+	})
+}
+
 func TestCouponRepository_List(t *testing.T) {
 	wrapped, raw := testWrappedClient(t)
 	skipIfNoLocal(t, raw)

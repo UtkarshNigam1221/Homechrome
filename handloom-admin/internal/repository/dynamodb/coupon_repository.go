@@ -169,18 +169,46 @@ func (r *CouponRepository) Update(ctx context.Context, coupon *domain.Coupon) er
 	return nil
 }
 
-// Delete deletes a coupon
+// Delete removes the coupon and its code pointer in one transaction. Removing only
+// COUPON#<id> leaves CODE#<code> behind, and Create writes that pointer under
+// attribute_not_exists(PK) — so the code would be refused forever, for a coupon that no
+// longer exists.
+//
+// The code is read here rather than passed down from the service: the pointer item is
+// this repository's own invention, so nothing above it should have to know it needs
+// cleaning up. GetByID already returns NotFound, which keeps Delete's error contract.
 func (r *CouponRepository) Delete(ctx context.Context, id string) error {
-	_, err := r.client.db.DeleteItem(ctx, &dynamodb.DeleteItemInput{
-		TableName: aws.String(r.client.couponsTable),
-		Key: map[string]types.AttributeValue{
-			"PK": &types.AttributeValueMemberS{Value: "COUPON#" + id},
-			"SK": &types.AttributeValueMemberS{Value: skMetadata},
-		},
-		ConditionExpression: aws.String("attribute_exists(PK)"),
-	})
+	coupon, err := r.GetByID(ctx, id)
 	if err != nil {
-		if isConditionalCheckFailed(err) {
+		return err
+	}
+
+	if _, err = r.client.db.TransactWriteItems(ctx, &dynamodb.TransactWriteItemsInput{
+		TransactItems: []types.TransactWriteItem{
+			{Delete: &types.Delete{
+				TableName: aws.String(r.client.couponsTable),
+				Key: map[string]types.AttributeValue{
+					"PK": &types.AttributeValueMemberS{Value: "COUPON#" + id},
+					"SK": &types.AttributeValueMemberS{Value: skMetadata},
+				},
+				ConditionExpression: aws.String("attribute_exists(PK)"),
+			}},
+			{Delete: &types.Delete{
+				TableName: aws.String(r.client.couponsTable),
+				Key: map[string]types.AttributeValue{
+					"PK": &types.AttributeValueMemberS{Value: "CODE#" + strings.ToUpper(coupon.Code)},
+					"SK": &types.AttributeValueMemberS{Value: skMetadata},
+				},
+				// An absent pointer is fine — nothing to clean up. One pointing at a
+				// different coupon is not ours to remove.
+				ConditionExpression: aws.String("attribute_not_exists(PK) OR coupon_id = :id"),
+				ExpressionAttributeValues: map[string]types.AttributeValue{
+					":id": &types.AttributeValueMemberS{Value: id},
+				},
+			}},
+		},
+	}); err != nil {
+		if isTransactionCanceled(err) {
 			return errors.NotFound("Coupon")
 		}
 		return errors.Wrap(err, "Failed to delete coupon")
