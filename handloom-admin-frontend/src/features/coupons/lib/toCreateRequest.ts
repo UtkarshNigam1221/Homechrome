@@ -153,7 +153,9 @@ export function couponToFormValues(coupon: Coupon): CouponFormValues {
     customerId: coupon.customer_id ?? '',
     combinesWithOffers: coupon.combines_with_offers,
     validFrom: instantToDateOnly(coupon.valid_from),
-    noEndDate: coupon.valid_until === null,
+    // == null, not === null: an open-ended coupon's valid_until key is entirely
+    // absent on the wire (Go's omitempty drops a nil pointer), not present-as-null.
+    noEndDate: !coupon.valid_until,
     expiryDate: coupon.valid_until ? instantToDateOnly(coupon.valid_until) : '',
     status: coupon.status,
   };

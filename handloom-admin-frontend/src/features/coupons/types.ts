@@ -24,7 +24,7 @@ export interface Coupon {
   customer_id?: string;
   combines_with_offers: boolean;
   valid_from: string;
-  valid_until: string | null; // null = open-ended
+  valid_until?: string | null; // absent OR null = open-ended
   status: CouponStatus;
   created_at: string;
   updated_at: string;
@@ -45,7 +45,7 @@ export interface CreateCouponRequest {
   customer_id?: string;
   combines_with_offers: boolean;
   valid_from: string;
-  valid_until: string | null; // null = open-ended
+  valid_until?: string | null; // absent OR null = open-ended
 }
 
 // Mirrors domain.UpdateCouponRequest. Narrower than CreateCouponRequest on purpose:

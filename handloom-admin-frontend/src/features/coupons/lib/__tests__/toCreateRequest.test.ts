@@ -281,3 +281,37 @@ describe('round-trip stability', () => {
     expect(current.valid_until).toBeNull();
   });
 });
+
+// Go's `omitempty` on a nil *time.Time drops the key rather than serialising null, so
+// an open-ended coupon's real API response has no valid_until property at all.
+describe('a real API response for an open-ended coupon (valid_until key absent)', () => {
+  const openEndedFromApi: Coupon = {
+    id: 'coupon_3',
+    code: 'FOREVER10',
+    name: 'Forever 10',
+    type: 'PERCENTAGE',
+    value: 1000,
+    min_order_value: 0,
+    usage_limit: 0,
+    usage_per_user: 0,
+    usage_count: 0,
+    audience: 'ALL',
+    combines_with_offers: false,
+    valid_from: '2026-01-01T00:00:00.000Z',
+    status: 'ACTIVE',
+    created_at: '2026-01-01T00:00:00.000Z',
+    updated_at: '2026-01-01T00:00:00.000Z',
+    // valid_until has no entry — not `undefined`, simply not a key on this object —
+    // which is what JSON.parse of the real Go response produces.
+  };
+
+  it('has no valid_until key at all, matching the wire shape', () => {
+    expect('valid_until' in openEndedFromApi).toBe(false);
+  });
+
+  it('couponToFormValues reads the missing key as open-ended', () => {
+    const form = couponToFormValues(openEndedFromApi);
+    expect(form.noEndDate).toBe(true);
+    expect(form.expiryDate).toBe('');
+  });
+});

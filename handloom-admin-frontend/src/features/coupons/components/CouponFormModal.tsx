@@ -120,6 +120,7 @@ function CustomerPicker({
         onChange={(e) => onChange(e.target.value)}
         error={error}
         disabled={disabled}
+        hint={disabled ? "Can't be changed after creation" : undefined}
         required
       />
     </div>
