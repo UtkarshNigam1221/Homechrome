@@ -34,7 +34,6 @@ func (h *OrderHandler) Routes() chi.Router {
 	r := chi.NewRouter()
 
 	r.Get("/", h.List)
-	r.With(middleware.ValidateJSONTyped[domain.CreateOrderRequest](h.validation)).Post("/", h.Create)
 	r.Get("/{id}", h.GetByID)
 	r.Get("/{id}/payment-status", h.CheckPaymentStatus)
 	r.With(middleware.ValidateJSONTyped[UpdateOrderStatusRequest](h.validation)).Patch("/{id}/status", h.UpdateStatus)
@@ -91,21 +90,6 @@ func (h *OrderHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response.JSON(w, http.StatusOK, result)
-}
-
-// Create handles creating a new order
-func (h *OrderHandler) Create(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	req := middleware.MustGetValidatedBody[domain.CreateOrderRequest](ctx)
-
-	createdBy := getUserIDFromContext(ctx)
-	order, err := h.orderService.Create(ctx, *req, createdBy)
-	if err != nil {
-		response.Error(w, err)
-		return
-	}
-
-	response.JSON(w, http.StatusCreated, order)
 }
 
 // GetByID handles getting an order by ID

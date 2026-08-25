@@ -119,21 +119,6 @@ export interface ProviderPaymentStatus {
   transaction_id?: string;
 }
 
-export interface CreateOrderRequest {
-  customer_id: string;
-  items: {
-    product_id: string;
-    quantity: number;
-    price_quote_id?: string;
-    custom_dimensions?: Dimensions;
-    attributes?: Record<string, unknown>;
-  }[];
-  shipping_address: Address;
-  billing_address?: Address;
-  notes?: string;
-  coupon_code?: string;
-}
-
 export type RefundStatus = 'PENDING' | 'COMPLETED' | 'FAILED';
 
 export type RefundReason =
