@@ -118,7 +118,9 @@ func (s *CouponService) Update(ctx context.Context, id string, req domain.Update
 		coupon.ValidUntil = req.ValidUntil
 	}
 	// A nil ValidUntil in a PATCH body is indistinguishable from an omitted one, so
-	// "make this open-ended" needs its own signal.
+	// "make this open-ended" needs its own signal. Checked after ValidUntil, so
+	// ClearValidUntil always wins when both are set in the same request — that
+	// precedence is the contract; do not reorder these two branches.
 	if req.ClearValidUntil {
 		coupon.ValidUntil = nil
 	}

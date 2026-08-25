@@ -270,3 +270,119 @@ func TestCouponService_Redeem(t *testing.T) {
 		require.False(t, claimed)
 	})
 }
+
+func TestCouponService_Update_ClearValidUntilPrecedence(t *testing.T) {
+	ctx := context.Background()
+
+	// Pins the contract stated in the comment above the ClearValidUntil branch in
+	// coupon_service.go: when a PATCH sets both fields, ClearValidUntil wins because it
+	// is checked second. Nothing else in this diff documents that ordering except a test.
+	t.Run("ClearValidUntil wins when both are set in the same request", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		repo := mocks.NewMockCouponRepository(ctrl)
+		existing := activeCoupon()
+		repo.EXPECT().GetByID(gomock.Any(), "coupon_1").Return(existing, nil)
+		repo.EXPECT().Update(gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, c *domain.Coupon) error {
+				require.Nil(t, c.ValidUntil, "ClearValidUntil must win over a same-request ValidUntil")
+				return nil
+			})
+
+		newUntil := time.Now().Add(48 * time.Hour)
+		s := NewCouponService(repo)
+		coupon, err := s.Update(ctx, "coupon_1", domain.UpdateCouponRequest{
+			ValidUntil:      &newUntil,
+			ClearValidUntil: true,
+		}, "admin_1")
+
+		require.NoError(t, err)
+		require.Nil(t, coupon.ValidUntil)
+	})
+
+	t.Run("ClearValidUntil alone makes a dated coupon open-ended", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		repo := mocks.NewMockCouponRepository(ctrl)
+		existing := activeCoupon() // has a non-nil ValidUntil
+		repo.EXPECT().GetByID(gomock.Any(), "coupon_1").Return(existing, nil)
+		repo.EXPECT().Update(gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, c *domain.Coupon) error {
+				require.Nil(t, c.ValidUntil)
+				return nil
+			})
+
+		s := NewCouponService(repo)
+		coupon, err := s.Update(ctx, "coupon_1", domain.UpdateCouponRequest{
+			ClearValidUntil: true,
+		}, "admin_1")
+
+		require.NoError(t, err)
+		require.Nil(t, coupon.ValidUntil)
+	})
+}
+
+func TestCouponService_Create_FieldMapping(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("maps the new fields and allows an open-ended ValidUntil", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		repo := mocks.NewMockCouponRepository(ctrl)
+		repo.EXPECT().Create(gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, c *domain.Coupon) error {
+				require.Equal(t, "FESTIVE20", c.Code)
+				require.Equal(t, domain.AudienceSpecificCustomer, c.Audience)
+				require.Equal(t, "cust_1", c.CustomerID)
+				require.True(t, c.CombinesWithOffers)
+				require.Nil(t, c.ValidUntil, "a nil ValidUntil must survive Create as open-ended")
+				return nil
+			})
+
+		s := NewCouponService(repo)
+		coupon, err := s.Create(ctx, domain.CreateCouponRequest{
+			Code:               "festive20",
+			Name:               "Festive 20",
+			Type:               domain.CouponTypePercentage,
+			Value:              2000,
+			Audience:           domain.AudienceSpecificCustomer,
+			CustomerID:         "cust_1",
+			CombinesWithOffers: true,
+			ValidFrom:          time.Now(),
+			ValidUntil:         nil,
+		}, "admin_1")
+
+		require.NoError(t, err)
+		require.NotNil(t, coupon)
+	})
+
+	t.Run("rejects a ValidUntil before ValidFrom", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		repo := mocks.NewMockCouponRepository(ctrl)
+		// No Create call expected: the date guard must reject before the repository is touched.
+
+		until := time.Now()
+		from := until.Add(time.Hour)
+		s := NewCouponService(repo)
+		coupon, err := s.Create(ctx, domain.CreateCouponRequest{
+			Code:       "BADDATES",
+			Name:       "Bad Dates",
+			Type:       domain.CouponTypeFixed,
+			Value:      10000,
+			ValidFrom:  from,
+			ValidUntil: &until,
+		}, "admin_1")
+
+		require.Error(t, err)
+		require.Nil(t, coupon)
+	})
+}
+
+func TestCouponService_GetByCode_Uppercases(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	repo := mocks.NewMockCouponRepository(ctrl)
+	repo.EXPECT().GetByCode(gomock.Any(), "FESTIVE20").Return(activeCoupon(), nil)
+
+	s := NewCouponService(repo)
+	coupon, err := s.GetByCode(context.Background(), "festive20")
+
+	require.NoError(t, err)
+	require.Equal(t, "FESTIVE20", coupon.Code)
+}
