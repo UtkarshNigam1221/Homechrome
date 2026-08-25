@@ -261,42 +261,80 @@ func (r *CouponRepository) RecordUsage(ctx context.Context, usage *domain.Coupon
 	return nil
 }
 
-// GetUserUsageCount gets the number of times a user has used a coupon
-func (r *CouponRepository) GetUserUsageCount(ctx context.Context, couponID, customerID string) (int, error) {
-	// Query for usage records matching this coupon and customer
-	result, err := r.client.db.Query(ctx, &dynamodb.QueryInput{
-		TableName:              aws.String(r.client.couponsTable),
-		KeyConditionExpression: aws.String("PK = :pk AND begins_with(SK, :sk)"),
-		FilterExpression:       aws.String("customer_id = :customerID"),
-		ExpressionAttributeValues: map[string]types.AttributeValue{
-			exprPK:        &types.AttributeValueMemberS{Value: "COUPON#" + couponID},
-			exprSK:        &types.AttributeValueMemberS{Value: "USAGE#"},
-			":customerID": &types.AttributeValueMemberS{Value: customerID},
+// IncrementUsage claims one redemption if the coupon has one left. The condition and the
+// increment are one operation, so two simultaneous claims on a last-remaining code cannot
+// both succeed. A condition failure means exhausted — an outcome, not an error.
+func (r *CouponRepository) IncrementUsage(ctx context.Context, couponID string) (bool, error) {
+	_, err := r.client.db.UpdateItem(ctx, &dynamodb.UpdateItemInput{
+		TableName: aws.String(r.client.couponsTable),
+		Key: map[string]types.AttributeValue{
+			"PK": &types.AttributeValueMemberS{Value: "COUPON#" + couponID},
+			"SK": &types.AttributeValueMemberS{Value: skMetadata},
 		},
-		Select: types.SelectCount,
+		UpdateExpression: aws.String("ADD usage_count :one SET updated_at = :now"),
+		// usage_limit 0 means unlimited. attribute_exists guards against claiming a
+		// coupon that has been deleted since validation.
+		ConditionExpression: aws.String(
+			"attribute_exists(PK) AND (usage_limit = :zero OR usage_count < usage_limit)"),
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":one":  &types.AttributeValueMemberN{Value: "1"},
+			":zero": &types.AttributeValueMemberN{Value: "0"},
+			":now":  &types.AttributeValueMemberS{Value: time.Now().Format(time.RFC3339)},
+		},
 	})
 	if err != nil {
-		return 0, errors.Wrap(err, "Failed to get user usage count")
+		if isConditionalCheckFailed(err) {
+			return false, nil
+		}
+		return false, errors.Wrap(err, "Failed to claim a coupon redemption")
+	}
+	return true, nil
+}
+
+// GetCustomerUsage reads one counter. O(1), against the O(redemptions) scan this replaces.
+func (r *CouponRepository) GetCustomerUsage(ctx context.Context, customerID, couponID string) (int, error) {
+	result, err := r.client.db.GetItem(ctx, &dynamodb.GetItemInput{
+		TableName: aws.String(r.client.couponsTable),
+		Key: map[string]types.AttributeValue{
+			"PK": &types.AttributeValueMemberS{Value: "CUSTOMER#" + customerID},
+			"SK": &types.AttributeValueMemberS{Value: "USE#" + couponID},
+		},
+	})
+	if err != nil {
+		return 0, errors.Wrap(err, "Failed to read coupon usage")
+	}
+	if result.Item == nil {
+		return 0, nil // never used is zero, not missing
 	}
 
-	return int(result.Count), nil
+	var counter domain.CouponUseCounter
+	if err := attributevalue.UnmarshalMap(result.Item, &counter); err != nil {
+		return 0, errors.Internal("Failed to unmarshal coupon usage counter")
+	}
+	return counter.Count, nil
 }
 
-// IncrementUsage atomically claims one redemption.
-// TODO(task-5): replace with the real conditional-update implementation.
-func (r *CouponRepository) IncrementUsage(ctx context.Context, couponID string) (bool, error) {
-	return false, nil
-}
-
-// GetCustomerUsage returns how many times this customer has redeemed this coupon.
-// TODO(task-5): replace with the real implementation.
-func (r *CouponRepository) GetCustomerUsage(ctx context.Context, customerID, couponID string) (int, error) {
-	return 0, nil
-}
-
-// IncrementCustomerUsage bumps this customer's count for this coupon.
-// TODO(task-5): replace with the real implementation.
+// IncrementCustomerUsage bumps the counter, creating it on first use.
 func (r *CouponRepository) IncrementCustomerUsage(ctx context.Context, customerID, couponID string) error {
+	_, err := r.client.db.UpdateItem(ctx, &dynamodb.UpdateItemInput{
+		TableName: aws.String(r.client.couponsTable),
+		Key: map[string]types.AttributeValue{
+			"PK": &types.AttributeValueMemberS{Value: "CUSTOMER#" + customerID},
+			"SK": &types.AttributeValueMemberS{Value: "USE#" + couponID},
+		},
+		UpdateExpression: aws.String(
+			"ADD #count :one SET entity_type = :et, customer_id = :cust, coupon_id = :coupon"),
+		ExpressionAttributeNames: map[string]string{"#count": "count"},
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":one":    &types.AttributeValueMemberN{Value: "1"},
+			":et":     &types.AttributeValueMemberS{Value: "COUPON_USE_COUNTER"},
+			":cust":   &types.AttributeValueMemberS{Value: customerID},
+			":coupon": &types.AttributeValueMemberS{Value: couponID},
+		},
+	})
+	if err != nil {
+		return errors.Wrap(err, "Failed to record coupon usage for the customer")
+	}
 	return nil
 }
 

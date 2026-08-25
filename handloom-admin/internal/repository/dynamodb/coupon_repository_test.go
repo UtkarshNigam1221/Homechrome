@@ -2,6 +2,7 @@ package dynamodb
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -130,6 +131,9 @@ func TestCouponRepository_List(t *testing.T) {
 	ctx := context.Background()
 
 	active := newTestCoupon("coupon_l1", "LISTONE")
+	// Distinctive so a name search can be told apart from a code search — every other
+	// coupon here keeps newTestCoupon's identical default name.
+	active.Name = "Diwali Handloom Sale"
 	inactive := newTestCoupon("coupon_l2", "LISTTWO")
 	inactive.Status = domain.CouponStatusInactive
 	fixed := newTestCoupon("coupon_l3", "LISTTHREE")
@@ -185,6 +189,16 @@ func TestCouponRepository_List(t *testing.T) {
 		require.Equal(t, "coupon_l3", res.Coupons[0].ID)
 	})
 
+	t.Run("searches by name", func(t *testing.T) {
+		res, err := repo.List(ctx, domain.ListCouponsRequest{
+			PaginationRequest: domain.PaginationRequest{Limit: 50},
+			Search:            "diwali",
+		})
+		require.NoError(t, err)
+		require.Len(t, res.Coupons, 1)
+		require.Equal(t, "coupon_l1", res.Coupons[0].ID)
+	})
+
 	t.Run("paginates", func(t *testing.T) {
 		res, err := repo.List(ctx, domain.ListCouponsRequest{
 			PaginationRequest: domain.PaginationRequest{Limit: 2},
@@ -192,5 +206,106 @@ func TestCouponRepository_List(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, res.Coupons, 2)
 		require.True(t, res.Pagination.HasMore)
+	})
+}
+
+func TestCouponRepository_IncrementUsage(t *testing.T) {
+	wrapped, raw := testWrappedClient(t)
+	skipIfNoLocal(t, raw)
+	setupTestTable(t, raw, testCouponsTable)
+
+	repo := NewCouponRepository(wrapped)
+	ctx := context.Background()
+
+	t.Run("claims up to the limit and then refuses", func(t *testing.T) {
+		c := newTestCoupon("coupon_lim", "LIMIT2")
+		c.UsageLimit = 2
+		require.NoError(t, repo.Create(ctx, c))
+
+		for i := 1; i <= 2; i++ {
+			claimed, err := repo.IncrementUsage(ctx, "coupon_lim")
+			require.NoError(t, err)
+			require.True(t, claimed, "claim %d should succeed", i)
+		}
+
+		claimed, err := repo.IncrementUsage(ctx, "coupon_lim")
+		require.NoError(t, err, "exhaustion is an outcome, not an error")
+		require.False(t, claimed)
+	})
+
+	t.Run("treats a zero limit as unlimited", func(t *testing.T) {
+		c := newTestCoupon("coupon_unl", "UNLIMITED")
+		c.UsageLimit = 0
+		require.NoError(t, repo.Create(ctx, c))
+
+		for i := 0; i < 5; i++ {
+			claimed, err := repo.IncrementUsage(ctx, "coupon_unl")
+			require.NoError(t, err)
+			require.True(t, claimed)
+		}
+	})
+
+	// The reason this method exists. A read-modify-write lets both racers read
+	// usage_count == 0, both decide they are under the limit, and both succeed —
+	// giving a single-use code away twice.
+	t.Run("lets exactly one of two concurrent claims win on a single-use code", func(t *testing.T) {
+		c := newTestCoupon("coupon_race", "ONESHOT")
+		c.UsageLimit = 1
+		require.NoError(t, repo.Create(ctx, c))
+
+		var (
+			wg     sync.WaitGroup
+			mu     sync.Mutex
+			claims int
+		)
+		for i := 0; i < 2; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				claimed, err := repo.IncrementUsage(context.Background(), "coupon_race")
+				if err == nil && claimed {
+					mu.Lock()
+					claims++
+					mu.Unlock()
+				}
+			}()
+		}
+		wg.Wait()
+
+		require.Equal(t, 1, claims, "a coupon with usage_limit 1 must be claimable once")
+	})
+}
+
+func TestCouponRepository_CustomerUsage(t *testing.T) {
+	wrapped, raw := testWrappedClient(t)
+	skipIfNoLocal(t, raw)
+	setupTestTable(t, raw, testCouponsTable)
+
+	repo := NewCouponRepository(wrapped)
+	ctx := context.Background()
+
+	t.Run("reports zero for a customer who has never used it", func(t *testing.T) {
+		n, err := repo.GetCustomerUsage(ctx, "cust_new", "coupon_any")
+		require.NoError(t, err, "no counter yet is zero, not an error")
+		require.Equal(t, 0, n)
+	})
+
+	t.Run("counts per customer per coupon", func(t *testing.T) {
+		require.NoError(t, repo.IncrementCustomerUsage(ctx, "cust_1", "coupon_a"))
+		require.NoError(t, repo.IncrementCustomerUsage(ctx, "cust_1", "coupon_a"))
+		require.NoError(t, repo.IncrementCustomerUsage(ctx, "cust_1", "coupon_b"))
+		require.NoError(t, repo.IncrementCustomerUsage(ctx, "cust_2", "coupon_a"))
+
+		n, err := repo.GetCustomerUsage(ctx, "cust_1", "coupon_a")
+		require.NoError(t, err)
+		require.Equal(t, 2, n)
+
+		n, err = repo.GetCustomerUsage(ctx, "cust_1", "coupon_b")
+		require.NoError(t, err)
+		require.Equal(t, 1, n)
+
+		n, err = repo.GetCustomerUsage(ctx, "cust_2", "coupon_a")
+		require.NoError(t, err)
+		require.Equal(t, 1, n)
 	})
 }
