@@ -40,6 +40,88 @@ func captureMetrics(t *testing.T, fn func(ctx context.Context)) map[string]int64
 	return totals
 }
 
+// The revenue dashboard reads product_purchased alongside orders_value, and
+// orders_value books order.TotalAmount, which is net of the discount. Summing gross
+// line prices therefore overstated product revenue by exactly the discount on every
+// couponed order. The two used to reconcile only because every discount was zero.
+func TestProductPurchasedIsNetOfTheLineDiscount(t *testing.T) {
+	// ₹3,000 cart, ₹300 off, allocated 100/200 across the two lines.
+	discounted := func() *domain.Order {
+		return &domain.Order{
+			CustomerID:        "cust_1",
+			Subtotal:          300000,
+			DiscountAmount:    30000,
+			TotalAmount:       270000,
+			DiscountAllocated: true,
+			Items: []domain.OrderItem{
+				{ProductID: "p1", CategoryID: "cat_1", TotalPrice: 100000, DiscountAmount: 10000},
+				{ProductID: "p2", CategoryID: "cat_2", TotalPrice: 200000, DiscountAmount: 20000},
+			},
+		}
+	}
+
+	t.Run("the line sum reconciles with orders_value", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		customers := mocks.NewMockCustomerRepository(ctrl)
+		order := discounted()
+		customers.EXPECT().RecordPurchase(gomock.Any(), "cust_1", int64(270000)).
+			Return(int64(1), nil)
+
+		totals := captureMetrics(t, func(ctx context.Context) {
+			recordPurchaseAnalytics(ctx, customers, order, purchaseAttribution{})
+		})
+
+		require.Equal(t, int64(270000), totals["product_purchased"],
+			"gross line prices would total 300000 and overstate revenue by the discount")
+		require.Equal(t, order.TotalAmount, totals["product_purchased"],
+			"per-product revenue must sum to what the order actually booked")
+	})
+
+	// A discount-free order has zero on every line, so the subtraction is the identity
+	// and nothing about pre-coupon orders changes.
+	t.Run("an undiscounted order is unaffected", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		customers := mocks.NewMockCustomerRepository(ctrl)
+		order := &domain.Order{
+			CustomerID:  "cust_2",
+			Subtotal:    300000,
+			TotalAmount: 300000,
+			Items: []domain.OrderItem{
+				{ProductID: "p1", CategoryID: "cat_1", TotalPrice: 100000},
+				{ProductID: "p2", CategoryID: "cat_2", TotalPrice: 200000},
+			},
+		}
+		customers.EXPECT().RecordPurchase(gomock.Any(), "cust_2", int64(300000)).
+			Return(int64(2), nil)
+
+		totals := captureMetrics(t, func(ctx context.Context) {
+			recordPurchaseAnalytics(ctx, customers, order, purchaseAttribution{})
+		})
+
+		require.Equal(t, int64(300000), totals["product_purchased"])
+	})
+
+	// coupon_redeemed still books the order-level discount, which is what makes the
+	// gap visible: product_purchased + coupon_redeemed == the gross cart.
+	t.Run("coupon_redeemed still books the order-level discount", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		customers := mocks.NewMockCustomerRepository(ctrl)
+		order := discounted()
+		code := "SAVE10"
+		order.CouponCode = &code
+		customers.EXPECT().RecordPurchase(gomock.Any(), "cust_1", int64(270000)).
+			Return(int64(1), nil)
+
+		totals := captureMetrics(t, func(ctx context.Context) {
+			recordPurchaseAnalytics(ctx, customers, order, purchaseAttribution{})
+		})
+
+		require.Equal(t, int64(30000), totals["coupon_redeemed"])
+		require.Equal(t, order.Subtotal,
+			totals["product_purchased"]+totals["coupon_redeemed"])
+	})
+}
+
 // orders_value is what the admin Geography dashboard renders as revenue. An
 // order that is only placed has not paid for anything, so a checkout the
 // customer abandons at the PhonePe page must contribute nothing to it.
