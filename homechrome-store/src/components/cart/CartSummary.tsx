@@ -24,7 +24,7 @@ interface CartSummaryProps {
 
 export default function CartSummary({ subtotal, itemCount, isAuthenticated }: CartSummaryProps) {
   // Shipping is free — deliveries are scheduled manually.
-  const coupon = useCoupon(subtotal);
+  const coupon = useCoupon(subtotal, isAuthenticated);
 
   return (
     <Card shadow="sm" radius="lg" padding="md">

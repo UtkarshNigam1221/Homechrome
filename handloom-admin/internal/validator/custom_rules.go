@@ -94,9 +94,11 @@ func validateCouponValue(fl validator.FieldLevel) bool {
 	for parent.Kind() == reflect.Ptr {
 		parent = parent.Elem()
 	}
+	// Fails OPEN on an unreadable Type, which is only safe because
+	// computeCouponDiscount's non-PERCENTAGE branch prices such a coupon as FIXED too.
 	typeField := parent.FieldByName("Type")
 	if !typeField.IsValid() || typeField.Kind() != reflect.String {
-		return true // no Type to read: nothing to cap against
+		return true
 	}
 	if typeField.String() != "PERCENTAGE" {
 		return true

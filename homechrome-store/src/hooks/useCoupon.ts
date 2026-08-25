@@ -32,7 +32,7 @@ function stashedCode(): string | undefined {
 // charged. The server is asked rather than the percentage re-derived — the client never
 // computes a discount. The same effect recovers a code left in sessionStorage, so a page
 // refresh can no longer drop the chip while the stash quietly survives to checkout.
-export function useCoupon(subtotal: number) {
+export function useCoupon(subtotal: number, isAuthenticated: boolean) {
   const [code, setCode] = useState<string>();
   const [discount, setDiscount] = useState(0);
   // Held in a ref as well as state so the effect below can read the current code without
@@ -58,6 +58,12 @@ export function useCoupon(subtotal: number) {
   }, []);
 
   useEffect(() => {
+    // The cart is guest-capable (OptionalCartAuth) but validate-coupon is not
+    // (CustomerAuth.Authenticate), so asking as a guest is a 401 that api.ts turns into
+    // a redirect to /login — /cart is not on its exemption list. Same guard
+    // useCheckoutState uses. Re-runs on sign-in, which restores a stashed code.
+    if (!isAuthenticated) return;
+
     const held = codeRef.current ?? stashedCode();
     if (!held) return;
 
@@ -71,19 +77,21 @@ export function useCoupon(subtotal: number) {
         if (data.valid) {
           apply(data.code, data.discount_amount ?? 0);
         } else {
-          // It no longer holds on this cart — a minimum order value it has dropped
-          // under, say. Showing nothing beats showing a discount that will not apply.
+          // The server answered and said no — a minimum order value the cart has
+          // dropped under, say. Showing nothing beats showing a discount that will
+          // not apply.
           remove();
         }
       })
       .catch(() => {
-        if (current) remove();
+        // Not being able to ask is not the same as being told no. A timeout or a 5xx
+        // leaves the coupon and the stash alone; the next subtotal change retries.
       });
 
     return () => {
       current = false;
     };
-  }, [subtotal, apply, remove]);
+  }, [subtotal, isAuthenticated, apply, remove]);
 
   return { code, discount, total: previewTotal(subtotal, discount), apply, remove };
 }
