@@ -683,8 +683,9 @@ func ProvideCheckoutService(
 	paymentService *service.PaymentService,
 	inventoryRepo domain.InventoryRepository,
 	customerRepo domain.CustomerRepository,
+	couponService *service.CouponService,
 ) *service.CheckoutService {
-	return service.NewCheckoutService(cartService, orderRepo, paymentService, inventoryRepo, customerRepo)
+	return service.NewCheckoutService(cartService, orderRepo, paymentService, inventoryRepo, customerRepo, couponService)
 }
 
 // ============================================================================

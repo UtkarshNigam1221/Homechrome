@@ -38,11 +38,16 @@ type CartService interface {
 type CheckoutService interface {
 	Initiate(ctx context.Context, customerID string, req CheckoutRequest) (*CheckoutResult, error)
 	GetPaymentStatus(ctx context.Context, customerID, orderID string) (*PaymentStatusResult, error)
+
+	// PreviewCoupon prices a code against the customer's current cart without placing
+	// an order. Advisory only — checkout re-validates and wins.
+	PreviewCoupon(ctx context.Context, customerID, code string) (*CouponValidationResult, error)
 }
 
 // CheckoutRequest contains data for initiating checkout
 type CheckoutRequest struct {
-	ShippingAddressID string `json:"shipping_address_id" validate:"required"`
+	ShippingAddressID string  `json:"shipping_address_id" validate:"required"`
+	CouponCode        *string `json:"coupon_code,omitempty"`
 }
 
 // CheckoutResult contains the result of a checkout initiation
@@ -50,6 +55,9 @@ type CheckoutResult struct {
 	Order         *Order `json:"order"`
 	RedirectURL   string `json:"redirect_url"`
 	MerchantTxnID string `json:"merchant_txn_id"`
+	// CouponNotice explains why a submitted code did not apply. Empty when it did, or
+	// when none was submitted.
+	CouponNotice string `json:"coupon_notice,omitempty"`
 }
 
 // PaymentStatusResult contains the current payment status for an order

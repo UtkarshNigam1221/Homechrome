@@ -132,8 +132,9 @@ func TestOrdersValueCountsPaidOrdersOnly(t *testing.T) {
 		payments := mocks.NewMockPaymentService(ctrl)
 		inventory := mocks.NewMockInventoryRepository(ctrl)
 		customers := mocks.NewMockCustomerRepository(ctrl)
+		coupons := mocks.NewMockCouponService(ctrl)
 
-		svc := NewCheckoutService(carts, orders, payments, inventory, customers)
+		svc := NewCheckoutService(carts, orders, payments, inventory, customers, coupons)
 
 		customers.EXPECT().GetByID(gomock.Any(), "cust_1").Return(&domain.Customer{
 			ID: "cust_1", FirstName: "Test", LastName: "Customer",

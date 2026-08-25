@@ -522,6 +522,8 @@ func InitializeStoreCheckoutDeps(ctx context.Context, cfg *config.Config) (*Stor
 		ProvideCartService,
 		ProvidePhonePeGateway,
 		ProvidePaymentService,
+		ProvideCouponRepository,
+		ProvideCouponService,
 		ProvideCheckoutService,
 		ProvideStoreCheckoutHandler,
 		ProvideCustomerAuthMiddleware,
