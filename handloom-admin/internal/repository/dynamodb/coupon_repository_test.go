@@ -245,20 +245,23 @@ func TestCouponRepository_IncrementUsage(t *testing.T) {
 		}
 	})
 
-	// The reason this method exists. A read-modify-write lets both racers read
-	// usage_count == 0, both decide they are under the limit, and both succeed —
-	// giving a single-use code away twice.
-	t.Run("lets exactly one of two concurrent claims win on a single-use code", func(t *testing.T) {
+	// The reason this method exists. A read-modify-write lets racers all read
+	// usage_count == 0, all decide they are under the limit, and all succeed —
+	// giving a single-use code away many times over. 16 racers (not 2) so a
+	// read-modify-write implementation would have to win a 16-way interleaving
+	// lottery to slip through undetected.
+	t.Run("lets exactly one of many concurrent claims win on a single-use code", func(t *testing.T) {
 		c := newTestCoupon("coupon_race", "ONESHOT")
 		c.UsageLimit = 1
 		require.NoError(t, repo.Create(ctx, c))
 
+		const racers = 16
 		var (
 			wg     sync.WaitGroup
 			mu     sync.Mutex
 			claims int
 		)
-		for i := 0; i < 2; i++ {
+		for i := 0; i < racers; i++ {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
