@@ -1,16 +1,12 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
-import { useEffect, useState } from 'react';
-import { Controller, useForm } from 'react-hook-form';
+import { useEffect } from 'react';
+import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 
 import { couponsApi } from '@/features/coupons/api';
-import { customersApi } from '@/features/customers/api';
-import { customerDisplayName } from '@/features/customers/lib/displayName';
-import type { Customer } from '@/features/customers/types';
 import { Button, Input, Modal, Select, type SelectOption } from '@/shared/components/ui';
-import { useDebounce, useFormMutation } from '@/shared/hooks';
+import { useFormMutation } from '@/shared/hooks';
 
 import {
   type CouponFormValues,
@@ -56,76 +52,19 @@ const couponSchema = z
     path: ['expiryDate'],
   });
 
+// Nothing enforces an audience yet: CouponService.Validate never reads the field, so a
+// FIRST_ORDER or RETURNING coupon would work for everyone, and a SPECIFIC_CUSTOMER one
+// lands in a GSI1 partition the admin list never queries — unreachable, with no off
+// switch. Shown but disabled so the capability is visible and honest. Phase 3 adds
+// enforcement; re-enabling is deleting `disabled` and restoring a customer picker.
 const audienceOptions: SelectOption[] = [
   { value: 'ALL', label: 'Everyone' },
-  { value: 'FIRST_ORDER', label: 'First order only' },
-  { value: 'RETURNING', label: 'Returning customers' },
-  { value: 'SPECIFIC_CUSTOMER', label: 'One specific customer' },
+  { value: 'FIRST_ORDER', label: 'First order only (Phase 3)', disabled: true },
+  { value: 'RETURNING', label: 'Returning customers (Phase 3)', disabled: true },
+  { value: 'SPECIFIC_CUSTOMER', label: 'One specific customer (Phase 3)', disabled: true },
 ];
 
-// A search box plus a Select, matching this codebase's other forms. Keeps the current
-// customer visible in the options even before a search would surface them again.
-function CustomerPicker({
-  value,
-  onChange,
-  error,
-  disabled,
-}: {
-  value: string;
-  onChange: (id: string) => void;
-  error?: string;
-  disabled?: boolean;
-}) {
-  const [query, setQuery] = useState('');
-  const debouncedQuery = useDebounce(query, 300);
-
-  const { data: results, isFetching } = useQuery({
-    queryKey: ['customers-search', debouncedQuery],
-    queryFn: () => customersApi.search(debouncedQuery),
-    enabled: debouncedQuery.trim().length >= 2,
-  });
-
-  const { data: selectedCustomer } = useQuery({
-    queryKey: ['customer', value],
-    queryFn: () => customersApi.get(value),
-    enabled: !!value,
-  });
-
-  const label = (c: Customer) => `${customerDisplayName(c)} (${c.phone || c.email})`;
-
-  const options: SelectOption[] = [];
-  if (selectedCustomer) {
-    options.push({ value: selectedCustomer.id, label: label(selectedCustomer) });
-  }
-  for (const c of results?.items ?? []) {
-    if (c.id === selectedCustomer?.id) continue;
-    options.push({ value: c.id, label: label(c) });
-  }
-
-  return (
-    <div className="space-y-2 rounded-lg border border-gray-200 p-3">
-      <Input
-        label="Search customers"
-        placeholder="Search by name, email, or phone"
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        disabled={disabled}
-        hint={isFetching ? 'Searching…' : undefined}
-      />
-      <Select
-        label="Customer"
-        placeholder={options.length ? 'Select a customer' : 'Type at least 2 characters to search'}
-        options={options}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        error={error}
-        disabled={disabled}
-        hint={disabled ? "Can't be changed after creation" : undefined}
-        required
-      />
-    </div>
-  );
-}
+const audienceHint = 'Only "Everyone" is enforced today — targeting arrives in Phase 3.';
 
 interface CouponFormModalProps {
   isOpen: boolean;
@@ -144,7 +83,6 @@ export function CouponFormModal({ isOpen, onClose, coupon }: CouponFormModalProp
     handleSubmit,
     reset,
     watch,
-    control,
     formState: { errors },
   } = useForm<CouponFormValues>({
     resolver: zodResolver(couponSchema),
@@ -152,7 +90,6 @@ export function CouponFormModal({ isOpen, onClose, coupon }: CouponFormModalProp
   });
 
   const type = watch('type');
-  const audience = watch('audience');
   const noEndDate = watch('noEndDate');
 
   // Reset the form when the modal opens, or when it switches between create and edit.
@@ -303,24 +240,9 @@ export function CouponFormModal({ isOpen, onClose, coupon }: CouponFormModalProp
           error={errors.audience?.message}
           required
           disabled={lockedAfterCreate}
-          hint={lockedAfterCreate ? "Can't be changed after creation" : undefined}
+          hint={lockedAfterCreate ? "Can't be changed after creation" : audienceHint}
           {...register('audience')}
         />
-
-        {audience === 'SPECIFIC_CUSTOMER' && (
-          <Controller
-            name="customerId"
-            control={control}
-            render={({ field, fieldState }) => (
-              <CustomerPicker
-                value={field.value}
-                onChange={field.onChange}
-                error={fieldState.error?.message}
-                disabled={lockedAfterCreate}
-              />
-            )}
-          />
-        )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Input
