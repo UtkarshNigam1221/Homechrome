@@ -40,6 +40,7 @@ type PaymentService struct {
 	cartService   domain.CartService
 	customerRepo  domain.CustomerRepository
 	phonePe       phonepe.Gateway
+	couponService domain.CouponService
 }
 
 // NewPaymentService creates a new PaymentService
@@ -50,6 +51,7 @@ func NewPaymentService(
 	cartService domain.CartService,
 	customerRepo domain.CustomerRepository,
 	phonePe phonepe.Gateway,
+	couponService domain.CouponService,
 ) *PaymentService {
 	return &PaymentService{
 		paymentRepo:   paymentRepo,
@@ -58,6 +60,7 @@ func NewPaymentService(
 		cartService:   cartService,
 		customerRepo:  customerRepo,
 		phonePe:       phonePe,
+		couponService: couponService,
 	}
 }
 
@@ -151,6 +154,11 @@ func (s *PaymentService) HandlePaymentSuccess(ctx context.Context, evt domain.Pa
 		slog.ErrorContext(ctx, "Failed to clear cart after payment success", "customer_id", payment.CustomerID, "error", err)
 	}
 
+	// Redemption is counted here rather than at order creation: abandoned checkouts are
+	// common, and counting early would burn a limited code and permanently kill a
+	// single-use one. resolvePayment has already de-duplicated webhook replays.
+	s.redeemOrderCoupon(ctx, order)
+
 	// Purchase-completion signals fire here, after payment is confirmed — emitting at
 	// order-create inflated KPIs. resolvePayment already de-duped webhook replays.
 	{
@@ -216,6 +224,29 @@ func (s *PaymentService) HandlePaymentSuccess(ctx context.Context, evt domain.Pa
 	slog.InfoContext(ctx, "Payment completed", "payment_id", payment.ID, "order_id", payment.OrderID)
 	span.End()
 	return nil
+}
+
+// redeemOrderCoupon records the order's coupon redemption. Fire-and-forget: the order is
+// already paid, so nothing here may fail the webhook and make PhonePe retry.
+func (s *PaymentService) redeemOrderCoupon(ctx context.Context, order *domain.Order) {
+	if order.CouponID == nil || *order.CouponID == "" {
+		return
+	}
+
+	claimed, err := s.couponService.Redeem(
+		ctx, *order.CouponID, order.ID, order.CustomerID, order.DiscountAmount)
+	if err != nil {
+		slog.ErrorContext(ctx, "Failed to redeem coupon after payment",
+			"coupon_id", *order.CouponID, keyOrderID, order.ID, "error", err)
+		metrics.Record(ctx, "coupon_redeem_failed", metrics.L{metrics.LabelReason: "error"})
+		return
+	}
+	if !claimed {
+		// Expected, not exceptional: the code ran out between this order being created
+		// and paid. The order keeps the price it was quoted, so a limit of N can be
+		// honored slightly more than N times. That is the accepted trade.
+		metrics.Record(ctx, "coupon_exhausted", metrics.L{})
+	}
 }
 
 // HandlePaymentFailure processes a failed payment webhook event.

@@ -10,6 +10,7 @@ import (
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/internal/gateway/phonepe"
 	"github.com/handloom/admin/internal/mocks"
+	"github.com/handloom/admin/pkg/errors"
 )
 
 // fakePaymentGateway stands in for PhonePe. Only the status call matters here.
@@ -44,6 +45,7 @@ type paymentHarness struct {
 	inventory *mocks.MockInventoryRepository
 	carts     *mocks.MockCartService
 	customers *mocks.MockCustomerRepository
+	coupons   *mocks.MockCouponService
 	gateway   *fakePaymentGateway
 }
 
@@ -57,12 +59,15 @@ func newPaymentHarness(t *testing.T, state string) *paymentHarness {
 		inventory: mocks.NewMockInventoryRepository(ctrl),
 		carts:     mocks.NewMockCartService(ctrl),
 		customers: mocks.NewMockCustomerRepository(ctrl),
+		coupons:   mocks.NewMockCouponService(ctrl),
 		gateway: &fakePaymentGateway{statusResp: &phonepe.StatusResponse{
 			OrderID: "OMO1", State: state, Amount: 20000,
 			PaymentDetails: []phonepe.PaymentDetail{{TransactionID: "T1", PaymentMode: "UPI_INTENT"}},
 		}},
 	}
-	h.svc = NewPaymentService(h.payments, h.orders, h.inventory, h.carts, h.customers, h.gateway)
+	// None of these fixtures put a coupon on the order, so redeemOrderCoupon
+	// short-circuits and never calls this mock.
+	h.svc = NewPaymentService(h.payments, h.orders, h.inventory, h.carts, h.customers, h.gateway, h.coupons)
 	return h
 }
 
@@ -198,5 +203,68 @@ func TestCheckProviderStatus(t *testing.T) {
 		result, err := h.svc.CheckProviderStatus(ctx, "order_1")
 		require.NoError(t, err)
 		require.Equal(t, string(domain.PaymentStatusInitiated), result.LocalStatus)
+	})
+}
+
+// redeemOrderCoupon is the unit under test. Exercising it directly rather than driving a
+// whole webhook keeps these tests about redemption instead of about payment plumbing —
+// the wiring into HandlePaymentSuccess is covered by the dev end-to-end run.
+func newRedeemFixture(t *testing.T) (*PaymentService, *mocks.MockCouponService) {
+	t.Helper()
+	ctrl := gomock.NewController(t)
+	couponSvc := mocks.NewMockCouponService(ctrl)
+
+	svc := &PaymentService{couponService: couponSvc}
+	return svc, couponSvc
+}
+
+func redeemFixtureOrder(couponID *string) *domain.Order {
+	return &domain.Order{
+		ID:             "order_9",
+		CustomerID:     "cust_1",
+		CouponID:       couponID,
+		DiscountAmount: 30000,
+	}
+}
+
+func TestRedeemOrderCoupon_RecordsTheRedemption(t *testing.T) {
+	svc, couponSvc := newRedeemFixture(t)
+	couponSvc.EXPECT().
+		Redeem(gomock.Any(), "coupon_1", "order_9", "cust_1", int64(30000)).
+		Return(true, nil)
+
+	svc.redeemOrderCoupon(context.Background(), redeemFixtureOrder(ptr("coupon_1")))
+}
+
+func TestRedeemOrderCoupon_NoCouponRedeemsNothing(t *testing.T) {
+	svc, _ := newRedeemFixture(t)
+	// No expectation set: gomock fails the test if Redeem is called at all.
+
+	svc.redeemOrderCoupon(context.Background(), redeemFixtureOrder(nil))
+}
+
+// The order is already paid. A counter that did not increment must not make PhonePe
+// retry the webhook, so this must return normally rather than panicking or propagating.
+func TestRedeemOrderCoupon_SurvivesAFailure(t *testing.T) {
+	svc, couponSvc := newRedeemFixture(t)
+	couponSvc.EXPECT().
+		Redeem(gomock.Any(), "coupon_1", "order_9", "cust_1", int64(30000)).
+		Return(false, errors.Internal("dynamo is down"))
+
+	require.NotPanics(t, func() {
+		svc.redeemOrderCoupon(context.Background(), redeemFixtureOrder(ptr("coupon_1")))
+	})
+}
+
+// Exhaustion between order creation and payment is expected, not exceptional: the order
+// keeps the price it was quoted (BRD rule 9).
+func TestRedeemOrderCoupon_SurvivesExhaustion(t *testing.T) {
+	svc, couponSvc := newRedeemFixture(t)
+	couponSvc.EXPECT().
+		Redeem(gomock.Any(), "coupon_1", "order_9", "cust_1", int64(30000)).
+		Return(false, nil)
+
+	require.NotPanics(t, func() {
+		svc.redeemOrderCoupon(context.Background(), redeemFixtureOrder(ptr("coupon_1")))
 	})
 }
