@@ -3,8 +3,9 @@ package domain
 
 // DynamoDB table names
 const (
-	TableCore   = "handloom-core"
-	TableOrders = "handloom-orders"
+	TableCore    = "handloom-core"
+	TableOrders  = "handloom-orders"
+	TableCoupons = "handloom-coupons"
 )
 
 // DynamoDB sort key constants

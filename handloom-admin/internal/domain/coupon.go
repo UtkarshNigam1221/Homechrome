@@ -24,6 +24,22 @@ const (
 	CouponStatusExpired  CouponStatus = "EXPIRED"
 )
 
+// CouponAudience is who a coupon is for. Exactly one applies. A single field rather
+// than independent flags, so "first order only AND returning" — which is unsatisfiable —
+// cannot be expressed and does not need guarding at every read site.
+type CouponAudience string
+
+const (
+	AudienceAll              CouponAudience = "ALL"
+	AudienceFirstOrder       CouponAudience = "FIRST_ORDER"
+	AudienceReturning        CouponAudience = "RETURNING"
+	AudienceSpecificCustomer CouponAudience = "SPECIFIC_CUSTOMER"
+)
+
+// couponOpenEndedSK sorts an open-ended coupon last, so it always falls inside the
+// wallet's `GSI1SK >= now` range query.
+const couponOpenEndedSK = "9999-12-31T23:59:59Z"
+
 // Coupon represents a discount coupon
 type Coupon struct {
 	ID         string `json:"id" dynamodbav:"id"`
@@ -49,32 +65,51 @@ type Coupon struct {
 	UsagePerUser int `json:"usage_per_user" dynamodbav:"usage_per_user"` // 0 = unlimited
 	UsageCount   int `json:"usage_count" dynamodbav:"usage_count"`
 
-	// Applicability
-	ApplicableCategories []string `json:"applicable_categories,omitempty" dynamodbav:"applicable_categories,omitempty"`
-	ApplicableProducts   []string `json:"applicable_products,omitempty" dynamodbav:"applicable_products,omitempty"`
-	ExcludedCategories   []string `json:"excluded_categories,omitempty" dynamodbav:"excluded_categories,omitempty"`
-	ExcludedProducts     []string `json:"excluded_products,omitempty" dynamodbav:"excluded_products,omitempty"`
+	// Audience. Exactly one case applies; CustomerID is set only for SPECIFIC_CUSTOMER.
+	Audience   CouponAudience `json:"audience" dynamodbav:"audience"`
+	CustomerID string         `json:"customer_id,omitempty" dynamodbav:"customer_id,omitempty"`
+	BatchID    string         `json:"batch_id,omitempty" dynamodbav:"batch_id,omitempty"`
+
+	// CombinesWithOffers lets this code apply on a cart already carrying an automatic
+	// offer. The zero value refuses, deliberately: buy-2-get-1 is a third off before any
+	// code, so stacking should be chosen rather than defaulted into.
+	CombinesWithOffers bool `json:"combines_with_offers" dynamodbav:"combines_with_offers"`
 
 	// Validity
 	ValidFrom  time.Time    `json:"valid_from" dynamodbav:"valid_from"`
-	ValidUntil time.Time    `json:"valid_until" dynamodbav:"valid_until"`
+	ValidUntil *time.Time   `json:"valid_until,omitempty" dynamodbav:"valid_until,omitempty"` // nil = open-ended
 	Status     CouponStatus `json:"status" dynamodbav:"status"`
 
 	BaseEntity
 }
 
-// TableName returns the DynamoDB table name for Coupon
-func (c *Coupon) TableName() string {
-	return TableCore
-}
-
-// SetKeys sets the DynamoDB keys for Coupon
+// SetKeys derives every key, including which GSI1 partition this coupon belongs in.
+// Deriving it here rather than at call sites means no writer has to remember the rule.
 func (c *Coupon) SetKeys() {
 	c.PK = "COUPON#" + c.ID
 	c.SK = SKMetadata
-	c.GSI1PK = "COUPON_CODE"
-	c.GSI1SK = c.Code
+	if c.Audience == AudienceSpecificCustomer {
+		c.GSI1PK = "CUSTOMER_COUPON#" + c.CustomerID
+	} else {
+		c.GSI1PK = "COUPON#ALL"
+	}
+	c.GSI1SK = c.expirySortKey() + "#" + c.ID
 	c.EntityType = "COUPON"
+}
+
+// expirySortKey encodes the end date so a lexicographic range query on GSI1SK returns
+// exactly the coupons that have not ended. UTC so the key does not depend on the
+// server's zone.
+func (c *Coupon) expirySortKey() string {
+	if c.ValidUntil == nil {
+		return couponOpenEndedSK
+	}
+	return c.ValidUntil.UTC().Format(time.RFC3339)
+}
+
+// TableName returns the DynamoDB table name for Coupon
+func (c *Coupon) TableName() string {
+	return TableCoupons
 }
 
 // CouponUsage tracks coupon usage
@@ -95,7 +130,7 @@ type CouponUsage struct {
 
 // TableName returns the DynamoDB table name for CouponUsage
 func (u *CouponUsage) TableName() string {
-	return TableCore
+	return TableCoupons
 }
 
 // SetKeys sets the DynamoDB keys for CouponUsage
@@ -103,6 +138,39 @@ func (u *CouponUsage) SetKeys() {
 	u.PK = "COUPON#" + u.CouponID
 	u.SK = "USAGE#" + u.CreatedAt.Format("2006-01-02T15:04:05Z") + "#" + u.OrderID
 	u.EntityType = "COUPON_USAGE"
+}
+
+// CouponUseCounter is one customer's redemption count for one coupon. Keyed by customer
+// so a single query returns every count that customer has, which is what makes the
+// wallet affordable — the alternative reads every redemption row of each candidate.
+type CouponUseCounter struct {
+	PK         string `json:"-" dynamodbav:"PK"`
+	SK         string `json:"-" dynamodbav:"SK"`
+	EntityType string `json:"-" dynamodbav:"entity_type"`
+
+	CustomerID string `json:"customer_id" dynamodbav:"customer_id"`
+	CouponID   string `json:"coupon_id" dynamodbav:"coupon_id"`
+	Count      int    `json:"count" dynamodbav:"count"`
+}
+
+// SetKeys sets the DynamoDB keys for CouponUseCounter
+func (u *CouponUseCounter) SetKeys(customerID, couponID string) {
+	u.PK = "CUSTOMER#" + customerID
+	u.SK = "USE#" + couponID
+	u.EntityType = "COUPON_USE_COUNTER"
+}
+
+// TableName returns the DynamoDB table name for CouponUseCounter
+func (u *CouponUseCounter) TableName() string {
+	return TableCoupons
+}
+
+// CouponContext is everything a coupon needs to know about a cart. Deliberately not a
+// line list: coupons carry no item scoping, so this is a total, an identity and one flag.
+type CouponContext struct {
+	CartTotal         int64 // after any automatic offer
+	CustomerID        string
+	HasAutomaticOffer bool // a price campaign or buy-N-get-M applied to this cart
 }
 
 // ==================== COUPON REPOSITORY ====================
@@ -130,8 +198,14 @@ type CouponRepository interface {
 	// RecordUsage records coupon usage
 	RecordUsage(ctx context.Context, usage *CouponUsage) error
 
-	// GetUserUsageCount gets the number of times a user has used a coupon
-	GetUserUsageCount(ctx context.Context, couponID, customerID string) (int, error)
+	// IncrementUsage atomically claims one redemption. Returns false when exhausted.
+	IncrementUsage(ctx context.Context, couponID string) (bool, error)
+
+	// GetCustomerUsage returns how many times this customer has redeemed this coupon.
+	GetCustomerUsage(ctx context.Context, customerID, couponID string) (int, error)
+
+	// IncrementCustomerUsage bumps this customer's count for this coupon.
+	IncrementCustomerUsage(ctx context.Context, customerID, couponID string) error
 }
 
 // ListCouponsRequest contains parameters for listing coupons
@@ -171,47 +245,45 @@ type CouponService interface {
 	// List retrieves coupons with filters
 	List(ctx context.Context, req ListCouponsRequest) (*ListCouponsResponse, error)
 
-	// Validate validates a coupon for an order
-	Validate(ctx context.Context, code string, orderTotal int64, customerID string, productIDs []string) (*CouponValidationResult, error)
+	// Validate checks a coupon against a cart and returns the discount it would give.
+	Validate(ctx context.Context, code string, cc CouponContext) (*CouponValidationResult, error)
 
-	// Apply applies a coupon to an order
-	Apply(ctx context.Context, couponID string, orderID string, customerID string, discount int64) error
+	// Redeem records one redemption of a paid order. Reports claimed=false when the
+	// coupon's usage limit is already exhausted, which is an outcome, not an error.
+	Redeem(ctx context.Context, couponID, orderID, customerID string, discount int64) (claimed bool, err error)
 }
 
 // CreateCouponRequest contains data for creating a coupon
 type CreateCouponRequest struct {
-	Code                 string     `json:"code" validate:"required"`
-	Name                 string     `json:"name" validate:"required"`
-	Description          string     `json:"description,omitempty"`
-	Type                 CouponType `json:"type" validate:"required"`
-	Value                int64      `json:"value" validate:"required,gt=0"`
-	MinOrderValue        int64      `json:"min_order_value"`
-	MaxDiscount          int64      `json:"max_discount,omitempty"`
-	UsageLimit           int        `json:"usage_limit"`
-	UsagePerUser         int        `json:"usage_per_user"`
-	ApplicableCategories []string   `json:"applicable_categories,omitempty"`
-	ApplicableProducts   []string   `json:"applicable_products,omitempty"`
-	ExcludedCategories   []string   `json:"excluded_categories,omitempty"`
-	ExcludedProducts     []string   `json:"excluded_products,omitempty"`
-	ValidFrom            time.Time  `json:"valid_from" validate:"required"`
-	ValidUntil           time.Time  `json:"valid_until" validate:"required"`
+	Code               string         `json:"code" validate:"required"`
+	Name               string         `json:"name" validate:"required"`
+	Description        string         `json:"description,omitempty"`
+	Type               CouponType     `json:"type" validate:"required"`
+	Value              int64          `json:"value" validate:"required,gt=0"`
+	MinOrderValue      int64          `json:"min_order_value"`
+	MaxDiscount        int64          `json:"max_discount,omitempty"`
+	UsageLimit         int            `json:"usage_limit"`
+	UsagePerUser       int            `json:"usage_per_user"`
+	Audience           CouponAudience `json:"audience" validate:"required"`
+	CustomerID         string         `json:"customer_id,omitempty"`
+	CombinesWithOffers bool           `json:"combines_with_offers"`
+	ValidFrom          time.Time      `json:"valid_from" validate:"required"`
+	ValidUntil         *time.Time     `json:"valid_until,omitempty"` // nil = open-ended
 }
 
 // UpdateCouponRequest contains data for updating a coupon
 type UpdateCouponRequest struct {
-	Name                 *string       `json:"name,omitempty"`
-	Description          *string       `json:"description,omitempty"`
-	MinOrderValue        *int64        `json:"min_order_value,omitempty"`
-	MaxDiscount          *int64        `json:"max_discount,omitempty"`
-	UsageLimit           *int          `json:"usage_limit,omitempty"`
-	UsagePerUser         *int          `json:"usage_per_user,omitempty"`
-	ApplicableCategories []string      `json:"applicable_categories,omitempty"`
-	ApplicableProducts   []string      `json:"applicable_products,omitempty"`
-	ExcludedCategories   []string      `json:"excluded_categories,omitempty"`
-	ExcludedProducts     []string      `json:"excluded_products,omitempty"`
-	ValidFrom            *time.Time    `json:"valid_from,omitempty"`
-	ValidUntil           *time.Time    `json:"valid_until,omitempty"`
-	Status               *CouponStatus `json:"status,omitempty"`
+	Name               *string       `json:"name,omitempty"`
+	Description        *string       `json:"description,omitempty"`
+	MinOrderValue      *int64        `json:"min_order_value,omitempty"`
+	MaxDiscount        *int64        `json:"max_discount,omitempty"`
+	UsageLimit         *int          `json:"usage_limit,omitempty"`
+	UsagePerUser       *int          `json:"usage_per_user,omitempty"`
+	CombinesWithOffers *bool         `json:"combines_with_offers,omitempty"`
+	ValidFrom          *time.Time    `json:"valid_from,omitempty"`
+	ValidUntil         *time.Time    `json:"valid_until,omitempty"`
+	ClearValidUntil    bool          `json:"clear_valid_until,omitempty"` // explicit: make it open-ended
+	Status             *CouponStatus `json:"status,omitempty"`
 }
 
 // CouponValidationResult contains the result of coupon validation
