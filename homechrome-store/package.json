@@ -32,7 +32,7 @@
     "@tanstack/react-query": "^5.101.4",
     "@vercel/otel": "^1.13.0",
     "axios": "^1.19.0",
-    "dayjs": "^1.11.20",
+    "dayjs": "^1.11.23",
     "embla-carousel": "^8.6.0",
     "embla-carousel-react": "^8.6.0",
     "lottie-react": "^2.4.1",
