@@ -91,7 +91,7 @@ const couponPercentageMax = 10000
 // the sibling Type field — go-playground has no "lte only when another field says so".
 func validateCouponValue(fl validator.FieldLevel) bool {
 	parent := fl.Parent()
-	for parent.Kind() == reflect.Ptr {
+	for parent.Kind() == reflect.Pointer {
 		parent = parent.Elem()
 	}
 	// Fails OPEN on an unreadable Type, which is only safe because

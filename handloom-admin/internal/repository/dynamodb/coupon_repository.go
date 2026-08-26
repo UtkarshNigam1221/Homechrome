@@ -362,7 +362,7 @@ func (r *CouponRepository) IncrementUsage(ctx context.Context, couponID string) 
 		ConditionExpression: aws.String(
 			"attribute_exists(PK) AND (usage_limit = :zero OR usage_count < usage_limit)"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":one":  &types.AttributeValueMemberN{Value: "1"},
+			exprOne: &types.AttributeValueMemberN{Value: "1"},
 			":zero": &types.AttributeValueMemberN{Value: "0"},
 			":now":  &types.AttributeValueMemberS{Value: time.Now().Format(time.RFC3339)},
 		},
@@ -421,7 +421,7 @@ func (r *CouponRepository) IncrementCustomerUsage(
 			"ADD #count :one SET entity_type = :et, customer_id = :cust, coupon_id = :coupon"),
 		ExpressionAttributeNames: map[string]string{"#count": "count"},
 		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":one":    &types.AttributeValueMemberN{Value: "1"},
+			exprOne:   &types.AttributeValueMemberN{Value: "1"},
 			":et":     &types.AttributeValueMemberS{Value: "COUPON_USE_COUNTER"},
 			":cust":   &types.AttributeValueMemberS{Value: customerID},
 			":coupon": &types.AttributeValueMemberS{Value: couponID},
