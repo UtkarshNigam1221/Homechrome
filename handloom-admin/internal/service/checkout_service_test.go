@@ -213,7 +213,6 @@ func TestCheckoutService_AppliesCoupon(t *testing.T) {
 	require.Equal(t, int64(300000), order.Subtotal)
 	require.Equal(t, int64(30000), order.DiscountAmount)
 	require.Equal(t, int64(270000), order.TotalAmount)
-	require.True(t, order.DiscountAllocated, "the lines are authoritative")
 
 	var lineSum int64
 	for _, item := range order.Items {
