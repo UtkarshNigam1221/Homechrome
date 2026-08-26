@@ -93,6 +93,13 @@ jobs:
           E2E_STORE_PHONE: ${{ vars.E2E_STORE_PHONE }}
           E2E_STORE_OTP: ${{ secrets.E2E_STORE_OTP }}
 
+          # Signs the direct webhook deliveries. Must match the deployment's
+          # PHONEPE_WEBHOOK_USERNAME / PASSWORD: the handler answers a rejected
+          # signature with 200, so unset or wrong, the refund-settlement specs
+          # skip rather than pass against deliveries nothing accepted.
+          E2E_PHONEPE_WEBHOOK_USERNAME: ${{ vars.E2E_PHONEPE_WEBHOOK_USERNAME }}
+          E2E_PHONEPE_WEBHOOK_PASSWORD: ${{ secrets.E2E_PHONEPE_WEBHOOK_PASSWORD }}
+
           E2E_RUN_ID: gha${{ github.run_id }}
           CI: 'true'
         run: |

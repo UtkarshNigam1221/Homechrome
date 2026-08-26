@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 import { APIRequestContext, expect, request, test } from '@playwright/test';
 
 import { adminClient, getInventory, getOrder, json, listRefunds, Refund } from '../../fixtures/api';
@@ -12,15 +14,35 @@ import { buyProducts, PaidFixture, releaseFixture } from '../../helpers/paid-ord
  * the whole HTTP path is idempotent — and PhonePe retries, while Lambda can
  * process two deliveries at once.
  *
- * The webhook route is unauthenticated when PHONEPE_WEBHOOK_USERNAME and
- * PASSWORD are unset, which is the dev default, so the suite can post to it
- * directly. That is the deployed handler, not a stub.
+ * These post to the deployed handler, signed the way PhonePe signs. Dev has
+ * PHONEPE_WEBHOOK_USERNAME and PASSWORD set, so the signature check is live —
+ * and it answers a rejection with 200, because PhonePe must not retry a body it
+ * cannot authenticate. From out here a rejected delivery is therefore
+ * indistinguishable from an accepted one, which is how these specs spent runs
+ * asserting 200 against deliveries that never reached the refund path at all.
  */
+
+/**
+ * The Authorization header PhonePe sends: hex SHA256 of "username:password",
+ * compared verbatim by the handler. Undefined when the credentials are absent,
+ * which skips the group rather than testing nothing.
+ */
+function webhookAuth(): string | undefined {
+  const user = process.env.E2E_PHONEPE_WEBHOOK_USERNAME;
+  const password = process.env.E2E_PHONEPE_WEBHOOK_PASSWORD;
+  if (!user || !password) return undefined;
+  return createHash('sha256').update(`${user}:${password}`).digest('hex');
+}
+
 async function deliverRefundWebhook(
   event: 'pg.refund.completed' | 'pg.refund.failed',
   payload: { originalMerchantOrderId: string; refundId: string; amount: number }
 ) {
-  const ctx = await request.newContext({ baseURL: TARGETS.api });
+  const auth = webhookAuth();
+  const ctx = await request.newContext({
+    baseURL: TARGETS.api,
+    extraHTTPHeaders: auth ? { Authorization: auth } : {},
+  });
   const res = await ctx.post('/api/v1/store/webhooks/phonepe', {
     data: { event, payload: { ...payload, state: event.endsWith('completed') ? 'COMPLETED' : 'FAILED' } },
   });
@@ -34,6 +56,12 @@ test.describe('refund webhook settlement over HTTP', () => {
   let fx: PaidFixture | undefined;
 
   test.beforeAll(async () => {
+    // Without the credentials every delivery below is rejected and answered
+    // 200, so the specs would pass while proving nothing. Skip, do not pretend.
+    test.skip(
+      !webhookAuth(),
+      'E2E_PHONEPE_WEBHOOK_USERNAME / E2E_PHONEPE_WEBHOOK_PASSWORD unset — an unsigned delivery is rejected with a 200 and these specs cannot tell'
+    );
     admin = await adminClient();
   });
 
