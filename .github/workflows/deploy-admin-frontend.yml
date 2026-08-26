@@ -46,9 +46,7 @@ jobs:
           cache: npm
           cache-dependency-path: handloom-admin-frontend/package-lock.json
 
-      # Workaround for npm bug 4828: see check job above.
-      - run: rm -rf node_modules package-lock.json
-      - run: npm install
+      - run: npm ci
 
       - name: Build
         run: npm run build:${{ inputs.environment }}
