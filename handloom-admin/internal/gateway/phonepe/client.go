@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -93,6 +94,60 @@ func (c *Client) getToken(ctx context.Context) (string, error) {
 	return c.accessToken, nil
 }
 
+// maxSendAttempts bounds the 429 retry. Three waits (0.5s, 1s, 2s) keep a
+// throttled checkout slow rather than failed, inside the 30s client timeout.
+const maxSendAttempts = 4
+
+// sendWithRetry performs an authenticated request, retrying only a 429. PhonePe
+// throttles bursts, and every id in these payloads (merchantOrderId,
+// merchantRefundId) is stable across attempts, so a retry re-addresses the same
+// order rather than creating a second one.
+func (c *Client) sendWithRetry(ctx context.Context, method, url string, body []byte, token string) (int, []byte, error) {
+	var status int
+	var respBody []byte
+
+	for attempt := range maxSendAttempts {
+		if attempt > 0 {
+			wait := time.Duration(1<<(attempt-1)) * 500 * time.Millisecond
+			select {
+			case <-ctx.Done():
+				return 0, nil, ctx.Err()
+			case <-time.After(wait):
+			}
+		}
+
+		var reader io.Reader
+		if body != nil {
+			reader = bytes.NewReader(body)
+		}
+		req, err := http.NewRequestWithContext(ctx, method, url, reader)
+		if err != nil {
+			return 0, nil, fmt.Errorf("failed to create request: %w", err)
+		}
+		req.Header.Set("Content-Type", contentTypeJSON)
+		req.Header.Set("Authorization", "O-Bearer "+token)
+
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			return 0, nil, fmt.Errorf("failed to call PhonePe: %w", err)
+		}
+		respBody, err = io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		if err != nil {
+			return 0, nil, fmt.Errorf("failed to read response: %w", err)
+		}
+		status = resp.StatusCode
+
+		if status != http.StatusTooManyRequests {
+			return status, respBody, nil
+		}
+		slog.WarnContext(ctx, "PhonePe throttled the request, retrying",
+			"method", method, "attempt", attempt+1, "of", maxSendAttempts)
+	}
+
+	return status, respBody, nil
+}
+
 // InitiatePayment creates a payment order and returns the redirect URL
 func (c *Client) InitiatePayment(ctx context.Context, merchantTxnID, _ string, amount int64, orderID string) (string, error) {
 	token, err := c.getToken(ctx)
@@ -116,30 +171,17 @@ func (c *Client) InitiatePayment(ctx context.Context, merchantTxnID, _ string, a
 		return "", fmt.Errorf("failed to marshal payment request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.config.BaseURL+"/checkout/v2/pay", bytes.NewReader(reqBody))
+	status, body, err := c.sendWithRetry(ctx, http.MethodPost, c.config.BaseURL+"/checkout/v2/pay", reqBody, token)
 	if err != nil {
-		return "", fmt.Errorf("failed to create request: %w", err)
-	}
-	req.Header.Set("Content-Type", contentTypeJSON)
-	req.Header.Set("Authorization", "O-Bearer "+token)
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("failed to call PhonePe: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("failed to read response: %w", err)
+		return "", err
 	}
 
-	if resp.StatusCode != http.StatusOK {
+	if status != http.StatusOK {
 		var errResp PayErrorResponse
 		if err := json.Unmarshal(body, &errResp); err == nil && errResp.Code != "" {
 			return "", fmt.Errorf("PhonePe payment initiation failed: %s - %s", errResp.Code, errResp.Message)
 		}
-		return "", fmt.Errorf("PhonePe payment initiation failed (status %d): %s", resp.StatusCode, string(body))
+		return "", fmt.Errorf("PhonePe payment initiation failed (status %d): %s", status, string(body))
 	}
 
 	var payResp PayResponse
@@ -181,33 +223,19 @@ func (c *Client) InitiateRefund(ctx context.Context, merchantRefundID, originalM
 		return nil, fmt.Errorf("failed to build refund request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
-		c.config.BaseURL+"/payments/v2/refund", bytes.NewReader(payload))
+	status, body, err := c.sendWithRetry(ctx, http.MethodPost, c.config.BaseURL+"/payments/v2/refund", payload, token)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-	req.Header.Set("Content-Type", contentTypeJSON)
-	req.Header.Set("Authorization", "O-Bearer "+token)
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to call PhonePe: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response: %w", err)
+		return nil, err
 	}
 
-	// A 4xx is the provider answering no. A 5xx, a timeout or an unreadable body is
-	// the provider not answering, which is not the same thing and must not be
-	// recorded as a refusal — see ErrRejected.
-	if resp.StatusCode >= 400 && resp.StatusCode < 500 {
-		return nil, fmt.Errorf("%w (status %d): %s", ErrRejected, resp.StatusCode, string(body))
+	// A 4xx is the provider answering no. A 5xx, a 429 that outlived its retries,
+	// a timeout or an unreadable body is the provider not answering, which is not
+	// the same thing and must not be recorded as a refusal — see ErrRejected.
+	if status >= 400 && status < 500 && status != http.StatusTooManyRequests {
+		return nil, fmt.Errorf("%w (status %d): %s", ErrRejected, status, string(body))
 	}
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		return nil, fmt.Errorf("PhonePe refund failed (status %d): %s", resp.StatusCode, string(body))
+	if status != http.StatusOK && status != http.StatusCreated {
+		return nil, fmt.Errorf("PhonePe refund failed (status %d): %s", status, string(body))
 	}
 
 	var refundResp RefundResponse
@@ -234,26 +262,13 @@ func getAuthedJSON[T any](ctx context.Context, c *Client, endpoint, failure stri
 		return nil, err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.config.BaseURL+endpoint, nil)
+	status, body, err := c.sendWithRetry(ctx, http.MethodGet, c.config.BaseURL+endpoint, nil, token)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-	req.Header.Set("Content-Type", contentTypeJSON)
-	req.Header.Set("Authorization", "O-Bearer "+token)
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to call PhonePe: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response: %w", err)
+		return nil, err
 	}
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("%s (status %d): %s", failure, resp.StatusCode, string(body))
+	if status != http.StatusOK {
+		return nil, fmt.Errorf("%s (status %d): %s", failure, status, string(body))
 	}
 
 	var out T
