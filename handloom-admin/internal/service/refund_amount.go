@@ -34,10 +34,9 @@ func prorate(value, lineSubtotal, subtotal int64) int64 {
 	return (value*lineSubtotal + subtotal/2) / subtotal
 }
 
-// deriveRefundAmount computes the refund: each line less its prorated discount, full
-// stop. Prices are tax-inclusive, so the line's own value already contains its tax —
-// adding a prorated share on top would refund GST twice. claimed counts what refunds
-// already spoke for, settled or in flight.
+// deriveRefundAmount computes the refund: each line less its share of the discount.
+// Prices are tax-inclusive, so adding tax on top would refund GST twice. claimed
+// counts what refunds already spoke for, settled or in flight.
 func deriveRefundAmount(order *domain.Order, requested []domain.CreateRefundItemRequest, claimed map[string]int, priorRefunded int64) (*refundBreakdown, error) {
 	if len(requested) == 0 {
 		return nil, errors.BadRequest("A refund needs at least one line")
@@ -50,7 +49,6 @@ func deriveRefundAmount(order *domain.Order, requested []domain.CreateRefundItem
 
 	seen := make(map[string]bool, len(requested))
 	remaining := make(map[string]int, len(requested))
-	perLine := order.DiscountAllocated
 
 	breakdown := &refundBreakdown{Items: make([]domain.RefundItem, 0, len(requested))}
 	var runningTotal int64
@@ -75,23 +73,12 @@ func deriveRefundAmount(order *domain.Order, requested []domain.CreateRefundItem
 		remaining[req.OrderItemID] = left - req.Quantity
 
 		lineSubtotal := item.UnitPrice * int64(req.Quantity)
-		var lineDiscount int64
-		if perLine {
-			// The refunded units' share of what this line was discounted. Clamped
-			// because this reads stored data: the order-level path divided one
-			// figure by one subtotal and was self-bounding, this is not.
-			//
-			// Rounds per call against the original quantity, so refunding a line in
-			// separate parts can differ from refunding it at once by under a paisa
-			// per unit. A clearing refund absorbs the difference.
-			lineDiscount = prorate(item.DiscountAmount, int64(req.Quantity), int64(item.Quantity))
-			lineDiscount = min(max(lineDiscount, 0), lineSubtotal)
-		} else {
-			lineDiscount = prorate(order.DiscountAmount, lineSubtotal, order.Subtotal)
-		}
-		// Tax-inclusive: the line's refund is its value less its share of the
-		// discount, full stop. lineTax is not added — it is read back out of that
-		// figure with extractTax, purely for the credit note to itemize.
+		// The refunded units' share of what this line was discounted, clamped because
+		// this reads stored data rather than dividing one figure by one subtotal.
+		lineDiscount := prorate(item.DiscountAmount, int64(req.Quantity), int64(item.Quantity))
+		lineDiscount = min(max(lineDiscount, 0), lineSubtotal)
+		// Tax-inclusive, so tax is read back out of the line's value rather than
+		// added to it — extractTax is for the credit note to itemize.
 		amount := lineSubtotal - lineDiscount
 		lineTax := extractTax(amount)
 

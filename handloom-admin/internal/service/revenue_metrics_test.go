@@ -48,11 +48,10 @@ func TestProductPurchasedIsNetOfTheLineDiscount(t *testing.T) {
 	// ₹3,000 cart, ₹300 off, allocated 100/200 across the two lines.
 	discounted := func() *domain.Order {
 		return &domain.Order{
-			CustomerID:        "cust_1",
-			Subtotal:          300000,
-			DiscountAmount:    30000,
-			TotalAmount:       270000,
-			DiscountAllocated: true,
+			CustomerID:     "cust_1",
+			Subtotal:       300000,
+			DiscountAmount: 30000,
+			TotalAmount:    270000,
 			Items: []domain.OrderItem{
 				{ProductID: "p1", CategoryID: "cat_1", TotalPrice: 100000, DiscountAmount: 10000},
 				{ProductID: "p2", CategoryID: "cat_2", TotalPrice: 200000, DiscountAmount: 20000},

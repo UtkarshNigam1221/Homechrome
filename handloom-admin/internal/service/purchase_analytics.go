@@ -18,16 +18,8 @@ type purchaseAttribution struct {
 }
 
 func recordPurchaseAnalytics(ctx context.Context, customerRepo domain.CustomerRepository, order *domain.Order, attr purchaseAttribution) {
-	// Per-line product purchase revenue, net of the line's share of the discount.
-	// orders_value books order.TotalAmount, which is already net, so summing gross line
-	// prices here made the two disagree by the discount on every couponed order — the
-	// dashboard would show more product revenue than the business took. They used to
-	// agree only because every discount was zero.
-	//
-	// Not gated on order.DiscountAllocated: an order without an allocation has zero on
-	// every line, so the subtraction is the identity there. A gate would add a branch
-	// that cannot change the result today, and would over-report if some future writer
-	// set line discounts without the flag.
+	// Net of each line's discount: orders_value books the net order total, so gross
+	// line prices here disagreed by the discount on every couponed order.
 	for _, line := range order.Items {
 		catID := line.CategoryID
 		if catID == "" {

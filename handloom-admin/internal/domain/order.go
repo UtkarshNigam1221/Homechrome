@@ -39,10 +39,6 @@ type Order struct {
 	CouponID   *string `json:"coupon_id,omitempty" dynamodbav:"coupon_id,omitempty"`
 	CouponCode *string `json:"coupon_code,omitempty" dynamodbav:"coupon_code,omitempty"`
 
-	// DiscountAllocated marks that DiscountAmount is recorded on the lines. Orders
-	// written before per-line allocation leave it false and prorate on refund.
-	DiscountAllocated bool `json:"discount_allocated" dynamodbav:"discount_allocated"`
-
 	// Status
 	Status        OrderStatus   `json:"status" dynamodbav:"status"`
 	PaymentStatus PaymentStatus `json:"payment_status" dynamodbav:"payment_status"`

@@ -10,12 +10,21 @@ import (
 
 // order builds a tax-inclusive order whose money adds up: subtotal - discount +
 // shipping. TaxAmount is derived from the total via extractTax, exactly as checkout
-// computes it — a figure contained within TotalAmount, never added to it.
+// computes it — a figure contained within TotalAmount, never added to it. The
+// discount is allocated onto the lines by the real allocator, because that is the
+// only shape checkout writes.
 func refundTestOrder(discount, shipping int64, items ...domain.OrderItem) *domain.Order {
 	var subtotal int64
 	for i := range items {
 		items[i].TotalPrice = items[i].UnitPrice * int64(items[i].Quantity)
 		subtotal += items[i].TotalPrice
+	}
+	shares, err := allocateDiscount(items, discount)
+	if err != nil {
+		panic("refundTestOrder: " + err.Error())
+	}
+	for i := range items {
+		items[i].DiscountAmount = shares[i]
 	}
 	total := subtotal - discount + shipping
 	return &domain.Order{
@@ -154,8 +163,8 @@ func TestDeriveRefundAmount(t *testing.T) {
 		require.Equal(t, int64(5000), whole.Shipping)
 	})
 
-	t.Run("discount is prorated by the line's share of the subtotal", func(t *testing.T) {
-		// subtotal 30000, discount 3000 → a 10000 line carries 1000 of it.
+	t.Run("a line refunds its own allocated discount", func(t *testing.T) {
+		// subtotal 30000, discount 3000 → the allocator puts 1000 on the 10000 line.
 		order := refundTestOrder(3000, 0, line("a", 10000, 1, 0), line("b", 20000, 1, 0))
 
 		got, err := deriveRefundAmount(order, []domain.CreateRefundItemRequest{
@@ -316,8 +325,7 @@ func TestDeriveRefundAmount_PerLineDiscount(t *testing.T) {
 			ID: "order_1", Items: items,
 			Subtotal: subtotal, DiscountAmount: discount,
 			TaxAmount: extractTax(total), ShippingAmount: shipping,
-			TotalAmount:       total,
-			DiscountAllocated: true,
+			TotalAmount: total,
 		}
 	}
 
@@ -424,21 +432,21 @@ func TestDeriveRefundAmount_PerLineDiscount(t *testing.T) {
 		require.Equal(t, int64(0), got.Total, "never below zero")
 	})
 
-	// An order written before per-line allocation leaves the marker false.
-	t.Run("a legacy order-level discount still prorates", func(t *testing.T) {
+	// No order-level fallback: an order with no line discounts refunds its full
+	// line value, which is what every pre-coupon order carries.
+	t.Run("an order with no line discounts refunds the whole line", func(t *testing.T) {
 		order := &domain.Order{
-			ID: "order_legacy",
+			ID: "order_plain",
 			Items: []domain.OrderItem{
 				{ID: "a", ProductID: "pa", UnitPrice: 2000, Quantity: 1},
 				{ID: "b", ProductID: "pb", UnitPrice: 1000, Quantity: 1},
 			},
-			Subtotal: 3000, DiscountAmount: 300, TotalAmount: 2700,
+			Subtotal: 3000, TotalAmount: 3000,
 		}
-		require.False(t, order.DiscountAllocated)
 		got, err := deriveRefundAmount(order, []domain.CreateRefundItemRequest{{OrderItemID: "a", Quantity: 1}}, nil, 0)
 		require.NoError(t, err)
-		require.Equal(t, int64(200), got.Discount, "two thirds of 300")
-		require.Equal(t, int64(1800), got.Total)
+		require.Zero(t, got.Discount)
+		require.Equal(t, int64(2000), got.Total)
 	})
 }
 
@@ -461,7 +469,7 @@ func TestAllocateThenRefund_RoundTrip(t *testing.T) {
 
 		order := &domain.Order{ID: "o", Items: append([]domain.OrderItem(nil), items...),
 			Subtotal: subtotal, DiscountAmount: total,
-			TotalAmount: subtotal - total, DiscountAllocated: true}
+			TotalAmount: subtotal - total}
 		for i := range order.Items {
 			order.Items[i].DiscountAmount = shares[i]
 		}

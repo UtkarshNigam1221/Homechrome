@@ -13,7 +13,6 @@ func extractTax(inclusive int64) int64 {
 	if inclusive <= 0 {
 		return 0
 	}
-	num := inclusive * gstRatePercent
 	den := int64(100 + gstRatePercent)
-	return (num*2 + den) / (den * 2)
+	return (inclusive*gstRatePercent*2 + den) / (den * 2)
 }
