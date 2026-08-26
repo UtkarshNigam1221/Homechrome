@@ -28,13 +28,13 @@ jobs:
           cache: npm
           cache-dependency-path: handloom-admin-frontend/package-lock.json
 
-      # Workaround for npm bug 4828: macOS-generated lockfile does not record
-      # Linux platform-specific optional deps (Rolldown native binding used by
-      # Vite 8). Remove the lockfile + node_modules so npm regenerates the
-      # dep tree against the Linux runner. Loses lockfile pinning in CI; the
-      # tradeoff is acceptable until npm fixes 4828 upstream.
-      - run: rm -rf node_modules package-lock.json
-      - run: npm install
+      # npm ci, not install: the lockfile is what makes this build the build that
+      # was tested. It used to be deleted to work around npm 4828 (a
+      # macOS-generated lockfile missing Linux optional deps), which cost a dev
+      # deploy — a fresh resolve bundled two copies of the same module graph and
+      # the admin shell died on `S$5 is not a function`. The lockfile now records
+      # every Linux binding, so there is nothing left to work around.
+      - run: npm ci
       - run: npm run check
       - name: Build check
         run: npm run build:dev
@@ -127,12 +127,7 @@ jobs:
           cache: npm
           cache-dependency-path: homechrome-store/package-lock.json
 
-      # Workaround for npm bug 4828: macOS-generated lockfile does not record
-      # Linux platform-specific optional deps (Next SWC, lightningcss for
-      # Tailwind 4). Remove the lockfile + node_modules so npm regenerates the
-      # dep tree against the Linux runner. Loses lockfile pinning in CI.
-      - run: rm -rf node_modules package-lock.json
-      - run: npm install
+      - run: npm ci
       - run: npm run lint
       - name: Build check
         run: npm run build
