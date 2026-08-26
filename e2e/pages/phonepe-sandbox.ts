@@ -1,4 +1,4 @@
-import { chromium } from '@playwright/test';
+import { chromium, Page } from '@playwright/test';
 import jsQR from 'jsqr';
 import { PNG } from 'pngjs';
 
@@ -42,26 +42,10 @@ export async function payWithSandbox(
   const browser = await chromium.launch();
   try {
     const page = await browser.newPage();
-    await page.goto(redirectUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 });
+    const simulatorUrl = await readSimulatorURL(page, redirectUrl);
 
-    // The QR is the only PNG data-uri on the page; everything else is an SVG
-    // icon or a CDN logo.
-    const qr = page.locator('img[src^="data:image/png"]').first();
-    // If the QR has not rendered in 15s the page is not the one we expect.
-    await qr.waitFor({ state: 'visible', timeout: 15_000 });
-
-    const src = await qr.getAttribute('src');
-    if (!src) throw new Error('PhonePe rendered no QR image to scan');
-
-    const simulatorUrl = decodeQR(src);
-    if (!simulatorUrl.startsWith('https://merchant-simulator.phonepe.com/')) {
-      throw new Error(
-        `expected the UAT QR to encode a merchant-simulator URL, got ${simulatorUrl.slice(0, 80)}.\n` +
-          `A upi:// intent here means dev is pointed at production PhonePe, ` +
-          `where this suite must never transact.`
-      );
-    }
-
+    // Deliberately outside readSimulatorURL's retry: reading the QR is
+    // idempotent, submitting the simulator is a payment. This happens once.
     await page.goto(simulatorUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 });
     await page.getByRole('button', { name: outcome, exact: true }).click();
     await page.locator('input[type="submit"]').click();
@@ -70,6 +54,57 @@ export async function payWithSandbox(
     await browser.close();
   }
 }
+
+/**
+ * Loads the merchant page and reads the simulator URL out of its QR.
+ *
+ * Retried because PhonePe's own hosted page does not always render: a run lost
+ * a spec to the QR never appearing, with nothing wrong on our side. Reloading
+ * is safe — this navigates and reads, and pays for nothing.
+ */
+async function readSimulatorURL(page: Page, redirectUrl: string): Promise<string> {
+  const attempts = 3;
+  let last: unknown;
+
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      // 30s, not 60s: three attempts at 60s plus the QR waits would eat the
+      // whole 240s per-test budget on their own.
+      await page.goto(redirectUrl, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+
+      // The QR is the only PNG data-uri on the page; everything else is an SVG
+      // icon or a CDN logo.
+      const qr = page.locator('img[src^="data:image/png"]').first();
+      await qr.waitFor({ state: 'visible', timeout: 20_000 });
+
+      const src = await qr.getAttribute('src');
+      if (!src) throw new Error('PhonePe rendered no QR image to scan');
+
+      const simulatorUrl = decodeQR(src);
+      // Not retryable, and the one case where a retry would be dangerous rather
+      // than merely useless — fail out of the loop immediately.
+      if (!simulatorUrl.startsWith('https://merchant-simulator.phonepe.com/')) {
+        throw new NotTheSandboxError(
+          `expected the UAT QR to encode a merchant-simulator URL, got ${simulatorUrl.slice(0, 80)}.\n` +
+            `A upi:// intent here means dev is pointed at production PhonePe, ` +
+            `where this suite must never transact.`
+        );
+      }
+
+      return simulatorUrl;
+    } catch (err) {
+      if (err instanceof NotTheSandboxError) throw err;
+      last = err;
+    }
+  }
+
+  throw new Error(
+    `PhonePe's page did not render a readable QR in ${attempts} attempts: ${String(last)}`
+  );
+}
+
+/** Wrong environment, not a flaky page. Never retried. */
+class NotTheSandboxError extends Error {}
 
 /** Decodes a base64 PNG data-uri into the string its QR encodes. */
 function decodeQR(dataUri: string): string {
