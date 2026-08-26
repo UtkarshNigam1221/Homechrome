@@ -34,6 +34,9 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       className,
       variant = 'primary',
       size = 'md',
+      // HTML defaults a button inside a form to type="submit", so every Cancel in
+      // this app was submitting the form it sat in. Submitting is opt-in now.
+      type = 'button',
       loading = false,
       leftIcon,
       rightIcon,
@@ -46,6 +49,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
     return (
       <button
         ref={ref}
+        type={type}
         disabled={disabled || loading}
         className={clsx(
           'inline-flex items-center justify-center font-semibold rounded-xl transition-all duration-200 ease-out',
