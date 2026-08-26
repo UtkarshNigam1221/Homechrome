@@ -45,18 +45,21 @@ func (r *recordingRefundService) HandleRefundFailed(_ context.Context, providerR
 }
 
 // The payment half must stay untouched by refund events, and vice versa.
-type recordingPaymentService struct{ calls int }
+type recordingPaymentService struct {
+	calls   int
+	failErr error
+}
 
 func (p *recordingPaymentService) InitiatePayment(context.Context, domain.InitiatePaymentRequest) (*domain.PaymentResponse, error) {
 	return nil, nil
 }
 func (p *recordingPaymentService) HandlePaymentSuccess(context.Context, domain.PaymentWebhookEvent) error {
 	p.calls++
-	return nil
+	return p.failErr
 }
 func (p *recordingPaymentService) HandlePaymentFailure(context.Context, domain.PaymentWebhookEvent) error {
 	p.calls++
-	return nil
+	return p.failErr
 }
 func (p *recordingPaymentService) GetByOrderID(context.Context, string) (*domain.Payment, error) {
 	return nil, nil
@@ -134,16 +137,42 @@ func TestPhonePeWebhook_RoutesRefundEvents(t *testing.T) {
 		require.Zero(t, payments.calls)
 	})
 
-	// PhonePe retries anything that is not a 200, so a service failure must still
-	// be acknowledged — the settlement is guarded by its own conditional write.
-	t.Run("acknowledges the delivery even when settlement fails", func(t *testing.T) {
+	// This asserted 200 until dev produced the case it was reasoning about
+	// backwards: two orders paid at PhonePe sat PENDING for five hours because the
+	// only thing that settles them had failed and been acknowledged. The
+	// conditional write makes a retry *safe*; it does nothing about never
+	// retrying. PhonePe's retries are bounded, an unsettled paid order is not.
+	t.Run("asks for redelivery when a valid delivery fails to process", func(t *testing.T) {
 		h, refunds, _ := newWebhookHandler(t)
 		refunds.failErr = context.DeadlineExceeded
 
 		rec := postWebhook(t, h, `{"event":"pg.refund.completed","payload":{"refundId":"OMR_9"}}`)
 
-		require.Equal(t, http.StatusOK, rec.Code)
+		require.Equal(t, http.StatusInternalServerError, rec.Code,
+			"a 200 here is a settlement silently dropped")
 		require.Equal(t, []string{"OMR_9"}, refunds.completed)
+	})
+
+	t.Run("asks for redelivery when a payment fails to settle", func(t *testing.T) {
+		h, _, payments := newWebhookHandler(t)
+		payments.failErr = context.DeadlineExceeded
+
+		rec := postWebhook(t, h, `{"event":"checkout.order.completed","payload":{"merchantOrderId":"txn_1","state":"COMPLETED"}}`)
+
+		require.Equal(t, http.StatusInternalServerError, rec.Code)
+		require.Equal(t, 1, payments.calls)
+	})
+
+	// A delivery we cannot read is not one a retry fixes, so it stays
+	// acknowledged — otherwise PhonePe redelivers the same broken body.
+	t.Run("acknowledges a body it cannot parse", func(t *testing.T) {
+		h, refunds, payments := newWebhookHandler(t)
+
+		rec := postWebhook(t, h, `not json`)
+
+		require.Equal(t, http.StatusOK, rec.Code)
+		require.Zero(t, payments.calls)
+		require.Empty(t, refunds.completed)
 	})
 
 	t.Run("still routes payment events", func(t *testing.T) {
