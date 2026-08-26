@@ -751,20 +751,28 @@ func setupAPIRoutes(api awsapigateway.RestApi, lambdas map[string]*ServiceLambda
 		}
 	}
 
-	// Coupon routes. ANY plus a proxy, matching orders and customers above: this API
-	// answers CORS preflight from each Lambda's chi middleware rather than an API
-	// Gateway mock, so OPTIONS has to reach the Lambda like any other method. Naming
-	// methods explicitly left OPTIONS unrouted, and API Gateway answers an unmatched
-	// method with 403 — every browser call to /admin/coupons failed its preflight.
-	// The proxy also hands chi the whole path, so /validate, /redeem and /code/{code}
-	// need no resources of their own.
+	// Coupon routes. ANY on every resource, not a list of verbs: this API answers CORS
+	// preflight from each Lambda's chi middleware rather than an API Gateway mock, so
+	// OPTIONS has to reach the Lambda like any other method. Naming methods explicitly
+	// left OPTIONS unrouted, and API Gateway answers an unmatched method with 403 —
+	// every browser call to /admin/coupons failed its preflight.
+	//
+	// ANY per resource rather than {proxy+}: the deployed stack already has {id} here,
+	// and API Gateway allows only one variable path part per level. CloudFormation
+	// creates before it deletes, so adding a proxy beside {id} fails the update with
+	// "a sibling ({id}) of this resource already has a variable path part". Keeping
+	// the resources and changing only their methods needs no topology change.
 	couponIntegration := awsapigateway.NewLambdaIntegration(lambdas["coupon"].Function, nil)
 	coupons := admin.AddResource(jsii.String("coupons"), nil)
-	coupons.AddMethod(jsii.String("ANY"), couponIntegration, &awsapigateway.MethodOptions{})
-	coupons.AddProxy(&awsapigateway.ProxyResourceOptions{
-		AnyMethod:          jsii.Bool(true),
-		DefaultIntegration: couponIntegration,
-	})
+	coupons.AddMethod(jsii.String("ANY"), couponIntegration, nil)
+	coupons.AddResource(jsii.String("{id}"), nil).AddMethod(jsii.String("ANY"), couponIntegration, nil)
+	// Literal siblings take precedence over {id} in API Gateway, so these resolve
+	// correctly alongside it.
+	coupons.AddResource(jsii.String("validate"), nil).AddMethod(jsii.String("ANY"), couponIntegration, nil)
+	coupons.AddResource(jsii.String("redeem"), nil).AddMethod(jsii.String("ANY"), couponIntegration, nil)
+	coupons.AddResource(jsii.String("code"), nil).
+		AddResource(jsii.String("{code}"), nil).
+		AddMethod(jsii.String("ANY"), couponIntegration, nil)
 
 	// TODO: Uncomment routes as services are implemented
 	/*
