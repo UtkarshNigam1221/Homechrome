@@ -25,6 +25,10 @@ export const TARGETS = {
   store: process.env.STORE_URL ?? '',
 };
 
+// Concurrent payment initiations PhonePe tolerates without throttling the
+// merchant. Empirical, not documented: three was too many.
+const MAX_PAYMENT_WORKERS = 2;
+
 export default defineConfig({
   testDir: './specs',
   // Deployed infrastructure: a cold Lambda plus a Neon cold start is slow, and
@@ -55,7 +59,13 @@ export default defineConfig({
   //
   // Products are per-spec and parallelise safely. The cart is the constraint.
   fullyParallel: false,
-  workers: Math.max(1, testPhones().length),
+
+  // …and PhonePe is the tighter one. It throttles a burst of payment
+  // initiations per merchant, so the suite's own parallelism is what trips it:
+  // on four workers, three concurrent checkouts held the merchant throttled for
+  // ~8s and lost three specs to a 500. Two keeps most of the wall-clock and
+  // halves the burst. If 429s survive this, the next step is one.
+  workers: Math.min(MAX_PAYMENT_WORKERS, Math.max(1, testPhones().length)),
 
   // No retries. Against real infrastructure a retry doubles the time to red and
   // buys a second opinion nobody asked for — the first run against dev spent
