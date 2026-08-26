@@ -1,6 +1,6 @@
 import { APIRequestContext, request } from '@playwright/test';
 
-import { json, Order } from '../fixtures/api';
+import { adminClient, json, Order } from '../fixtures/api';
 import { testPhone } from '../fixtures/test-phone';
 import { payWithSandbox } from '../pages/phonepe-sandbox';
 import { TARGETS } from '../playwright.config';
@@ -235,17 +235,31 @@ export async function placePaidOrder(
   return { order, autoPaid };
 }
 
-/** Payment settles asynchronously even on the DevClient; poll, do not sleep. */
+/**
+ * The storefront's payment-status is a pure read, so only PhonePe's webhook
+ * advances a payment — and against UAT that delivery is unreliable. Waiting
+ * longer cannot fix a webhook that never arrives, so this reconciles from the
+ * provider instead, through the admin re-check.
+ */
 export async function pollUntilPaid(
   store: APIRequestContext,
   orderId: string,
-  timeoutMs = 45_000
+  timeoutMs = 120_000
 ): Promise<Order> {
   const deadline = Date.now() + timeoutMs;
   let last = '';
   let consecutiveErrors = 0;
+  let polls = 0;
+  let admin: APIRequestContext | undefined;
 
   while (Date.now() < deadline) {
+    // Give the webhook 10s of grace, then reconcile from the provider every
+    // 10s rather than waiting out a delivery that may never come.
+    if (++polls > 5 && polls % 5 === 1) {
+      admin ??= await adminClient();
+      await admin.get(`/admin/orders/${orderId}/payment-status`).catch(() => undefined);
+    }
+
     const res = await store.get(`/api/v1/store/checkout/payment-status/${orderId}`);
 
     if (!res.ok()) {
