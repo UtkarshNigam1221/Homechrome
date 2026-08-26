@@ -15,13 +15,6 @@ import { destroyCatalog, seedCatalog, SeededCatalog } from '../../fixtures/catal
  * GET inside the admin group: "admin-only end to end, the read included". This
  * asserts what #232 actually does. If the operator order page is meant to show
  * refunds, that is a product decision to settle on #232, not a test to soften.
- *
- * orderId below is a fixture, not a real order. RequireRole (order_handler.go)
- * is mounted with r.Use ahead of every handler in the group and checks only
- * the caller's role, and ListByOrder (refund_service.go) queries refunds by
- * order_id with no existence check — so every case here, refusal and success
- * alike, resolves without a real order behind the id. unauthenticated.spec.ts
- * uses the same trick one layer below this.
  */
 test.describe('refund routes are admin-only', () => {
   let admin: APIRequestContext;

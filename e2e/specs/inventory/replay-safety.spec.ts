@@ -37,8 +37,6 @@ test.describe('replay safety', () => {
     const product = catalog.products[0]!;
     const { order } = await placePaidOrder(store, [{ productId: product.id, quantity: 4 }]);
 
-    // placePaidOrder already leaves the order CONFIRMED (payment flips both
-    // fields together), so dispatch starts one hop later than PENDING did.
     await api.patch(`/admin/orders/${order.id}/status`, { data: { status: 'PROCESSING' } });
     await api.patch(`/admin/orders/${order.id}/status`, { data: { status: 'SHIPPED' } });
 
@@ -58,14 +56,10 @@ test.describe('replay safety', () => {
     ).toHaveLength(1);
   });
 
-  // One test per status rather than one loop: each paid case drives a real UAT
-  // payment, and two of those inside a single test leaves the second unsettled.
   for (const status of ['PENDING', 'CONFIRMED', 'PROCESSING'] as const) {
     test(`cancel releases once, from ${status}`, async () => {
       catalog = await seedCatalog(api, [10]);
       const product = catalog.products[0]!;
-      // PENDING is the real pre-payment window; CONFIRMED/PROCESSING need a
-      // paid order, since only payment success advances status off PENDING.
       const order =
         status === 'PENDING'
           ? await placeUnpaidOrder(store, [{ productId: product.id, quantity: 3 }])

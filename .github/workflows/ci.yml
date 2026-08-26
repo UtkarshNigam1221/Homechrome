@@ -2,8 +2,6 @@ name: CI
 
 # PR gate only. Build + deploy live in the deploy-* workflows (workflow_dispatch
 # / workflow_call), so they no longer show up as skipped jobs on pull requests.
-# No base-branch filter: a stacked PR targets its parent branch, not main, and
-# a base filter would leave every PR above the bottom of a stack ungated.
 on:
   pull_request:
 

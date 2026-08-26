@@ -5,14 +5,6 @@ import { testPhone } from '../fixtures/test-phone';
 import { payWithSandbox } from '../pages/phonepe-sandbox';
 import { TARGETS } from '../playwright.config';
 
-/**
- * How the suite gets an order — all through the storefront now that
- * POST /admin/orders is retired. `placeUnpaidOrder` and `placePaidOrder` share
- * the same cart → address → initiate setup and differ only in whether they
- * drive payment; `placePaidOrder` is the only one worth reaching for unless a
- * spec specifically needs the brief PENDING window before payment settles.
- */
-
 function requiredEnv(name: string): string {
   const v = process.env[name];
   if (!v) throw new Error(`${name} must be set for storefront specs`);
@@ -49,11 +41,6 @@ export async function customerClient(): Promise<APIRequestContext> {
   return ctx;
 }
 
-/**
- * Clears the cart, adds `lines`, and creates the shipping address checkout
- * needs. Returns the address id, the one thing every call site below needs
- * from it.
- */
 export async function prepareCheckout(
   store: APIRequestContext,
   lines: { productId: string; quantity: number }[]
@@ -93,7 +80,6 @@ interface CheckoutResult {
   merchant_txn_id?: string;
 }
 
-/** POST /checkout/initiate against an address prepareCheckout already set up. */
 async function initiateCheckout(
   store: APIRequestContext,
   addressId: string
@@ -111,12 +97,6 @@ async function initiateCheckout(
   return checkout;
 }
 
-/**
- * Cart → address → checkout, stopping short of payment. The order comes back
- * PENDING — the real, if brief, window every checkout passes through between
- * initiate and payment success, not a fabricated state — with nothing paid
- * and nothing polled.
- */
 export async function placeUnpaidOrder(
   store: APIRequestContext,
   lines: { productId: string; quantity: number }[]
@@ -128,24 +108,9 @@ export async function placeUnpaidOrder(
 
 export interface PaidOrderResult {
   order: Order;
-  /** Set when dev is running the PhonePe DevClient rather than the sandbox. */
   autoPaid: boolean;
 }
 
-/**
- * Cart → address → checkout → payment → PAID.
- *
- * Payment branches on what dev is actually configured with, detected from the
- * redirect the API returns rather than assumed:
- *
- *   - PhonePe DevClient (no PHONEPE_CLIENT_ID in the deployment) returns a
- *     local confirmation URL carrying `dev_payment=`. The payment completes
- *     server-side; there is nothing to drive.
- *   - The real sandbox returns a phonepe.com URL, which needs a browser. Those
- *     specs live in the admin-ui project and use pages/phonepe-sandbox.ts.
- *
- * Either way this is the deployed gateway, not a stub in the suite.
- */
 export async function placePaidOrder(
   store: APIRequestContext,
   lines: { productId: string; quantity: number }[]

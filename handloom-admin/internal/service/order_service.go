@@ -237,8 +237,6 @@ func terminal(err error) bool {
 	return false
 }
 
-// orderQuantities aggregates an order's lines by product, so a status change moves
-// stock for each product once rather than once per line.
 func orderQuantities(items []domain.OrderItem) map[string]int {
 	quantities := make(map[string]int, len(items))
 	for _, item := range items {

@@ -34,8 +34,6 @@ test.describe('the ledger UI', () => {
     fx = await buyProducts(admin, [{ stock: 10, buy: 3 }]);
     const product = fx.products[0]!;
 
-    // buyProducts already leaves the order CONFIRMED, so dispatch starts one
-    // hop later than it did from an admin-created PENDING order.
     for (const status of ['PROCESSING', 'SHIPPED']) {
       await admin.patch(`/admin/orders/${fx.order.id}/status`, { data: { status } });
     }

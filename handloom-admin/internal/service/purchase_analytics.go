@@ -10,8 +10,6 @@ import (
 )
 
 // purchaseAttribution carries the visitor-attribution labels applied to the
-// first/repeat-purchase metrics, filled from fields the order denormalised at
-// checkout-initiate time.
 type purchaseAttribution struct {
 	country   string
 	city      string
@@ -19,11 +17,6 @@ type purchaseAttribution struct {
 	utmSource string
 }
 
-// recordPurchaseAnalytics emits the product-purchase KPI signals for the store
-// payment-success webhook: per-line product_purchased sums, coupon_redeemed,
-// and first-vs-repeat detection via an atomic order-count increment.
-// Fire-and-forget — failures are logged, never returned. Channel-specific
-// signals (payment_completed, durations) stay with the caller.
 func recordPurchaseAnalytics(ctx context.Context, customerRepo domain.CustomerRepository, order *domain.Order, attr purchaseAttribution) {
 	// Per-line product purchase counts. revenuePaise = line.TotalPrice.
 	for _, line := range order.Items {
