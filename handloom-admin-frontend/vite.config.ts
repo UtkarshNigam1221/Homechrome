@@ -2,6 +2,26 @@ import react from '@vitejs/plugin-react';
 import path from 'path';
 import { defineConfig, loadEnv } from 'vite';
 
+// Which vendor chunk each package belongs to, keyed by exact package name. Adding
+// a package here is the only way it leaves the default chunk.
+const VENDOR_CHUNKS: Record<string, string> = {
+  react: 'vendor-react',
+  'react-dom': 'vendor-react',
+  'react-router': 'vendor-react',
+  'react-router-dom': 'vendor-react',
+  zustand: 'vendor-state',
+  '@tanstack/react-query': 'vendor-state',
+  '@headlessui/react': 'vendor-ui',
+  'lucide-react': 'vendor-ui',
+  clsx: 'vendor-ui',
+  recharts: 'vendor-charts',
+  'react-hook-form': 'vendor-forms',
+  '@hookform/resolvers': 'vendor-forms',
+  zod: 'vendor-forms',
+  axios: 'vendor-utils',
+  'date-fns': 'vendor-utils',
+};
+
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
@@ -40,29 +60,24 @@ export default defineConfig(({ mode }) => {
         output: {
           // Manual chunk splitting for better caching.
           // Function form required since Rollup v4 (object form removed from TS types).
+          //
+          // Matched on the owning package name, never on a substring of the path.
+          // `id.includes('lucide-react')` also matched
+          // @neondatabase/auth-ui/node_modules/lucide-react, so a nested duplicate
+          // joined the same chunk as the real one and the two collided on their
+          // shared bindings. A nested copy now falls through to the default chunk,
+          // which keeps every vendor chunk holding exactly one copy of a package.
           manualChunks(id) {
-            if (!id.includes('node_modules')) return undefined;
-            if (
-              /[\\/]node_modules[\\/](react|react-dom|react-router|react-router-dom)[\\/]/.test(id)
-            )
-              return 'vendor-react';
-            if (id.includes('zustand') || id.includes('@tanstack/react-query'))
-              return 'vendor-state';
-            if (
-              id.includes('@headlessui/react') ||
-              id.includes('lucide-react') ||
-              id.includes('clsx')
-            )
-              return 'vendor-ui';
-            if (id.includes('recharts')) return 'vendor-charts';
-            if (
-              id.includes('react-hook-form') ||
-              id.includes('@hookform/resolvers') ||
-              id.includes('zod')
-            )
-              return 'vendor-forms';
-            if (id.includes('axios') || id.includes('date-fns')) return 'vendor-utils';
-            return undefined;
+            const segments = id.replace(/\\/g, '/').split('node_modules/');
+            // 1 = app code; >2 = a nested duplicate of something already resolved.
+            if (segments.length !== 2) return undefined;
+
+            const rest = segments[1];
+            const pkg = rest.startsWith('@')
+              ? rest.split('/').slice(0, 2).join('/')
+              : rest.split('/')[0];
+
+            return VENDOR_CHUNKS[pkg];
           },
 
           // Optimize asset file names for caching
