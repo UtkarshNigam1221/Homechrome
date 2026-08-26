@@ -82,13 +82,14 @@ interface CheckoutResult {
 
 async function initiateCheckout(
   store: APIRequestContext,
-  addressId: string
+  addressId: string,
+  couponCode?: string
 ): Promise<CheckoutResult> {
   // CheckoutResult is {order, redirect_url, merchant_txn_id} — the order comes
   // back whole, there is no top-level order_id.
   const checkout = await json<CheckoutResult>(
     await store.post('/api/v1/store/checkout/initiate', {
-      data: { shipping_address_id: addressId },
+      data: { shipping_address_id: addressId, coupon_code: couponCode },
     })
   );
   if (!checkout.order?.id) {
@@ -99,10 +100,11 @@ async function initiateCheckout(
 
 export async function placeUnpaidOrder(
   store: APIRequestContext,
-  lines: { productId: string; quantity: number }[]
+  lines: { productId: string; quantity: number }[],
+  couponCode?: string
 ): Promise<Order> {
   const addressId = await prepareCheckout(store, lines);
-  const checkout = await initiateCheckout(store, addressId);
+  const checkout = await initiateCheckout(store, addressId, couponCode);
   return json<Order>(await store.get(`/api/v1/store/orders/${checkout.order.id}`));
 }
 
@@ -113,10 +115,11 @@ export interface PaidOrderResult {
 
 export async function placePaidOrder(
   store: APIRequestContext,
-  lines: { productId: string; quantity: number }[]
+  lines: { productId: string; quantity: number }[],
+  couponCode?: string
 ): Promise<PaidOrderResult> {
   const addressId = await prepareCheckout(store, lines);
-  const checkout = await initiateCheckout(store, addressId);
+  const checkout = await initiateCheckout(store, addressId, couponCode);
 
   const redirect = checkout.redirect_url ?? '';
   const autoPaid = redirect.includes('dev_payment=');
