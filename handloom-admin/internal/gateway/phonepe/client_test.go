@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -318,4 +319,77 @@ func TestClient_UATServesBothFromOneHost(t *testing.T) {
 	_, err := client.InitiateRefund(context.Background(), "mref_1", "txn_1", 100)
 	require.NoError(t, err)
 	require.Equal(t, []string{"/apis/pg-sandbox/v1/oauth/token", "/apis/pg-sandbox/payments/v2/refund"}, paths)
+}
+
+// TestClient_ThrottledPaymentRetries pins the behavior that made the E2E suite
+// flaky and would fail a real checkout: PhonePe answers 429 to a burst, and a
+// single-shot call turns that into a failed payment.
+func TestClient_ThrottledPaymentRetries(t *testing.T) {
+	var attempts int32
+
+	server := httptest.NewServer(fakeTokenThenHandler(func(w http.ResponseWriter, r *http.Request) {
+		if atomic.AddInt32(&attempts, 1) < 3 {
+			w.WriteHeader(http.StatusTooManyRequests)
+			_, _ = w.Write([]byte(`{"code":"TOO_MANY_REQUESTS","message":"Too many requests"}`))
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(PayResponse{RedirectURL: "https://pay.example/x"})
+	}))
+	defer server.Close()
+
+	redirect, err := testRefundClient(server.URL).InitiatePayment(
+		context.Background(), "txn_123", "cust_1", 60000, "order_1")
+
+	require.NoError(t, err, "two 429s then a 200 must still produce a redirect")
+	assert.Equal(t, "https://pay.example/x", redirect)
+	assert.EqualValues(t, 3, atomic.LoadInt32(&attempts), "the first two attempts must be retried")
+}
+
+// TestClient_ThrottledRefundIsNotARejection guards the distinction the refund
+// path depends on: a 429 is the provider not answering, so it must not come
+// back as ErrRejected, which records the refund as refused.
+func TestClient_ThrottledRefundIsNotARejection(t *testing.T) {
+	var attempts int32
+
+	server := httptest.NewServer(fakeTokenThenHandler(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&attempts, 1)
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = w.Write([]byte(`{"code":"TOO_MANY_REQUESTS"}`))
+	}))
+	defer server.Close()
+
+	_, err := testRefundClient(server.URL).InitiateRefund(
+		context.Background(), "refund_abc", "txn_123", 2500)
+
+	require.Error(t, err)
+	assert.NotErrorIs(t, err, ErrRejected,
+		"a throttled refund is unanswered, not refused — ErrRejected would settle it wrongly")
+	assert.EqualValues(t, maxSendAttempts, atomic.LoadInt32(&attempts))
+}
+
+// TestClient_RetryReusesTheSameIDs is why retrying a payment is safe: PhonePe
+// keys on merchantOrderId, so every attempt addresses one order.
+func TestClient_RetryReusesTheSameIDs(t *testing.T) {
+	var seen []string
+
+	server := httptest.NewServer(fakeTokenThenHandler(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+		seen = append(seen, body["merchantOrderId"].(string))
+		if len(seen) < 2 {
+			w.WriteHeader(http.StatusTooManyRequests)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(PayResponse{RedirectURL: "https://pay.example/x"})
+	}))
+	defer server.Close()
+
+	_, err := testRefundClient(server.URL).InitiatePayment(
+		context.Background(), "txn_stable", "cust_1", 60000, "order_1")
+
+	require.NoError(t, err)
+	require.Len(t, seen, 2)
+	assert.Equal(t, seen[0], seen[1], "a retry must re-address the same order, never create a second")
 }
