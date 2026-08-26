@@ -751,17 +751,20 @@ func setupAPIRoutes(api awsapigateway.RestApi, lambdas map[string]*ServiceLambda
 		}
 	}
 
-	// Coupon routes
+	// Coupon routes. ANY plus a proxy, matching orders and customers above: this API
+	// answers CORS preflight from each Lambda's chi middleware rather than an API
+	// Gateway mock, so OPTIONS has to reach the Lambda like any other method. Naming
+	// methods explicitly left OPTIONS unrouted, and API Gateway answers an unmatched
+	// method with 403 — every browser call to /admin/coupons failed its preflight.
+	// The proxy also hands chi the whole path, so /validate, /redeem and /code/{code}
+	// need no resources of their own.
 	couponIntegration := awsapigateway.NewLambdaIntegration(lambdas["coupon"].Function, nil)
 	coupons := admin.AddResource(jsii.String("coupons"), nil)
-	addResourceRoutes(coupons, couponIntegration)
-	// Literal siblings take precedence over {id} in API Gateway, so these resolve
-	// correctly alongside /coupons/{id}.
-	coupons.AddResource(jsii.String("validate"), nil).AddMethod(jsii.String("POST"), couponIntegration, nil)
-	coupons.AddResource(jsii.String("redeem"), nil).AddMethod(jsii.String("POST"), couponIntegration, nil)
-	coupons.AddResource(jsii.String("code"), nil).
-		AddResource(jsii.String("{code}"), nil).
-		AddMethod(jsii.String("GET"), couponIntegration, nil)
+	coupons.AddMethod(jsii.String("ANY"), couponIntegration, &awsapigateway.MethodOptions{})
+	coupons.AddProxy(&awsapigateway.ProxyResourceOptions{
+		AnyMethod:          jsii.Bool(true),
+		DefaultIntegration: couponIntegration,
+	})
 
 	// TODO: Uncomment routes as services are implemented
 	/*
@@ -829,17 +832,6 @@ func setupAPIRoutes(api awsapigateway.RestApi, lambdas map[string]*ServiceLambda
 		audit.AddResource(jsii.String("entity"), nil).AddResource(jsii.String("{type}"), nil).AddResource(jsii.String("{entityId}"), nil).AddMethod(jsii.String("GET"), auditIntegration, nil)
 		audit.AddResource(jsii.String("user"), nil).AddResource(jsii.String("{userId}"), nil).AddMethod(jsii.String("GET"), auditIntegration, nil)
 	*/
-}
-
-func addResourceRoutes(resource awsapigateway.Resource, integration awsapigateway.LambdaIntegration) {
-	resource.AddMethod(jsii.String("GET"), integration, nil)
-	resource.AddMethod(jsii.String("POST"), integration, nil)
-
-	idResource := resource.AddResource(jsii.String("{id}"), nil)
-	idResource.AddMethod(jsii.String("GET"), integration, nil)
-	idResource.AddMethod(jsii.String("PUT"), integration, nil)
-	idResource.AddMethod(jsii.String("PATCH"), integration, nil)
-	idResource.AddMethod(jsii.String("DELETE"), integration, nil)
 }
 
 func capitalize(s string) string {
