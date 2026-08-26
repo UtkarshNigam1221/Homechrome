@@ -47,7 +47,12 @@ func (h *WebhookHandler) Routes() chi.Router {
 // PhonePeWebhook handles incoming PhonePe Standard Checkout webhook callbacks.
 // It reads the raw body, verifies the signature, parses the PhonePe-specific
 // payload, and routes to the appropriate domain service method based on event type.
-// Always returns 200 OK to acknowledge receipt.
+//
+// A delivery we cannot accept — bad signature, unparseable body, an event we do
+// not handle — is acknowledged 200: redelivering it would change nothing. A
+// delivery we accepted but failed to *process* answers 500, so PhonePe retries.
+// Acknowledging those was how a paid order could stay PENDING forever: the only
+// other thing that settles a payment is the provider re-check.
 func (h *WebhookHandler) PhonePeWebhook(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -96,28 +101,30 @@ func (h *WebhookHandler) PhonePeWebhook(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// Route on PhonePe event type
+	var handleErr error
 	switch webhookPayload.Event {
 	case "checkout.order.completed":
-		if err := h.paymentService.HandlePaymentSuccess(ctx, evt); err != nil {
-			slog.ErrorContext(ctx, "failed to handle payment success", "error", err)
-		}
+		handleErr = h.paymentService.HandlePaymentSuccess(ctx, evt)
 	case "checkout.order.failed":
-		if err := h.paymentService.HandlePaymentFailure(ctx, evt); err != nil {
-			slog.ErrorContext(ctx, "failed to handle payment failure", "error", err)
-		}
+		handleErr = h.paymentService.HandlePaymentFailure(ctx, evt)
 	case "pg.refund.completed":
-		if err := h.refundService.HandleRefundCompleted(ctx, webhookPayload.Payload.RefundID); err != nil {
-			slog.ErrorContext(ctx, "failed to handle refund completed",
-				"refund_id", webhookPayload.Payload.RefundID, "error", err)
-		}
+		handleErr = h.refundService.HandleRefundCompleted(ctx, webhookPayload.Payload.RefundID)
 	case "pg.refund.failed":
-		if err := h.refundService.HandleRefundFailed(ctx, webhookPayload.Payload.RefundID,
-			webhookPayload.Payload.ErrorCode, webhookPayload.Payload.DetailedErrorCode); err != nil {
-			slog.ErrorContext(ctx, "failed to handle refund failed",
-				"refund_id", webhookPayload.Payload.RefundID, "error", err)
-		}
+		handleErr = h.refundService.HandleRefundFailed(ctx, webhookPayload.Payload.RefundID,
+			webhookPayload.Payload.ErrorCode, webhookPayload.Payload.DetailedErrorCode)
 	default:
 		slog.WarnContext(ctx, "Unhandled PhonePe webhook event", "event", webhookPayload.Event)
+	}
+
+	if handleErr != nil {
+		// 500, not 200: this delivery was valid and we failed it, so PhonePe
+		// redelivering is the only thing that settles the order without a sweep.
+		slog.ErrorContext(ctx, "Failed to process PhonePe webhook, asking for redelivery",
+			"event", webhookPayload.Event,
+			"merchant_order_id", webhookPayload.Payload.MerchantOrderID,
+			"error", handleErr)
+		response.JSON(w, http.StatusInternalServerError, map[string]string{response.KeyStatus: response.KeyError})
+		return
 	}
 
 	response.JSON(w, http.StatusOK, map[string]string{response.KeyStatus: "ok"})
