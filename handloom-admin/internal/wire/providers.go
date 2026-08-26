@@ -551,6 +551,11 @@ func ProvideOTPRepository(client *dynamodb.Client) domain.OTPRepository {
 	return dynamodb.NewOTPRepository(client)
 }
 
+// ProvideRateLimiter creates a new RateLimiter
+func ProvideRateLimiter(client *dynamodb.Client) domain.RateLimiter {
+	return dynamodb.NewRateLimiter(client)
+}
+
 // ProvideCustomerTokenStore creates a new CustomerTokenStore
 func ProvideCustomerTokenStore(client *dynamodb.Client) domain.CustomerTokenStore {
 	return dynamodb.NewCustomerTokenStore(client)
@@ -696,8 +701,9 @@ func ProvideStoreAuthHandler(
 	customerAuthService *service.CustomerAuthService,
 	cartService *service.CartService,
 	validation *middleware.Validation,
+	rateLimiter domain.RateLimiter,
 ) *store.AuthHandler {
-	return store.NewAuthHandler(customerAuthService, cartService, validation)
+	return store.NewAuthHandler(customerAuthService, cartService, validation, rateLimiter)
 }
 
 // ProvideStoreCatalogHandler creates a new store CatalogHandler
@@ -808,6 +814,7 @@ var StoreServiceSet = wire.NewSet(
 )
 
 var StoreHandlerSet = wire.NewSet(
+	ProvideRateLimiter,
 	ProvideStoreAuthHandler,
 	ProvideStoreCatalogHandler,
 	ProvideStoreCartHandler,

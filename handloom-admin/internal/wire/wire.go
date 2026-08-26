@@ -448,6 +448,7 @@ func InitializeStoreAuthDeps(ctx context.Context, cfg *config.Config) (*StoreAut
 		ProvideValidator,
 		ProvideValidation,
 		ProvideOTPRepository,
+		ProvideRateLimiter,
 		ProvideCustomerRepository,
 		ProvideCustomerTokenStore,
 		ProvideCustomerAuthService,

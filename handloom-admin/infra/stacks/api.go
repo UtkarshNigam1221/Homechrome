@@ -378,6 +378,15 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 			LoggingLevel:         awsapigateway.MethodLoggingLevel_OFF, // Disable logging (CloudWatchRole is false)
 			MetricsEnabled:       jsii.Bool(false),                     // Disable detailed metrics to save costs
 			TracingEnabled:       jsii.Bool(false),                     // Disable X-Ray tracing (not free)
+
+			// /otp/send bills an MSG91 SMS, and the stage-wide 500 rps is sized for
+			// SSR fan-out. Global cap only — the per-phone limit bounds the bill.
+			MethodOptions: &map[string]*awsapigateway.MethodDeploymentOptions{
+				"/api/v1/store/auth/{proxy+}/ANY": {
+					ThrottlingRateLimit:  jsii.Number(10),
+					ThrottlingBurstLimit: jsii.Number(20),
+				},
+			},
 		},
 		// CORS preflight is handled by each Lambda's chi middleware (origin-reflecting),
 		// so we do NOT set DefaultCorsPreflightOptions here. API Gateway mock OPTIONS

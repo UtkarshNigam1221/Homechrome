@@ -343,7 +343,7 @@ func (r *CustomerRepository) RecordPurchase(ctx context.Context, customerID stri
 		},
 		UpdateExpression: aws.String("ADD order_count :one, total_spent :amount"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":one":    &types.AttributeValueMemberN{Value: "1"},
+			valOne:    &types.AttributeValueMemberN{Value: "1"},
 			":amount": &types.AttributeValueMemberN{Value: strconv.FormatInt(amountPaise, 10)},
 		},
 		ReturnValues: types.ReturnValueUpdatedNew,

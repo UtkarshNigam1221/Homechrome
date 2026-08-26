@@ -406,7 +406,8 @@ func InitializeStoreAuthDeps(ctx context.Context, cfg *config.Config) (*StoreAut
 	cartService := ProvideCartService(cartRepository, productRepository, inventoryRepository)
 	service := ProvideValidator()
 	validation := ProvideValidation(service)
-	authHandler := ProvideStoreAuthHandler(customerAuthService, cartService, validation)
+	rateLimiter := ProvideRateLimiter(client)
+	authHandler := ProvideStoreAuthHandler(customerAuthService, cartService, validation, rateLimiter)
 	customerAuth := ProvideCustomerAuthMiddleware(customerAuthService)
 	storeAuthDeps := &StoreAuthDeps{
 		Config:                 cfg,
@@ -713,7 +714,8 @@ func InitializeMonolithDeps(ctx context.Context, cfg *config.Config) (*MonolithD
 	otpRepository := ProvideOTPRepository(client)
 	customerTokenStore := ProvideCustomerTokenStore(client)
 	customerAuthService := ProvideCustomerAuthService(otpRepository, customerRepository, customerTokenStore, cfg)
-	storeAuthHandler := ProvideStoreAuthHandler(customerAuthService, cartService, validation)
+	rateLimiter := ProvideRateLimiter(client)
+	storeAuthHandler := ProvideStoreAuthHandler(customerAuthService, cartService, validation, rateLimiter)
 	catalogHandler := ProvideStoreCatalogHandler(productService, categoryService, inventoryService)
 	cartHandler := ProvideStoreCartHandler(cartService, validation)
 	checkoutService := ProvideCheckoutService(cartService, orderRepository, paymentService, inventoryRepository, customerRepository)

@@ -16,17 +16,20 @@ import (
 // OTPRepository implements domain.OTPRepository using DynamoDB
 type OTPRepository struct {
 	client *Client
+	// now is a seam so the rate-window tests can cross the cooldown and the
+	// hourly window without sleeping through them.
+	now func() time.Time
 }
 
 // NewOTPRepository creates a new OTPRepository
 func NewOTPRepository(client *Client) *OTPRepository {
-	return &OTPRepository{client: client}
+	return &OTPRepository{client: client, now: time.Now}
 }
 
 // Store stores an OTP record. TTL window comes from domain.OTPValidityMinutes.
 func (r *OTPRepository) Store(ctx context.Context, otp *domain.OTP) error {
 	otp.SetKeys()
-	now := time.Now()
+	now := r.now()
 	otp.CreatedAt = now
 	otp.TTL = now.Add(domain.OTPValidityMinutes * time.Minute).Unix()
 
@@ -69,7 +72,7 @@ func (r *OTPRepository) Get(ctx context.Context, phone string) (*domain.OTP, err
 	}
 
 	// Check TTL expiry
-	if otp.TTL < time.Now().Unix() {
+	if otp.TTL < r.now().Unix() {
 		return nil, errors.NotFound("OTP")
 	}
 
@@ -86,7 +89,7 @@ func (r *OTPRepository) IncrementAttempts(ctx context.Context, phone string) err
 		},
 		UpdateExpression: aws.String("SET attempts = attempts + :one"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":one": &types.AttributeValueMemberN{Value: "1"},
+			valOne: &types.AttributeValueMemberN{Value: "1"},
 		},
 	})
 	if err != nil {

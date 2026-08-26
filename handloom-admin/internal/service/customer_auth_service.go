@@ -110,6 +110,15 @@ func NewCustomerAuthService(
 	}
 }
 
+// OTPSendRateLimitKey returns the rate-limit key for phone, or "" when the
+// allowlist exempts it — one owner for a rule SendOTP already has to apply.
+func (s *CustomerAuthService) OTPSendRateLimitKey(phone string) string {
+	if s.config.isTestPhone(phone) {
+		return ""
+	}
+	return "otp_send:" + phone
+}
+
 // SendOTP generates and sends an OTP to the given phone number
 func (s *CustomerAuthService) SendOTP(ctx context.Context, phone string) error {
 	ctx, span := telemetry.StartServiceSpan(ctx, "customer_auth", "send_otp")

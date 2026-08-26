@@ -1,6 +1,8 @@
 // Package domain contains all business entities and interfaces
 package domain
 
+import "time"
+
 // DynamoDB table names
 const (
 	TableCore   = "handloom-core"
@@ -20,4 +22,12 @@ const DateLayout = "2006-01-02"
 const (
 	OTPValidityMinutes    = 5
 	OTPValidityMinutesStr = "5"
+)
+
+// OTP send limits, keyed on the recipient rather than the caller: an attacker
+// rotating IPs still cannot use us to bill or spam one number.
+const (
+	OTPSendCooldown   = time.Minute
+	OTPSendsPerWindow = 3
+	OTPSendWindow     = time.Hour
 )
