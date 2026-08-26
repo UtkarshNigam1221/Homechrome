@@ -353,16 +353,16 @@ export function OrderDetailPage() {
                 <span className="text-gray-600">Shipping</span>
                 <span>{formatCurrency(order.shipping_amount)}</span>
               </div>
-              {order.tax_amount > 0 && (
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Tax</span>
-                  <span>{formatCurrency(order.tax_amount)}</span>
-                </div>
-              )}
               <div className="border-t pt-2 flex justify-between font-semibold text-lg">
                 <span>Total</span>
                 <span>{formatCurrency(order.total_amount)}</span>
               </div>
+              {order.tax_amount > 0 && (
+                <div className="flex justify-between text-xs text-gray-400">
+                  <span>Of which GST</span>
+                  <span>{formatCurrency(order.tax_amount)}</span>
+                </div>
+              )}
               {priorRefunded > 0 && (
                 <div className="flex justify-between text-amber-700">
                   <span>Refunded</span>

@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ordersApi } from '@/features/orders/api';
+import { formatCurrencyExact } from '@/shared/utils/currency';
 
 import type { Order } from '../../../types';
 import { RefundModal } from '../RefundModal';
@@ -132,6 +133,14 @@ async function pricedButton(amount: RegExp) {
 
 function qtyFor(name: string): HTMLInputElement {
   return screen.getByLabelText(`Refund quantity for ${name}`) as HTMLInputElement;
+}
+
+// The row div wrapping a label, for scoping an assertion or checking DOM order
+// against another row — every summary line is a label span plus a value span.
+function rowFor(label: string): HTMLElement {
+  const row = screen.getByText(label).closest('div');
+  if (!row) throw new Error(`No row div wraps "${label}"`);
+  return row;
 }
 
 describe('RefundModal', () => {
@@ -269,5 +278,49 @@ describe('RefundModal', () => {
 
     expect(screen.queryByLabelText('Stock handling for Bedsheet')).toBeNull();
     expect(screen.getByText(/already been dispatched/i)).toBeTruthy();
+  });
+
+  // Prices are tax-inclusive now: GST is contained within the total, not added on
+  // top of it. Every other test in this file fixtures tax at 0, which is exactly
+  // how an additive tax row shipped unnoticed on this screen — a fixture that
+  // cannot exhibit the defect can't catch it. line_value 1,000 − discount 200 +
+  // shipping 0 = 800, which is the total the server would derive; the 38.10 of
+  // GST is contained within it, not a further term to add.
+  it('shows a non-zero tax figure below the total, not summed into it', async () => {
+    open();
+
+    vi.mocked(ordersApi.previewRefund).mockResolvedValue({
+      total: 80000,
+      is_final: true,
+      lines: [
+        {
+          order_item_id: 'item_a',
+          product_id: 'prod_a',
+          product_name: 'Bedsheet',
+          quantity: 1,
+          amount: 80000,
+          restock: false,
+        },
+      ],
+      breakdown: { line_value: 100000, discount: 20000, tax: 3810, shipping: 0 },
+    });
+
+    fireEvent.change(qtyFor('Bedsheet'), { target: { value: '1' } });
+    fireEvent.change(screen.getByLabelText(/reason/i), { target: { value: 'DAMAGED' } });
+
+    await pricedButton(/Refund ₹800\.00/);
+
+    // The additive stack reconciles without tax as a term.
+    const totalRow = rowFor('Refund total');
+    expect(totalRow).toHaveTextContent(formatCurrencyExact(80000));
+
+    // GST is shown, but as information about the total rather than a further
+    // addend — a distinct label ("Of which GST", not "tax"), and positioned
+    // after the total it describes rather than among the rows summing to it.
+    const gstRow = rowFor('Of which GST');
+    expect(gstRow).toHaveTextContent(formatCurrencyExact(3810));
+    expect(
+      totalRow.compareDocumentPosition(gstRow) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
   });
 });

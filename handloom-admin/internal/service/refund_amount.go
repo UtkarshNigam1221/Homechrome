@@ -34,8 +34,9 @@ func prorate(value, lineSubtotal, subtotal int64) int64 {
 	return (value*lineSubtotal + subtotal/2) / subtotal
 }
 
-// deriveRefundAmount computes the refund: each line less its prorated discount plus its
-// tax, and claimed counts what refunds already spoke for, settled or in flight.
+// deriveRefundAmount computes the refund: each line less its share of the discount.
+// Prices are tax-inclusive, so adding tax on top would refund GST twice. claimed
+// counts what refunds already spoke for, settled or in flight.
 func deriveRefundAmount(order *domain.Order, requested []domain.CreateRefundItemRequest, claimed map[string]int, priorRefunded int64) (*refundBreakdown, error) {
 	if len(requested) == 0 {
 		return nil, errors.BadRequest("A refund needs at least one line")
@@ -72,9 +73,14 @@ func deriveRefundAmount(order *domain.Order, requested []domain.CreateRefundItem
 		remaining[req.OrderItemID] = left - req.Quantity
 
 		lineSubtotal := item.UnitPrice * int64(req.Quantity)
-		lineDiscount := prorate(order.DiscountAmount, lineSubtotal, order.Subtotal)
-		lineTax := prorate(order.TaxAmount, lineSubtotal, order.Subtotal)
-		amount := lineSubtotal - lineDiscount + lineTax
+		// The refunded units' share of what this line was discounted, clamped because
+		// this reads stored data rather than dividing one figure by one subtotal.
+		lineDiscount := prorate(item.DiscountAmount, int64(req.Quantity), int64(item.Quantity))
+		lineDiscount = min(max(lineDiscount, 0), lineSubtotal)
+		// Tax-inclusive, so tax is read back out of the line's value rather than
+		// added to it — extractTax is for the credit note to itemize.
+		amount := lineSubtotal - lineDiscount
+		lineTax := extractTax(amount)
 
 		breakdown.LineValue += lineSubtotal
 		breakdown.Discount += lineDiscount
@@ -108,9 +114,10 @@ func deriveRefundAmount(order *domain.Order, requested []domain.CreateRefundItem
 	}
 
 	// Whatever the clearing refund absorbs beyond the per-line terms is the shipping
-	// plus the residual. Zero until then, because the parcel still ships.
+	// plus the residual. Zero until then, because the parcel still ships. Tax is not
+	// subtracted here: it was never added to LineValue-Discount in the first place.
 	if breakdown.IsFinal {
-		breakdown.Shipping = breakdown.Total - (breakdown.LineValue - breakdown.Discount + breakdown.Tax)
+		breakdown.Shipping = breakdown.Total - (breakdown.LineValue - breakdown.Discount)
 	}
 
 	return breakdown, nil

@@ -114,6 +114,10 @@ type OrderItem struct {
 	// RefundedQuantity is how much of this line has already gone back. Refunds
 	// are per line and repeatable, so the remainder is what bounds the next one.
 	RefundedQuantity int `json:"refunded_quantity" dynamodbav:"refunded_quantity"`
+
+	// DiscountAmount is this line's whole share of the order's discount, in paise.
+	// Authoritative: Order.DiscountAmount is the sum of these.
+	DiscountAmount int64 `json:"discount_amount" dynamodbav:"discount_amount"`
 }
 
 // OrderNote represents an internal note on an order

@@ -292,12 +292,6 @@ export function RefundModal({
                   </span>
                 </div>
               )}
-              {preview.breakdown.tax > 0 && (
-                <div className="flex justify-between text-sm text-gray-600">
-                  <span>Their share of the tax</span>
-                  <span className="font-mono">{formatCurrencyExact(preview.breakdown.tax)}</span>
-                </div>
-              )}
               <div className="flex justify-between text-sm text-gray-600">
                 <span>
                   {preview.is_final ? 'Shipping' : 'Shipping (kept until the order clears)'}
@@ -308,6 +302,12 @@ export function RefundModal({
                 <span>Refund total</span>
                 <span className="font-mono">{formatCurrencyExact(preview.total)}</span>
               </div>
+              {preview.breakdown.tax > 0 && (
+                <div className="flex justify-between text-xs text-gray-400">
+                  <span>Of which GST</span>
+                  <span className="font-mono">{formatCurrencyExact(preview.breakdown.tax)}</span>
+                </div>
+              )}
               {preview.is_final ? (
                 <p className="text-sm text-emerald-700">
                   This clears the order — the shipping comes back with it.

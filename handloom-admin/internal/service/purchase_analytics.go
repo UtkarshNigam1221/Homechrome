@@ -18,13 +18,14 @@ type purchaseAttribution struct {
 }
 
 func recordPurchaseAnalytics(ctx context.Context, customerRepo domain.CustomerRepository, order *domain.Order, attr purchaseAttribution) {
-	// Per-line product purchase counts. revenuePaise = line.TotalPrice.
+	// Net of each line's discount: orders_value books the net order total, so gross
+	// line prices here disagreed by the discount on every couponed order.
 	for _, line := range order.Items {
 		catID := line.CategoryID
 		if catID == "" {
 			catID = labelUnknown
 		}
-		metrics.RecordSum(ctx, "product_purchased", line.TotalPrice, metrics.L{
+		metrics.RecordSum(ctx, "product_purchased", line.TotalPrice-line.DiscountAmount, metrics.L{
 			keyProductID:            line.ProductID,
 			metrics.LabelCategoryID: catID,
 		})

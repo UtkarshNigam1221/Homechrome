@@ -287,9 +287,6 @@ export default function OrderDetailPage() {
                 <Group justify="space-between"><Text size="sm" c="dimmed">Discount</Text><Text size="sm" c="teal.7">-{formatPrice(order.discount_amount)}</Text></Group>
               )}
               <Group justify="space-between"><Text size="sm" c="dimmed">Shipping</Text><Text size="sm">{order.shipping_amount === 0 ? 'FREE' : formatPrice(order.shipping_amount)}</Text></Group>
-              {order.tax_amount > 0 && (
-                <Group justify="space-between"><Text size="sm" c="dimmed">Tax</Text><Text size="sm">{formatPrice(order.tax_amount)}</Text></Group>
-              )}
               <Divider />
               <Group justify="space-between"><Text fw={600}>Total</Text><Text fw={600}>{formatPrice(order.total_amount)}</Text></Group>
             </Stack>
