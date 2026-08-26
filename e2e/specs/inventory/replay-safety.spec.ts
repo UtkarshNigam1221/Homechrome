@@ -3,7 +3,7 @@ import { APIRequestContext, expect, test } from '@playwright/test';
 import { adminClient, getInventory, getLedger, rowsForOrder } from '../../fixtures/api';
 import { destroyCatalog, seedCatalog, SeededCatalog } from '../../fixtures/catalog';
 import { expectAllLedgersBalance } from '../../fixtures/reconcile';
-import { createAdminOrder, resolveTestCustomerId } from '../../helpers/order';
+import { customerClient, placePaidOrder, placeUnpaidOrder } from '../../helpers/order';
 
 /**
  * #230 cases 6, 8 and 9.
@@ -16,12 +16,12 @@ import { createAdminOrder, resolveTestCustomerId } from '../../helpers/order';
  */
 test.describe('replay safety', () => {
   let api: APIRequestContext;
-  let customerId: string;
+  let store: APIRequestContext;
   let catalog: SeededCatalog | undefined;
 
   test.beforeAll(async () => {
     api = await adminClient();
-    customerId = await resolveTestCustomerId(api);
+    store = await customerClient();
   });
 
   test.afterEach(async () => {
@@ -35,9 +35,8 @@ test.describe('replay safety', () => {
   test('a repeated dispatch moves stock once', async () => {
     catalog = await seedCatalog(api, [10]);
     const product = catalog.products[0]!;
-    const order = await createAdminOrder(api, customerId, [{ productId: product.id, quantity: 4 }]);
+    const { order } = await placePaidOrder(store, [{ productId: product.id, quantity: 4 }]);
 
-    await api.patch(`/admin/orders/${order.id}/status`, { data: { status: 'CONFIRMED' } });
     await api.patch(`/admin/orders/${order.id}/status`, { data: { status: 'PROCESSING' } });
     await api.patch(`/admin/orders/${order.id}/status`, { data: { status: 'SHIPPED' } });
 
@@ -57,19 +56,15 @@ test.describe('replay safety', () => {
     ).toHaveLength(1);
   });
 
-  test('cancel releases once, from each cancellable status', async () => {
-    catalog = await seedCatalog(api, [10, 10, 10]);
-    const statuses = ['PENDING', 'CONFIRMED', 'PROCESSING'] as const;
+  for (const status of ['PENDING', 'CONFIRMED', 'PROCESSING'] as const) {
+    test(`cancel releases once, from ${status}`, async () => {
+      catalog = await seedCatalog(api, [10]);
+      const product = catalog.products[0]!;
+      const order =
+        status === 'PENDING'
+          ? await placeUnpaidOrder(store, [{ productId: product.id, quantity: 3 }])
+          : (await placePaidOrder(store, [{ productId: product.id, quantity: 3 }])).order;
 
-    for (const [i, status] of statuses.entries()) {
-      const product = catalog.products[i]!;
-      const order = await createAdminOrder(api, customerId, [
-        { productId: product.id, quantity: 3 },
-      ]);
-
-      if (status !== 'PENDING') {
-        await api.patch(`/admin/orders/${order.id}/status`, { data: { status: 'CONFIRMED' } });
-      }
       if (status === 'PROCESSING') {
         await api.patch(`/admin/orders/${order.id}/status`, { data: { status: 'PROCESSING' } });
       }
@@ -89,15 +84,14 @@ test.describe('replay safety', () => {
         rowsForOrder(await getLedger(api, product.id), order.id, 'RELEASE'),
         `cancel from ${status} must release exactly once`
       ).toHaveLength(1);
-    }
-  });
+    });
+  }
 
   test('a dispatched order refuses to cancel', async () => {
     catalog = await seedCatalog(api, [10]);
     const product = catalog.products[0]!;
-    const order = await createAdminOrder(api, customerId, [{ productId: product.id, quantity: 2 }]);
+    const { order } = await placePaidOrder(store, [{ productId: product.id, quantity: 2 }]);
 
-    await api.patch(`/admin/orders/${order.id}/status`, { data: { status: 'CONFIRMED' } });
     await api.patch(`/admin/orders/${order.id}/status`, { data: { status: 'PROCESSING' } });
     await api.patch(`/admin/orders/${order.id}/status`, { data: { status: 'SHIPPED' } });
 

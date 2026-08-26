@@ -127,9 +127,6 @@ type UpdateCustomerRequest struct {
 
 // OrderService defines the interface for order operations
 type OrderService interface {
-	// Create creates a new order
-	Create(ctx context.Context, req CreateOrderRequest, createdBy string) (*Order, error)
-
 	// GetByID retrieves an order by ID
 	GetByID(ctx context.Context, id string) (*OrderWithDetails, error)
 
@@ -147,25 +144,6 @@ type OrderService interface {
 
 	// CancelOrder cancels an order
 	CancelOrder(ctx context.Context, id string, reason string, updatedBy string) error
-}
-
-// CreateOrderRequest contains data for creating an order
-type CreateOrderRequest struct {
-	CustomerID      string           `json:"customer_id" validate:"required"`
-	Items           []OrderItemInput `json:"items" validate:"required,min=1"`
-	ShippingAddress Address          `json:"shipping_address" validate:"required"`
-	BillingAddress  *Address         `json:"billing_address,omitempty"`
-	Notes           string           `json:"notes,omitempty"`
-	CouponCode      *string          `json:"coupon_code,omitempty"`
-}
-
-// OrderItemInput represents an item in an order creation request
-type OrderItemInput struct {
-	ProductID        string                 `json:"product_id" validate:"required"`
-	Quantity         int                    `json:"quantity" validate:"required,gt=0"`
-	CustomDimensions *Dimensions            `json:"custom_dimensions,omitempty"`
-	Attributes       map[string]interface{} `json:"attributes,omitempty"`
-	QuoteID          *string                `json:"quote_id,omitempty"`
 }
 
 // OrderWithDetails contains an order with related details

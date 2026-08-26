@@ -10,9 +10,6 @@ import (
 )
 
 // purchaseAttribution carries the visitor-attribution labels applied to the
-// first/repeat-purchase metrics. The admin order-create path has no visitor
-// context and passes all "unknown"; the store payment-success path fills these
-// from fields the order denormalised at checkout-initiate time.
 type purchaseAttribution struct {
 	country   string
 	city      string
@@ -20,12 +17,6 @@ type purchaseAttribution struct {
 	utmSource string
 }
 
-// recordPurchaseAnalytics emits the product-purchase KPI signals shared by the
-// admin order-create path and the store payment-success webhook: per-line
-// product_purchased sums, coupon_redeemed, and first-vs-repeat detection via an
-// atomic order-count increment. Fire-and-forget — failures are logged, never
-// returned. Channel-specific signals (payment_completed, durations) stay with
-// their caller.
 func recordPurchaseAnalytics(ctx context.Context, customerRepo domain.CustomerRepository, order *domain.Order, attr purchaseAttribution) {
 	// Per-line product purchase counts. revenuePaise = line.TotalPrice.
 	for _, line := range order.Items {

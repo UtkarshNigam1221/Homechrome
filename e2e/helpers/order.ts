@@ -5,119 +5,6 @@ import { testPhone } from '../fixtures/test-phone';
 import { payWithSandbox } from '../pages/phonepe-sandbox';
 import { TARGETS } from '../playwright.config';
 
-/**
- * Two ways to get an order, because they exercise different code and only one
- * of them can be refunded.
- *
- * `createAdminOrder` goes through POST /admin/orders. It is the only path that
- * can put the same product on two lines, which is the oversell #226 fixes. It
- * produces a PENDING order with no payment, so it cannot be refunded.
- *
- * `placePaidOrder` drives the storefront: OTP login, cart, address, checkout,
- * payment. Slower, but a refund needs a real payment row to exist.
- */
-
-// ---------------------------------------------------------------------------
-// Admin path
-// ---------------------------------------------------------------------------
-
-export interface AdminOrderLine {
-  productId: string;
-  quantity: number;
-}
-
-/**
- * Admin order creation needs a customer to hang the order off. Reuses the
- * storefront test customer so the suite does not accrete customers:
- * CustomerService.Delete is a soft delete that refuses once a customer has an
- * order, so a fresh one per run would be permanently undeletable.
- */
-export async function resolveTestCustomerId(api: APIRequestContext): Promise<string> {
-  const phone = testPhone();
-
-  const find = async () => {
-    const body = await json<{ customers?: { id: string; phone: string }[] }>(
-      await api.get(`/admin/customers?search=${encodeURIComponent(phone)}&limit=10`)
-    );
-    return (body.customers ?? []).find((c) => c.phone === phone);
-  };
-
-  const existing = await find();
-  if (existing) return existing.id;
-
-  // No customer yet for this worker's number. VerifyOTP calls
-  // findOrCreateCustomer, so one storefront login creates it through the same
-  // path a real customer takes — no fabricated record via the admin API.
-  //
-  // This is reachable whenever a worker draws only admin-path specs: those
-  // never log a customer in, so nothing else would ever create it. It bit
-  // workers 2-4 the first time the suite ran in parallel.
-  const store = await customerClient();
-  await store.dispose();
-
-  const created = await find();
-  if (!created) {
-    throw new Error(
-      `logged in as ${phone} but no customer came back from /admin/customers — ` +
-        `is the number on the backend's STORE_TEST_PHONES allowlist?`
-    );
-  }
-  return created.id;
-}
-
-export async function createAdminOrder(
-  api: APIRequestContext,
-  customerId: string,
-  lines: AdminOrderLine[]
-): Promise<Order> {
-  return json<Order>(
-    await api.post('/admin/orders', {
-      data: {
-        customer_id: customerId,
-        items: lines.map((l) => ({ product_id: l.productId, quantity: l.quantity })),
-        shipping_address: {
-          first_name: 'E2E',
-          last_name: 'Suite',
-          phone: '9999900001',
-          address_line1: '1 Test Street',
-          city: 'Mumbai',
-          state: 'Maharashtra',
-          postal_code: '400001',
-          country: 'India',
-        },
-      },
-    })
-  );
-}
-
-/** POST /admin/orders as a raw response, for specs asserting a rejection. */
-export async function attemptAdminOrder(
-  api: APIRequestContext,
-  customerId: string,
-  lines: AdminOrderLine[]
-) {
-  return api.post('/admin/orders', {
-    data: {
-      customer_id: customerId,
-      items: lines.map((l) => ({ product_id: l.productId, quantity: l.quantity })),
-      shipping_address: {
-        first_name: 'E2E',
-        last_name: 'Suite',
-        phone: '9999900001',
-        address_line1: '1 Test Street',
-        city: 'Mumbai',
-        state: 'Maharashtra',
-        postal_code: '400001',
-        country: 'India',
-      },
-    },
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Storefront path
-// ---------------------------------------------------------------------------
-
 function requiredEnv(name: string): string {
   const v = process.env[name];
   if (!v) throw new Error(`${name} must be set for storefront specs`);
@@ -132,8 +19,6 @@ function requiredEnv(name: string): string {
  * is the production path.
  */
 export async function customerClient(): Promise<APIRequestContext> {
-  // Same number resolveTestCustomerId uses, or an admin order would attach
-  // to a different worker's customer.
   const phone = testPhone();
   const otp = requiredEnv('E2E_STORE_OTP');
   const ctx = await request.newContext({ baseURL: TARGETS.api });
@@ -156,30 +41,10 @@ export async function customerClient(): Promise<APIRequestContext> {
   return ctx;
 }
 
-export interface PaidOrderResult {
-  order: Order;
-  /** Set when dev is running the PhonePe DevClient rather than the sandbox. */
-  autoPaid: boolean;
-}
-
-/**
- * Cart → address → checkout → payment → PAID.
- *
- * Payment branches on what dev is actually configured with, detected from the
- * redirect the API returns rather than assumed:
- *
- *   - PhonePe DevClient (no PHONEPE_CLIENT_ID in the deployment) returns a
- *     local confirmation URL carrying `dev_payment=`. The payment completes
- *     server-side; there is nothing to drive.
- *   - The real sandbox returns a phonepe.com URL, which needs a browser. Those
- *     specs live in the admin-ui project and use pages/phonepe-sandbox.ts.
- *
- * Either way this is the deployed gateway, not a stub in the suite.
- */
-export async function placePaidOrder(
+export async function prepareCheckout(
   store: APIRequestContext,
   lines: { productId: string; quantity: number }[]
-): Promise<PaidOrderResult> {
+): Promise<string> {
   await store.delete('/api/v1/store/cart');
 
   for (const line of lines) {
@@ -206,21 +71,52 @@ export async function placePaidOrder(
       },
     })
   );
+  return address.id;
+}
 
+interface CheckoutResult {
+  order: { id: string };
+  redirect_url?: string;
+  merchant_txn_id?: string;
+}
+
+async function initiateCheckout(
+  store: APIRequestContext,
+  addressId: string
+): Promise<CheckoutResult> {
   // CheckoutResult is {order, redirect_url, merchant_txn_id} — the order comes
   // back whole, there is no top-level order_id.
-  const checkout = await json<{
-    order: { id: string };
-    redirect_url?: string;
-    merchant_txn_id?: string;
-  }>(
+  const checkout = await json<CheckoutResult>(
     await store.post('/api/v1/store/checkout/initiate', {
-      data: { shipping_address_id: address.id },
+      data: { shipping_address_id: addressId },
     })
   );
   if (!checkout.order?.id) {
     throw new Error(`checkout returned no order: ${JSON.stringify(checkout).slice(0, 200)}`);
   }
+  return checkout;
+}
+
+export async function placeUnpaidOrder(
+  store: APIRequestContext,
+  lines: { productId: string; quantity: number }[]
+): Promise<Order> {
+  const addressId = await prepareCheckout(store, lines);
+  const checkout = await initiateCheckout(store, addressId);
+  return json<Order>(await store.get(`/api/v1/store/orders/${checkout.order.id}`));
+}
+
+export interface PaidOrderResult {
+  order: Order;
+  autoPaid: boolean;
+}
+
+export async function placePaidOrder(
+  store: APIRequestContext,
+  lines: { productId: string; quantity: number }[]
+): Promise<PaidOrderResult> {
+  const addressId = await prepareCheckout(store, lines);
+  const checkout = await initiateCheckout(store, addressId);
 
   const redirect = checkout.redirect_url ?? '';
   const autoPaid = redirect.includes('dev_payment=');

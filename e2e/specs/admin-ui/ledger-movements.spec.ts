@@ -4,7 +4,6 @@ import { adminClient, getInventory, json, Refund } from '../../fixtures/api';
 import { destroyCatalog, seedCatalog, SeededCatalog } from '../../fixtures/catalog';
 import { InventoryPage } from '../../pages/admin/inventory';
 import { loginToAdmin } from '../../pages/admin/login';
-import { createAdminOrder, resolveTestCustomerId } from '../../helpers/order';
 import { buyProducts, PaidFixture, releaseFixture } from '../../helpers/paid-order';
 
 /**
@@ -32,15 +31,11 @@ test.describe('the ledger UI', () => {
 
   test('a dispatch shows against both counters (#230 case 12)', async ({ page }) => {
     const admin = await adminClient();
-    const customerId = await resolveTestCustomerId(admin);
-    catalog = await seedCatalog(admin, [10]);
-    const product = catalog.products[0]!;
+    fx = await buyProducts(admin, [{ stock: 10, buy: 3 }]);
+    const product = fx.products[0]!;
 
-    const order = await createAdminOrder(admin, customerId, [
-      { productId: product.id, quantity: 3 },
-    ]);
-    for (const status of ['CONFIRMED', 'PROCESSING', 'SHIPPED']) {
-      await admin.patch(`/admin/orders/${order.id}/status`, { data: { status } });
+    for (const status of ['PROCESSING', 'SHIPPED']) {
+      await admin.patch(`/admin/orders/${fx.order.id}/status`, { data: { status } });
     }
 
     await loginToAdmin(page, 'admin');

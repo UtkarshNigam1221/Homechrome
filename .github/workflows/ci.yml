@@ -4,7 +4,6 @@ name: CI
 # / workflow_call), so they no longer show up as skipped jobs on pull requests.
 on:
   pull_request:
-    branches: [main]
 
 permissions:
   contents: read

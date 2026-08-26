@@ -3,7 +3,6 @@ import { ROUTES } from '@/shared/constants/routes';
 import type { ListResponse, PaginationParams } from '@/shared/types/common';
 
 import type {
-  CreateOrderRequest,
   CreateRefundRequest,
   Order,
   PreviewRefundRequest,
@@ -29,11 +28,6 @@ export const ordersApi = {
 
   get: async (id: string) => {
     const response = await apiClient.get<Order>(ROUTES.ORDERS.DETAIL(id));
-    return response.data;
-  },
-
-  create: async (data: CreateOrderRequest) => {
-    const response = await apiClient.post<Order>(ROUTES.ORDERS.LIST, data);
     return response.data;
   },
 

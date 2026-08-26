@@ -2,7 +2,7 @@ import { APIRequestContext, expect, test } from '@playwright/test';
 
 import { adminClient, getInventory, getLedger, getOrder, json, Refund, rowsForOrder } from '../../fixtures/api';
 import { createProduct } from '../../fixtures/catalog';
-import { createAdminOrder, resolveTestCustomerId } from '../../helpers/order';
+import { placeUnpaidOrder } from '../../helpers/order';
 import { buyProducts, PaidFixture, releaseFixture } from '../../helpers/paid-order';
 import { expectAllLedgersBalance } from '../../fixtures/reconcile';
 
@@ -31,15 +31,11 @@ test.describe('cancelling a partly refunded order', () => {
   });
 
   test('releases only its own remainder, leaving another order untouched', async () => {
-    // 20 on hand. The paid order takes 5; a second admin order takes 4.
     fx = await buyProducts(admin, [{ stock: 20, buy: 5 }]);
     const product = fx.products[0]!;
     const line = fx.order.items[0]!;
 
-    const customerId = await resolveTestCustomerId(admin);
-    const other = await createAdminOrder(admin, customerId, [
-      { productId: product.id, quantity: 4 },
-    ]);
+    const other = await placeUnpaidOrder(fx.store, [{ productId: product.id, quantity: 4 }]);
 
     let inv = await getInventory(admin, product.id);
     expect(inv.reserved_qty, 'both orders hold stock').toBe(9);
