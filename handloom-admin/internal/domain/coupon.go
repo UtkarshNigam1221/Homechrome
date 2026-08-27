@@ -2,6 +2,7 @@ package domain
 
 import (
 	"context"
+	"strings"
 	"time"
 )
 
@@ -36,9 +37,8 @@ const (
 	AudienceSpecificCustomer CouponAudience = "SPECIFIC_CUSTOMER"
 )
 
-// couponOpenEndedSK sorts an open-ended coupon last, so it always falls inside the
-// wallet's `GSI1SK >= now` range query.
-const couponOpenEndedSK = "9999-12-31T23:59:59Z"
+// couponSortTimeLayout is fixed-width on purpose — see SetKeys.
+const couponSortTimeLayout = "2006-01-02T15:04:05.000000000Z"
 
 // Coupon represents a discount coupon
 type Coupon struct {
@@ -80,6 +80,10 @@ type Coupon struct {
 	ValidUntil *time.Time   `json:"valid_until,omitempty" dynamodbav:"valid_until,omitempty"` // nil = open-ended
 	Status     CouponStatus `json:"status" dynamodbav:"status"`
 
+	// SearchKey is lower(code + " " + name), written by SetKeys so the list's search
+	// filter can run in DynamoDB. Never returned — it is an index, not a field.
+	SearchKey string `json:"-" dynamodbav:"search_key"`
+
 	BaseEntity
 }
 
@@ -93,18 +97,21 @@ func (c *Coupon) SetKeys() {
 	} else {
 		c.GSI1PK = "COUPON#ALL"
 	}
-	c.GSI1SK = c.expirySortKey() + "#" + c.ID
+	// created_at, so a descending query on GSI1 returns the admin list newest-first
+	// and pages in DynamoDB. This key used to encode valid_until for a `GSI1SK >= now`
+	// range the Phase 5 wallet was to use — nothing queries it today, and the list
+	// that does exist was reading the whole partition on every page. When the wallet
+	// arrives it needs its own index; that is a cost paid when it buys something.
+	//
+	// Fixed-width nanoseconds, not RFC3339Nano: that layout trims trailing zeros, so a
+	// whole second renders "12:00:00Z" while a microsecond later renders
+	// "12:00:00.000001Z" — and "." sorts before "Z", putting the later coupon first.
+	// A constant nine digits keeps lexicographic order equal to chronological order,
+	// which is what the descending query and the cursor both depend on.
+	c.GSI1SK = c.CreatedAt.UTC().Format(couponSortTimeLayout) + "#" + c.ID
+	// A DynamoDB contains() is case-sensitive, so search filters on a lowercased copy.
+	c.SearchKey = strings.ToLower(c.Code + " " + c.Name)
 	c.EntityType = "COUPON"
-}
-
-// expirySortKey encodes the end date so a lexicographic range query on GSI1SK returns
-// exactly the coupons that have not ended. UTC so the key does not depend on the
-// server's zone.
-func (c *Coupon) expirySortKey() string {
-	if c.ValidUntil == nil {
-		return couponOpenEndedSK
-	}
-	return c.ValidUntil.UTC().Format(time.RFC3339)
 }
 
 // TableName returns the DynamoDB table name for Coupon

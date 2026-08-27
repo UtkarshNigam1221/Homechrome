@@ -13,22 +13,25 @@ import (
 // GSI1PK decides which index partition a coupon lands in, and that decision is what
 // keeps thousands of personal codes out of the admin listing partition.
 func TestCoupon_SetKeys(t *testing.T) {
+	made := func(y int, mo time.Month, d, h, mi, sec int) time.Time {
+		return time.Date(y, mo, d, h, mi, sec, 0, time.UTC)
+	}
+
 	t.Run("a public coupon lands in the listing partition", func(t *testing.T) {
-		end := time.Date(2026, 12, 31, 23, 59, 59, 0, time.UTC)
-		c := &Coupon{ID: "coupon_abc", Code: "FESTIVE20", Audience: AudienceAll, ValidUntil: &end}
+		c := &Coupon{ID: "coupon_abc", Code: "FESTIVE20", Audience: AudienceAll}
+		c.CreatedAt = made(2026, 12, 31, 23, 59, 59)
 		c.SetKeys()
 
 		require.Equal(t, "COUPON#coupon_abc", c.PK)
 		require.Equal(t, SKMetadata, c.SK)
 		require.Equal(t, "COUPON#ALL", c.GSI1PK)
-		require.Equal(t, "2026-12-31T23:59:59Z#coupon_abc", c.GSI1SK)
+		require.Equal(t, "2026-12-31T23:59:59.000000000Z#coupon_abc", c.GSI1SK)
 	})
 
 	t.Run("a named-customer coupon lands in that customer's partition", func(t *testing.T) {
-		end := time.Date(2026, 12, 31, 23, 59, 59, 0, time.UTC)
 		c := &Coupon{
 			ID: "coupon_xyz", Code: "WINBACK5",
-			Audience: AudienceSpecificCustomer, CustomerID: "cust_9", ValidUntil: &end,
+			Audience: AudienceSpecificCustomer, CustomerID: "cust_9",
 		}
 		c.SetKeys()
 
@@ -36,42 +39,53 @@ func TestCoupon_SetKeys(t *testing.T) {
 			"a personal code must not sit in the listing partition")
 	})
 
-	// An open-ended coupon must still fall inside the wallet's `GSI1SK >= now` range
-	// query, forever. Sorting it under a far-future sentinel is what achieves that.
-	t.Run("an open-ended coupon sorts under a far-future sentinel", func(t *testing.T) {
-		c := &Coupon{ID: "coupon_open", Code: "ALWAYS", Audience: AudienceAll, ValidUntil: nil}
-		c.SetKeys()
+	// The list queries this index descending, so the key has to compare
+	// lexicographically in the same order as the timestamps it encodes — otherwise
+	// "newest first" is whatever order the strings happen to fall in.
+	t.Run("sort keys order the same way the created dates do", func(t *testing.T) {
+		early := &Coupon{ID: "a", Audience: AudienceAll}
+		early.CreatedAt = made(2026, 1, 2, 0, 0, 0)
+		late := &Coupon{ID: "b", Audience: AudienceAll}
+		late.CreatedAt = made(2026, 11, 30, 0, 0, 0)
+		early.SetKeys()
+		late.SetKeys()
 
-		require.Equal(t, "9999-12-31T23:59:59Z#coupon_open", c.GSI1SK)
+		require.Less(t, early.GSI1SK, late.GSI1SK)
 	})
 
-	// The sort key is a range boundary, so it must compare lexicographically in the
-	// same order as the timestamps it encodes.
-	t.Run("sort keys order the same way the dates do", func(t *testing.T) {
-		early := time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)
-		late := time.Date(2026, 11, 30, 0, 0, 0, 0, time.UTC)
+	// Two coupons created in the same second must still order, or a page boundary can
+	// drop or repeat one. Nano precision is what separates them.
+	t.Run("coupons created in the same second still order", func(t *testing.T) {
+		base := made(2026, 5, 1, 12, 0, 0)
+		first := &Coupon{ID: "first", Audience: AudienceAll}
+		first.CreatedAt = base
+		second := &Coupon{ID: "second", Audience: AudienceAll}
+		second.CreatedAt = base.Add(time.Microsecond)
+		first.SetKeys()
+		second.SetKeys()
 
-		a := &Coupon{ID: "a", Audience: AudienceAll, ValidUntil: &early}
-		b := &Coupon{ID: "b", Audience: AudienceAll, ValidUntil: &late}
-		open := &Coupon{ID: "c", Audience: AudienceAll}
-		a.SetKeys()
-		b.SetKeys()
-		open.SetKeys()
-
-		require.Less(t, a.GSI1SK, b.GSI1SK)
-		require.Less(t, b.GSI1SK, open.GSI1SK, "open-ended must sort last")
+		require.NotEqual(t, first.GSI1SK, second.GSI1SK)
+		require.Less(t, first.GSI1SK, second.GSI1SK)
 	})
 
 	// UTC, not local: the same instant must produce one key regardless of where the
-	// process runs, or a coupon changes partitions when the server's zone changes.
+	// process runs, or the list reorders when the server's zone changes.
 	t.Run("the sort key is UTC regardless of the input zone", func(t *testing.T) {
 		ist := time.FixedZone("IST", 5*60*60+30*60)
-		end := time.Date(2026, 6, 1, 5, 30, 0, 0, ist) // 2026-06-01T00:00:00Z
-
-		c := &Coupon{ID: "coupon_tz", Audience: AudienceAll, ValidUntil: &end}
+		c := &Coupon{ID: "coupon_tz", Audience: AudienceAll}
+		c.CreatedAt = time.Date(2026, 6, 1, 5, 30, 0, 0, ist) // 2026-06-01T00:00:00Z
 		c.SetKeys()
 
-		require.Equal(t, "2026-06-01T00:00:00Z#coupon_tz", c.GSI1SK)
+		require.Equal(t, "2026-06-01T00:00:00.000000000Z#coupon_tz", c.GSI1SK)
+	})
+
+	// search_key is what the list's DynamoDB filter matches on, and contains() is
+	// case-sensitive — so the stored copy has to be lowered, code and name both.
+	t.Run("search_key lowercases the code and the name", func(t *testing.T) {
+		c := &Coupon{ID: "coupon_s", Code: "WELCOME10", Name: "Welcome Offer", Audience: AudienceAll}
+		c.SetKeys()
+
+		require.Equal(t, "welcome10 welcome offer", c.SearchKey)
 	})
 }
 

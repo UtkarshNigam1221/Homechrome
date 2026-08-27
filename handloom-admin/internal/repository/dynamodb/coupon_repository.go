@@ -2,7 +2,6 @@ package dynamodb
 
 import (
 	"context"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -171,11 +170,13 @@ func (r *CouponRepository) Update(ctx context.Context, coupon *domain.Coupon) er
 		Set(expression.Name("valid_from"), expression.Value(coupon.ValidFrom)).
 		Set(expression.Name("status"), expression.Value(coupon.Status)).
 		Set(expression.Name("updated_at"), expression.Value(coupon.UpdatedAt)).
-		// SetKeys derives these three. A new expiry moves GSI1SK and an audience change
-		// moves the GSI1 partition, so they have to travel with the edit or the coupon
-		// stays indexed under its old life.
+		// SetKeys derives these four. An audience change moves the GSI1 partition and a
+		// rename moves search_key, so they have to travel with the edit or the coupon
+		// stays indexed under its old life — findable by its old name, not its new one.
+		// GSI1SK is created_at, so it is recomputed identically rather than moved.
 		Set(expression.Name("GSI1PK"), expression.Value(coupon.GSI1PK)).
 		Set(expression.Name("GSI1SK"), expression.Value(coupon.GSI1SK)).
+		Set(expression.Name("search_key"), expression.Value(coupon.SearchKey)).
 		Set(expression.Name("entity_type"), expression.Value(coupon.EntityType))
 
 	// These four carry dynamodbav omitempty, so Create leaves them out of the item
@@ -282,46 +283,71 @@ func (r *CouponRepository) Delete(ctx context.Context, id string) error {
 // while public coupons number in the dozens; past a few hundred, status belongs in the
 // partition key.
 func (r *CouponRepository) List(ctx context.Context, req domain.ListCouponsRequest) (*domain.ListCouponsResponse, error) {
-	all, err := QueryAll[domain.Coupon](ctx, r.client.db, &dynamodb.QueryInput{
+	input := &dynamodb.QueryInput{
 		TableName:              aws.String(r.client.couponsTable),
 		IndexName:              aws.String("GSI1"),
 		KeyConditionExpression: aws.String("GSI1PK = :pk"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
 			exprPK: &types.AttributeValueMemberS{Value: "COUPON#ALL"},
 		},
-	}, "Failed to list coupons")
+		// GSI1SK is created_at, so descending is newest-first — the order the admin
+		// list wants, out of the index rather than out of a sort in Go.
+		ScanIndexForward: aws.Bool(false),
+	}
+
+	// Filters run in DynamoDB. They are applied after the read, so a page can come
+	// back short — QueryPage re-queries for exactly the shortfall, which is why the
+	// cursor stays exact and the caller still gets a full page.
+	var filters []string
+	names := map[string]string{}
+
+	if req.Status != nil {
+		filters = append(filters, "#status = :status")
+		names[nameStatus] = attrStatus
+		input.ExpressionAttributeValues[valStatus] = &types.AttributeValueMemberS{Value: string(*req.Status)}
+	}
+	if req.Type != nil {
+		// "type" is reserved in DynamoDB expressions.
+		filters = append(filters, "#type = :type")
+		names["#type"] = "type"
+		input.ExpressionAttributeValues[":type"] = &types.AttributeValueMemberS{Value: string(*req.Type)}
+	}
+	if req.IsActive != nil {
+		// Active is a status, not a column: asking for inactive means anything but.
+		op := "="
+		if !*req.IsActive {
+			op = "<>"
+		}
+		filters = append(filters, "#status "+op+" :activeStatus")
+		names[nameStatus] = attrStatus
+		input.ExpressionAttributeValues[":activeStatus"] = &types.AttributeValueMemberS{
+			Value: string(domain.CouponStatusActive),
+		}
+	}
+	if req.Search != "" {
+		// search_key is lower(code + " " + name) — see Coupon.SetKeys. contains() is
+		// case-sensitive, so the needle is lowered to match.
+		filters = append(filters, "contains(search_key, :search)")
+		input.ExpressionAttributeValues[":search"] = &types.AttributeValueMemberS{
+			Value: strings.ToLower(req.Search),
+		}
+	}
+
+	if len(filters) > 0 {
+		input.FilterExpression = aws.String(strings.Join(filters, " AND "))
+	}
+	if len(names) > 0 {
+		input.ExpressionAttributeNames = names
+	}
+
+	coupons, pagination, err := QueryPage[domain.Coupon](
+		ctx, r.client.db, input, req.PaginationRequest, "Failed to list coupons")
 	if err != nil {
 		return nil, err
 	}
 
-	filtered := all[:0]
-	for _, c := range all {
-		if req.Status != nil && c.Status != *req.Status {
-			continue
-		}
-		if req.Type != nil && c.Type != *req.Type {
-			continue
-		}
-		if req.IsActive != nil && (c.Status == domain.CouponStatusActive) != *req.IsActive {
-			continue
-		}
-		if req.Search != "" &&
-			!containsIgnoreCase(c.Code, req.Search) &&
-			!containsIgnoreCase(c.Name, req.Search) {
-			continue
-		}
-		filtered = append(filtered, c)
-	}
-
-	// Newest first, matching every other admin list.
-	sort.Slice(filtered, func(i, j int) bool {
-		return filtered[i].CreatedAt.After(filtered[j].CreatedAt)
-	})
-
-	page, pagination := InMemoryPaginate(filtered, req.PaginationRequest)
-
 	return &domain.ListCouponsResponse{
-		Coupons:    page,
+		Coupons:    coupons,
 		Pagination: pagination,
 	}, nil
 }

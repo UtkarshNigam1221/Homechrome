@@ -194,9 +194,12 @@ func TestCouponRepository_Update(t *testing.T) {
 		require.Equal(t, int64(2000), after.Value)
 		require.Equal(t, domain.AudienceAll, after.Audience)
 
-		// A new expiry has to move the sort key, or the wallet's `GSI1SK >= now` range
-		// still sees the coupon under its old end date.
-		require.Contains(t, after.GSI1SK, "2027-03-01", "GSI1SK must follow valid_until")
+		// GSI1SK follows created_at, so an edit must leave it exactly where it was.
+		// Moving it would reorder the admin list on an unrelated change, and a cursor
+		// issued mid-page would then skip or repeat rows.
+		require.Equal(t, read.GSI1SK, after.GSI1SK, "an edit must not move the sort key")
+		require.NotContains(t, after.GSI1SK, "2027-03-01",
+			"the sort key is created_at, not the expiry")
 		require.Equal(t, "COUPON#ALL", after.GSI1PK)
 		require.Equal(t, "COUPON", after.EntityType)
 	})
@@ -221,8 +224,8 @@ func TestCouponRepository_Update(t *testing.T) {
 		require.Nil(t, after.ValidUntil, "open-ended must not become a zero time")
 		require.Empty(t, after.Description)
 		require.Zero(t, after.MaxDiscount)
-		require.Contains(t, after.GSI1SK, "9999-12-31",
-			"an open-ended coupon must sort last so it stays inside the wallet's range")
+		require.Equal(t, read.GSI1SK, after.GSI1SK,
+			"clearing the expiry changes no key — the sort key is created_at")
 	})
 
 	t.Run("reports an unknown id as not found", func(t *testing.T) {
@@ -361,6 +364,32 @@ func TestCouponRepository_List(t *testing.T) {
 		require.Equal(t, "coupon_l1", res.Coupons[0].ID)
 	})
 
+	// The needle is lowered before it reaches DynamoDB, because contains() is
+	// case-sensitive and search_key stores a lowercased copy. Upper-case input is the
+	// case that would silently return nothing if either half were dropped.
+	t.Run("searches case-insensitively", func(t *testing.T) {
+		res, err := repo.List(ctx, domain.ListCouponsRequest{
+			PaginationRequest: domain.PaginationRequest{Limit: 50},
+			Search:            "DIWALI",
+		})
+		require.NoError(t, err)
+		require.Len(t, res.Coupons, 1)
+		require.Equal(t, "coupon_l1", res.Coupons[0].ID)
+	})
+
+	// Newest first, out of the index rather than a sort in Go. These were created in
+	// order, so the listing has to come back reversed.
+	t.Run("returns newest first", func(t *testing.T) {
+		res, err := repo.List(ctx, domain.ListCouponsRequest{
+			PaginationRequest: domain.PaginationRequest{Limit: 50},
+		})
+		require.NoError(t, err)
+		require.Len(t, res.Coupons, 3)
+		require.Equal(t, []string{"coupon_l3", "coupon_l2", "coupon_l1"},
+			[]string{res.Coupons[0].ID, res.Coupons[1].ID, res.Coupons[2].ID},
+			"the index supplies the order; a stable one is what makes the cursor safe")
+	})
+
 	t.Run("paginates", func(t *testing.T) {
 		res, err := repo.List(ctx, domain.ListCouponsRequest{
 			PaginationRequest: domain.PaginationRequest{Limit: 2},
@@ -368,6 +397,46 @@ func TestCouponRepository_List(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, res.Coupons, 2)
 		require.True(t, res.Pagination.HasMore)
+	})
+
+	// The cursor is a DynamoDB LastEvaluatedKey now, not an offset into a slice the
+	// repository had already read. Following it has to reach the rest exactly once.
+	t.Run("the cursor walks the rest without repeating", func(t *testing.T) {
+		first, err := repo.List(ctx, domain.ListCouponsRequest{
+			PaginationRequest: domain.PaginationRequest{Limit: 2},
+		})
+		require.NoError(t, err)
+		require.Len(t, first.Coupons, 2)
+		require.NotEmpty(t, first.Pagination.NextCursor, "a cursor is the point of paging in the index")
+
+		second, err := repo.List(ctx, domain.ListCouponsRequest{
+			PaginationRequest: domain.PaginationRequest{Limit: 2, Cursor: first.Pagination.NextCursor},
+		})
+		require.NoError(t, err)
+		require.Len(t, second.Coupons, 1, "three public coupons, so the second page holds the last")
+
+		seen := map[string]bool{}
+		for _, c := range append(first.Coupons, second.Coupons...) {
+			require.False(t, seen[c.ID], "coupon %s came back on both pages", c.ID)
+			seen[c.ID] = true
+		}
+		require.Len(t, seen, 3, "every public coupon reached exactly one page")
+	})
+
+	// A filter runs after the read in DynamoDB, so the first round can come back
+	// short. The page still has to be full when the index holds enough rows.
+	t.Run("a filtered page is still filled", func(t *testing.T) {
+		status := domain.CouponStatusActive
+		res, err := repo.List(ctx, domain.ListCouponsRequest{
+			PaginationRequest: domain.PaginationRequest{Limit: 2},
+			Status:            &status,
+		})
+		require.NoError(t, err)
+		// coupon_l1 and coupon_l3 are ACTIVE; coupon_l2 is not.
+		require.Len(t, res.Coupons, 2, "the shortfall from the filter has to be re-queried")
+		for _, c := range res.Coupons {
+			require.Equal(t, domain.CouponStatusActive, c.Status)
+		}
 	})
 }
 
