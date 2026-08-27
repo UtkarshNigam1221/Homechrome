@@ -247,7 +247,7 @@ type ListCouponsResponse struct {
 // CouponOffer is one coupon priced against a specific cart. Reason carries the
 // customer-facing message when Eligible is false, so a picker can say why.
 type CouponOffer struct {
-	Coupon         *Coupon `json:"coupon"`
+	Coupon         *Coupon `json:"-"`
 	Eligible       bool    `json:"eligible"`
 	DiscountAmount int64   `json:"discount_amount"`
 	Reason         string  `json:"reason,omitempty"`

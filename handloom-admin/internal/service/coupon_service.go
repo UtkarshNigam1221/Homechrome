@@ -408,15 +408,15 @@ func (s *CouponService) ListForCart(
 		return nil, err
 	}
 
-	// One query for every counter this customer holds. Asking per coupon would be a
-	// read per candidate.
+	// One query for every counter this customer holds; a guest has none, which is not
+	// an error. A failed read is, since a nil map would understate every per-user cap.
 	var used map[string]int
 	if cc.CustomerID != "" {
-		if counts, usageErr := s.couponRepo.GetCustomerUsageAll(ctx, cc.CustomerID); usageErr == nil {
-			used = counts
-		} else {
-			slog.WarnContext(ctx, "Coupon usage counters unavailable", "error", usageErr)
+		counts, usageErr := s.couponRepo.GetCustomerUsageAll(ctx, cc.CustomerID)
+		if usageErr != nil {
+			return nil, usageErr
 		}
+		used = counts
 	}
 
 	offers := make([]*domain.CouponOffer, 0, len(coupons))

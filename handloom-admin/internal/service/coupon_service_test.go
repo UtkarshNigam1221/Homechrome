@@ -587,6 +587,69 @@ func TestCouponService_ListForCart(t *testing.T) {
 		require.False(t, byCode["FESTIVE20"].Eligible)
 		require.Equal(t, "You've already used this coupon", byCode["FESTIVE20"].Reason)
 	})
+
+	t.Run("a failed usage-counter read is an error, not a silent zero", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		repo := mocks.NewMockCouponRepository(ctrl)
+		repo.EXPECT().ListPublic(gomock.Any()).Return([]*domain.Coupon{activeCoupon()}, nil)
+		boom := errors.NotFound("usage counters")
+		repo.EXPECT().GetCustomerUsageAll(gomock.Any(), "cust_1").Return(nil, boom)
+
+		offers, err := NewCouponService(repo).ListForCart(ctx, domain.CouponContext{
+			CartTotal: 100000, CustomerID: "cust_1",
+		})
+		require.Equal(t, boom, err, "a read failure must surface, not read every cap as unused")
+		require.Nil(t, offers)
+	})
+
+	t.Run("sorts eligible best-saving-first, then keeps ineligible in list order", func(t *testing.T) {
+		eligBig := func() *domain.Coupon {
+			c := activeCoupon()
+			c.ID, c.Code = "coupon_big", "BIGSAVE"
+			c.Type, c.Value = domain.CouponTypeFixed, 80000 // ₹800 off
+			return c
+		}
+		eligSmall := func() *domain.Coupon {
+			c := activeCoupon()
+			c.ID, c.Code = "coupon_small", "SMALLSAVE"
+			c.Type, c.Value = domain.CouponTypeFixed, 20000 // ₹200 off
+			return c
+		}
+		// Both need ₹10,000 in the cart, which a ₹3,000 cart never reaches.
+		inelig1 := func() *domain.Coupon {
+			c := activeCoupon()
+			c.ID, c.Code, c.MinOrderValue = "coupon_in1", "TOOFAR1", 1000000
+			return c
+		}
+		inelig2 := func() *domain.Coupon {
+			c := activeCoupon()
+			c.ID, c.Code, c.MinOrderValue = "coupon_in2", "TOOFAR2", 1000000
+			return c
+		}
+
+		ctrl := gomock.NewController(t)
+		repo := mocks.NewMockCouponRepository(ctrl)
+		// Deliberately unsorted, with the two ineligible entries split apart, so a wrong
+		// comparator or an unstable sort would be caught.
+		repo.EXPECT().ListPublic(gomock.Any()).
+			Return([]*domain.Coupon{inelig1(), eligSmall(), inelig2(), eligBig()}, nil)
+
+		offers, err := NewCouponService(repo).ListForCart(ctx, domain.CouponContext{CartTotal: 300000})
+		require.NoError(t, err)
+		require.Len(t, offers, 4)
+
+		codes := make([]string, len(offers))
+		for i, o := range offers {
+			codes[i] = o.Coupon.Code
+		}
+		require.Equal(t, []string{"BIGSAVE", "SMALLSAVE", "TOOFAR1", "TOOFAR2"}, codes,
+			"eligible first by largest saving, then ineligible in ListPublic's original order")
+
+		require.True(t, offers[0].Eligible)
+		require.True(t, offers[1].Eligible)
+		require.False(t, offers[2].Eligible)
+		require.False(t, offers[3].Eligible)
+	})
 }
 
 func TestCouponService_GetByCode_Uppercases(t *testing.T) {
