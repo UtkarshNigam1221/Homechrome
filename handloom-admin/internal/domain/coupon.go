@@ -40,6 +40,12 @@ const (
 // couponSortTimeLayout is fixed-width on purpose — see SetKeys.
 const couponSortTimeLayout = "2006-01-02T15:04:05.000000000Z"
 
+// PublicCouponListTTL is how long a public coupon payload may be cached. ListPublic
+// drops coupons expiring inside it, so a cached payload cannot advertise a dead code.
+// Lives here because the repository filters by it and the handler's Cache-Control
+// must match it.
+const PublicCouponListTTL = time.Hour
+
 // Coupon represents a discount coupon
 type Coupon struct {
 	ID         string `json:"id" dynamodbav:"id"`
@@ -201,6 +207,10 @@ type CouponRepository interface {
 
 	// List retrieves coupons with filters
 	List(ctx context.Context, req ListCouponsRequest) (*ListCouponsResponse, error)
+
+	// ListPublic returns coupons safe to advertise: ACTIVE, audience ALL, and valid
+	// past the cache window. Not paginated — a banner's worth is small by design.
+	ListPublic(ctx context.Context) ([]*Coupon, error)
 
 	// RecordUsage records coupon usage
 	RecordUsage(ctx context.Context, usage *CouponUsage) error
