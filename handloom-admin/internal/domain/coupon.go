@@ -219,6 +219,10 @@ type CouponRepository interface {
 	// GetCustomerUsage returns how many times this customer has redeemed this coupon.
 	GetCustomerUsage(ctx context.Context, customerID, couponID string) (int, error)
 
+	// GetCustomerUsageAll returns every per-coupon count this customer holds, keyed by
+	// coupon id. One query, so pricing M candidates costs one read rather than M.
+	GetCustomerUsageAll(ctx context.Context, customerID string) (map[string]int, error)
+
 	// IncrementCustomerUsage claims one of this customer's allowance for this coupon,
 	// under the same kind of condition IncrementUsage uses for the global limit.
 	// Returns false when the allowance is already spent. A limit of 0 is unlimited.

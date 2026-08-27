@@ -466,6 +466,30 @@ func (r *CouponRepository) GetCustomerUsage(ctx context.Context, customerID, cou
 	return counter.Count, nil
 }
 
+// GetCustomerUsageAll reads the whole CUSTOMER#<id> counter partition in one query.
+// Keys come from the item's coupon_id, which IncrementCustomerUsage always sets.
+func (r *CouponRepository) GetCustomerUsageAll(
+	ctx context.Context, customerID string,
+) (map[string]int, error) {
+	counters, err := QueryAll[domain.CouponUseCounter](ctx, r.client.db, &dynamodb.QueryInput{
+		TableName:              aws.String(r.client.couponsTable),
+		KeyConditionExpression: aws.String("PK = :pk AND begins_with(SK, :prefix)"),
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			exprPK:    &types.AttributeValueMemberS{Value: "CUSTOMER#" + customerID},
+			":prefix": &types.AttributeValueMemberS{Value: "USE#"},
+		},
+	}, "Failed to read coupon usage")
+	if err != nil {
+		return nil, err
+	}
+
+	counts := make(map[string]int, len(counters))
+	for _, c := range counters {
+		counts[c.CouponID] = c.Count
+	}
+	return counts, nil
+}
+
 // IncrementCustomerUsage claims one of this customer's allowance, creating the counter
 // on first use. Conditional, like IncrementUsage: an unconditional ADD made
 // usage_per_user advisory only, and because redemptions are counted at payment success

@@ -705,3 +705,34 @@ func TestCouponRepository_ListPublic_SubSecondExpiry(t *testing.T) {
 	require.ElementsMatch(t, []string{"coupon_outside"}, ids,
 		"only the coupon clearing the cache window may be advertised")
 }
+
+// One query for every count a customer holds. Validates GetCustomerUsage is a GetItem
+// per coupon, which a picker of M candidates would pay M times.
+func TestCouponRepository_GetCustomerUsageAll(t *testing.T) {
+	wrapped, raw := testWrappedClient(t)
+	skipIfNoLocal(t, raw)
+	setupTestTable(t, raw, testCouponsTable)
+
+	repo := NewCouponRepository(wrapped)
+	ctx := context.Background()
+
+	claimed, err := repo.IncrementCustomerUsage(ctx, "cust_1", "coupon_a", 0)
+	require.NoError(t, err)
+	require.True(t, claimed)
+
+	_, err = repo.IncrementCustomerUsage(ctx, "cust_1", "coupon_a", 0)
+	require.NoError(t, err)
+	_, err = repo.IncrementCustomerUsage(ctx, "cust_1", "coupon_b", 0)
+	require.NoError(t, err)
+	_, err = repo.IncrementCustomerUsage(ctx, "cust_2", "coupon_a", 0)
+	require.NoError(t, err)
+
+	counts, err := repo.GetCustomerUsageAll(ctx, "cust_1")
+	require.NoError(t, err)
+	require.Equal(t, map[string]int{"coupon_a": 2, "coupon_b": 1}, counts,
+		"another customer's counters must not leak in")
+
+	empty, err := repo.GetCustomerUsageAll(ctx, "cust_never")
+	require.NoError(t, err)
+	require.Empty(t, empty, "never used is an empty map, not an error")
+}
