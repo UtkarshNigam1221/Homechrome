@@ -472,3 +472,53 @@ func TestCheckoutService_ListCoupons(t *testing.T) {
 	require.Len(t, offers, 1)
 	require.Equal(t, int64(50000), offers[0].DiscountAmount)
 }
+
+// A cart read failure must propagate, not become a partial or empty success.
+func TestCheckoutService_ListCoupons_CartReadFailurePropagates(t *testing.T) {
+	ctrl := gomock.NewController(t)
+
+	cartSvc := mocks.NewMockCartService(ctrl)
+	cartSvc.EXPECT().GetCart(gomock.Any(), "cust_1", false).
+		Return(nil, errors.Internal("cart-read-failed"))
+
+	svc := NewCheckoutService(
+		cartSvc,
+		mocks.NewMockOrderRepository(ctrl),
+		mocks.NewMockPaymentService(ctrl),
+		mocks.NewMockInventoryRepository(ctrl),
+		mocks.NewMockCustomerRepository(ctrl),
+		mocks.NewMockCouponService(ctrl),
+	)
+
+	offers, err := svc.ListCoupons(context.Background(), "cust_1")
+	require.Error(t, err)
+	require.Nil(t, offers)
+}
+
+// ListForCart fails closed on a usage-counter read error rather than promising a
+// saving Validate would refuse, so that error must reach the caller untouched.
+func TestCheckoutService_ListCoupons_ListForCartFailurePropagates(t *testing.T) {
+	ctrl := gomock.NewController(t)
+
+	cartSvc := mocks.NewMockCartService(ctrl)
+	cartSvc.EXPECT().GetCart(gomock.Any(), "cust_1", false).Return(&domain.CartWithItems{
+		Cart: &domain.Cart{Subtotal: 250000},
+	}, nil)
+
+	couponSvc := mocks.NewMockCouponService(ctrl)
+	couponSvc.EXPECT().ListForCart(gomock.Any(), gomock.Any()).
+		Return(nil, errors.Internal("usage-counter-read-failed"))
+
+	svc := NewCheckoutService(
+		cartSvc,
+		mocks.NewMockOrderRepository(ctrl),
+		mocks.NewMockPaymentService(ctrl),
+		mocks.NewMockInventoryRepository(ctrl),
+		mocks.NewMockCustomerRepository(ctrl),
+		couponSvc,
+	)
+
+	offers, err := svc.ListCoupons(context.Background(), "cust_1")
+	require.Error(t, err)
+	require.Nil(t, offers)
+}
