@@ -202,4 +202,24 @@ export interface CouponValidationResult {
   error_message?: string;
 }
 
+// A coupon the store advertises. Cached and served to every visitor, so it carries
+// no usage counters and no customer id — see StoreCoupon on the backend.
+export interface PublicCoupon {
+  code: string;
+  name: string;
+  description?: string;
+  type: 'PERCENTAGE' | 'FIXED';
+  value: number; // percentage × 100, or paise for FIXED
+  min_order_value: number; // paise
+  max_discount?: number; // paise
+  valid_until?: string;
+}
+
+// A public coupon priced against the current cart. reason explains a false eligible.
+export interface CouponOffer extends PublicCoupon {
+  eligible: boolean;
+  discount_amount: number; // paise
+  reason?: string;
+}
+
 // Pagination

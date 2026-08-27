@@ -19,6 +19,7 @@ export const ROUTES = {
     INITIATE: '/api/v1/store/checkout/initiate',
     PAYMENT_STATUS: (orderId: string) => `/api/v1/store/checkout/payment-status/${orderId}`,
     VALIDATE_COUPON: '/api/v1/store/checkout/validate-coupon',
+    COUPONS: '/api/v1/store/checkout/coupons',
   },
   ORDERS: {
     LIST: '/api/v1/store/orders',
@@ -33,6 +34,7 @@ export const ROUTES = {
     FILTER_OPTIONS: (categoryId: string) => `/api/v1/store/catalog/products/filter-options/${categoryId}`,
     SEARCH: '/api/v1/store/catalog/search',
     EMBEDDER_PING: '/api/v1/store/catalog/embedder-ping',
+    COUPONS: '/api/v1/store/catalog/coupons',
   },
   TRACK: (trackingNumber: string) => `/api/v1/store/track/${encodeURIComponent(trackingNumber)}`,
   EVENTS: '/api/v1/store/events',
