@@ -23,6 +23,7 @@ type CatalogHandler struct {
 	productService   domain.ProductService
 	categoryService  domain.CategoryService
 	inventoryService domain.InventoryService
+	couponService    domain.CouponService
 }
 
 // NewCatalogHandler creates a new CatalogHandler.
@@ -30,11 +31,13 @@ func NewCatalogHandler(
 	ps domain.ProductService,
 	cs domain.CategoryService,
 	is domain.InventoryService,
+	cps domain.CouponService,
 ) *CatalogHandler {
 	return &CatalogHandler{
 		productService:   ps,
 		categoryService:  cs,
 		inventoryService: is,
+		couponService:    cps,
 	}
 }
 
@@ -49,6 +52,7 @@ func (h *CatalogHandler) Routes() chi.Router {
 	r.Get("/products/{idOrSlug}", h.GetProduct)
 	r.Get("/products/filter-options/{categoryId}", h.GetFilterOptions)
 	r.Get("/products/{id}/availability", h.CheckAvailability)
+	r.Get("/coupons", h.ListCoupons)
 
 	return r
 }
