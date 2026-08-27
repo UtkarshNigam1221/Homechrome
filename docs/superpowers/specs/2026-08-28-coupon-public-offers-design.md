@@ -66,7 +66,7 @@ func evaluate(c *domain.Coupon, cc domain.CouponContext, usedByCustomer int) *do
 
 | endpoint | Lambda | auth | cache |
 |---|---|---|---|
-| `GET /api/v1/store/catalog/coupons` | `store-catalog` | none | `public, max-age=3600, stale-while-revalidate=60` |
+| `GET /api/v1/store/catalog/coupons` | `store-catalog` | none | `public, max-age=3600` |
 | `GET /api/v1/store/checkout/coupons` | `store-checkout` | customer JWT | `no-store` |
 
 `storeRoutes` in `infra/stacks/api.go:674` maps one path segment per Lambda under a `{proxy+}` resource, so a top-level `/api/v1/store/coupons` would need a new map entry and a new API Gateway resource. Mounting the public list under `catalog` costs zero infra: it is browse-surface data, served by the Lambda the ISR-cached homepage already calls. `store-catalog` gains `CouponService` in its Wire deps (`make wire`).
@@ -143,7 +143,7 @@ Read via `QueryAll`, not `QueryPage` — this returns a set, not a page, and a b
 
 That window predicate, not a bare "already expired" check, is what makes a 1-hour TTL safe: a cached payload can never advertise a coupon that has already expired by the time someone reads it. Cost is that a coupon expiring in 30 minutes leaves the banner up to an hour early — the correct trade for a payload served to everyone from cache.
 
-`publicListTTL` is one exported const in the repository package, read by both `ListPublic` and the handler that writes `max-age`. A TTL that lives in two places drifts, and the drift is silent: a longer `max-age` than the filter window puts expired coupons back on the banner.
+`PublicCouponListTTL` is one exported const in `internal/domain/coupon.go` — the repository filters by it and a handler test asserts `max-age` equals it, so neither can move alone without failing. It lives in `domain` rather than the repository package so the assertion does not make a handler import a repository. A TTL that lives in two places drifts, and the drift is silent: a longer `max-age` than the filter window puts expired coupons back on the banner.
 
 `GetCustomerUsageAll`:
 
@@ -156,7 +156,7 @@ Keys come from the item's own `coupon_id` attribute, not from parsing the `USE#`
 
 ## Caching
 
-- Endpoint sets `Cache-Control: public, max-age=3600, stale-while-revalidate=60`.
+- Endpoint sets `Cache-Control: public, max-age=3600`. `CatalogHandler.Routes()` already applies `middleware.CatalogCacheControl("public, max-age=3600")` to every GET it serves, so the route inherits the header with no work. No `stale-while-revalidate`: it would need a route-scoped middleware for no measurable gain.
 - Storefront homepage fetch uses `next: { revalidate: 3600 }`, the value already on `src/app/page.tsx` and `src/app/layout.tsx`. No new number enters the codebase.
 - Picker sets `Cache-Control: no-store`.
 - **No backend cache.** `CLAUDE.md` and `docs/` describe an in-process TTL cache at `internal/cache/` wrapping the catalog repos; it does not exist — no such directory, no `go-cache` in `go.mod`, no `Cache` in `internal/repository/`. The docs are stale and should be corrected separately. Building one to protect a read that now happens twice an hour would be backwards.
