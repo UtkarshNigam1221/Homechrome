@@ -438,3 +438,37 @@ func TestCheckoutService_PreviewCoupon(t *testing.T) {
 	require.True(t, got.Valid)
 	require.Equal(t, int64(30000), got.DiscountAmount)
 }
+
+// The picker prices against the server's cart, never a figure from a browser.
+func TestCheckoutService_ListCoupons(t *testing.T) {
+	ctx := context.Background()
+	ctrl := gomock.NewController(t)
+
+	cartSvc := mocks.NewMockCartService(ctrl)
+	cartSvc.EXPECT().GetCart(gomock.Any(), "cust_1", false).Return(&domain.CartWithItems{
+		Cart: &domain.Cart{Subtotal: 250000},
+	}, nil)
+
+	couponSvc := mocks.NewMockCouponService(ctrl)
+	couponSvc.EXPECT().ListForCart(gomock.Any(), domain.CouponContext{
+		CartTotal:         250000,
+		CustomerID:        "cust_1",
+		HasAutomaticOffer: false,
+	}).Return([]*domain.CouponOffer{
+		{Coupon: &domain.Coupon{Code: "FESTIVE20"}, Eligible: true, DiscountAmount: 50000},
+	}, nil)
+
+	svc := NewCheckoutService(
+		cartSvc,
+		mocks.NewMockOrderRepository(ctrl),
+		mocks.NewMockPaymentService(ctrl),
+		mocks.NewMockInventoryRepository(ctrl),
+		mocks.NewMockCustomerRepository(ctrl),
+		couponSvc,
+	)
+
+	offers, err := svc.ListCoupons(ctx, "cust_1")
+	require.NoError(t, err)
+	require.Len(t, offers, 1)
+	require.Equal(t, int64(50000), offers[0].DiscountAmount)
+}
