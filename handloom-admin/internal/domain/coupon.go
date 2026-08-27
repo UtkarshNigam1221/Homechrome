@@ -42,8 +42,6 @@ const couponSortTimeLayout = "2006-01-02T15:04:05.000000000Z"
 
 // PublicCouponListTTL is how long a public coupon payload may be cached. ListPublic
 // drops coupons expiring inside it, so a cached payload cannot advertise a dead code.
-// Lives here because the repository filters by it and the handler's Cache-Control
-// must match it.
 const PublicCouponListTTL = time.Hour
 
 // Coupon represents a discount coupon

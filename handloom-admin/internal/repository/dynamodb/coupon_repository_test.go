@@ -673,9 +673,8 @@ func TestCouponRepository_ListPublic(t *testing.T) {
 		"only ACTIVE + ALL coupons valid past the cache window may be advertised")
 }
 
-// The stored valid_until is RFC3339Nano, which trims trailing zeros — so a whole
-// second and a fraction later are different widths. Fails if the window check
-// ever moves into a DynamoDB string comparison.
+// One coupon sits just inside the cache horizon (must be dropped) and one just
+// outside it with a stray microsecond, proving the RFC3339Nano trap is guarded.
 func TestCouponRepository_ListPublic_SubSecondExpiry(t *testing.T) {
 	wrapped, raw := testWrappedClient(t)
 	skipIfNoLocal(t, raw)
@@ -683,20 +682,26 @@ func TestCouponRepository_ListPublic_SubSecondExpiry(t *testing.T) {
 
 	repo := NewCouponRepository(wrapped)
 	ctx := context.Background()
-	base := time.Now().Add(2 * domain.PublicCouponListTTL).Truncate(time.Second)
+	now := time.Now()
 
-	whole := publicCoupon("coupon_whole", "WHOLE10")
-	wholeEnd := base
-	whole.ValidUntil = &wholeEnd
+	justInside := publicCoupon("coupon_inside", "INSIDE10")
+	insideEnd := now.Add(domain.PublicCouponListTTL - time.Minute).Truncate(time.Second)
+	justInside.ValidUntil = &insideEnd
 
-	fraction := publicCoupon("coupon_fraction", "FRACTION10")
-	fractionEnd := base.Add(time.Microsecond)
-	fraction.ValidUntil = &fractionEnd
+	justOutside := publicCoupon("coupon_outside", "OUTSIDE10")
+	outsideEnd := now.Add(domain.PublicCouponListTTL + time.Minute).Add(time.Microsecond)
+	justOutside.ValidUntil = &outsideEnd
 
-	require.NoError(t, repo.Create(ctx, whole))
-	require.NoError(t, repo.Create(ctx, fraction))
+	require.NoError(t, repo.Create(ctx, justInside))
+	require.NoError(t, repo.Create(ctx, justOutside))
 
 	got, err := repo.ListPublic(ctx)
 	require.NoError(t, err)
-	require.Len(t, got, 2, "both are valid well past the window and must both survive")
+
+	ids := make([]string, 0, len(got))
+	for _, c := range got {
+		ids = append(ids, c.ID)
+	}
+	require.ElementsMatch(t, []string{"coupon_outside"}, ids,
+		"only the coupon clearing the cache window may be advertised")
 }
