@@ -505,6 +505,90 @@ func TestCouponService_Create_FieldMapping(t *testing.T) {
 	})
 }
 
+func TestCouponService_ListPublic(t *testing.T) {
+	ctx := context.Background()
+	ctrl := gomock.NewController(t)
+	repo := mocks.NewMockCouponRepository(ctrl)
+
+	repo.EXPECT().ListPublic(gomock.Any()).Return([]*domain.Coupon{activeCoupon()}, nil)
+
+	got, err := NewCouponService(repo).ListPublic(ctx)
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	require.Equal(t, "FESTIVE20", got[0].Code)
+}
+
+func TestCouponService_ListForCart(t *testing.T) {
+	ctx := context.Background()
+
+	// 20% off, no minimum. A second coupon needs ₹2,000 in the cart.
+	withMinimum := func() *domain.Coupon {
+		c := activeCoupon()
+		c.ID = "coupon_2"
+		c.Code = "BIG500"
+		c.Type = domain.CouponTypeFixed
+		c.Value = 50000
+		c.MinOrderValue = 200000
+		return c
+	}
+
+	// A local per-user cap on FESTIVE20: activeCoupon() stays unchanged because
+	// TestCouponService_Redeem asserts IncrementCustomerUsage's limit arg against it.
+	withUsagePerUser := func() *domain.Coupon {
+		c := activeCoupon()
+		c.UsagePerUser = 1
+		return c
+	}
+
+	setup := func(t *testing.T, counts map[string]int) *CouponService {
+		t.Helper()
+		ctrl := gomock.NewController(t)
+		repo := mocks.NewMockCouponRepository(ctrl)
+		repo.EXPECT().ListPublic(gomock.Any()).
+			Return([]*domain.Coupon{withUsagePerUser(), withMinimum()}, nil)
+		// Exactly once for the whole list — the N+1 guard.
+		repo.EXPECT().GetCustomerUsageAll(gomock.Any(), "cust_1").Return(counts, nil).Times(1)
+		return NewCouponService(repo)
+	}
+
+	t.Run("annotates each coupon against the cart", func(t *testing.T) {
+		s := setup(t, nil)
+
+		offers, err := s.ListForCart(ctx, domain.CouponContext{
+			CartTotal: 100000, CustomerID: "cust_1",
+		})
+		require.NoError(t, err)
+		require.Len(t, offers, 2)
+
+		require.True(t, offers[0].Eligible, "eligible coupons sort first")
+		require.Equal(t, "FESTIVE20", offers[0].Coupon.Code)
+		require.Equal(t, int64(20000), offers[0].DiscountAmount)
+		require.Empty(t, offers[0].Reason)
+
+		require.False(t, offers[1].Eligible)
+		require.Equal(t, "BIG500", offers[1].Coupon.Code)
+		require.Zero(t, offers[1].DiscountAmount)
+		require.Equal(t, "Add ₹1,000 more to use this coupon", offers[1].Reason,
+			"the reason must be the message Validate would return for the same cart")
+	})
+
+	t.Run("a spent per-user allowance is reported, not hidden", func(t *testing.T) {
+		s := setup(t, map[string]int{"coupon_1": 1})
+
+		offers, err := s.ListForCart(ctx, domain.CouponContext{
+			CartTotal: 100000, CustomerID: "cust_1",
+		})
+		require.NoError(t, err)
+
+		byCode := map[string]*domain.CouponOffer{}
+		for _, o := range offers {
+			byCode[o.Coupon.Code] = o
+		}
+		require.False(t, byCode["FESTIVE20"].Eligible)
+		require.Equal(t, "You've already used this coupon", byCode["FESTIVE20"].Reason)
+	})
+}
+
 func TestCouponService_GetByCode_Uppercases(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	repo := mocks.NewMockCouponRepository(ctrl)

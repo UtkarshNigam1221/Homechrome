@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -211,6 +212,29 @@ func (s *CouponService) Validate(
 		return reject(outcomeInvalid, "That code isn't valid")
 	}
 
+	used := 0
+	if coupon.UsagePerUser > 0 && cc.CustomerID != "" {
+		if n, usageErr := s.couponRepo.GetCustomerUsage(ctx, cc.CustomerID, coupon.ID); usageErr == nil {
+			used = n
+		}
+	}
+
+	result := evaluate(coupon, cc, used)
+	if !result.Valid {
+		outcome = result.Outcome
+	}
+	return result, nil
+}
+
+// evaluate is the whole eligibility rule, given a coupon and how many times this
+// customer has redeemed it. Validate and ListForCart share it so verdicts agree.
+func evaluate(coupon *domain.Coupon, cc domain.CouponContext, used int) *domain.CouponValidationResult {
+	reject := func(o, message string) *domain.CouponValidationResult {
+		return &domain.CouponValidationResult{
+			Valid: false, Code: coupon.Code, Outcome: o, ErrorMessage: message,
+		}
+	}
+
 	if coupon.Status != domain.CouponStatusActive {
 		return reject(outcomeInvalid, "This coupon is no longer available")
 	}
@@ -234,11 +258,8 @@ func (s *CouponService) Validate(
 		return reject("limit_reached", "This coupon has been fully claimed")
 	}
 
-	if coupon.UsagePerUser > 0 && cc.CustomerID != "" {
-		used, usageErr := s.couponRepo.GetCustomerUsage(ctx, cc.CustomerID, coupon.ID)
-		if usageErr == nil && used >= coupon.UsagePerUser {
-			return reject("limit_reached", "You've already used this coupon")
-		}
+	if coupon.UsagePerUser > 0 && used >= coupon.UsagePerUser {
+		return reject("limit_reached", "You've already used this coupon")
 	}
 
 	// The stacking gate. Off unless the operator turned it on, because buy-2-get-1 is a
@@ -262,7 +283,7 @@ func (s *CouponService) Validate(
 			"This code is worth more than your order, so we've taken off %s and left %s to pay",
 			formatPaise(discount), formatPaise(minPayableAmount))
 	}
-	return result, nil
+	return result
 }
 
 // computeCouponDiscount returns the discount to apply, plus how much of the coupon's
@@ -371,6 +392,53 @@ func (s *CouponService) Redeem(
 	slog.InfoContext(ctx, "Redeemed coupon",
 		"coupon_code", coupon.Code, keyOrderID, orderID, "discount", discount)
 	return true, nil
+}
+
+// ListPublic returns the coupons safe to advertise.
+func (s *CouponService) ListPublic(ctx context.Context) ([]*domain.Coupon, error) {
+	return s.couponRepo.ListPublic(ctx)
+}
+
+// ListForCart prices every public coupon against one cart, in one usage read.
+func (s *CouponService) ListForCart(
+	ctx context.Context, cc domain.CouponContext,
+) ([]*domain.CouponOffer, error) {
+	coupons, err := s.couponRepo.ListPublic(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// One query for every counter this customer holds. Asking per coupon would be a
+	// read per candidate.
+	var used map[string]int
+	if cc.CustomerID != "" {
+		if counts, usageErr := s.couponRepo.GetCustomerUsageAll(ctx, cc.CustomerID); usageErr == nil {
+			used = counts
+		} else {
+			slog.WarnContext(ctx, "Coupon usage counters unavailable", "error", usageErr)
+		}
+	}
+
+	offers := make([]*domain.CouponOffer, 0, len(coupons))
+	for _, c := range coupons {
+		v := evaluate(c, cc, used[c.ID])
+		offers = append(offers, &domain.CouponOffer{
+			Coupon:         c,
+			Eligible:       v.Valid,
+			DiscountAmount: v.DiscountAmount,
+			Reason:         v.ErrorMessage,
+		})
+	}
+
+	// Eligible first, best saving down. Ineligible keep index order, which is
+	// newest-first out of GSI1.
+	sort.SliceStable(offers, func(i, j int) bool {
+		if offers[i].Eligible != offers[j].Eligible {
+			return offers[i].Eligible
+		}
+		return offers[i].DiscountAmount > offers[j].DiscountAmount
+	})
+	return offers, nil
 }
 
 // Ensure interface compliance

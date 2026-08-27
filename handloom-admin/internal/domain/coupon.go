@@ -244,6 +244,15 @@ type ListCouponsResponse struct {
 	Pagination PaginationResponse `json:"pagination"`
 }
 
+// CouponOffer is one coupon priced against a specific cart. Reason carries the
+// customer-facing message when Eligible is false, so a picker can say why.
+type CouponOffer struct {
+	Coupon         *Coupon `json:"coupon"`
+	Eligible       bool    `json:"eligible"`
+	DiscountAmount int64   `json:"discount_amount"`
+	Reason         string  `json:"reason,omitempty"`
+}
+
 // ==================== COUPON SERVICE ====================
 
 // CouponService defines the interface for coupon operations
@@ -268,6 +277,13 @@ type CouponService interface {
 
 	// Validate checks a coupon against a cart and returns the discount it would give.
 	Validate(ctx context.Context, code string, cc CouponContext) (*CouponValidationResult, error)
+
+	// ListPublic returns the coupons safe to advertise, with no cart context.
+	ListPublic(ctx context.Context) ([]*Coupon, error)
+
+	// ListForCart prices every public coupon against one cart. Eligible offers come
+	// first, best saving down; ineligible ones follow, each carrying its reason.
+	ListForCart(ctx context.Context, cc CouponContext) ([]*CouponOffer, error)
 
 	// Redeem records one redemption of a paid order. Reports claimed=false when the
 	// coupon's usage limit is already exhausted, which is an outcome, not an error.
@@ -319,4 +335,8 @@ type CouponValidationResult struct {
 	// the order still has to leave something payable. Set only on a valid result;
 	// ErrorMessage carries the reason a coupon was refused outright.
 	Notice string `json:"notice,omitempty"`
+
+	// Outcome is the metric label for a rejection ("invalid", "expired",
+	// "limit_reached"). Internal — never serialized to a customer.
+	Outcome string `json:"-"`
 }
