@@ -25,8 +25,9 @@ export default function CouponPicker({ subtotal, onApply }: CouponPickerProps) {
         if (current) setOffers(data || []);
       })
       .catch(() => {
-        // Not being able to list is not the same as there being none. The code input
-        // beside this still works, and Validate is the authority.
+        // A failed refetch must not leave a stale saving on screen against a cart
+        // it no longer describes. The code input beside this still works.
+        if (current) setOffers([]);
       });
     return () => {
       current = false;
@@ -40,11 +41,15 @@ export default function CouponPicker({ subtotal, onApply }: CouponPickerProps) {
 
   if (offers.length === 0) return null;
 
+  // A bare "(0)" reads as "nothing here" even though the dropdown still explains
+  // why each code is out of reach, so the count only appears once it means "usable".
+  const eligibleCount = offers.filter((o) => o.eligible).length;
+
   return (
     <Menu position="bottom-start" withinPortal>
       <Menu.Target>
         <Button variant="subtle" size="compact-sm">
-          View available offers ({offers.filter((o) => o.eligible).length})
+          {eligibleCount > 0 ? `View available offers (${eligibleCount})` : 'View offers'}
         </Button>
       </Menu.Target>
       <Menu.Dropdown>
