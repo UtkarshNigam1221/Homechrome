@@ -662,7 +662,7 @@ func TestCouponRepository_ListPublic(t *testing.T) {
 		require.NoError(t, repo.Create(ctx, c))
 	}
 
-	got, err := repo.ListPublic(ctx)
+	got, err := repo.ListPublic(ctx, now.Add(domain.PublicCouponListTTL))
 	require.NoError(t, err)
 
 	ids := make([]string, 0, len(got))
@@ -671,6 +671,36 @@ func TestCouponRepository_ListPublic(t *testing.T) {
 	}
 	require.ElementsMatch(t, []string{"coupon_open", "coupon_live"}, ids,
 		"only ACTIVE + ALL coupons valid past the cache window may be advertised")
+}
+
+// The live picker's cutoff (now) must not hide a coupon Validate would still accept,
+// even though the cached banner's cutoff (now+TTL) rightly does.
+func TestCouponRepository_ListPublic_CutoffIsCallerControlled(t *testing.T) {
+	wrapped, raw := testWrappedClient(t)
+	skipIfNoLocal(t, raw)
+	setupTestTable(t, raw, testCouponsTable)
+
+	repo := NewCouponRepository(wrapped)
+	ctx := context.Background()
+	now := time.Now()
+
+	expiringSoon := publicCoupon("coupon_expiring_soon", "SOON5")
+	soon := now.Add(30 * time.Minute)
+	expiringSoon.ValidUntil = &soon
+	require.NoError(t, repo.Create(ctx, expiringSoon))
+
+	banner, err := repo.ListPublic(ctx, now.Add(domain.PublicCouponListTTL))
+	require.NoError(t, err)
+	require.Empty(t, banner, "a coupon expiring inside the cache window must not be cached")
+
+	picker, err := repo.ListPublic(ctx, now)
+	require.NoError(t, err)
+	ids := make([]string, 0, len(picker))
+	for _, c := range picker {
+		ids = append(ids, c.ID)
+	}
+	require.Contains(t, ids, "coupon_expiring_soon",
+		"the live picker must show what Validate would accept typed into the box beside it")
 }
 
 // One coupon sits just inside the cache horizon (must be dropped) and one just
@@ -695,7 +725,7 @@ func TestCouponRepository_ListPublic_SubSecondExpiry(t *testing.T) {
 	require.NoError(t, repo.Create(ctx, justInside))
 	require.NoError(t, repo.Create(ctx, justOutside))
 
-	got, err := repo.ListPublic(ctx)
+	got, err := repo.ListPublic(ctx, now.Add(domain.PublicCouponListTTL))
 	require.NoError(t, err)
 
 	ids := make([]string, 0, len(got))

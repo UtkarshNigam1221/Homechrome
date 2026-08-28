@@ -207,8 +207,8 @@ type CouponRepository interface {
 	List(ctx context.Context, req ListCouponsRequest) (*ListCouponsResponse, error)
 
 	// ListPublic returns coupons safe to advertise: ACTIVE, audience ALL, and valid
-	// past the cache window. Not paginated — a banner's worth is small by design.
-	ListPublic(ctx context.Context) ([]*Coupon, error)
+	// past cutoff. The banner passes now+TTL; the live picker passes now.
+	ListPublic(ctx context.Context, cutoff time.Time) ([]*Coupon, error)
 
 	// RecordUsage records coupon usage
 	RecordUsage(ctx context.Context, usage *CouponUsage) error

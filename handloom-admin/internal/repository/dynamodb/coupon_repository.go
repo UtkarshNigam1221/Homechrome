@@ -275,9 +275,9 @@ func (r *CouponRepository) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
-// ListPublic reads the advertisable coupons. Status and audience filter in DynamoDB;
-// the validity window is checked in Go — see the comment inside.
-func (r *CouponRepository) ListPublic(ctx context.Context) ([]*domain.Coupon, error) {
+// ListPublic reads the advertisable coupons, dropping any expiring before cutoff.
+// Status and audience filter in DynamoDB; the validity window is checked in Go.
+func (r *CouponRepository) ListPublic(ctx context.Context, cutoff time.Time) ([]*domain.Coupon, error) {
 	all, err := QueryAll[domain.Coupon](ctx, r.client.db, &dynamodb.QueryInput{
 		TableName:              aws.String(r.client.couponsTable),
 		IndexName:              aws.String("GSI1"),
@@ -302,13 +302,12 @@ func (r *CouponRepository) ListPublic(ctx context.Context) ([]*domain.Coupon, er
 	// valid_until marshals as RFC3339Nano, which trims trailing zeros, so the stored
 	// string is variable-width and compares wrong inside one second. Filtered here.
 	now := time.Now()
-	horizon := now.Add(domain.PublicCouponListTTL)
 	live := make([]*domain.Coupon, 0, len(all))
 	for _, c := range all {
 		if now.Before(c.ValidFrom) {
 			continue
 		}
-		if c.ValidUntil != nil && c.ValidUntil.Before(horizon) {
+		if c.ValidUntil != nil && c.ValidUntil.Before(cutoff) {
 			continue
 		}
 		live = append(live, c)

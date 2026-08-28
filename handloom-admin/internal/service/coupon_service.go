@@ -394,16 +394,19 @@ func (s *CouponService) Redeem(
 	return true, nil
 }
 
-// ListPublic returns the coupons safe to advertise.
+// ListPublic returns the coupons safe to advertise. Cutoff is now+TTL, so a cached
+// payload can never advertise a coupon that expires before the cache does.
 func (s *CouponService) ListPublic(ctx context.Context) ([]*domain.Coupon, error) {
-	return s.couponRepo.ListPublic(ctx)
+	return s.couponRepo.ListPublic(ctx, time.Now().Add(domain.PublicCouponListTTL))
 }
 
 // ListForCart prices every public coupon against one cart, in one usage read.
 func (s *CouponService) ListForCart(
 	ctx context.Context, cc domain.CouponContext,
 ) ([]*domain.CouponOffer, error) {
-	coupons, err := s.couponRepo.ListPublic(ctx)
+	// Cutoff is now, not now+TTL: this response is never cached, so it should show
+	// what a customer can use this instant, matching what Validate would accept.
+	coupons, err := s.couponRepo.ListPublic(ctx, time.Now())
 	if err != nil {
 		return nil, err
 	}
