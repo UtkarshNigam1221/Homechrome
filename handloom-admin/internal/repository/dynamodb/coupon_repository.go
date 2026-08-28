@@ -474,8 +474,8 @@ func (r *CouponRepository) GetCustomerUsageAll(
 		TableName:              aws.String(r.client.couponsTable),
 		KeyConditionExpression: aws.String("PK = :pk AND begins_with(SK, :prefix)"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
-			exprPK:    &types.AttributeValueMemberS{Value: "CUSTOMER#" + customerID},
-			":prefix": &types.AttributeValueMemberS{Value: "USE#"},
+			exprPK:     &types.AttributeValueMemberS{Value: "CUSTOMER#" + customerID},
+			exprPrefix: &types.AttributeValueMemberS{Value: "USE#"},
 		},
 	}, "Failed to read coupon usage")
 	if err != nil {

@@ -10,6 +10,9 @@ const (
 	exprSK  = ":sk"
 	exprNow = ":now"
 
+	// exprPrefix is the placeholder for every begins_with sort-key prefix.
+	exprPrefix = ":prefix"
+
 	// exprOne is the increment step shared by every counter ADD in this package.
 	exprOne = ":one"
 

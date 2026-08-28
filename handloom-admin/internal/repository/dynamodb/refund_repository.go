@@ -82,8 +82,8 @@ func (r *RefundRepository) ListByOrder(ctx context.Context, orderID string) ([]*
 		IndexName:              aws.String("GSI1"),
 		KeyConditionExpression: aws.String("GSI1PK = :pk AND begins_with(GSI1SK, :prefix)"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
-			exprPK:    &types.AttributeValueMemberS{Value: "ORDER#" + orderID},
-			":prefix": &types.AttributeValueMemberS{Value: "REFUND#"},
+			exprPK:     &types.AttributeValueMemberS{Value: "ORDER#" + orderID},
+			exprPrefix: &types.AttributeValueMemberS{Value: "REFUND#"},
 		},
 	}, "Failed to list refunds for order")
 }
