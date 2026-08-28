@@ -97,9 +97,8 @@ export interface OrderItem {
   product_id: string;
   quantity: number;
   unit_price: number;
+  discount_amount: number;
   refunded_quantity?: number;
-  /** This line's whole share of the order discount, in paise. */
-  discount_amount?: number;
 }
 
 export interface Order {

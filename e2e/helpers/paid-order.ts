@@ -23,7 +23,7 @@ export async function buyProducts(
 ): Promise<PaidFixture> {
   const catalog = await seedCatalog(
     admin,
-    spec.map((s) => s.stock)
+    spec.map((s) => ({ stock: s.stock, price: s.price }))
   );
 
   const store = await customerClient();
