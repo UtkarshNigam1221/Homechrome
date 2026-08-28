@@ -41,6 +41,9 @@ func (h *CatalogHandler) ListCoupons(w http.ResponseWriter, r *http.Request) {
 	coupons, err := h.couponService.ListPublic(r.Context())
 	if err != nil {
 		slog.WarnContext(r.Context(), "Public coupon list unavailable", "error", err)
+		// Override the route's inherited hour-long cache so a transient failure
+		// isn't remembered as "no offers" by browsers and intermediaries.
+		w.Header().Set("Cache-Control", "no-store")
 		coupons = nil
 	}
 

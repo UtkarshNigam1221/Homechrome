@@ -89,6 +89,8 @@ func TestCatalogHandler_ListCoupons_ReadFailureIsAnEmptyList(t *testing.T) {
 
 	rec := serveCoupons(t, svc)
 	require.Equal(t, http.StatusOK, rec.Code)
+	// A blip must not be cached as "no offers" for the route's full max-age.
+	require.Equal(t, "no-store", rec.Header().Get("Cache-Control"))
 
 	var body struct {
 		Success bool             `json:"success"`
