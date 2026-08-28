@@ -48,8 +48,14 @@ func TestCheckoutHandler_ListCoupons(t *testing.T) {
 	got := body.Data[0]
 	require.Equal(t, false, got["eligible"])
 	require.Equal(t, "Add ₹500 more to use this coupon", got["reason"])
-	require.NotContains(t, got, "usage_count")
-	require.NotContains(t, got, "customer_id")
+
+	for _, withheld := range []string{
+		"id", "usage_count", "usage_limit", "usage_per_user", "customer_id",
+		"batch_id", "search_key", "status", "audience", "combines_with_offers",
+		"created_at", "updated_at",
+	} {
+		require.NotContains(t, got, withheld, "internal field must never reach a customer")
+	}
 }
 
 // A read failure must stay an empty picker, never a 500 that blanks checkout.
