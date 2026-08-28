@@ -3,6 +3,7 @@
 import { Anchor, Box, Button, Card, Group, Stack, Text, Title } from '@mantine/core';
 
 import CouponInput from '@/components/cart/CouponInput';
+import CouponPicker from '@/components/checkout/CouponPicker';
 import InlineLoaderOverlay from '@/components/ui/InlineLoaderOverlay';
 import { formatPrice } from '@/lib/utils';
 import { Address, CartItem } from '@/types';
@@ -14,6 +15,7 @@ interface ReviewStepProps {
   initiatingCheckout: boolean;
   couponCode: string | null;
   couponDiscount: number;
+  subtotal: number;
   onChangeAddress: () => void;
   onPayNow: () => void;
   onCouponApplied: (code: string, discount: number) => void;
@@ -27,6 +29,7 @@ export function ReviewStep({
   initiatingCheckout,
   couponCode,
   couponDiscount,
+  subtotal,
   onChangeAddress,
   onPayNow,
   onCouponApplied,
@@ -66,6 +69,7 @@ export function ReviewStep({
             onApplied={onCouponApplied}
             onRemoved={onCouponRemoved}
           />
+          <CouponPicker subtotal={subtotal} onApply={onCouponApplied} />
         </Stack>
 
         <Group gap="sm">

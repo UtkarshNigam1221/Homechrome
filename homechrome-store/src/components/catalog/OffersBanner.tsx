@@ -1,3 +1,5 @@
+'use client';
+
 import { Box, Container, Group, Text } from '@mantine/core';
 
 import { PublicCoupon } from '@/types';

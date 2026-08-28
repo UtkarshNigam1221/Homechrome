@@ -85,6 +85,7 @@ export default function CheckoutPage() {
               initiatingCheckout={initiatingCheckout}
               couponCode={state.couponCode}
               couponDiscount={state.couponDiscount}
+              subtotal={cart.cart.subtotal}
               onChangeAddress={() => dispatch({ type: 'GO_TO_STEP', step: 'address' })}
               onPayNow={handlePayNow}
               onCouponApplied={handleCouponApplied}
