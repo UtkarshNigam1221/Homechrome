@@ -86,7 +86,7 @@ func (r *OTPRepository) IncrementAttempts(ctx context.Context, phone string) err
 		},
 		UpdateExpression: aws.String("SET attempts = attempts + :one"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":one": &types.AttributeValueMemberN{Value: "1"},
+			exprOne: &types.AttributeValueMemberN{Value: "1"},
 		},
 	})
 	if err != nil {

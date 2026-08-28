@@ -672,8 +672,9 @@ func ProvidePaymentService(
 	cartService *service.CartService,
 	customerRepo domain.CustomerRepository,
 	phonePeClient phonepe.Gateway,
+	couponService *service.CouponService,
 ) *service.PaymentService {
-	return service.NewPaymentService(paymentRepo, orderRepo, inventoryRepo, cartService, customerRepo, phonePeClient)
+	return service.NewPaymentService(paymentRepo, orderRepo, inventoryRepo, cartService, customerRepo, phonePeClient, couponService)
 }
 
 // ProvideCheckoutService creates a new CheckoutService
@@ -683,8 +684,9 @@ func ProvideCheckoutService(
 	paymentService *service.PaymentService,
 	inventoryRepo domain.InventoryRepository,
 	customerRepo domain.CustomerRepository,
+	couponService *service.CouponService,
 ) *service.CheckoutService {
-	return service.NewCheckoutService(cartService, orderRepo, paymentService, inventoryRepo, customerRepo)
+	return service.NewCheckoutService(cartService, orderRepo, paymentService, inventoryRepo, customerRepo, couponService)
 }
 
 // ============================================================================

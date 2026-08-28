@@ -39,7 +39,7 @@ LAMBDA_SERVICES=auth user catalog order utm pricing inventory analytics notifica
 	migrator
 
 # Active services for deployment
-LAMBDA_SERVICES_ACTIVE=auth user catalog asset order utm store-auth store-catalog store-cart store-checkout store-orders store-tracking store-profile store-events store-webhooks migrator worker-metrics-consumer worker-embedding-backfill
+LAMBDA_SERVICES_ACTIVE=auth user catalog asset order utm coupon store-auth store-catalog store-cart store-checkout store-orders store-tracking store-profile store-events store-webhooks migrator worker-metrics-consumer worker-embedding-backfill
 
 # Main package path
 MAIN_PKG=./cmd/api

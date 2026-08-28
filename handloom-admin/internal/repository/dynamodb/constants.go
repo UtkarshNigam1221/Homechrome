@@ -10,6 +10,9 @@ const (
 	exprSK  = ":sk"
 	exprNow = ":now"
 
+	// exprOne is the increment step shared by every counter ADD in this package.
+	exprOne = ":one"
+
 	attrStatus = "status"
 
 	// Expression placeholders for the status attribute, which is reserved in

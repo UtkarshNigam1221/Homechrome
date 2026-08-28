@@ -140,6 +140,7 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 		"DYNAMODB_SESSIONS_TABLE":      props.DatabaseStack.SessionsTable.TableName(),
 		"DYNAMODB_AUDIT_TABLE":         props.DatabaseStack.AuditTable.TableName(),
 		"DYNAMODB_NOTIFICATIONS_TABLE": props.DatabaseStack.NotificationsTable.TableName(),
+		"DYNAMODB_COUPONS_TABLE":       props.DatabaseStack.CouponsTable.TableName(),
 		"POSTGRES_DSN":                 props.DatabaseStack.PostgresDSN,
 		"S3_ASSETS_BUCKET":             assetsBucket.BucketName(),
 		"CDN_DOMAIN":                   jsii.String(props.StorageStack.CDNDomain),
@@ -247,7 +248,7 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 		// "inventory",
 		// "analytics",
 		// "notification",
-		// "coupon",
+		"coupon",
 		// "report",
 		// "audit",
 	}
@@ -278,6 +279,7 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 		props.DatabaseStack.SessionsTable.GrantReadWriteData(lambdaFn)
 		props.DatabaseStack.AuditTable.GrantReadWriteData(lambdaFn)
 		props.DatabaseStack.NotificationsTable.GrantReadWriteData(lambdaFn)
+		props.DatabaseStack.CouponsTable.GrantReadWriteData(lambdaFn)
 		assetsBucket.GrantReadWrite(lambdaFn, nil)
 		// Every service Lambda may end up invoking the ImageResizer because
 		// AssetService is wired into product/category services (catalog Lambda)
@@ -749,6 +751,29 @@ func setupAPIRoutes(api awsapigateway.RestApi, lambdas map[string]*ServiceLambda
 		}
 	}
 
+	// Coupon routes. ANY on every resource, not a list of verbs: this API answers CORS
+	// preflight from each Lambda's chi middleware rather than an API Gateway mock, so
+	// OPTIONS has to reach the Lambda like any other method. Naming methods explicitly
+	// left OPTIONS unrouted, and API Gateway answers an unmatched method with 403 —
+	// every browser call to /admin/coupons failed its preflight.
+	//
+	// ANY per resource rather than {proxy+}: the deployed stack already has {id} here,
+	// and API Gateway allows only one variable path part per level. CloudFormation
+	// creates before it deletes, so adding a proxy beside {id} fails the update with
+	// "a sibling ({id}) of this resource already has a variable path part". Keeping
+	// the resources and changing only their methods needs no topology change.
+	couponIntegration := awsapigateway.NewLambdaIntegration(lambdas["coupon"].Function, nil)
+	coupons := admin.AddResource(jsii.String("coupons"), nil)
+	coupons.AddMethod(jsii.String("ANY"), couponIntegration, nil)
+	coupons.AddResource(jsii.String("{id}"), nil).AddMethod(jsii.String("ANY"), couponIntegration, nil)
+	// Literal siblings take precedence over {id} in API Gateway, so these resolve
+	// correctly alongside it.
+	coupons.AddResource(jsii.String("validate"), nil).AddMethod(jsii.String("ANY"), couponIntegration, nil)
+	coupons.AddResource(jsii.String("redeem"), nil).AddMethod(jsii.String("ANY"), couponIntegration, nil)
+	coupons.AddResource(jsii.String("code"), nil).
+		AddResource(jsii.String("{code}"), nil).
+		AddMethod(jsii.String("ANY"), couponIntegration, nil)
+
 	// TODO: Uncomment routes as services are implemented
 	/*
 		// API v1 - public routes
@@ -795,10 +820,6 @@ func setupAPIRoutes(api awsapigateway.RestApi, lambdas map[string]*ServiceLambda
 		notificationIntegration := awsapigateway.NewLambdaIntegration(lambdas["notification"].Function, nil)
 		addResourceRoutes(admin.AddResource(jsii.String("notifications"), nil), notificationIntegration)
 
-		// Coupon routes
-		couponIntegration := awsapigateway.NewLambdaIntegration(lambdas["coupon"].Function, nil)
-		addResourceRoutes(admin.AddResource(jsii.String("coupons"), nil), couponIntegration)
-
 		// Artisan routes
 		artisanIntegration := awsapigateway.NewLambdaIntegration(lambdas["artisan"].Function, nil)
 		addResourceRoutes(admin.AddResource(jsii.String("artisans"), nil), artisanIntegration)
@@ -819,17 +840,6 @@ func setupAPIRoutes(api awsapigateway.RestApi, lambdas map[string]*ServiceLambda
 		audit.AddResource(jsii.String("entity"), nil).AddResource(jsii.String("{type}"), nil).AddResource(jsii.String("{entityId}"), nil).AddMethod(jsii.String("GET"), auditIntegration, nil)
 		audit.AddResource(jsii.String("user"), nil).AddResource(jsii.String("{userId}"), nil).AddMethod(jsii.String("GET"), auditIntegration, nil)
 	*/
-}
-
-func addResourceRoutes(resource awsapigateway.Resource, integration awsapigateway.LambdaIntegration) {
-	resource.AddMethod(jsii.String("GET"), integration, nil)
-	resource.AddMethod(jsii.String("POST"), integration, nil)
-
-	idResource := resource.AddResource(jsii.String("{id}"), nil)
-	idResource.AddMethod(jsii.String("GET"), integration, nil)
-	idResource.AddMethod(jsii.String("PUT"), integration, nil)
-	idResource.AddMethod(jsii.String("PATCH"), integration, nil)
-	idResource.AddMethod(jsii.String("DELETE"), integration, nil)
 }
 
 func capitalize(s string) string {

@@ -81,6 +81,37 @@ func validateCouponType(fl validator.FieldLevel) bool {
 	return validCouponTypes[couponType]
 }
 
+// couponPercentageMax is 100.00% in the units Coupon.Value stores a percentage in:
+// percentage x 100.
+const couponPercentageMax = 10000
+
+// validateCouponValue caps a percentage coupon at 100%. Above that the discount exceeds
+// the cart, which used to zero the payable total and then fail the payment outright.
+// A fixed-amount coupon's value is paise and has no such ceiling, so this has to read
+// the sibling Type field — go-playground has no "lte only when another field says so".
+func validateCouponValue(fl validator.FieldLevel) bool {
+	parent := fl.Parent()
+	for parent.Kind() == reflect.Pointer {
+		parent = parent.Elem()
+	}
+	// Fails OPEN on an unreadable Type, which is only safe because
+	// computeCouponDiscount's non-PERCENTAGE branch prices such a coupon as FIXED too.
+	typeField := parent.FieldByName("Type")
+	if !typeField.IsValid() || typeField.Kind() != reflect.String {
+		return true
+	}
+	if typeField.String() != "PERCENTAGE" {
+		return true
+	}
+
+	switch fl.Field().Kind() {
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return fl.Field().Int() <= couponPercentageMax
+	default:
+		return false // fail closed rather than wave through a type we cannot read
+	}
+}
+
 // Entity type constants
 var validEntityTypes = map[string]bool{
 	"PRODUCT":   true,

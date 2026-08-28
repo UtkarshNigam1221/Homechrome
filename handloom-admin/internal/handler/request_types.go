@@ -50,16 +50,17 @@ type CancelOrderRequest struct {
 
 // Coupon request types
 
-// ValidateCouponRequest is the request body for validating a coupon
+// ValidateCouponRequest is the request body for validating a coupon.
+// No product list: coupons discount the cart, not particular items.
 type ValidateCouponRequest struct {
-	Code       string   `json:"code" validate:"required"`
-	OrderTotal int64    `json:"order_total"`
-	CustomerID string   `json:"customer_id"`
-	ProductIDs []string `json:"product_ids"`
+	Code              string `json:"code" validate:"required"`
+	CartTotal         int64  `json:"cart_total"`
+	CustomerID        string `json:"customer_id"`
+	HasAutomaticOffer bool   `json:"has_automatic_offer"`
 }
 
-// ApplyCouponRequest is the request body for applying a coupon
-type ApplyCouponRequest struct {
+// RedeemCouponRequest is the request body for recording a redemption.
+type RedeemCouponRequest struct {
 	CouponID   string `json:"coupon_id" validate:"required"`
 	OrderID    string `json:"order_id" validate:"required"`
 	CustomerID string `json:"customer_id" validate:"required"`

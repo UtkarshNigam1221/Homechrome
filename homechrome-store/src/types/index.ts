@@ -188,6 +188,18 @@ export interface CheckoutResult {
   order: Order;
   redirect_url: string;
   merchant_txn_id: string;
+  // Explains why a submitted code didn't apply. The order still goes through
+  // at full price — empty when a coupon applied cleanly or none was sent.
+  coupon_notice?: string;
+}
+
+// Advisory preview for a coupon code against the current cart. Checkout
+// re-validates and wins — the two can disagree if the cart changed since.
+export interface CouponValidationResult {
+  valid: boolean;
+  code: string;
+  discount_amount?: number; // paise
+  error_message?: string;
 }
 
 // Pagination

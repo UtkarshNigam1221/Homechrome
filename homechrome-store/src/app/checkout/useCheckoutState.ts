@@ -3,10 +3,12 @@
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useReducer, useState } from 'react';
 
+import { CART_COUPON_STORAGE_KEY } from '@/hooks/useCoupon';
 import api from '@/lib/api';
 import { ROUTES } from '@/lib/routes';
+import { previewTotal } from '@/lib/utils';
 import { useAuthStore } from '@/stores/auth';
-import { Address, CartWithItems, CheckoutResult } from '@/types';
+import { Address, CartWithItems, CheckoutResult, CouponValidationResult } from '@/types';
 
 import {
   checkoutReducer,
@@ -23,6 +25,12 @@ export function useCheckoutState() {
 
   const addresses = useMemo(() => customer?.addresses || [], [customer?.addresses]);
   const selectedAddress = addresses.find((a) => a.id === state.selectedAddressId) || null;
+
+  // Preview only — checkout/initiate re-prices authoritatively below.
+  const orderTotal = useMemo(
+    () => (state.cart ? previewTotal(state.cart.cart.subtotal, state.couponDiscount) : 0),
+    [state.cart, state.couponDiscount],
+  );
 
   const fetchCart = useCallback(async () => {
     dispatch({ type: 'CART_LOADING' });
@@ -52,6 +60,34 @@ export function useCheckoutState() {
       });
     }
   }, [addresses, state.selectedAddressId]);
+
+  // Carries a cart-applied coupon into checkout. Re-validates rather than
+  // trusting the cart-time figure, which may be stale by now.
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const stashed = sessionStorage.getItem(CART_COUPON_STORAGE_KEY);
+    if (!stashed) return;
+    sessionStorage.removeItem(CART_COUPON_STORAGE_KEY);
+
+    let code: string | undefined;
+    try {
+      ({ code } = JSON.parse(stashed) as { code?: string });
+    } catch {
+      return;
+    }
+    if (!code) return;
+
+    api
+      .post<CouponValidationResult>(ROUTES.CHECKOUT.VALIDATE_COUPON, { code })
+      .then(({ data }) => {
+        if (data.valid) {
+          dispatch({ type: 'COUPON_APPLIED', code: data.code, discount: data.discount_amount ?? 0 });
+        }
+      })
+      .catch(() => {
+        // Best-effort — the customer can re-enter it in the review step.
+      });
+  }, [isAuthenticated]);
 
   const handleAddressNext = useCallback(() => {
     if (!state.selectedAddressId) return;
@@ -86,7 +122,13 @@ export function useCheckoutState() {
     try {
       const { data } = await api.post<CheckoutResult>(ROUTES.CHECKOUT.INITIATE, {
         shipping_address_id: state.selectedAddressId,
+        coupon_code: state.couponCode ?? undefined,
       });
+      // The browser is about to leave for the payment gateway and lose this
+      // response — stash the notice so the confirmation page can show it.
+      if (data.coupon_notice) {
+        sessionStorage.setItem(`coupon_notice:${data.order.id}`, data.coupon_notice);
+      }
       redirecting = true;
       window.location.href = data.redirect_url;
     } catch {
@@ -97,7 +139,15 @@ export function useCheckoutState() {
     } finally {
       if (!redirecting) setInitiatingCheckout(false);
     }
-  }, [state.selectedAddressId]);
+  }, [state.selectedAddressId, state.couponCode]);
+
+  const handleCouponApplied = useCallback((code: string, discount: number) => {
+    dispatch({ type: 'COUPON_APPLIED', code, discount });
+  }, []);
+
+  const handleCouponRemoved = useCallback(() => {
+    dispatch({ type: 'COUPON_REMOVED' });
+  }, []);
 
   const goToStep = useCallback((step: 'address' | 'review') => {
     if (step === 'review' && !state.selectedAddressId) return;
@@ -110,10 +160,13 @@ export function useCheckoutState() {
     router,
     addresses,
     selectedAddress,
+    orderTotal,
     fetchCart,
     handleAddressNext,
     handleAddAddress,
     handlePayNow,
+    handleCouponApplied,
+    handleCouponRemoved,
     goToStep,
     creatingAddress,
     initiatingCheckout,

@@ -34,6 +34,8 @@ func (h *CheckoutHandler) Routes() chi.Router {
 
 	r.With(middleware.ValidateJSONTyped[domain.CheckoutRequest](h.validation)).Post("/initiate", h.Initiate)
 	r.Get("/payment-status/{orderID}", h.GetPaymentStatus)
+	r.With(middleware.ValidateJSONTyped[ValidateCouponRequest](h.validation)).
+		Post("/validate-coupon", h.ValidateCoupon)
 
 	return r
 }
@@ -56,6 +58,27 @@ func (h *CheckoutHandler) Initiate(w http.ResponseWriter, r *http.Request) {
 		Success: true,
 		Data:    result,
 	})
+}
+
+// ValidateCouponRequest is a customer asking what a code would save them.
+// No cart total: the server computes it. A figure from a browser is never trusted.
+type ValidateCouponRequest struct {
+	Code string `json:"code" validate:"required"`
+}
+
+// ValidateCoupon previews a coupon against the customer's current cart.
+// POST /api/v1/store/checkout/validate-coupon
+func (h *CheckoutHandler) ValidateCoupon(w http.ResponseWriter, r *http.Request) {
+	customerID := middleware.GetCustomerIDFromContext(r.Context())
+	req := middleware.MustGetValidatedBody[ValidateCouponRequest](r.Context())
+
+	result, err := h.checkoutService.PreviewCoupon(r.Context(), customerID, req.Code)
+	if err != nil {
+		response.Error(w, err)
+		return
+	}
+
+	response.JSON(w, http.StatusOK, response.Response{Success: true, Data: result})
 }
 
 // GetPaymentStatus handles GET /payment-status/{orderID} - returns payment status for an order.

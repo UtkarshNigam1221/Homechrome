@@ -2,7 +2,7 @@ import apiClient, { normalizeListResponse } from '@/shared/api/client';
 import { ROUTES } from '@/shared/constants/routes';
 import type { ListResponse, PaginationParams } from '@/shared/types/common';
 
-import type { Coupon, CreateCouponRequest } from './types';
+import type { Coupon, CreateCouponRequest, UpdateCouponRequest } from './types';
 
 export const couponsApi = {
   list: async (
@@ -32,27 +32,12 @@ export const couponsApi = {
     return response.data;
   },
 
-  update: async (id: string, data: Partial<CreateCouponRequest>) => {
+  update: async (id: string, data: UpdateCouponRequest) => {
     const response = await apiClient.patch<Coupon>(ROUTES.COUPONS.DETAIL(id), data);
     return response.data;
   },
 
   delete: async (id: string) => {
     await apiClient.delete(ROUTES.COUPONS.DETAIL(id));
-  },
-
-  validate: async (
-    code: string,
-    orderTotal: number,
-    customerId?: string,
-    productIds?: string[]
-  ) => {
-    const response = await apiClient.post(ROUTES.COUPONS.VALIDATE, {
-      code,
-      order_total: orderTotal,
-      customer_id: customerId,
-      product_ids: productIds,
-    });
-    return response.data;
   },
 };

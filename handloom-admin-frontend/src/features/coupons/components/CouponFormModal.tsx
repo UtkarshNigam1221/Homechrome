@@ -1,33 +1,30 @@
 import { zodResolver } from '@hookform/resolvers/zod';
+import { format } from 'date-fns';
 import { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
-import { z } from 'zod';
 
 import { couponsApi } from '@/features/coupons/api';
-import { Button, Input, Modal, Select } from '@/shared/components/ui';
+import { Button, Input, Modal, Select, type SelectOption } from '@/shared/components/ui';
 import { useFormMutation } from '@/shared/hooks';
 
-import type { Coupon, CreateCouponRequest } from '../types';
+import { couponSchema } from '../lib/couponSchema';
+import {
+  type CouponFormValues,
+  couponToFormValues,
+  defaultCouponFormValues,
+  toCreateRequest,
+  toUpdateRequest,
+} from '../lib/toCreateRequest';
+import type { Coupon, CreateCouponRequest, UpdateCouponRequest } from '../types';
 
-const couponSchema = z.object({
-  code: z
-    .string()
-    .min(3, 'Code must be at least 3 characters')
-    .max(20, 'Code must be less than 20 characters')
-    .regex(
-      /^[A-Z0-9_-]+$/,
-      'Code must be uppercase letters, numbers, underscores, and hyphens only'
-    ),
-  type: z.enum(['PERCENTAGE', 'FIXED_AMOUNT', 'FREE_SHIPPING']),
-  discount_value: z.number().min(0, 'Discount value must be positive'),
-  max_uses: z.number().min(0).optional(),
-  min_order_value: z.number().min(0).optional(),
-  max_discount: z.number().min(0).optional(),
-  expiry_date: z.string().optional(),
-  status: z.enum(['ACTIVE', 'INACTIVE', 'EXPIRED']),
-});
+const audienceOptions: SelectOption[] = [
+  { value: 'ALL', label: 'Everyone' },
+  { value: 'FIRST_ORDER', label: 'First order only (Phase 3)', disabled: true },
+  { value: 'RETURNING', label: 'Returning customers (Phase 3)', disabled: true },
+  { value: 'SPECIFIC_CUSTOMER', label: 'One specific customer (Phase 3)', disabled: true },
+];
 
-type CouponFormData = z.infer<typeof couponSchema>;
+const audienceHint = 'Only "Everyone" is enforced today — targeting arrives in Phase 3.';
 
 interface CouponFormModalProps {
   isOpen: boolean;
@@ -37,6 +34,9 @@ interface CouponFormModalProps {
 
 export function CouponFormModal({ isOpen, onClose, coupon }: CouponFormModalProps) {
   const isEditing = !!coupon?.id;
+  // The API can't change these post-creation (see toUpdateRequest) — disabled, not just
+  // decorative, so an operator can't "save" an edit the backend silently drops.
+  const lockedAfterCreate = isEditing;
 
   const {
     register,
@@ -44,55 +44,27 @@ export function CouponFormModal({ isOpen, onClose, coupon }: CouponFormModalProp
     reset,
     watch,
     formState: { errors },
-  } = useForm<CouponFormData>({
+  } = useForm<CouponFormValues>({
     resolver: zodResolver(couponSchema),
-    defaultValues: {
-      code: '',
-      type: 'PERCENTAGE',
-      discount_value: 10,
-      max_uses: 0,
-      min_order_value: 0,
-      max_discount: 0,
-      expiry_date: '',
-      status: 'ACTIVE',
-    },
+    defaultValues: defaultCouponFormValues,
   });
 
-  const couponType = watch('type');
+  const type = watch('type');
+  const noEndDate = watch('noEndDate');
 
-  // Reset form when modal opens/closes or coupon changes
+  // Reset the form when the modal opens, or when it switches between create and edit.
   useEffect(() => {
-    if (isOpen) {
-      if (coupon?.id) {
-        reset({
-          code: coupon.code,
-          type: coupon.type,
-          discount_value:
-            coupon.type === 'FIXED_AMOUNT' ? coupon.discount_value / 100 : coupon.discount_value,
-          max_uses: coupon.max_uses || 0,
-          min_order_value: coupon.min_order_value ? coupon.min_order_value / 100 : 0,
-          max_discount: coupon.max_discount ? coupon.max_discount / 100 : 0,
-          expiry_date: coupon.expiry_date ? coupon.expiry_date.split('T')[0] : '',
-          status: coupon.status,
-        });
-      } else {
-        reset({
-          code: '',
-          type: 'PERCENTAGE',
-          discount_value: 10,
-          max_uses: 0,
-          min_order_value: 0,
-          max_discount: 0,
-          expiry_date: '',
-          status: 'ACTIVE',
-        });
-      }
+    if (!isOpen) return;
+    if (coupon) {
+      reset(couponToFormValues(coupon));
+    } else {
+      reset({ ...defaultCouponFormValues, validFrom: format(new Date(), 'yyyy-MM-dd') });
     }
   }, [isOpen, coupon, reset]);
 
   const { isLoading, onSubmit: submitMutation } = useFormMutation<
     CreateCouponRequest,
-    Partial<CreateCouponRequest>
+    UpdateCouponRequest
   >({
     queryKey: 'coupons',
     createFn: couponsApi.create,
@@ -101,20 +73,8 @@ export function CouponFormModal({ isOpen, onClose, coupon }: CouponFormModalProp
     onSuccess: onClose,
   });
 
-  const onSubmit = (data: CouponFormData) => {
-    const requestData: CreateCouponRequest = {
-      code: data.code.toUpperCase(),
-      type: data.type,
-      discount_value:
-        data.type === 'FIXED_AMOUNT' ? Math.round(data.discount_value * 100) : data.discount_value,
-      max_uses: data.max_uses || undefined,
-      min_order_value: data.min_order_value ? Math.round(data.min_order_value * 100) : undefined,
-      max_discount: data.max_discount ? Math.round(data.max_discount * 100) : undefined,
-      expiry_date: data.expiry_date || undefined,
-      status: data.status,
-    };
-
-    submitMutation(coupon?.id, requestData, requestData);
+  const onSubmit = (data: CouponFormValues) => {
+    submitMutation(coupon?.id, toCreateRequest(data), toUpdateRequest(data));
   };
 
   return (
@@ -122,87 +82,177 @@ export function CouponFormModal({ isOpen, onClose, coupon }: CouponFormModalProp
       isOpen={isOpen}
       onClose={onClose}
       title={isEditing ? 'Edit Coupon' : 'Create Coupon'}
-      size="md"
+      size="lg"
     >
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-        <Input
-          label="Coupon Code"
-          placeholder="e.g., SUMMER20"
-          hint="Uppercase letters, numbers, underscores, and hyphens only"
-          error={errors.code?.message}
-          required
-          {...register('code')}
-        />
-
-        <Select
-          label="Discount Type"
-          options={[
-            { value: 'PERCENTAGE', label: 'Percentage Discount' },
-            { value: 'FIXED_AMOUNT', label: 'Fixed Amount Off' },
-            { value: 'FREE_SHIPPING', label: 'Free Shipping' },
-          ]}
-          error={errors.type?.message}
-          required
-          {...register('type')}
-        />
-
-        {couponType !== 'FREE_SHIPPING' && (
-          <Input
-            label={couponType === 'PERCENTAGE' ? 'Discount Percentage' : 'Discount Amount (₹)'}
-            type="number"
-            step={couponType === 'PERCENTAGE' ? '1' : '0.01'}
-            min="0"
-            max={couponType === 'PERCENTAGE' ? '100' : undefined}
-            placeholder={couponType === 'PERCENTAGE' ? '10' : '100'}
-            error={errors.discount_value?.message}
-            required
-            {...register('discount_value', { valueAsNumber: true })}
-          />
-        )}
-
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Input
-            label="Maximum Uses"
-            type="number"
-            min="0"
-            placeholder="Unlimited"
-            hint="Leave 0 for unlimited"
-            error={errors.max_uses?.message}
-            {...register('max_uses', { valueAsNumber: true })}
+            label="Coupon Code"
+            placeholder="e.g., SUMMER20"
+            hint={
+              lockedAfterCreate
+                ? "Can't be changed after creation"
+                : 'Uppercase letters, numbers, underscores, and hyphens only'
+            }
+            error={errors.code?.message}
+            required
+            disabled={lockedAfterCreate}
+            {...register('code')}
           />
 
+          <Input
+            label="Name"
+            placeholder="e.g., Summer Sale 20%"
+            error={errors.name?.message}
+            required
+            {...register('name')}
+          />
+        </div>
+
+        <div>
+          <label className="label">Description</label>
+          <textarea
+            className="input min-h-[70px]"
+            placeholder="Optional — shown to the operator, not the customer"
+            {...register('description')}
+          />
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Select
+            label="Discount Type"
+            options={[
+              { value: 'PERCENTAGE', label: 'Percentage Discount' },
+              { value: 'FIXED', label: 'Fixed Amount Off' },
+            ]}
+            error={errors.type?.message}
+            required
+            disabled={lockedAfterCreate}
+            hint={lockedAfterCreate ? "Can't be changed after creation" : undefined}
+            {...register('type')}
+          />
+
+          <Input
+            label={type === 'PERCENTAGE' ? 'Discount Percentage' : 'Discount Amount (₹)'}
+            type="number"
+            step={type === 'PERCENTAGE' ? '1' : '0.01'}
+            min="0"
+            max={type === 'PERCENTAGE' ? '100' : undefined}
+            placeholder={type === 'PERCENTAGE' ? '10' : '100'}
+            error={errors.value?.message}
+            required
+            disabled={lockedAfterCreate}
+            hint={lockedAfterCreate ? "Can't be changed after creation" : undefined}
+            {...register('value', { valueAsNumber: true })}
+          />
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Input
             label="Minimum Order Value (₹)"
             type="number"
             step="0.01"
             min="0"
             placeholder="No minimum"
-            error={errors.min_order_value?.message}
-            {...register('min_order_value', { valueAsNumber: true })}
+            error={errors.minOrderValue?.message}
+            {...register('minOrderValue', { valueAsNumber: true })}
           />
-        </div>
 
-        {couponType === 'PERCENTAGE' && (
-          <Input
-            label="Maximum Discount (₹)"
-            type="number"
-            step="0.01"
-            min="0"
-            placeholder="No cap"
-            hint="Cap the maximum discount amount"
-            error={errors.max_discount?.message}
-            {...register('max_discount', { valueAsNumber: true })}
-          />
-        )}
+          {type === 'PERCENTAGE' && (
+            <Input
+              label="Maximum Discount (₹)"
+              type="number"
+              step="0.01"
+              min="0"
+              placeholder="No cap"
+              hint="Caps the discount amount — meaningless on a fixed-amount coupon"
+              error={errors.maxDiscount?.message}
+              {...register('maxDiscount', { valueAsNumber: true })}
+            />
+          )}
+        </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Input
-            label="Expiry Date"
-            type="date"
-            error={errors.expiry_date?.message}
-            {...register('expiry_date')}
+            label="Usage Limit"
+            type="number"
+            min="0"
+            placeholder="Unlimited"
+            hint="Leave 0 for unlimited"
+            error={errors.usageLimit?.message}
+            {...register('usageLimit', { valueAsNumber: true })}
           />
 
+          <Input
+            label="Uses Per Customer"
+            type="number"
+            min="0"
+            placeholder="Unlimited"
+            hint="Leave 0 for unlimited"
+            error={errors.usagePerUser?.message}
+            {...register('usagePerUser', { valueAsNumber: true })}
+          />
+        </div>
+
+        <Select
+          label="Who can use this coupon"
+          options={audienceOptions}
+          error={errors.audience?.message}
+          required
+          disabled={lockedAfterCreate}
+          hint={lockedAfterCreate ? "Can't be changed after creation" : audienceHint}
+          {...register('audience')}
+        />
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Input
+            label="Valid From"
+            type="date"
+            error={errors.validFrom?.message}
+            required
+            {...register('validFrom')}
+          />
+
+          <Input
+            label="Expiry Date"
+            type="date"
+            error={errors.expiryDate?.message}
+            disabled={noEndDate}
+            {...register('expiryDate')}
+          />
+        </div>
+
+        <div className="flex items-center gap-3">
+          <input
+            type="checkbox"
+            id="noEndDate"
+            className="w-4 h-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
+            {...register('noEndDate')}
+          />
+          <label htmlFor="noEndDate" className="text-sm text-gray-700">
+            No end date — runs until switched off
+          </label>
+        </div>
+
+        <div>
+          <div className="flex items-center gap-3">
+            <input
+              type="checkbox"
+              id="combinesWithOffers"
+              className="w-4 h-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
+              {...register('combinesWithOffers')}
+            />
+            <label htmlFor="combinesWithOffers" className="text-sm text-gray-700">
+              Combines with automatic offers
+            </label>
+          </div>
+          <p className="mt-1 ml-7 text-xs text-gray-500">
+            Off by default. A buy-2-get-1 offer is already a third off, so a 20% code on top is
+            46.7% off.
+          </p>
+        </div>
+
+        {isEditing && (
           <Select
             label="Status"
             options={[
@@ -213,7 +263,7 @@ export function CouponFormModal({ isOpen, onClose, coupon }: CouponFormModalProp
             required
             {...register('status')}
           />
-        </div>
+        )}
 
         <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
           <Button variant="secondary" onClick={onClose} disabled={isLoading}>

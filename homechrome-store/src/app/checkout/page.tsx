@@ -23,6 +23,9 @@ export default function CheckoutPage() {
     handleAddressNext,
     handleAddAddress,
     handlePayNow,
+    handleCouponApplied,
+    handleCouponRemoved,
+    orderTotal,
     goToStep,
     creatingAddress,
     initiatingCheckout,
@@ -80,8 +83,12 @@ export default function CheckoutPage() {
               items={cart.items}
               initiating={initiating}
               initiatingCheckout={initiatingCheckout}
+              couponCode={state.couponCode}
+              couponDiscount={state.couponDiscount}
               onChangeAddress={() => dispatch({ type: 'GO_TO_STEP', step: 'address' })}
               onPayNow={handlePayNow}
+              onCouponApplied={handleCouponApplied}
+              onCouponRemoved={handleCouponRemoved}
             />
           )}
         </Stack>
@@ -91,6 +98,9 @@ export default function CheckoutPage() {
             <OrderSummary
               items={cart.items}
               subtotal={cart.cart.subtotal}
+              discount={state.couponDiscount}
+              couponCode={state.couponCode ?? undefined}
+              total={orderTotal}
             />
             <Box ta="center" mt="md">
               <Anchor component={Link} href="/cart" size="sm" c="brand">

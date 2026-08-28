@@ -78,17 +78,18 @@ domain/ (entities + interfaces) ← handler/ → service/ → repository/dynamod
 - `pkg/response/` — standard JSON envelope: `{success, data, meta}` or `{success, error: {code, message}}`
 
 ### Database Design
-Hybrid storage: DynamoDB (5 tables) for core/transactional data + Neon PostgreSQL for catalog data.
+Hybrid storage: DynamoDB (6 tables) for core/transactional data + Neon PostgreSQL for catalog data.
 
 #### DynamoDB Tables
 All using PK/SK composite keys with GSIs:
 | Table | Env Name | Content |
 |-------|----------|---------|
-| `handloom-core-{env}` | `DYNAMODB_CORE_TABLE` | Users, Pricing Rules, Coupons, UTM Links |
+| `handloom-core-{env}` | `DYNAMODB_CORE_TABLE` | Users, Pricing Rules, UTM Links |
 | `handloom-orders-{env}` | `DYNAMODB_ORDERS_TABLE` | Orders, Customers, PriceQuotes |
 | `handloom-audit-{env}` | `DYNAMODB_AUDIT_TABLE` | Audit logs (TTL-based expiry) |
 | `handloom-notifications-{env}` | `DYNAMODB_NOTIFICATIONS_TABLE` | Notifications |
 | `handloom-sessions-{env}` | `DYNAMODB_SESSIONS_TABLE` | OTP, refresh tokens (TTL-based expiry) |
+| `handloom-coupons-{env}` | `DYNAMODB_COUPONS_TABLE` | Coupons, code pointer index, per-customer redemption counters, redemption history, bulk batches |
 
 Key patterns: `PK=USER#<id> SK=METADATA`, etc. Prices stored in **paise** (1 INR = 100 paise). Pagination is cursor-based (base64-encoded DynamoDB `ExclusiveStartKey`).
 

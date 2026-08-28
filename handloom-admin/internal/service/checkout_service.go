@@ -21,6 +21,7 @@ type CheckoutService struct {
 	paymentService domain.PaymentService
 	inventoryRepo  domain.InventoryRepository
 	customerRepo   domain.CustomerRepository
+	couponService  domain.CouponService
 }
 
 // NewCheckoutService creates a new CheckoutService
@@ -30,6 +31,7 @@ func NewCheckoutService(
 	paymentService domain.PaymentService,
 	inventoryRepo domain.InventoryRepository,
 	customerRepo domain.CustomerRepository,
+	couponService domain.CouponService,
 ) *CheckoutService {
 	return &CheckoutService{
 		cartService:    cartService,
@@ -37,6 +39,7 @@ func NewCheckoutService(
 		paymentService: paymentService,
 		inventoryRepo:  inventoryRepo,
 		customerRepo:   customerRepo,
+		couponService:  couponService,
 	}
 }
 
@@ -96,14 +99,29 @@ func (s *CheckoutService) Initiate(ctx context.Context, customerID string, req d
 	// 6. Build order items from cart items
 	orderItems := cartItemsToOrderItems(cart.Items)
 
-	// 7. Calculate totals. Shipping is free at checkout — deliveries are
-	// scheduled manually, so no courier rate is charged.
+	// 7. Calculate totals. Prices are tax-inclusive, so tax is extracted from the total
+	// rather than added to it, and shipping is free — deliveries are scheduled manually.
 	subtotal := cart.Cart.Subtotal
-	var discountAmount int64
-	var taxAmount int64
-	var shippingAmount int64
+	discountAmount, couponID, couponCode, couponNotice := s.resolveCoupon(ctx, customerID, subtotal, req.CouponCode)
 
-	totalAmount := subtotal - discountAmount + taxAmount + shippingAmount
+	var shippingAmount int64
+	totalAmount := subtotal - discountAmount + shippingAmount
+	taxAmount := extractTax(totalAmount)
+
+	// Allocate the discount onto the lines, which become the source of truth. Refuse
+	// rather than write an order whose lines disagree with its total — every later
+	// refund reads the gap and rejects itself, so this is the one coupon failure that
+	// aborts the checkout instead of pricing around it.
+	shares, allocErr := allocateDiscount(orderItems, discountAmount)
+	if allocErr != nil {
+		s.releaseReservedItems(ctx, orderID, cart.Items)
+		slog.ErrorContext(ctx, "Failed to allocate discount onto order lines", "error", allocErr)
+		span.EndWithError(allocErr)
+		return nil, allocErr
+	}
+	for i := range orderItems {
+		orderItems[i].DiscountAmount = shares[i]
+	}
 
 	// 8. Generate order number
 	orderNumber := generateOrderNumber()
@@ -125,6 +143,8 @@ func (s *CheckoutService) Initiate(ctx context.Context, customerID string, req d
 		ShippingAmount:  shippingAmount,
 		TotalAmount:     totalAmount,
 		Currency:        defaultCurrency,
+		CouponID:        couponID,
+		CouponCode:      couponCode,
 		Status:          domain.OrderStatusPending,
 		PaymentStatus:   domain.PaymentStatusPending,
 		ShippingAddress: &shippingAddr,
@@ -195,7 +215,60 @@ func (s *CheckoutService) Initiate(ctx context.Context, customerID string, req d
 		Order:         order,
 		RedirectURL:   paymentResp.RedirectURL,
 		MerchantTxnID: paymentResp.MerchantTxnID,
+		CouponNotice:  couponNotice,
 	}, nil
+}
+
+// resolveCoupon validates an optional coupon code against the server's cart total. A
+// coupon problem is a result, never an error: it prices the order without the discount
+// and reports why through notice. Only the caller's later allocation step can abort
+// the checkout.
+func (s *CheckoutService) resolveCoupon(
+	ctx context.Context,
+	customerID string,
+	cartTotal int64,
+	code *string,
+) (discountAmount int64, couponID, couponCode *string, notice string) {
+	if code == nil || *code == "" {
+		return 0, nil, nil, ""
+	}
+
+	// Phase 1 has no automatic offers, so both context fields take their Phase 1
+	// values. Phase 4 subtracts the buy-N-get-M discount from CartTotal and sets
+	// HasAutomaticOffer.
+	res, err := s.couponService.Validate(ctx, *code, domain.CouponContext{
+		CartTotal:         cartTotal,
+		CustomerID:        customerID,
+		HasAutomaticOffer: false,
+	})
+	switch {
+	case err != nil:
+		// A coupon lookup failure must not cost the sale.
+		slog.WarnContext(ctx, "Coupon validation failed", "error", err)
+		return 0, nil, nil, "We couldn't apply that code."
+	case !res.Valid:
+		return 0, nil, nil, res.ErrorMessage
+	default:
+		// Notice is non-empty when the discount was applied but reduced, so the
+		// shortfall reaches the customer instead of just the smaller number.
+		return res.DiscountAmount, &res.CouponID, &res.Code, res.Notice
+	}
+}
+
+// PreviewCoupon prices a code against the customer's current cart without placing an
+// order. The cart total is read server-side for the same reason checkout re-validates:
+// the client never supplies a figure that decides money.
+func (s *CheckoutService) PreviewCoupon(ctx context.Context, customerID, code string) (*domain.CouponValidationResult, error) {
+	cart, err := s.cartService.GetCart(ctx, customerID, false)
+	if err != nil {
+		return nil, err
+	}
+
+	return s.couponService.Validate(ctx, code, domain.CouponContext{
+		CartTotal:         cart.Cart.Subtotal,
+		CustomerID:        customerID,
+		HasAutomaticOffer: false, // Phase 4 sets this
+	})
 }
 
 // GetPaymentStatus retrieves the current payment status for an order

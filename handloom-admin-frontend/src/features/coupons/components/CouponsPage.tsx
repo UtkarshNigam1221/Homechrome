@@ -24,8 +24,15 @@ import { useCursorPagination, useDebounce, useDeleteWithConfirm } from '@/shared
 import { getStatusBadgeVariant } from '@/shared/utils/badge';
 import { formatCurrency } from '@/shared/utils/currency';
 
+import { fromStoredAmount } from '../lib/toCreateRequest';
 import type { Coupon } from '../types';
 import { CouponFormModal } from './CouponFormModal';
+
+// Formats through noon, not the stored midnight-UTC instant directly, so the calendar
+// date shown can't shift a day in a timezone west of UTC.
+function formatValidUntil(instant: string): string {
+  return format(new Date(`${instant.slice(0, 10)}T12:00:00`), 'MMM d, yyyy');
+}
 
 export function CouponsPage() {
   const {
@@ -68,9 +75,18 @@ export function CouponsPage() {
   };
 
   const formatDiscount = (coupon: Coupon) => {
-    if (coupon.type === 'PERCENTAGE') return `${coupon.discount_value}% off`;
-    if (coupon.type === 'FIXED_AMOUNT') return `${formatCurrency(coupon.discount_value)} off`;
-    return 'Free Shipping';
+    if (coupon.type === 'PERCENTAGE') return `${fromStoredAmount(coupon.value)}% off`;
+    return `${formatCurrency(coupon.value)} off`;
+  };
+
+  // A promo nearing its cap should be visible before it runs out, not discovered when
+  // it silently stops applying.
+  const usageBadge = (coupon: Coupon) => {
+    if (!coupon.usage_limit) return null;
+    const ratio = coupon.usage_count / coupon.usage_limit;
+    if (ratio >= 1) return <Badge variant="danger">Exhausted</Badge>;
+    if (ratio >= 0.8) return <Badge variant="warning">Near limit</Badge>;
+    return null;
   };
 
   return (
@@ -134,7 +150,7 @@ export function CouponsPage() {
                       <div>
                         <p className="font-mono font-medium">{coupon.code}</p>
                         <Badge variant="gray" size="sm">
-                          {coupon.type.replace('_', ' ')}
+                          {coupon.type}
                         </Badge>
                       </div>
                     </div>
@@ -143,16 +159,21 @@ export function CouponsPage() {
                     <span className="font-medium text-green-600">{formatDiscount(coupon)}</span>
                   </TableCell>
                   <TableCell>
-                    {coupon.used_count || 0} / {coupon.max_uses || '∞'}
+                    <div className="flex items-center gap-2">
+                      <span>
+                        {coupon.usage_count || 0} / {coupon.usage_limit || '∞'}
+                      </span>
+                      {usageBadge(coupon)}
+                    </div>
                   </TableCell>
                   <TableCell>
                     {coupon.min_order_value ? formatCurrency(coupon.min_order_value) : '-'}
                   </TableCell>
                   <TableCell>
-                    {coupon.expiry_date ? (
+                    {coupon.valid_until ? (
                       <div className="flex items-center gap-1 text-sm">
                         <Calendar className="w-3 h-3" />
-                        {format(new Date(coupon.expiry_date), 'MMM d, yyyy')}
+                        {formatValidUntil(coupon.valid_until)}
                       </div>
                     ) : (
                       <span className="text-gray-400">No expiry</span>

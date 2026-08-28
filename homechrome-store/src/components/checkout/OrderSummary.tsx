@@ -9,14 +9,19 @@ import { CartItem } from '@/types';
 interface OrderSummaryProps {
   items: CartItem[];
   subtotal: number;
+  discount?: number;
+  couponCode?: string;
+  // Server-computed. Never derived in the browser — the server decides the price.
+  total: number;
 }
 
 export default function OrderSummary({
   items,
   subtotal,
+  discount = 0,
+  couponCode,
+  total,
 }: OrderSummaryProps) {
-  const total = subtotal;
-
   return (
     <Card shadow="sm" radius="lg" padding="md" withBorder>
       <Stack gap="md">
@@ -75,10 +80,23 @@ export default function OrderSummary({
             <Text size="sm" c="dimmed">Subtotal</Text>
             <Text size="sm" c="navy.7">{formatPrice(subtotal)}</Text>
           </Group>
+
+          {/* Rows render only when non-zero — a discount-free order looks exactly
+              as it did before. No tax row: prices are tax-inclusive. */}
+          {discount > 0 && (
+            <Group justify="space-between">
+              <Text size="sm" c="dimmed">
+                Discount{couponCode ? ` (${couponCode})` : ''}
+              </Text>
+              <Text size="sm" c="teal.7">-{formatPrice(discount)}</Text>
+            </Group>
+          )}
+
           <Group justify="space-between">
             <Text size="sm" c="dimmed">Shipping</Text>
             <Text size="sm" c="navy.7">FREE</Text>
           </Group>
+
           <Divider />
           <Group justify="space-between">
             <Text fw={600} c="navy.7">Total</Text>

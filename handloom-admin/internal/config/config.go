@@ -107,7 +107,8 @@ type AWSConfig struct {
 
 // DynamoDBConfig holds DynamoDB table names
 type DynamoDBConfig struct {
-	CoreTable          string // User, PricingRule, Coupon
+	CoreTable          string // User, PricingRule
+	CouponsTable       string // Coupons, code pointers, redemption counters
 	OrdersTable        string
 	SessionsTable      string
 	AuditTable         string
@@ -153,6 +154,7 @@ func Load() *Config {
 			SessionsTable:      getEnv("DYNAMODB_SESSIONS_TABLE", "handloom-sessions"),
 			AuditTable:         getEnv("DYNAMODB_AUDIT_TABLE", "handloom-audit"),
 			NotificationsTable: getEnv("DYNAMODB_NOTIFICATIONS_TABLE", "handloom-notifications"),
+			CouponsTable:       getEnv("DYNAMODB_COUPONS_TABLE", "handloom-coupons"),
 		},
 		JWT: JWTConfig{
 			SecretKey:            getJWTSecret(),

@@ -18,6 +18,7 @@ export const ROUTES = {
   CHECKOUT: {
     INITIATE: '/api/v1/store/checkout/initiate',
     PAYMENT_STATUS: (orderId: string) => `/api/v1/store/checkout/payment-status/${orderId}`,
+    VALIDATE_COUPON: '/api/v1/store/checkout/validate-coupon',
   },
   ORDERS: {
     LIST: '/api/v1/store/orders',
