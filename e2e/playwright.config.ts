@@ -90,7 +90,7 @@ export default defineConfig({
       // No browser. Real HTTP against the deployed API.
       name: 'api',
       testDir: './specs',
-      testMatch: /specs\/(inventory|refunds)\/.*\.spec\.ts/,
+      testMatch: /specs\/(coupons|inventory|refunds)\/.*\.spec\.ts/,
       use: { baseURL: TARGETS.api },
     },
     {

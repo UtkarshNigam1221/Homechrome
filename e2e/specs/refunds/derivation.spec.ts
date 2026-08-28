@@ -60,7 +60,6 @@ test.describe('refund amount derivation', () => {
     ]);
 
     const order = fx.order;
-    const subtotal = order.subtotal;
 
     for (const line of order.items) {
       const preview = await json<RefundPreview>(
@@ -69,18 +68,21 @@ test.describe('refund amount derivation', () => {
         })
       );
 
+      // Mirrors prorate() in refund_amount.go: the line's own discount, split over
+      // its units. Prices are tax-inclusive, so no tax is added on top.
       const lineSubtotal = line.unit_price;
       const roundHalfUp = (amount: number, part: number, whole: number) =>
         whole <= 0 || amount === 0 ? 0 : Math.floor((amount * part + Math.floor(whole / 2)) / whole);
 
-      const expected =
-        lineSubtotal -
-        roundHalfUp(order.discount_amount, lineSubtotal, subtotal) +
-        roundHalfUp(order.tax_amount, lineSubtotal, subtotal);
+      const lineDiscount = Math.min(
+        Math.max(roundHalfUp(line.discount_amount, 1, line.quantity), 0),
+        lineSubtotal
+      );
+      const expected = lineSubtotal - lineDiscount;
 
       expect(
         preview.total,
-        `line ${line.id}: value less prorated discount plus prorated tax, to the paise`
+        `line ${line.id}: value less its prorated discount, to the paise`
       ).toBe(expected);
       expect(preview.is_final, 'a single unit of a multi-line order is not final').toBe(false);
     }

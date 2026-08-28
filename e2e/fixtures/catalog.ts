@@ -73,15 +73,16 @@ export async function createProduct(
   };
 }
 
-/** One category plus n products, each independently stocked. */
+/** One category plus n products, each independently stocked and priced. */
 export async function seedCatalog(
   api: APIRequestContext,
-  stocks: number[]
+  specs: (number | { stock: number; price?: number })[]
 ): Promise<SeededCatalog> {
   const categoryId = await createCategory(api);
   const products: SeededProduct[] = [];
-  for (const [i, stock] of stocks.entries()) {
-    products.push(await createProduct(api, categoryId, { stock, label: `product-${i + 1}` }));
+  for (const [i, s] of specs.entries()) {
+    const spec = typeof s === 'number' ? { stock: s } : s;
+    products.push(await createProduct(api, categoryId, { ...spec, label: `product-${i + 1}` }));
   }
   return { categoryId, products };
 }
