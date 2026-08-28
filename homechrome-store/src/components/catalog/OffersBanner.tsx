@@ -6,15 +6,18 @@ import { PublicCoupon } from '@/types';
 
 import { formatPrice } from '@/lib/utils';
 
-// "20% off" or "₹500 off", plus the minimum when there is one.
+// "20% off" or "₹500 off", plus the minimum and the cap when there are any.
 function offerLabel(coupon: PublicCoupon): string {
   const off =
     coupon.type === 'PERCENTAGE'
       ? `${coupon.value / 100}% off`
       : `${formatPrice(coupon.value)} off`;
-  return coupon.min_order_value > 0
+  const withMin = coupon.min_order_value > 0
     ? `${off} above ${formatPrice(coupon.min_order_value)}`
     : off;
+  return coupon.max_discount
+    ? `${withMin}, up to ${formatPrice(coupon.max_discount)}`
+    : withMin;
 }
 
 interface OffersBannerProps {
