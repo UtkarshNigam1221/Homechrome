@@ -1,6 +1,7 @@
 'use client';
 
-import { Button, Menu, Stack, Text } from '@mantine/core';
+import { Collapse, Group, Stack, Text, UnstyledButton } from '@mantine/core';
+import { useDisclosure } from '@mantine/hooks';
 import { useCallback, useEffect, useState } from 'react';
 
 import api from '@/lib/api';
@@ -11,11 +12,24 @@ import { CouponOffer } from '@/types';
 interface CouponPickerProps {
   // Refetched whenever this moves: every saving below is a function of the subtotal.
   subtotal: number;
+  // The one already on the order, so the list can mark it instead of offering it again.
+  appliedCode?: string;
   onApply: (code: string, discount: number) => void;
 }
 
-export default function CouponPicker({ subtotal, onApply }: CouponPickerProps) {
+// Lining figures in a fixed column, the way a bill is written. Every row's amount sits
+// under the last one so the biggest saving is found by eye, not by reading.
+const AMOUNT_STYLE = {
+  fontVariantNumeric: 'tabular-nums',
+  fontWeight: 700,
+  minWidth: '4.5rem',
+  textAlign: 'right',
+} as const;
+
+export default function CouponPicker({ subtotal, appliedCode, onApply }: CouponPickerProps) {
   const [offers, setOffers] = useState<CouponOffer[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [open, { toggle }] = useDisclosure(false);
 
   useEffect(() => {
     let current = true;
@@ -28,6 +42,9 @@ export default function CouponPicker({ subtotal, onApply }: CouponPickerProps) {
         // A failed refetch must not leave a stale saving on screen against a cart
         // it no longer describes. The code input beside this still works.
         if (current) setOffers([]);
+      })
+      .finally(() => {
+        if (current) setLoading(false);
       });
     return () => {
       current = false;
@@ -39,38 +56,127 @@ export default function CouponPicker({ subtotal, onApply }: CouponPickerProps) {
     [onApply],
   );
 
+  if (loading) {
+    return (
+      <Text fz="xs" c="dimmed">
+        Checking which offers fit this order…
+      </Text>
+    );
+  }
+
   if (offers.length === 0) return null;
 
-  // A bare "(0)" reads as "nothing here" even though the dropdown still explains
-  // why each code is out of reach, so the count only appears once it means "usable".
-  const eligibleCount = offers.filter((o) => o.eligible).length;
+  // A bare "(0)" reads as "nothing here" even though the list still explains why each
+  // code is out of reach, so the count only appears once it means "usable". The applied
+  // one does not count: it is already on the order, not something to switch to.
+  const usable = offers.filter((o) => o.eligible && o.code !== appliedCode).length;
 
   return (
-    <Menu position="bottom-start" withinPortal>
-      <Menu.Target>
-        <Button variant="subtle" size="compact-sm">
-          {eligibleCount > 0 ? `View available offers (${eligibleCount})` : 'View offers'}
-        </Button>
-      </Menu.Target>
-      <Menu.Dropdown>
-        {offers.map((offer) => (
-          <Menu.Item
-            key={offer.code}
-            disabled={!offer.eligible}
-            onClick={() => apply(offer)}
+    <Stack gap={0}>
+      <UnstyledButton
+        onClick={toggle}
+        aria-expanded={open}
+        style={{ borderRadius: 'var(--mantine-radius-sm)' }}
+      >
+        <Group gap="xs" wrap="nowrap" py={4}>
+          {/* One name in both states: the chevron and aria-expanded carry the state.
+              Renaming the control on toggle is the instability this replaced. */}
+          <Text fz="sm" fw={500} c="navy.7">
+            Offers
+          </Text>
+          {usable > 0 && (
+            <Text
+              component="span"
+              fz={10}
+              fw={700}
+              c="navy.7"
+              bg="brand.2"
+              px={6}
+              py={1}
+              style={{ borderRadius: 2, letterSpacing: '0.06em' }}
+            >
+              {usable} USABLE
+            </Text>
+          )}
+          {/* Rotates rather than swapping glyph, so the control keeps one identity. */}
+          <Text
+            component="span"
+            aria-hidden
+            fz={10}
+            c="brand.7"
+            style={{
+              rotate: open ? '180deg' : '0deg',
+              transition: 'rotate 160ms ease',
+              lineHeight: 1,
+            }}
           >
-            <Stack gap={2}>
-              <Text fz="sm" fw={600}>
-                {offer.code}
-                {offer.eligible ? ` — saves ${formatPrice(offer.discount_amount)}` : ''}
-              </Text>
-              <Text fz="xs" c="dimmed">
-                {offer.eligible ? offer.name : offer.reason}
-              </Text>
-            </Stack>
-          </Menu.Item>
-        ))}
-      </Menu.Dropdown>
-    </Menu>
+            ▼
+          </Text>
+        </Group>
+      </UnstyledButton>
+
+      <Collapse expanded={open}>
+        {/* Hover only where there is something to click. */}
+        <style>{'[data-usable]:hover{background:var(--mantine-color-brand-1)}'}</style>
+        <Stack gap={0} pt={4}>
+          {offers.map((offer, i) => {
+            const rule = i > 0 ? '1px solid var(--mantine-color-brand-2)' : undefined;
+            const isApplied = offer.code === appliedCode;
+            const selectable = offer.eligible && !isApplied;
+
+            // Ineligible rows stay focusable. The reason a code cannot be used is the
+            // most useful thing on the row, and `disabled` would take it out of the tab
+            // order and hand a screen reader nothing.
+            return (
+              <UnstyledButton
+                key={offer.code}
+                onClick={selectable ? () => apply(offer) : undefined}
+                aria-disabled={!selectable}
+                aria-label={
+                  isApplied
+                    ? `${offer.code} is already applied`
+                    : offer.eligible
+                      ? `Apply ${offer.code}, saves ${formatPrice(offer.discount_amount)}`
+                      : `${offer.code} unavailable. ${offer.reason ?? ''}`
+                }
+                data-usable={selectable || undefined}
+                style={{
+                  borderTop: rule,
+                  cursor: selectable ? 'pointer' : 'default',
+                  borderRadius: 'var(--mantine-radius-xs)',
+                }}
+              >
+                <Group gap="sm" wrap="nowrap" align="baseline" py={7} px={2}>
+                  <Stack gap={1} style={{ flex: 1, minWidth: 0 }}>
+                    <Text
+                      fz="xs"
+                      fw={700}
+                      c={offer.eligible ? 'navy.7' : 'navy.3'}
+                      style={{
+                        fontFamily: 'var(--mantine-font-family-monospace)',
+                        letterSpacing: '0.06em',
+                      }}
+                    >
+                      {offer.code}
+                      {isApplied && ' ✓'}
+                    </Text>
+                    <Text fz={11} c={offer.eligible ? 'navy.4' : 'navy.3'} lh={1.35}>
+                      {isApplied ? 'On this order' : offer.eligible ? offer.name : offer.reason}
+                    </Text>
+                  </Stack>
+                  <Text
+                    fz="sm"
+                    c={offer.eligible ? 'navy.7' : 'navy.2'}
+                    style={AMOUNT_STYLE}
+                  >
+                    {offer.eligible ? `−${formatPrice(offer.discount_amount)}` : '—'}
+                  </Text>
+                </Group>
+              </UnstyledButton>
+            );
+          })}
+        </Stack>
+      </Collapse>
+    </Stack>
   );
 }

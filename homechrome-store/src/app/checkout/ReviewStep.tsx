@@ -61,15 +61,34 @@ export function ReviewStep({
           ))}
         </Stack>
 
-        <Stack gap="xs">
-          <Title order={3} size="sm">Coupon</Title>
+        {/* One section, not three stacked widgets: the eyebrow names it, the rule closes
+            it, and the code field and the offer list read as two ways into the same
+            thing. "Offers" is the word the homepage band uses, so it is the word here. */}
+        <Stack gap={8}>
+          <Text
+            fz={10}
+            fw={700}
+            c="navy.4"
+            style={{
+              letterSpacing: '0.14em',
+              borderBottom: '1px solid var(--mantine-color-brand-2)',
+            }}
+            pb={6}
+            mb={2}
+          >
+            OFFERS
+          </Text>
           <CouponInput
             appliedCode={couponCode ?? undefined}
             appliedDiscount={couponDiscount}
             onApplied={onCouponApplied}
             onRemoved={onCouponRemoved}
           />
-          <CouponPicker subtotal={subtotal} onApply={onCouponApplied} />
+          <CouponPicker
+            subtotal={subtotal}
+            appliedCode={couponCode ?? undefined}
+            onApply={onCouponApplied}
+          />
         </Stack>
 
         <Group gap="sm">

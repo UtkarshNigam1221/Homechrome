@@ -1,6 +1,6 @@
 'use client';
 
-import { Button, Group, Pill, Stack, Text, TextInput } from '@mantine/core';
+import { Button, Group, Stack, Text, TextInput, UnstyledButton } from '@mantine/core';
 import { useState } from 'react';
 
 import api from '@/lib/api';
@@ -51,37 +51,87 @@ export default function CouponInput({
     }
   };
 
-  // Applied state is a removable chip, not text sitting in an input.
+  // Applied: written as the deduction it is, in the same ledger column the offers use,
+  // so the customer reads one figure in one place rather than a tag they must decode.
   if (appliedCode) {
     return (
-      <Pill
-        size="lg"
-        withRemoveButton
-        onRemove={onRemoved}
-        removeButtonProps={{ 'aria-label': `Remove coupon ${appliedCode}` }}
+      <Group
+        gap="sm"
+        wrap="nowrap"
+        align="center"
+        py={8}
+        px={12}
+        style={{
+          background: 'var(--mantine-color-brand-1)',
+          borderInlineStart: '3px solid var(--mantine-color-brand-5)',
+          borderRadius: '0 var(--mantine-radius-sm) var(--mantine-radius-sm) 0',
+        }}
       >
-        {appliedCode} · {formatPrice(appliedDiscount)} off
-      </Pill>
+        <Stack gap={1} style={{ flex: 1, minWidth: 0 }}>
+          <Text
+            fz="xs"
+            fw={700}
+            c="navy.7"
+            style={{
+              fontFamily: 'var(--mantine-font-family-monospace)',
+              letterSpacing: '0.06em',
+            }}
+          >
+            {appliedCode}
+          </Text>
+          <Text fz={11} c="navy.4">
+            applied to this order
+          </Text>
+        </Stack>
+        <Text
+          fz="sm"
+          fw={700}
+          c="navy.7"
+          style={{ fontVariantNumeric: 'tabular-nums', minWidth: '4.5rem', textAlign: 'right' }}
+        >
+          −{formatPrice(appliedDiscount)}
+        </Text>
+        <UnstyledButton
+          onClick={onRemoved}
+          aria-label={`Remove coupon ${appliedCode}`}
+          style={{ borderRadius: 'var(--mantine-radius-sm)' }}
+        >
+          <Text fz={11} c="navy.4" td="underline" px={2}>
+            Remove
+          </Text>
+        </UnstyledButton>
+      </Group>
     );
   }
 
   return (
-    <Stack gap="xs">
-      <Group gap="xs" wrap="nowrap">
+    <Stack gap={6}>
+      <Group gap="xs" wrap="nowrap" align="flex-start">
         <TextInput
-          placeholder="Coupon code"
+          placeholder="Enter a code"
           aria-label="Coupon code"
           value={code}
           onChange={(e) => setCode(e.currentTarget.value.toUpperCase())}
           onKeyDown={(e) => e.key === 'Enter' && apply()}
           error={!!error}
           style={{ flex: 1 }}
+          styles={{
+            input: {
+              fontFamily: 'var(--mantine-font-family-monospace)',
+              letterSpacing: '0.08em',
+            },
+          }}
         />
         <Button onClick={apply} loading={checking} variant="light" color="brand">
           Apply
         </Button>
       </Group>
-      {error && <Text size="xs" c="red.7">{error}</Text>}
+      {/* Announced, because a refusal is the whole answer to what the customer just did. */}
+      {error && (
+        <Text role="status" fz={11} c="red.7">
+          {error}
+        </Text>
+      )}
     </Stack>
   );
 }
