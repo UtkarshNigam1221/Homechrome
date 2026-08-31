@@ -122,20 +122,13 @@ function CodeStamp({ code, tilt }: { code: string; tilt: string }) {
       onClick={() => clipboard.copy(code)}
       aria-label={`Copy coupon code ${code}`}
       // The focus ring lives here, on the unclipped box — clip-path would eat it. Its
-      // colour is pinned because Mantine draws the ring in the primary shade, and sand
-      // on this cotton ground is 1.86:1, well under the 3:1 a focus indicator needs.
+      // colour comes from the site-wide override in globals.css, because the theme's
+      // primary shade is unreadable as an indicator on these light grounds.
       //
       // The tilt is what keeps it from reading as a generated shape: a block is pressed
       // by hand and never lands square. Neighbouring stamps lean opposite ways, or two
       // of them read as one sticker duplicated rather than two things placed.
-      style={
-        {
-          borderRadius: 'var(--mantine-radius-xs)',
-          lineHeight: 0,
-          rotate: tilt,
-          '--mantine-primary-color-filled': INDIGO,
-        } as React.CSSProperties
-      }
+      style={{ borderRadius: 'var(--mantine-radius-xs)', lineHeight: 0, rotate: tilt }}
     >
       {/* aria-label fixes the button's name to "Copy coupon code X", so the swap to
           "Copied" is silent without a live region to announce it. Text stays selectable:

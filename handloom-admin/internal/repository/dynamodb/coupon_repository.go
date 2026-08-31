@@ -276,13 +276,24 @@ func (r *CouponRepository) Delete(ctx context.Context, id string) error {
 }
 
 // ListPublic reads the advertisable coupons, dropping any expiring before cutoff.
-// Status and audience filter in DynamoDB; the validity window is checked in Go.
+// Status, audience and the usage limit filter in DynamoDB; the validity window is
+// checked in Go.
+//
+// The usage limit has to be part of this and not left to the caller. Nothing ever moves
+// a claimed-out coupon off ACTIVE — CouponStatusExpired is assigned nowhere — so without
+// it an exhausted code stays advertisable forever, and the banner hands out a code the
+// same evaluate() then refuses as fully claimed. Unlike "add ₹300 more", that is not a
+// state the customer can act on, so it is worth nothing in the picker either.
 func (r *CouponRepository) ListPublic(ctx context.Context, cutoff time.Time) ([]*domain.Coupon, error) {
 	all, err := QueryAll[domain.Coupon](ctx, r.client.db, &dynamodb.QueryInput{
 		TableName:              aws.String(r.client.couponsTable),
 		IndexName:              aws.String("GSI1"),
 		KeyConditionExpression: aws.String("GSI1PK = :pk"),
-		FilterExpression:       aws.String("#status = :status AND #audience = :audience"),
+		// Same predicate the redemption claim conditions on, so what is advertised and
+		// what can be claimed cannot drift apart. usage_limit 0 means unlimited.
+		FilterExpression: aws.String(
+			"#status = :status AND #audience = :audience" +
+				" AND (usage_limit = :zero OR usage_count < usage_limit)"),
 		ExpressionAttributeNames: map[string]string{
 			nameStatus: attrStatus,
 			// Named rather than inline: cheaper than being wrong about the reserved list.
@@ -292,6 +303,7 @@ func (r *CouponRepository) ListPublic(ctx context.Context, cutoff time.Time) ([]
 			exprPK:      &types.AttributeValueMemberS{Value: "COUPON#ALL"},
 			valStatus:   &types.AttributeValueMemberS{Value: string(domain.CouponStatusActive)},
 			":audience": &types.AttributeValueMemberS{Value: string(domain.AudienceAll)},
+			":zero":     &types.AttributeValueMemberN{Value: "0"},
 		},
 		ScanIndexForward: aws.Bool(false),
 	}, "Failed to list public coupons")

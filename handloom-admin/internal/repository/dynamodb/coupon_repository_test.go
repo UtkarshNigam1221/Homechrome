@@ -654,10 +654,28 @@ func TestCouponRepository_ListPublic(t *testing.T) {
 	openEnded := publicCoupon("coupon_open", "FOREVER10")
 	openEnded.ValidUntil = nil
 
+	// Nothing ever moves a claimed-out coupon off ACTIVE, so if the limit is not part
+	// of the filter this one stays advertisable forever — and the banner hands out a
+	// code evaluate() refuses as fully claimed.
+	exhausted := publicCoupon("coupon_exhausted", "SPENT10")
+	exhausted.UsageLimit = 5
+	exhausted.UsageCount = 5
+
+	// One short of the limit is still live, so the boundary is < and not <=.
+	nearlyGone := publicCoupon("coupon_nearly", "ONELEFT")
+	nearlyGone.UsageLimit = 5
+	nearlyGone.UsageCount = 4
+
+	// usage_limit 0 means unlimited: a high count must not exclude it.
+	unlimited := publicCoupon("coupon_unlimited", "NOCAP10")
+	unlimited.UsageLimit = 0
+	unlimited.UsageCount = 99
+
 	live := publicCoupon("coupon_live", "LIVE10")
 
 	for _, c := range []*domain.Coupon{
-		inactive, firstOrder, expired, insideWindow, notYet, openEnded, live,
+		inactive, firstOrder, expired, insideWindow, notYet, openEnded,
+		exhausted, nearlyGone, unlimited, live,
 	} {
 		require.NoError(t, repo.Create(ctx, c))
 	}
@@ -669,8 +687,10 @@ func TestCouponRepository_ListPublic(t *testing.T) {
 	for _, c := range got {
 		ids = append(ids, c.ID)
 	}
-	require.ElementsMatch(t, []string{"coupon_open", "coupon_live"}, ids,
-		"only ACTIVE + ALL coupons valid past the cache window may be advertised")
+	require.ElementsMatch(t,
+		[]string{"coupon_open", "coupon_live", "coupon_nearly", "coupon_unlimited"}, ids,
+		"only ACTIVE + ALL coupons with a slot left, valid past the cache window, "+
+			"may be advertised")
 }
 
 // The live picker's cutoff (now) must not hide a coupon Validate would still accept,

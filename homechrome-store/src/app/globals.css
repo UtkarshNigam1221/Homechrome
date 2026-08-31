@@ -49,3 +49,27 @@ main {
 img {
   transition: opacity 0.3s ease;
 }
+
+/* Focus indicators.
+   Mantine draws every focus ring in the primary shade, and this theme's primary is
+   brand.5 (#D4A574) — 2.23:1 on white and 1.86:1 on the cotton band. WCAG 2.2 SC 1.4.11
+   wants 3:1 of a focus indicator, so on this palette the default ring is invisible
+   exactly where it matters. Navy is 11.8:1 on both grounds.
+
+   Set once here rather than per control: the alternative is every new interactive
+   element repeating the same override, and forgetting it is silent.
+
+   Only the outline is retargeted. --mantine-primary-color-filled also paints every
+   primary filled button, so redefining the variable would turn the sand buttons navy.
+
+   Prefixed with :root to outrank Mantine's own rule, which sets the colour through the
+   `outline` shorthand — a :where() wrapper would have zero specificity and lose. */
+:root .mantine-focus-auto:focus-visible,
+:root .mantine-focus-always:focus {
+  outline-color: var(--mantine-color-navy-7);
+}
+
+/* Coupon offer rows: hover only where there is something to click. */
+[data-usable]:hover {
+  background: var(--mantine-color-brand-1);
+}

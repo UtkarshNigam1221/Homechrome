@@ -29,7 +29,7 @@ const AMOUNT_STYLE = {
 export default function CouponPicker({ subtotal, appliedCode, onApply }: CouponPickerProps) {
   const [offers, setOffers] = useState<CouponOffer[]>([]);
   const [loading, setLoading] = useState(true);
-  const [open, { toggle }] = useDisclosure(false);
+  const [open, { toggle }] = useDisclosure(true);
 
   useEffect(() => {
     let current = true;
@@ -116,8 +116,6 @@ export default function CouponPicker({ subtotal, appliedCode, onApply }: CouponP
       </UnstyledButton>
 
       <Collapse expanded={open}>
-        {/* Hover only where there is something to click. */}
-        <style>{'[data-usable]:hover{background:var(--mantine-color-brand-1)}'}</style>
         <Stack gap={0} pt={4}>
           {offers.map((offer, i) => {
             const rule = i > 0 ? '1px solid var(--mantine-color-brand-2)' : undefined;
@@ -150,8 +148,8 @@ export default function CouponPicker({ subtotal, appliedCode, onApply }: CouponP
                   <Stack gap={1} style={{ flex: 1, minWidth: 0 }}>
                     <Text
                       fz="xs"
-                      fw={700}
-                      c={offer.eligible ? 'navy.7' : 'navy.3'}
+                      fw={offer.eligible ? 700 : 500}
+                      c={offer.eligible ? 'navy.7' : 'navy.4'}
                       style={{
                         fontFamily: 'var(--mantine-font-family-monospace)',
                         letterSpacing: '0.06em',
@@ -160,7 +158,9 @@ export default function CouponPicker({ subtotal, appliedCode, onApply }: CouponP
                       {offer.code}
                       {isApplied && ' ✓'}
                     </Text>
-                    <Text fz={11} c={offer.eligible ? 'navy.4' : 'navy.3'} lh={1.35}>
+                    {/* navy.4 either way: 5.37:1. The reason a code cannot be used is
+                        the most useful line on the row and must not be the faintest. */}
+                    <Text fz={11} c="navy.4" lh={1.35}>
                       {isApplied ? 'On this order' : offer.eligible ? offer.name : offer.reason}
                     </Text>
                   </Stack>

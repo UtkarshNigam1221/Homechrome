@@ -1,7 +1,7 @@
 'use client';
 
 import { Button, Group, Stack, Text, TextInput, UnstyledButton } from '@mantine/core';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 
 import api from '@/lib/api';
 import { ROUTES } from '@/lib/routes';
@@ -24,6 +24,7 @@ export default function CouponInput({
   const [code, setCode] = useState('');
   const [error, setError] = useState('');
   const [checking, setChecking] = useState(false);
+  const field = useRef<HTMLInputElement>(null);
 
   const apply = async () => {
     const trimmed = code.trim();
@@ -79,7 +80,8 @@ export default function CouponInput({
           >
             {appliedCode}
           </Text>
-          <Text fz={11} c="navy.4">
+          {/* navy.5 on the cotton block: navy.4 computes to 4.49:1, just under AA. */}
+          <Text fz={11} c="navy.5">
             applied to this order
           </Text>
         </Stack>
@@ -92,7 +94,11 @@ export default function CouponInput({
           −{formatPrice(appliedDiscount)}
         </Text>
         <UnstyledButton
-          onClick={onRemoved}
+          onClick={() => {
+            onRemoved();
+            // This block unmounts on remove, so without this focus falls to <body>.
+            requestAnimationFrame(() => field.current?.focus());
+          }}
           aria-label={`Remove coupon ${appliedCode}`}
           style={{ borderRadius: 'var(--mantine-radius-sm)' }}
         >
@@ -108,12 +114,18 @@ export default function CouponInput({
     <Stack gap={6}>
       <Group gap="xs" wrap="nowrap" align="flex-start">
         <TextInput
+          ref={field}
           placeholder="Enter a code"
           aria-label="Coupon code"
           value={code}
-          onChange={(e) => setCode(e.currentTarget.value.toUpperCase())}
+          onChange={(e) => {
+            setCode(e.currentTarget.value.toUpperCase());
+            // A refusal describes the code that was tried, not the one being typed.
+            if (error) setError('');
+          }}
           onKeyDown={(e) => e.key === 'Enter' && apply()}
-          error={!!error}
+          error={error || undefined}
+          maxLength={20}
           style={{ flex: 1 }}
           styles={{
             input: {
@@ -126,12 +138,6 @@ export default function CouponInput({
           Apply
         </Button>
       </Group>
-      {/* Announced, because a refusal is the whole answer to what the customer just did. */}
-      {error && (
-        <Text role="status" fz={11} c="red.7">
-          {error}
-        </Text>
-      )}
     </Stack>
   );
 }
