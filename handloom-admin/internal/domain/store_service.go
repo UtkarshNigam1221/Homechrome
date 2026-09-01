@@ -42,6 +42,10 @@ type CheckoutService interface {
 	// PreviewCoupon prices a code against the customer's current cart without placing
 	// an order. Advisory only — checkout re-validates and wins.
 	PreviewCoupon(ctx context.Context, customerID, code string) (*CouponValidationResult, error)
+
+	// ListCoupons prices every public coupon against the customer's current cart, so
+	// the picker can show a real saving or a real reason on each.
+	ListCoupons(ctx context.Context, customerID string) ([]*CouponOffer, error)
 }
 
 // CheckoutRequest contains data for initiating checkout

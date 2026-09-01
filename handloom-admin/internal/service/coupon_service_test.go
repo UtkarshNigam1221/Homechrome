@@ -505,6 +505,198 @@ func TestCouponService_Create_FieldMapping(t *testing.T) {
 	})
 }
 
+func TestCouponService_ListPublic(t *testing.T) {
+	ctx := context.Background()
+	ctrl := gomock.NewController(t)
+	repo := mocks.NewMockCouponRepository(ctrl)
+
+	before := time.Now()
+	var gotCutoff time.Time
+	repo.EXPECT().ListPublic(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, cutoff time.Time) ([]*domain.Coupon, error) {
+			gotCutoff = cutoff
+			return []*domain.Coupon{activeCoupon()}, nil
+		})
+
+	got, err := NewCouponService(repo).ListPublic(ctx)
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	require.Equal(t, "FESTIVE20", got[0].Code)
+	// The cached banner's cutoff must clear the whole cache window, unlike the picker's.
+	require.WithinDuration(t, before.Add(domain.PublicCouponListTTL), gotCutoff, time.Second)
+}
+
+func TestCouponService_ListForCart(t *testing.T) {
+	ctx := context.Background()
+
+	// 20% off, no minimum. A second coupon needs ₹2,000 in the cart.
+	withMinimum := func() *domain.Coupon {
+		c := activeCoupon()
+		c.ID = "coupon_2"
+		c.Code = "BIG500"
+		c.Type = domain.CouponTypeFixed
+		c.Value = 50000
+		c.MinOrderValue = 200000
+		return c
+	}
+
+	// Local cap: TestCouponService_Redeem asserts against activeCoupon() unchanged.
+	withUsagePerUser := func() *domain.Coupon {
+		c := activeCoupon()
+		c.UsagePerUser = 1
+		return c
+	}
+
+	setup := func(t *testing.T, counts map[string]int) *CouponService {
+		t.Helper()
+		ctrl := gomock.NewController(t)
+		repo := mocks.NewMockCouponRepository(ctrl)
+		repo.EXPECT().ListPublic(gomock.Any(), gomock.Any()).
+			Return([]*domain.Coupon{withUsagePerUser(), withMinimum()}, nil)
+		// Exactly once for the whole list — the N+1 guard.
+		repo.EXPECT().GetCustomerUsageAll(gomock.Any(), "cust_1").Return(counts, nil).Times(1)
+		return NewCouponService(repo)
+	}
+
+	t.Run("annotates each coupon against the cart", func(t *testing.T) {
+		s := setup(t, nil)
+		cc := domain.CouponContext{CartTotal: 100000, CustomerID: "cust_1"}
+
+		offers, err := s.ListForCart(ctx, cc)
+		require.NoError(t, err)
+		require.Len(t, offers, 2)
+
+		require.True(t, offers[0].Eligible, "eligible coupons sort first")
+		require.Equal(t, "FESTIVE20", offers[0].Coupon.Code)
+		require.Equal(t, int64(20000), offers[0].DiscountAmount)
+		require.Empty(t, offers[0].Reason)
+
+		require.False(t, offers[1].Eligible)
+		require.Equal(t, "BIG500", offers[1].Coupon.Code)
+		require.Zero(t, offers[1].DiscountAmount)
+		// Cross-checked against evaluate, not a pinned literal, so they cannot drift.
+		want := evaluate(offers[1].Coupon, cc, 0)
+		require.False(t, want.Valid)
+		require.Equal(t, want.ErrorMessage, offers[1].Reason)
+	})
+
+	t.Run("a spent per-user allowance is reported, not hidden", func(t *testing.T) {
+		s := setup(t, map[string]int{"coupon_1": 1})
+
+		offers, err := s.ListForCart(ctx, domain.CouponContext{
+			CartTotal: 100000, CustomerID: "cust_1",
+		})
+		require.NoError(t, err)
+
+		byCode := map[string]*domain.CouponOffer{}
+		for _, o := range offers {
+			byCode[o.Coupon.Code] = o
+		}
+		require.False(t, byCode["FESTIVE20"].Eligible)
+		require.Equal(t, "You've already used this coupon", byCode["FESTIVE20"].Reason)
+	})
+
+	t.Run("a failed usage-counter read is an error, not a silent zero", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		repo := mocks.NewMockCouponRepository(ctrl)
+		repo.EXPECT().ListPublic(gomock.Any(), gomock.Any()).Return([]*domain.Coupon{activeCoupon()}, nil)
+		boom := errors.NotFound("usage counters")
+		repo.EXPECT().GetCustomerUsageAll(gomock.Any(), "cust_1").Return(nil, boom)
+
+		offers, err := NewCouponService(repo).ListForCart(ctx, domain.CouponContext{
+			CartTotal: 100000, CustomerID: "cust_1",
+		})
+		require.Equal(t, boom, err, "a read failure must surface, not read every cap as unused")
+		require.Nil(t, offers)
+	})
+
+	t.Run("sorts eligible best-saving-first, then keeps ineligible in list order", func(t *testing.T) {
+		eligBig := func() *domain.Coupon {
+			c := activeCoupon()
+			c.ID, c.Code = "coupon_big", "BIGSAVE"
+			c.Type, c.Value = domain.CouponTypeFixed, 80000 // ₹800 off
+			return c
+		}
+		eligSmall := func() *domain.Coupon {
+			c := activeCoupon()
+			c.ID, c.Code = "coupon_small", "SMALLSAVE"
+			c.Type, c.Value = domain.CouponTypeFixed, 20000 // ₹200 off
+			return c
+		}
+		// Both need ₹10,000 in the cart, which a ₹3,000 cart never reaches.
+		inelig1 := func() *domain.Coupon {
+			c := activeCoupon()
+			c.ID, c.Code, c.MinOrderValue = "coupon_in1", "TOOFAR1", 1000000
+			return c
+		}
+		inelig2 := func() *domain.Coupon {
+			c := activeCoupon()
+			c.ID, c.Code, c.MinOrderValue = "coupon_in2", "TOOFAR2", 1000000
+			return c
+		}
+
+		ctrl := gomock.NewController(t)
+		repo := mocks.NewMockCouponRepository(ctrl)
+		// Unsorted, ineligible entries split apart: catches an unstable sort.
+		repo.EXPECT().ListPublic(gomock.Any(), gomock.Any()).
+			Return([]*domain.Coupon{inelig1(), eligSmall(), inelig2(), eligBig()}, nil)
+
+		offers, err := NewCouponService(repo).ListForCart(ctx, domain.CouponContext{CartTotal: 300000})
+		require.NoError(t, err)
+		require.Len(t, offers, 4)
+
+		codes := make([]string, len(offers))
+		for i, o := range offers {
+			codes[i] = o.Coupon.Code
+		}
+		require.Equal(t, []string{"BIGSAVE", "SMALLSAVE", "TOOFAR1", "TOOFAR2"}, codes,
+			"eligible first by largest saving, then ineligible in ListPublic's original order")
+
+		require.True(t, offers[0].Eligible)
+		require.True(t, offers[1].Eligible)
+		require.False(t, offers[2].Eligible)
+		require.False(t, offers[3].Eligible)
+	})
+
+	t.Run("no public coupons costs no usage read", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		repo := mocks.NewMockCouponRepository(ctrl)
+		repo.EXPECT().ListPublic(gomock.Any(), gomock.Any()).Return(nil, nil)
+		// Times(0) is the assertion: gomock fails the test if the read happens.
+		repo.EXPECT().GetCustomerUsageAll(gomock.Any(), gomock.Any()).Times(0)
+
+		offers, err := NewCouponService(repo).ListForCart(ctx, domain.CouponContext{
+			CartTotal: 100000, CustomerID: "cust_1",
+		})
+		require.NoError(t, err)
+		require.Empty(t, offers)
+		require.NotNil(t, offers, "an empty list must encode as [], not null")
+	})
+
+	// The live picker must not inherit the banner's horizon and hide a valid coupon.
+	t.Run("uses a live cutoff, not the banner's cache-window horizon", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		repo := mocks.NewMockCouponRepository(ctrl)
+
+		before := time.Now()
+		var gotCutoff time.Time
+		repo.EXPECT().ListPublic(gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, cutoff time.Time) ([]*domain.Coupon, error) {
+				gotCutoff = cutoff
+				return []*domain.Coupon{activeCoupon()}, nil
+			})
+		repo.EXPECT().GetCustomerUsageAll(gomock.Any(), "cust_1").Return(nil, nil)
+
+		_, err := NewCouponService(repo).ListForCart(ctx, domain.CouponContext{
+			CartTotal: 100000, CustomerID: "cust_1",
+		})
+		require.NoError(t, err)
+		require.WithinDuration(t, before, gotCutoff, time.Second)
+		require.Less(t, gotCutoff.Sub(before), domain.PublicCouponListTTL,
+			"the picker's cutoff must not extend the banner's cache-window margin")
+	})
+}
+
 func TestCouponService_GetByCode_Uppercases(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	repo := mocks.NewMockCouponRepository(ctrl)

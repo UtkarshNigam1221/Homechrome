@@ -275,6 +275,52 @@ func (r *CouponRepository) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
+// ListPublic reads the advertisable coupons, dropping any expiring before cutoff.
+// Status and audience filter in DynamoDB; the validity window and the usage limit are
+// checked in Go.
+func (r *CouponRepository) ListPublic(ctx context.Context, cutoff time.Time) ([]*domain.Coupon, error) {
+	all, err := QueryAll[domain.Coupon](ctx, r.client.db, &dynamodb.QueryInput{
+		TableName:              aws.String(r.client.couponsTable),
+		IndexName:              aws.String("GSI1"),
+		KeyConditionExpression: aws.String("GSI1PK = :pk"),
+		FilterExpression:       aws.String("#status = :status AND #audience = :audience"),
+		ExpressionAttributeNames: map[string]string{
+			nameStatus: attrStatus,
+			// Named rather than inline: cheaper than being wrong about the reserved list.
+			"#audience": "audience",
+		},
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			exprPK:      &types.AttributeValueMemberS{Value: "COUPON#ALL"},
+			valStatus:   &types.AttributeValueMemberS{Value: string(domain.CouponStatusActive)},
+			":audience": &types.AttributeValueMemberS{Value: string(domain.AudienceAll)},
+		},
+		ScanIndexForward: aws.Bool(false),
+	}, "Failed to list public coupons")
+	if err != nil {
+		return nil, err
+	}
+
+	// valid_until marshals as RFC3339Nano, which trims trailing zeros, so the stored
+	// string is variable-width and compares wrong inside one second. Filtered here.
+	now := time.Now()
+	live := make([]*domain.Coupon, 0, len(all))
+	for _, c := range all {
+		if now.Before(c.ValidFrom) {
+			continue
+		}
+		if c.ValidUntil != nil && c.ValidUntil.Before(cutoff) {
+			continue
+		}
+		// Nothing moves a spent coupon off ACTIVE, so without this the banner keeps
+		// advertising it. In Go, not the filter: a missing attribute compares false.
+		if c.UsageLimit > 0 && c.UsageCount >= c.UsageLimit {
+			continue
+		}
+		live = append(live, c)
+	}
+	return live, nil
+}
+
 // List reads the public listing partition. Personal codes carry a different GSI1PK, so
 // they are absent by construction rather than by filter.
 //
@@ -423,6 +469,30 @@ func (r *CouponRepository) GetCustomerUsage(ctx context.Context, customerID, cou
 		return 0, errors.Internal("Failed to unmarshal coupon usage counter")
 	}
 	return counter.Count, nil
+}
+
+// GetCustomerUsageAll reads the whole CUSTOMER#<id> counter partition in one query.
+// Keys come from the item's coupon_id, which IncrementCustomerUsage always sets.
+func (r *CouponRepository) GetCustomerUsageAll(
+	ctx context.Context, customerID string,
+) (map[string]int, error) {
+	counters, err := QueryAll[domain.CouponUseCounter](ctx, r.client.db, &dynamodb.QueryInput{
+		TableName:              aws.String(r.client.couponsTable),
+		KeyConditionExpression: aws.String("PK = :pk AND begins_with(SK, :prefix)"),
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			exprPK:     &types.AttributeValueMemberS{Value: "CUSTOMER#" + customerID},
+			exprPrefix: &types.AttributeValueMemberS{Value: "USE#"},
+		},
+	}, "Failed to read coupon usage")
+	if err != nil {
+		return nil, err
+	}
+
+	counts := make(map[string]int, len(counters))
+	for _, c := range counters {
+		counts[c.CouponID] = c.Count
+	}
+	return counts, nil
 }
 
 // IncrementCustomerUsage claims one of this customer's allowance, creating the counter

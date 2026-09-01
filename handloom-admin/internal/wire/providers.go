@@ -707,8 +707,9 @@ func ProvideStoreCatalogHandler(
 	productService *service.ProductService,
 	categoryService *service.CategoryService,
 	inventoryService *service.InventoryService,
+	couponService *service.CouponService,
 ) *store.CatalogHandler {
-	return store.NewCatalogHandler(productService, categoryService, inventoryService)
+	return store.NewCatalogHandler(productService, categoryService, inventoryService, couponService)
 }
 
 // ProvideStoreCartHandler creates a new store CartHandler

@@ -20,7 +20,7 @@
 - **Store DTOs are explicit structs, never `*domain.Coupon`.** `usage_count`, `usage_limit`, `usage_per_user`, `customer_id`, `id`, `batch_id`, `search_key`, `status`, `audience`, `combines_with_offers` and timestamps must not appear in any store payload.
 - **Coupon read failures return `200` with an empty list**, logged at warn. A dead coupon path must not blank the homepage or block a checkout.
 - **Repository tests need DynamoDB Local.** Run `make docker-up` first. `skipIfNoLocal` (`internal/repository/dynamodb/testhelper_test.go:144`) silently skips when it is absent unless `CI` is set — always run these with `CI=1` so a skip becomes a failure.
-- **After changing `internal/domain/coupon.go` or `internal/domain/store_service.go`:** run `make generate-mocks`. After changing Wire providers or an `Initialize*Deps` build list: run `make wire`.
+- **After changing `internal/domain/coupon.go` or `internal/domain/store_service.go`:** run `make generate-mocks` so local builds and tests see the new interface methods. **Never `git add internal/mocks/`** — `.gitignore:77` ignores `internal/mocks/*_mock.go` and `ci.yml:92` regenerates them; no mock is tracked. After changing Wire providers or an `Initialize*Deps` build list: run `make wire`, and DO commit the regenerated `wire_gen.go`, which is tracked.
 
 ---
 
@@ -263,7 +263,7 @@ Temporarily change `c.ValidUntil.Before(horizon)` to `c.ValidUntil.Before(now)` 
 cd handloom-admin && make generate-mocks
 go build ./... && golangci-lint run internal/...
 git add internal/domain/coupon.go internal/repository/dynamodb/coupon_repository.go \
-        internal/repository/dynamodb/coupon_repository_test.go internal/mocks/coupon_mock.go
+        internal/repository/dynamodb/coupon_repository_test.go
 git commit -m "feat(coupons): read the coupons safe to advertise"
 ```
 
@@ -379,7 +379,7 @@ Expected: PASS, no SKIP.
 cd handloom-admin && make generate-mocks
 go build ./... && golangci-lint run internal/...
 git add internal/domain/coupon.go internal/repository/dynamodb/coupon_repository.go \
-        internal/repository/dynamodb/coupon_repository_test.go internal/mocks/coupon_mock.go
+        internal/repository/dynamodb/coupon_repository_test.go
 git commit -m "feat(coupons): read every usage counter a customer holds in one query"
 ```
 
@@ -700,7 +700,7 @@ go test -count=1 ./internal/service/
 cd handloom-admin && make generate-mocks
 go build ./... && golangci-lint run internal/...
 git add internal/domain/coupon.go internal/service/coupon_service.go \
-        internal/service/coupon_service_test.go internal/mocks/coupon_mock.go
+        internal/service/coupon_service_test.go
 git commit -m "feat(coupons): price every public coupon against a cart in one usage read"
 ```
 
@@ -1214,7 +1214,7 @@ Expected: all PASS.
 cd handloom-admin && go build ./... && golangci-lint run internal/...
 git add internal/domain/store_service.go internal/service/checkout_service.go \
         internal/service/checkout_service_test.go internal/handler/store/checkout_handler.go \
-        internal/handler/store/checkout_handler_test.go internal/mocks/
+        internal/handler/store/checkout_handler_test.go
 git commit -m "feat(store): price every public coupon against the cart at checkout"
 ```
 
@@ -1695,7 +1695,7 @@ git commit -m "test(e2e): cover the public offers list and the checkout picker"
 - [ ] `cd handloom-admin && make docker-up && CI=1 go test -count=1 -race ./internal/repository/dynamodb/` — passes, and the coupon tests genuinely run rather than skip
 - [ ] `cd handloom-admin && go test -count=1 ./internal/...` — passes. Postgres-backed tests **skip silently** without `POSTGRES_DSN`; "green" excludes them
 - [ ] `cd handloom-admin && make wire && git diff --exit-code internal/wire/wire_gen.go` — no drift
-- [ ] `cd handloom-admin && make generate-mocks && git diff --exit-code internal/mocks/` — no drift
+- [ ] `cd handloom-admin && make generate-mocks && go build ./... && go test -count=1 ./internal/...` — mocks are gitignored, so the check is that a fresh regeneration still compiles and passes, not that the tree is unchanged
 - [ ] `cd homechrome-store && npm run lint && npx tsc --noEmit` — clean apart from the 3 known `.webp` errors
 - [ ] `cd handloom-admin && make cdk-diff-dev` — no infrastructure change. This plan adds no Lambda, no table, no index, and no API Gateway resource; a diff here means something went wrong
 - [ ] Manual: an `ACTIVE`/`ALL` coupon appears on the homepage banner and in the checkout picker; a `FIRST_ORDER` coupon appears in **neither**

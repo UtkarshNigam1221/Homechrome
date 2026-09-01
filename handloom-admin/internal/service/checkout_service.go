@@ -271,6 +271,23 @@ func (s *CheckoutService) PreviewCoupon(ctx context.Context, customerID, code st
 	})
 }
 
+// ListCoupons prices the public coupons against this customer's cart. Same cart source
+// as PreviewCoupon, so the picker and a typed code agree.
+func (s *CheckoutService) ListCoupons(
+	ctx context.Context, customerID string,
+) ([]*domain.CouponOffer, error) {
+	cart, err := s.cartService.GetCart(ctx, customerID, false)
+	if err != nil {
+		return nil, err
+	}
+
+	return s.couponService.ListForCart(ctx, domain.CouponContext{
+		CartTotal:         cart.Cart.Subtotal,
+		CustomerID:        customerID,
+		HasAutomaticOffer: false, // Phase 4 sets this
+	})
+}
+
 // GetPaymentStatus retrieves the current payment status for an order
 func (s *CheckoutService) GetPaymentStatus(ctx context.Context, customerID, orderID string) (*domain.PaymentStatusResult, error) {
 	// Get the order

@@ -40,6 +40,10 @@ const (
 // couponSortTimeLayout is fixed-width on purpose — see SetKeys.
 const couponSortTimeLayout = "2006-01-02T15:04:05.000000000Z"
 
+// PublicCouponListTTL is how long a public coupon payload may be cached. ListPublic
+// drops coupons expiring inside it, so a cached payload cannot advertise a dead code.
+const PublicCouponListTTL = time.Hour
+
 // Coupon represents a discount coupon
 type Coupon struct {
 	ID         string `json:"id" dynamodbav:"id"`
@@ -202,6 +206,10 @@ type CouponRepository interface {
 	// List retrieves coupons with filters
 	List(ctx context.Context, req ListCouponsRequest) (*ListCouponsResponse, error)
 
+	// ListPublic returns coupons safe to advertise: ACTIVE, audience ALL, and valid
+	// past cutoff. The banner passes now+TTL; the live picker passes now.
+	ListPublic(ctx context.Context, cutoff time.Time) ([]*Coupon, error)
+
 	// RecordUsage records coupon usage
 	RecordUsage(ctx context.Context, usage *CouponUsage) error
 
@@ -210,6 +218,10 @@ type CouponRepository interface {
 
 	// GetCustomerUsage returns how many times this customer has redeemed this coupon.
 	GetCustomerUsage(ctx context.Context, customerID, couponID string) (int, error)
+
+	// GetCustomerUsageAll returns every per-coupon count this customer holds, keyed by
+	// coupon id. One query, so pricing M candidates costs one read rather than M.
+	GetCustomerUsageAll(ctx context.Context, customerID string) (map[string]int, error)
 
 	// IncrementCustomerUsage claims one of this customer's allowance for this coupon,
 	// under the same kind of condition IncrementUsage uses for the global limit.
@@ -230,6 +242,15 @@ type ListCouponsRequest struct {
 type ListCouponsResponse struct {
 	Coupons    []*Coupon          `json:"coupons"`
 	Pagination PaginationResponse `json:"pagination"`
+}
+
+// CouponOffer is one coupon priced against a specific cart. Reason carries the
+// customer-facing message when Eligible is false, so a picker can say why.
+type CouponOffer struct {
+	Coupon         *Coupon `json:"-"`
+	Eligible       bool    `json:"eligible"`
+	DiscountAmount int64   `json:"discount_amount"`
+	Reason         string  `json:"reason,omitempty"`
 }
 
 // ==================== COUPON SERVICE ====================
@@ -256,6 +277,13 @@ type CouponService interface {
 
 	// Validate checks a coupon against a cart and returns the discount it would give.
 	Validate(ctx context.Context, code string, cc CouponContext) (*CouponValidationResult, error)
+
+	// ListPublic returns the coupons safe to advertise, with no cart context.
+	ListPublic(ctx context.Context) ([]*Coupon, error)
+
+	// ListForCart prices every public coupon against one cart. Eligible offers come
+	// first, best saving down; ineligible ones follow, each carrying its reason.
+	ListForCart(ctx context.Context, cc CouponContext) ([]*CouponOffer, error)
 
 	// Redeem records one redemption of a paid order. Reports claimed=false when the
 	// coupon's usage limit is already exhausted, which is an outcome, not an error.
@@ -307,4 +335,8 @@ type CouponValidationResult struct {
 	// the order still has to leave something payable. Set only on a valid result;
 	// ErrorMessage carries the reason a coupon was refused outright.
 	Notice string `json:"notice,omitempty"`
+
+	// Outcome is the metric label for a rejection ("invalid", "expired",
+	// "limit_reached"). Internal — never serialized to a customer.
+	Outcome string `json:"-"`
 }

@@ -1,7 +1,7 @@
 'use client';
 
-import { Button, Group, Pill, Stack, Text, TextInput } from '@mantine/core';
-import { useState } from 'react';
+import { Button, Group, Stack, Text, TextInput, UnstyledButton } from '@mantine/core';
+import { useRef, useState } from 'react';
 
 import api from '@/lib/api';
 import { ROUTES } from '@/lib/routes';
@@ -24,6 +24,7 @@ export default function CouponInput({
   const [code, setCode] = useState('');
   const [error, setError] = useState('');
   const [checking, setChecking] = useState(false);
+  const field = useRef<HTMLInputElement>(null);
 
   const apply = async () => {
     const trimmed = code.trim();
@@ -51,37 +52,91 @@ export default function CouponInput({
     }
   };
 
-  // Applied state is a removable chip, not text sitting in an input.
+  // Written as the deduction it is, in the same column the offer rows use.
   if (appliedCode) {
     return (
-      <Pill
-        size="lg"
-        withRemoveButton
-        onRemove={onRemoved}
-        removeButtonProps={{ 'aria-label': `Remove coupon ${appliedCode}` }}
+      <Group
+        gap="sm"
+        wrap="nowrap"
+        align="center"
+        py={8}
+        px={12}
+        style={{
+          background: 'var(--mantine-color-brand-1)',
+          borderInlineStart: '3px solid var(--mantine-color-brand-5)',
+          borderRadius: '0 var(--mantine-radius-sm) var(--mantine-radius-sm) 0',
+        }}
       >
-        {appliedCode} · {formatPrice(appliedDiscount)} off
-      </Pill>
+        <Stack gap={1} style={{ flex: 1, minWidth: 0 }}>
+          <Text
+            fz="xs"
+            fw={700}
+            c="navy.7"
+            style={{
+              fontFamily: 'var(--mantine-font-family-monospace)',
+              letterSpacing: '0.06em',
+            }}
+          >
+            {appliedCode}
+          </Text>
+          {/* navy.5: navy.4 on this block is 4.49:1, just under AA. */}
+          <Text fz={11} c="navy.5">
+            applied to this order
+          </Text>
+        </Stack>
+        <Text
+          fz="sm"
+          fw={700}
+          c="navy.7"
+          style={{ fontVariantNumeric: 'tabular-nums', minWidth: '4.5rem', textAlign: 'right' }}
+        >
+          −{formatPrice(appliedDiscount)}
+        </Text>
+        <UnstyledButton
+          onClick={() => {
+            onRemoved();
+            // This block unmounts, so without this focus falls to <body>.
+            requestAnimationFrame(() => field.current?.focus());
+          }}
+          aria-label={`Remove coupon ${appliedCode}`}
+          style={{ borderRadius: 'var(--mantine-radius-sm)' }}
+        >
+          <Text fz={11} c="navy.4" td="underline" px={2}>
+            Remove
+          </Text>
+        </UnstyledButton>
+      </Group>
     );
   }
 
   return (
-    <Stack gap="xs">
-      <Group gap="xs" wrap="nowrap">
+    <Stack gap={6}>
+      <Group gap="xs" wrap="nowrap" align="flex-start">
         <TextInput
-          placeholder="Coupon code"
+          ref={field}
+          placeholder="Enter a code"
           aria-label="Coupon code"
           value={code}
-          onChange={(e) => setCode(e.currentTarget.value.toUpperCase())}
+          onChange={(e) => {
+            setCode(e.currentTarget.value.toUpperCase());
+            // The refusal described the old code, not the one being typed.
+            if (error) setError('');
+          }}
           onKeyDown={(e) => e.key === 'Enter' && apply()}
-          error={!!error}
+          error={error || undefined}
+          maxLength={20}
           style={{ flex: 1 }}
+          styles={{
+            input: {
+              fontFamily: 'var(--mantine-font-family-monospace)',
+              letterSpacing: '0.08em',
+            },
+          }}
         />
         <Button onClick={apply} loading={checking} variant="light" color="brand">
           Apply
         </Button>
       </Group>
-      {error && <Text size="xs" c="red.7">{error}</Text>}
     </Stack>
   );
 }

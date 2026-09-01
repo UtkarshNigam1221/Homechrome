@@ -1,6 +1,7 @@
 package store
 
 import (
+	"log/slog"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -36,6 +37,7 @@ func (h *CheckoutHandler) Routes() chi.Router {
 	r.Get("/payment-status/{orderID}", h.GetPaymentStatus)
 	r.With(middleware.ValidateJSONTyped[ValidateCouponRequest](h.validation)).
 		Post("/validate-coupon", h.ValidateCoupon)
+	r.Get("/coupons", h.ListCoupons)
 
 	return r
 }
@@ -96,4 +98,40 @@ func (h *CheckoutHandler) GetPaymentStatus(w http.ResponseWriter, r *http.Reques
 	stripInternal(result.Order)
 
 	response.Success(w, result)
+}
+
+// StoreCouponOffer is one coupon priced against the customer's cart. Embeds the same
+// trimmed DTO the banner uses, so neither surface can leak what the other withholds.
+type StoreCouponOffer struct {
+	StoreCoupon
+	Eligible       bool   `json:"eligible"`
+	DiscountAmount int64  `json:"discount_amount"`
+	Reason         string `json:"reason,omitempty"`
+}
+
+// ListCoupons handles GET /api/v1/store/checkout/coupons — the coupon picker.
+// Per customer and per cart, so it is never cached.
+func (h *CheckoutHandler) ListCoupons(w http.ResponseWriter, r *http.Request) {
+	customerID := middleware.GetCustomerIDFromContext(r.Context())
+
+	w.Header().Set("Cache-Control", "no-store")
+
+	offers, err := h.checkoutService.ListCoupons(r.Context(), customerID)
+	if err != nil {
+		// The customer can still type a code, and Validate is the authority.
+		slog.WarnContext(r.Context(), "Coupon picker unavailable", "error", err)
+		offers = nil
+	}
+
+	out := make([]StoreCouponOffer, 0, len(offers))
+	for _, o := range offers {
+		out = append(out, StoreCouponOffer{
+			StoreCoupon:    toStoreCoupon(o.Coupon),
+			Eligible:       o.Eligible,
+			DiscountAmount: o.DiscountAmount,
+			Reason:         o.Reason,
+		})
+	}
+
+	response.Success(w, out)
 }

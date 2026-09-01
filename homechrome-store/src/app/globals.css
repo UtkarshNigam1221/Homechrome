@@ -49,3 +49,15 @@ main {
 img {
   transition: opacity 0.3s ease;
 }
+
+/* Mantine draws focus rings in the primary shade: brand.5 is 2.23:1 on white, under the
+   3:1 WCAG asks. Only outline-color — the variable also paints primary buttons. */
+:root .mantine-focus-auto:focus-visible,
+:root .mantine-focus-always:focus {
+  outline-color: var(--mantine-color-navy-7);
+}
+
+/* Coupon offer rows: hover only where there is something to click. */
+[data-usable]:hover {
+  background: var(--mantine-color-brand-1);
+}

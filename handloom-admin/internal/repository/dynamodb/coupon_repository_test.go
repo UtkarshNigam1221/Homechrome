@@ -616,3 +616,171 @@ func TestCouponRepository_CustomerUsage(t *testing.T) {
 		require.Equal(t, 1, claims, "usage_per_user 1 must be claimable once")
 	})
 }
+
+// publicCoupon builds an advertisable coupon, then lets each case break one rule.
+func publicCoupon(id, code string) *domain.Coupon {
+	c := newTestCoupon(id, code)
+	c.Audience = domain.AudienceAll
+	c.Status = domain.CouponStatusActive
+	return c
+}
+
+func TestCouponRepository_ListPublic(t *testing.T) {
+	wrapped, raw := testWrappedClient(t)
+	skipIfNoLocal(t, raw)
+	setupTestTable(t, raw, testCouponsTable)
+
+	repo := NewCouponRepository(wrapped)
+	ctx := context.Background()
+	now := time.Now()
+
+	inactive := publicCoupon("coupon_inactive", "INACTIVE1")
+	inactive.Status = domain.CouponStatusInactive
+
+	firstOrder := publicCoupon("coupon_first", "FIRSTONLY")
+	firstOrder.Audience = domain.AudienceFirstOrder
+
+	expired := publicCoupon("coupon_expired", "GONE10")
+	expiredAt := now.Add(-time.Hour)
+	expired.ValidUntil = &expiredAt
+
+	insideWindow := publicCoupon("coupon_soon", "SOON10")
+	soon := now.Add(domain.PublicCouponListTTL / 2)
+	insideWindow.ValidUntil = &soon
+
+	notYet := publicCoupon("coupon_future", "LATER10")
+	notYet.ValidFrom = now.Add(24 * time.Hour)
+
+	openEnded := publicCoupon("coupon_open", "FOREVER10")
+	openEnded.ValidUntil = nil
+
+	// Nothing moves a spent coupon off ACTIVE, so unfiltered it stays advertisable.
+	exhausted := publicCoupon("coupon_exhausted", "SPENT10")
+	exhausted.UsageLimit = 5
+	exhausted.UsageCount = 5
+
+	// One short of the limit is still live, so the boundary is < and not <=.
+	nearlyGone := publicCoupon("coupon_nearly", "ONELEFT")
+	nearlyGone.UsageLimit = 5
+	nearlyGone.UsageCount = 4
+
+	// usage_limit 0 means unlimited: a high count must not exclude it.
+	unlimited := publicCoupon("coupon_unlimited", "NOCAP10")
+	unlimited.UsageLimit = 0
+	unlimited.UsageCount = 99
+
+	live := publicCoupon("coupon_live", "LIVE10")
+
+	for _, c := range []*domain.Coupon{
+		inactive, firstOrder, expired, insideWindow, notYet, openEnded,
+		exhausted, nearlyGone, unlimited, live,
+	} {
+		require.NoError(t, repo.Create(ctx, c))
+	}
+
+	got, err := repo.ListPublic(ctx, now.Add(domain.PublicCouponListTTL))
+	require.NoError(t, err)
+
+	ids := make([]string, 0, len(got))
+	for _, c := range got {
+		ids = append(ids, c.ID)
+	}
+	require.ElementsMatch(t,
+		[]string{"coupon_open", "coupon_live", "coupon_nearly", "coupon_unlimited"}, ids,
+		"only ACTIVE + ALL coupons with a slot left, valid past the cache window, "+
+			"may be advertised")
+}
+
+// The live picker's cutoff (now) must not hide a coupon Validate would still accept,
+// even though the cached banner's cutoff (now+TTL) rightly does.
+func TestCouponRepository_ListPublic_CutoffIsCallerControlled(t *testing.T) {
+	wrapped, raw := testWrappedClient(t)
+	skipIfNoLocal(t, raw)
+	setupTestTable(t, raw, testCouponsTable)
+
+	repo := NewCouponRepository(wrapped)
+	ctx := context.Background()
+	now := time.Now()
+
+	expiringSoon := publicCoupon("coupon_expiring_soon", "SOON5")
+	soon := now.Add(30 * time.Minute)
+	expiringSoon.ValidUntil = &soon
+	require.NoError(t, repo.Create(ctx, expiringSoon))
+
+	banner, err := repo.ListPublic(ctx, now.Add(domain.PublicCouponListTTL))
+	require.NoError(t, err)
+	require.Empty(t, banner, "a coupon expiring inside the cache window must not be cached")
+
+	picker, err := repo.ListPublic(ctx, now)
+	require.NoError(t, err)
+	ids := make([]string, 0, len(picker))
+	for _, c := range picker {
+		ids = append(ids, c.ID)
+	}
+	require.Contains(t, ids, "coupon_expiring_soon",
+		"the live picker must show what Validate would accept typed into the box beside it")
+}
+
+// One coupon sits just inside the cache horizon (must be dropped) and one just
+// outside it with a stray microsecond, proving the RFC3339Nano trap is guarded.
+func TestCouponRepository_ListPublic_SubSecondExpiry(t *testing.T) {
+	wrapped, raw := testWrappedClient(t)
+	skipIfNoLocal(t, raw)
+	setupTestTable(t, raw, testCouponsTable)
+
+	repo := NewCouponRepository(wrapped)
+	ctx := context.Background()
+	now := time.Now()
+
+	justInside := publicCoupon("coupon_inside", "INSIDE10")
+	insideEnd := now.Add(domain.PublicCouponListTTL - time.Minute).Truncate(time.Second)
+	justInside.ValidUntil = &insideEnd
+
+	justOutside := publicCoupon("coupon_outside", "OUTSIDE10")
+	outsideEnd := now.Add(domain.PublicCouponListTTL + time.Minute).Add(time.Microsecond)
+	justOutside.ValidUntil = &outsideEnd
+
+	require.NoError(t, repo.Create(ctx, justInside))
+	require.NoError(t, repo.Create(ctx, justOutside))
+
+	got, err := repo.ListPublic(ctx, now.Add(domain.PublicCouponListTTL))
+	require.NoError(t, err)
+
+	ids := make([]string, 0, len(got))
+	for _, c := range got {
+		ids = append(ids, c.ID)
+	}
+	require.ElementsMatch(t, []string{"coupon_outside"}, ids,
+		"only the coupon clearing the cache window may be advertised")
+}
+
+// One query for every count a customer holds. Validates GetCustomerUsage is a GetItem
+// per coupon, which a picker of M candidates would pay M times.
+func TestCouponRepository_GetCustomerUsageAll(t *testing.T) {
+	wrapped, raw := testWrappedClient(t)
+	skipIfNoLocal(t, raw)
+	setupTestTable(t, raw, testCouponsTable)
+
+	repo := NewCouponRepository(wrapped)
+	ctx := context.Background()
+
+	claimed, err := repo.IncrementCustomerUsage(ctx, "cust_1", "coupon_a", 0)
+	require.NoError(t, err)
+	require.True(t, claimed)
+
+	_, err = repo.IncrementCustomerUsage(ctx, "cust_1", "coupon_a", 0)
+	require.NoError(t, err)
+	_, err = repo.IncrementCustomerUsage(ctx, "cust_1", "coupon_b", 0)
+	require.NoError(t, err)
+	_, err = repo.IncrementCustomerUsage(ctx, "cust_2", "coupon_a", 0)
+	require.NoError(t, err)
+
+	counts, err := repo.GetCustomerUsageAll(ctx, "cust_1")
+	require.NoError(t, err)
+	require.Equal(t, map[string]int{"coupon_a": 2, "coupon_b": 1}, counts,
+		"another customer's counters must not leak in")
+
+	empty, err := repo.GetCustomerUsageAll(ctx, "cust_never")
+	require.NoError(t, err)
+	require.Empty(t, empty, "never used is an empty map, not an error")
+}

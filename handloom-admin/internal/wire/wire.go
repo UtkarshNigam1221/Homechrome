@@ -472,6 +472,8 @@ func InitializeStoreCatalogDeps(ctx context.Context, cfg *config.Config) (*Store
 		ProvideCategoryRepository,
 		ProvideProductRepository,
 		ProvideInventoryRepository,
+		ProvideCouponRepository,
+		ProvideCouponService,
 		ProvideS3Client,
 		ProvideLambdaClient,
 		ProvideEmbedderClient,

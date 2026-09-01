@@ -3,6 +3,7 @@
 import { Anchor, Box, Button, Card, Group, Stack, Text, Title } from '@mantine/core';
 
 import CouponInput from '@/components/cart/CouponInput';
+import CouponPicker from '@/components/checkout/CouponPicker';
 import InlineLoaderOverlay from '@/components/ui/InlineLoaderOverlay';
 import { formatPrice } from '@/lib/utils';
 import { Address, CartItem } from '@/types';
@@ -14,6 +15,7 @@ interface ReviewStepProps {
   initiatingCheckout: boolean;
   couponCode: string | null;
   couponDiscount: number;
+  subtotal: number;
   onChangeAddress: () => void;
   onPayNow: () => void;
   onCouponApplied: (code: string, discount: number) => void;
@@ -27,6 +29,7 @@ export function ReviewStep({
   initiatingCheckout,
   couponCode,
   couponDiscount,
+  subtotal,
   onChangeAddress,
   onPayNow,
   onCouponApplied,
@@ -58,13 +61,31 @@ export function ReviewStep({
           ))}
         </Stack>
 
-        <Stack gap="xs">
-          <Title order={3} size="sm">Coupon</Title>
+        {/* One section: the field and the list are two ways into the same thing. */}
+        <Stack gap={8}>
+          <Text
+            fz={10}
+            fw={700}
+            c="navy.4"
+            style={{
+              letterSpacing: '0.14em',
+              borderBottom: '1px solid var(--mantine-color-brand-2)',
+            }}
+            pb={6}
+            mb={2}
+          >
+            OFFERS
+          </Text>
           <CouponInput
             appliedCode={couponCode ?? undefined}
             appliedDiscount={couponDiscount}
             onApplied={onCouponApplied}
             onRemoved={onCouponRemoved}
+          />
+          <CouponPicker
+            subtotal={subtotal}
+            appliedCode={couponCode ?? undefined}
+            onApply={onCouponApplied}
           />
         </Stack>
 

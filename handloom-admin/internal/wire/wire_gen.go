@@ -443,7 +443,13 @@ func InitializeStoreCatalogDeps(ctx context.Context, cfg *config.Config) (*Store
 	productService := ProvideProductService(productRepository, categoryRepository, inventoryRepository, assetService, client)
 	categoryService := ProvideCategoryService(categoryRepository, productRepository, assetService)
 	inventoryService := ProvideStoreInventoryService(inventoryRepository)
-	catalogHandler := ProvideStoreCatalogHandler(productService, categoryService, inventoryService)
+	dynamodbClient, err := ProvideDynamoDBClient(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+	couponRepository := ProvideCouponRepository(dynamodbClient)
+	couponService := ProvideCouponService(couponRepository)
+	catalogHandler := ProvideStoreCatalogHandler(productService, categoryService, inventoryService, couponService)
 	storeCatalogDeps := &StoreCatalogDeps{
 		Config:  cfg,
 		Handler: catalogHandler,
@@ -720,7 +726,7 @@ func InitializeMonolithDeps(ctx context.Context, cfg *config.Config) (*MonolithD
 	customerTokenStore := ProvideCustomerTokenStore(client)
 	customerAuthService := ProvideCustomerAuthService(otpRepository, customerRepository, customerTokenStore, cfg)
 	storeAuthHandler := ProvideStoreAuthHandler(customerAuthService, cartService, validation)
-	catalogHandler := ProvideStoreCatalogHandler(productService, categoryService, inventoryService)
+	catalogHandler := ProvideStoreCatalogHandler(productService, categoryService, inventoryService, couponService)
 	cartHandler := ProvideStoreCartHandler(cartService, validation)
 	checkoutService := ProvideCheckoutService(cartService, orderRepository, paymentService, inventoryRepository, customerRepository, couponService)
 	checkoutHandler := ProvideStoreCheckoutHandler(checkoutService, validation)

@@ -85,8 +85,8 @@ func (r *PaymentRepository) GetByOrderID(ctx context.Context, orderID string) (*
 		// filter runs after Limit — REFUND# sorts first, so limit 1 found no payment.
 		KeyConditionExpression: aws.String("GSI1PK = :pk AND begins_with(GSI1SK, :prefix)"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
-			exprPK:    &types.AttributeValueMemberS{Value: "ORDER#" + orderID},
-			":prefix": &types.AttributeValueMemberS{Value: "PAYMENT#"},
+			exprPK:     &types.AttributeValueMemberS{Value: "ORDER#" + orderID},
+			exprPrefix: &types.AttributeValueMemberS{Value: "PAYMENT#"},
 		},
 		ScanIndexForward: aws.Bool(false), // newest first
 		Limit:            aws.Int32(1),
