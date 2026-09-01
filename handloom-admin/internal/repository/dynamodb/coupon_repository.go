@@ -276,24 +276,14 @@ func (r *CouponRepository) Delete(ctx context.Context, id string) error {
 }
 
 // ListPublic reads the advertisable coupons, dropping any expiring before cutoff.
-// Status, audience and the usage limit filter in DynamoDB; the validity window is
+// Status and audience filter in DynamoDB; the validity window and the usage limit are
 // checked in Go.
-//
-// The usage limit has to be part of this and not left to the caller. Nothing ever moves
-// a claimed-out coupon off ACTIVE — CouponStatusExpired is assigned nowhere — so without
-// it an exhausted code stays advertisable forever, and the banner hands out a code the
-// same evaluate() then refuses as fully claimed. Unlike "add ₹300 more", that is not a
-// state the customer can act on, so it is worth nothing in the picker either.
 func (r *CouponRepository) ListPublic(ctx context.Context, cutoff time.Time) ([]*domain.Coupon, error) {
 	all, err := QueryAll[domain.Coupon](ctx, r.client.db, &dynamodb.QueryInput{
 		TableName:              aws.String(r.client.couponsTable),
 		IndexName:              aws.String("GSI1"),
 		KeyConditionExpression: aws.String("GSI1PK = :pk"),
-		// Same predicate the redemption claim conditions on, so what is advertised and
-		// what can be claimed cannot drift apart. usage_limit 0 means unlimited.
-		FilterExpression: aws.String(
-			"#status = :status AND #audience = :audience" +
-				" AND (usage_limit = :zero OR usage_count < usage_limit)"),
+		FilterExpression:       aws.String("#status = :status AND #audience = :audience"),
 		ExpressionAttributeNames: map[string]string{
 			nameStatus: attrStatus,
 			// Named rather than inline: cheaper than being wrong about the reserved list.
@@ -303,7 +293,6 @@ func (r *CouponRepository) ListPublic(ctx context.Context, cutoff time.Time) ([]
 			exprPK:      &types.AttributeValueMemberS{Value: "COUPON#ALL"},
 			valStatus:   &types.AttributeValueMemberS{Value: string(domain.CouponStatusActive)},
 			":audience": &types.AttributeValueMemberS{Value: string(domain.AudienceAll)},
-			":zero":     &types.AttributeValueMemberN{Value: "0"},
 		},
 		ScanIndexForward: aws.Bool(false),
 	}, "Failed to list public coupons")
@@ -320,6 +309,19 @@ func (r *CouponRepository) ListPublic(ctx context.Context, cutoff time.Time) ([]
 			continue
 		}
 		if c.ValidUntil != nil && c.ValidUntil.Before(cutoff) {
+			continue
+		}
+		// Nothing ever moves a claimed-out coupon off ACTIVE — CouponStatusExpired is
+		// assigned nowhere — so without this an exhausted code stays advertisable
+		// forever and the banner hands out one evaluate() then refuses as fully
+		// claimed. Unlike "add ₹300 more", that is not a state a customer can act on,
+		// so it is worth nothing in the picker either. usage_limit 0 means unlimited.
+		//
+		// In Go rather than the FilterExpression: a filter costs the same read capacity
+		// either way, and a comparison against a missing attribute evaluates false in
+		// DynamoDB, so an item written without these fields would vanish from the
+		// listing. Unmarshalled, a missing field is 0 and reads as unused.
+		if c.UsageLimit > 0 && c.UsageCount >= c.UsageLimit {
 			continue
 		}
 		live = append(live, c)
