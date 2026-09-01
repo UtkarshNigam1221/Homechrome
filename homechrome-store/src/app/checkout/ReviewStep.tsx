@@ -61,9 +61,7 @@ export function ReviewStep({
           ))}
         </Stack>
 
-        {/* One section, not three stacked widgets: the eyebrow names it, the rule closes
-            it, and the code field and the offer list read as two ways into the same
-            thing. "Offers" is the word the homepage band uses, so it is the word here. */}
+        {/* One section: the field and the list are two ways into the same thing. */}
         <Stack gap={8}>
           <Text
             fz={10}

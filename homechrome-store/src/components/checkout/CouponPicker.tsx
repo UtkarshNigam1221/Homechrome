@@ -17,8 +17,7 @@ interface CouponPickerProps {
   onApply: (code: string, discount: number) => void;
 }
 
-// Lining figures in a fixed column, the way a bill is written. Every row's amount sits
-// under the last one so the biggest saving is found by eye, not by reading.
+// Lining figures in a fixed column so the amounts stack and scan.
 const AMOUNT_STYLE = {
   fontVariantNumeric: 'tabular-nums',
   fontWeight: 700,
@@ -66,9 +65,7 @@ export default function CouponPicker({ subtotal, appliedCode, onApply }: CouponP
 
   if (offers.length === 0) return null;
 
-  // A bare "(0)" reads as "nothing here" even though the list still explains why each
-  // code is out of reach, so the count only appears once it means "usable". The applied
-  // one does not count: it is already on the order, not something to switch to.
+  // Only counts what you could switch to: not the applied one, not the out-of-reach ones.
   const usable = offers.filter((o) => o.eligible && o.code !== appliedCode).length;
 
   return (
@@ -79,8 +76,7 @@ export default function CouponPicker({ subtotal, appliedCode, onApply }: CouponP
         style={{ borderRadius: 'var(--mantine-radius-sm)' }}
       >
         <Group gap="xs" wrap="nowrap" py={4}>
-          {/* One name in both states: the chevron and aria-expanded carry the state.
-              Renaming the control on toggle is the instability this replaced. */}
+          {/* One name in both states; the chevron and aria-expanded carry it. */}
           <Text fz="sm" fw={500} c="navy.7">
             Offers
           </Text>
@@ -98,7 +94,6 @@ export default function CouponPicker({ subtotal, appliedCode, onApply }: CouponP
               {usable} USABLE
             </Text>
           )}
-          {/* Rotates rather than swapping glyph, so the control keeps one identity. */}
           <Text
             component="span"
             aria-hidden
@@ -122,9 +117,8 @@ export default function CouponPicker({ subtotal, appliedCode, onApply }: CouponP
             const isApplied = offer.code === appliedCode;
             const selectable = offer.eligible && !isApplied;
 
-            // Ineligible rows stay focusable. The reason a code cannot be used is the
-            // most useful thing on the row, and `disabled` would take it out of the tab
-            // order and hand a screen reader nothing.
+            // aria-disabled, not disabled: the reason is the most useful thing on the
+            // row and `disabled` would drop it out of the tab order entirely.
             return (
               <UnstyledButton
                 key={offer.code}
@@ -158,8 +152,7 @@ export default function CouponPicker({ subtotal, appliedCode, onApply }: CouponP
                       {offer.code}
                       {isApplied && ' ✓'}
                     </Text>
-                    {/* navy.4 either way: 5.37:1. The reason a code cannot be used is
-                        the most useful line on the row and must not be the faintest. */}
+                    {/* navy.4 either way: navy.3 was 3.66:1, under AA. */}
                     <Text fz={11} c="navy.4" lh={1.35}>
                       {isApplied ? 'On this order' : offer.eligible ? offer.name : offer.reason}
                     </Text>

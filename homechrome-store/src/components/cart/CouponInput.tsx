@@ -52,8 +52,7 @@ export default function CouponInput({
     }
   };
 
-  // Applied: written as the deduction it is, in the same ledger column the offers use,
-  // so the customer reads one figure in one place rather than a tag they must decode.
+  // Written as the deduction it is, in the same column the offer rows use.
   if (appliedCode) {
     return (
       <Group
@@ -80,7 +79,7 @@ export default function CouponInput({
           >
             {appliedCode}
           </Text>
-          {/* navy.5 on the cotton block: navy.4 computes to 4.49:1, just under AA. */}
+          {/* navy.5: navy.4 on this block is 4.49:1, just under AA. */}
           <Text fz={11} c="navy.5">
             applied to this order
           </Text>
@@ -96,7 +95,7 @@ export default function CouponInput({
         <UnstyledButton
           onClick={() => {
             onRemoved();
-            // This block unmounts on remove, so without this focus falls to <body>.
+            // This block unmounts, so without this focus falls to <body>.
             requestAnimationFrame(() => field.current?.focus());
           }}
           aria-label={`Remove coupon ${appliedCode}`}
@@ -120,7 +119,7 @@ export default function CouponInput({
           value={code}
           onChange={(e) => {
             setCode(e.currentTarget.value.toUpperCase());
-            // A refusal describes the code that was tried, not the one being typed.
+            // The refusal described the old code, not the one being typed.
             if (error) setError('');
           }}
           onKeyDown={(e) => e.key === 'Enter' && apply()}

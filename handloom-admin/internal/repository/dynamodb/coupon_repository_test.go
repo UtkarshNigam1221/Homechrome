@@ -654,9 +654,7 @@ func TestCouponRepository_ListPublic(t *testing.T) {
 	openEnded := publicCoupon("coupon_open", "FOREVER10")
 	openEnded.ValidUntil = nil
 
-	// Nothing ever moves a claimed-out coupon off ACTIVE, so if the limit is not part
-	// of the filter this one stays advertisable forever — and the banner hands out a
-	// code evaluate() refuses as fully claimed.
+	// Nothing moves a spent coupon off ACTIVE, so unfiltered it stays advertisable.
 	exhausted := publicCoupon("coupon_exhausted", "SPENT10")
 	exhausted.UsageLimit = 5
 	exhausted.UsageCount = 5

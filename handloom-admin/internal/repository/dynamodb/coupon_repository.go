@@ -311,16 +311,8 @@ func (r *CouponRepository) ListPublic(ctx context.Context, cutoff time.Time) ([]
 		if c.ValidUntil != nil && c.ValidUntil.Before(cutoff) {
 			continue
 		}
-		// Nothing ever moves a claimed-out coupon off ACTIVE — CouponStatusExpired is
-		// assigned nowhere — so without this an exhausted code stays advertisable
-		// forever and the banner hands out one evaluate() then refuses as fully
-		// claimed. Unlike "add ₹300 more", that is not a state a customer can act on,
-		// so it is worth nothing in the picker either. usage_limit 0 means unlimited.
-		//
-		// In Go rather than the FilterExpression: a filter costs the same read capacity
-		// either way, and a comparison against a missing attribute evaluates false in
-		// DynamoDB, so an item written without these fields would vanish from the
-		// listing. Unmarshalled, a missing field is 0 and reads as unused.
+		// Nothing moves a spent coupon off ACTIVE, so without this the banner keeps
+		// advertising it. In Go, not the filter: a missing attribute compares false.
 		if c.UsageLimit > 0 && c.UsageCount >= c.UsageLimit {
 			continue
 		}

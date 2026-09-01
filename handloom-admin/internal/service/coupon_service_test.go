@@ -540,8 +540,7 @@ func TestCouponService_ListForCart(t *testing.T) {
 		return c
 	}
 
-	// A local per-user cap on FESTIVE20: activeCoupon() stays unchanged because
-	// TestCouponService_Redeem asserts IncrementCustomerUsage's limit arg against it.
+	// Local cap: TestCouponService_Redeem asserts against activeCoupon() unchanged.
 	withUsagePerUser := func() *domain.Coupon {
 		c := activeCoupon()
 		c.UsagePerUser = 1
@@ -575,8 +574,7 @@ func TestCouponService_ListForCart(t *testing.T) {
 		require.False(t, offers[1].Eligible)
 		require.Equal(t, "BIG500", offers[1].Coupon.Code)
 		require.Zero(t, offers[1].DiscountAmount)
-		// Cross-checked against evaluate directly (Validate's shared rule), not a
-		// pinned literal, so the two cannot drift apart silently.
+		// Cross-checked against evaluate, not a pinned literal, so they cannot drift.
 		want := evaluate(offers[1].Coupon, cc, 0)
 		require.False(t, want.Valid)
 		require.Equal(t, want.ErrorMessage, offers[1].Reason)
@@ -639,8 +637,7 @@ func TestCouponService_ListForCart(t *testing.T) {
 
 		ctrl := gomock.NewController(t)
 		repo := mocks.NewMockCouponRepository(ctrl)
-		// Deliberately unsorted, with the two ineligible entries split apart, so a wrong
-		// comparator or an unstable sort would be caught.
+		// Unsorted, ineligible entries split apart: catches an unstable sort.
 		repo.EXPECT().ListPublic(gomock.Any(), gomock.Any()).
 			Return([]*domain.Coupon{inelig1(), eligSmall(), inelig2(), eligBig()}, nil)
 
@@ -665,8 +662,7 @@ func TestCouponService_ListForCart(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		repo := mocks.NewMockCouponRepository(ctrl)
 		repo.EXPECT().ListPublic(gomock.Any(), gomock.Any()).Return(nil, nil)
-		// No EXPECT for GetCustomerUsageAll: gomock fails the test if it is called, so
-		// this is the assertion. There is nothing to price, so the counters buy nothing.
+		// Times(0) is the assertion: gomock fails the test if the read happens.
 		repo.EXPECT().GetCustomerUsageAll(gomock.Any(), gomock.Any()).Times(0)
 
 		offers, err := NewCouponService(repo).ListForCart(ctx, domain.CouponContext{
@@ -677,8 +673,7 @@ func TestCouponService_ListForCart(t *testing.T) {
 		require.NotNil(t, offers, "an empty list must encode as [], not null")
 	})
 
-	// The picker is live and no-store: it must not inherit the banner's cache-window
-	// horizon, or it would hide a coupon Validate would still accept (finding 2).
+	// The live picker must not inherit the banner's horizon and hide a valid coupon.
 	t.Run("uses a live cutoff, not the banner's cache-window horizon", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		repo := mocks.NewMockCouponRepository(ctrl)
