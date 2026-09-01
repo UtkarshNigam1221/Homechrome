@@ -121,12 +121,13 @@ Covered elsewhere, deliberately not duplicated here:
   same-quantity replay is a no-op, that a different-quantity replay is a
   conflict, and that two refunds on one order both keep their stock movement.
 
-Not covered, with the reason stated in the spec rather than omitted:
+Not covered:
 
-- **36** — a crash between the two datastores. See
-  `specs/inventory/cross-store-gap.spec.ts`: a deployed Lambda cannot be killed
-  mid-invocation, and adding a fault-injection seam would put a crash path into
-  production code. The *detection* half is covered by reconciliation.
+- **36** — a crash between the two datastores. A deployed Lambda cannot be
+  killed mid-invocation, and a fault-injection seam would put a crash path into
+  production code, so this belongs to the Go tier against a local stack. The
+  *detection* half is covered by reconciliation and by
+  `TestInventoryRepository_FindOrphanReservations`.
 - **12, 15, 16** are browser specs and run only in the `admin-ui` project.
 
 ## Known divergence from #223
