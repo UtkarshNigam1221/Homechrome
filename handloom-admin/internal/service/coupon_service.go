@@ -410,6 +410,10 @@ func (s *CouponService) ListForCart(
 	if err != nil {
 		return nil, err
 	}
+	// Nothing to price against, so the usage read below would buy nothing.
+	if len(coupons) == 0 {
+		return []*domain.CouponOffer{}, nil
+	}
 
 	// One query for every counter this customer holds; a guest has none, which is not
 	// an error. A failed read is, since a nil map would understate every per-user cap.

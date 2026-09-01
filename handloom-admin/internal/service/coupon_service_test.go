@@ -661,6 +661,22 @@ func TestCouponService_ListForCart(t *testing.T) {
 		require.False(t, offers[3].Eligible)
 	})
 
+	t.Run("no public coupons costs no usage read", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		repo := mocks.NewMockCouponRepository(ctrl)
+		repo.EXPECT().ListPublic(gomock.Any(), gomock.Any()).Return(nil, nil)
+		// No EXPECT for GetCustomerUsageAll: gomock fails the test if it is called, so
+		// this is the assertion. There is nothing to price, so the counters buy nothing.
+		repo.EXPECT().GetCustomerUsageAll(gomock.Any(), gomock.Any()).Times(0)
+
+		offers, err := NewCouponService(repo).ListForCart(ctx, domain.CouponContext{
+			CartTotal: 100000, CustomerID: "cust_1",
+		})
+		require.NoError(t, err)
+		require.Empty(t, offers)
+		require.NotNil(t, offers, "an empty list must encode as [], not null")
+	})
+
 	// The picker is live and no-store: it must not inherit the banner's cache-window
 	// horizon, or it would hide a coupon Validate would still accept (finding 2).
 	t.Run("uses a live cutoff, not the banner's cache-window horizon", func(t *testing.T) {
