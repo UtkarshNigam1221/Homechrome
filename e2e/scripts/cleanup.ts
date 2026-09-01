@@ -5,7 +5,7 @@
  * afterEach, and a cancelled CI job skips everything. Runs as a post-step with
  * `if: always()`, and can be run by hand.
  *
- *   npm run cleanup            # delete E2E- products and categories
+ *   npm run cleanup            # delete E2E- products, categories and addresses
  *   DRY_RUN=1 npm run cleanup  # list what would go, delete nothing
  *
  * Products go before categories: a category refuses deletion while it still
@@ -17,9 +17,11 @@
  * Orders are not deleted. OrderRepository has no Delete method at all; cancel
  * is the only lever and the specs already use it.
  */
-import { request } from '@playwright/test';
+import { APIRequestContext, request } from '@playwright/test';
 
-const E2E_PREFIX = 'E2E-';
+import { E2E_PREFIX, isSuiteAddress, SuiteAddress } from '../fixtures/suite-address';
+import { testPhones } from '../fixtures/test-phone';
+
 const DRY_RUN = !!process.env.DRY_RUN;
 
 interface Named {
@@ -90,12 +92,93 @@ async function main(): Promise<void> {
     }
   }
 
+  failures += await reapAddresses();
+
   await api.dispose();
 
   if (failures > 0) {
     console.error(`${failures} entity(ies) could not be removed; re-run cleanup`);
     process.exitCode = 1;
   }
+}
+
+/**
+ * Deletes the suite's addresses from every test customer.
+ *
+ * Needs a customer session per phone, not the admin one: addresses hang off the
+ * customer and /admin has no route to them. Same test-OTP path the specs use,
+ * so no SMS is sent.
+ *
+ * Deletes are sequential on purpose. An address lives inside the customer item,
+ * and RemoveAddress rewrites that whole item, so concurrent deletes race and
+ * the last write silently restores what the others removed.
+ */
+async function reapAddresses(): Promise<number> {
+  const phones = testPhones();
+  const otp = process.env.E2E_STORE_OTP;
+  if (phones.length === 0 || !otp) {
+    console.log('skipping addresses: E2E_STORE_PHONES and E2E_STORE_OTP must both be set');
+    return 0;
+  }
+
+  let failures = 0;
+
+  for (const phone of phones) {
+    let store: APIRequestContext | undefined;
+    try {
+      store = await customerContext(phone, otp);
+      const me = (await (await store.get('/api/v1/store/me')).json()) as {
+        data?: { addresses?: SuiteAddress[] };
+        addresses?: SuiteAddress[];
+      };
+      const stale = ((me.data ?? me).addresses ?? []).filter(isSuiteAddress);
+      console.log(`found ${stale.length} e2e address(es) on ${phone}`);
+
+      for (const address of stale) {
+        if (!address.id) continue;
+        if (DRY_RUN) {
+          console.log(`would delete address ${address.id} ${address.address_line1} on ${phone}`);
+          continue;
+        }
+        const res = await store.delete(`/api/v1/store/me/addresses/${address.id}`);
+        if (res.ok()) {
+          console.log(`deleted address ${address.id} on ${phone}`);
+        } else {
+          failures++;
+          console.error(
+            `could not delete address ${address.id} on ${phone}: ` +
+              `${res.status()} ${await res.text()}`
+          );
+        }
+      }
+    } catch (err) {
+      // One unreachable phone must not stop the others, or the first bad number
+      // in the list keeps every later customer's pile alive.
+      failures++;
+      console.error(`could not reap addresses for ${phone}: ${String(err)}`);
+    } finally {
+      await store?.dispose();
+    }
+  }
+
+  return failures;
+}
+
+async function customerContext(phone: string, otp: string): Promise<APIRequestContext> {
+  const ctx = await request.newContext({ baseURL: required('API_URL') });
+  const sent = await ctx.post('/api/v1/store/auth/otp/send', { data: { phone } });
+  if (!sent.ok()) {
+    await ctx.dispose();
+    throw new Error(`otp/send failed: ${sent.status()} ${await sent.text()}`);
+  }
+  const verified = await ctx.post('/api/v1/store/auth/otp/verify', {
+    data: { phone, code: otp },
+  });
+  if (!verified.ok()) {
+    await ctx.dispose();
+    throw new Error(`otp/verify failed: ${verified.status()} ${await verified.text()}`);
+  }
+  return ctx;
 }
 
 /** Walks the cursor until it runs out. A single large page would truncate. */

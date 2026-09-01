@@ -121,6 +121,10 @@ jobs:
           API_URL: ${{ vars.DEV_API_URL }}
           E2E_ADMIN_EMAIL: ${{ vars.E2E_ADMIN_EMAIL }}
           E2E_ADMIN_PASSWORD: ${{ secrets.E2E_ADMIN_PASSWORD }}
+          # Addresses hang off the customer, so reaping them needs a customer
+          # session per phone. Without these two the script skips them silently.
+          E2E_STORE_PHONE: ${{ vars.E2E_STORE_PHONE }}
+          E2E_STORE_OTP: ${{ secrets.E2E_STORE_OTP }}
         run: npm run cleanup
 
       - name: Upload the report

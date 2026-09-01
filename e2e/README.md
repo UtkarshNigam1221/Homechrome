@@ -29,6 +29,7 @@ npm test                  # everything
 npm run test:api          # no browser — the inventory and refund specs
 npm run test:ui           # the admin UI specs
 npm run cleanup           # reap anything a crashed run left behind
+DRY_RUN=1 npm run cleanup # list what it would reap, delete nothing
 ```
 
 ## Prerequisite: the OTP short-circuit
@@ -46,7 +47,9 @@ STORE_TEST_OTP=<secret>
 ```
 
 Everything downstream — hashing, TTL, attempt limits, verification — is the
-production path, untouched. **The deployment under test must have both set**, or
+production path, untouched. `npm run cleanup` needs the same two variables: the
+suite's addresses live on the customer, so reaping them takes a customer session
+per phone. Without them it skips addresses and says so. **The deployment under test must have both set**, or
 `otp/verify` rejects and every refund spec fails.
 
 Three guards keep it out of production:
