@@ -29,6 +29,7 @@ npm test                  # everything
 npm run test:api          # no browser — the inventory and refund specs
 npm run test:ui           # the admin UI specs
 npm run cleanup           # reap anything a crashed run left behind
+DRY_RUN=1 npm run cleanup # list what it would reap, delete nothing
 ```
 
 ## Prerequisite: the OTP short-circuit
@@ -46,7 +47,9 @@ STORE_TEST_OTP=<secret>
 ```
 
 Everything downstream — hashing, TTL, attempt limits, verification — is the
-production path, untouched. **The deployment under test must have both set**, or
+production path, untouched. `npm run cleanup` needs the same two variables: the
+suite's addresses live on the customer, so reaping them takes a customer session
+per phone. Without them it skips addresses and says so. **The deployment under test must have both set**, or
 `otp/verify` rejects and every refund spec fails.
 
 Three guards keep it out of production:
@@ -118,12 +121,13 @@ Covered elsewhere, deliberately not duplicated here:
   same-quantity replay is a no-op, that a different-quantity replay is a
   conflict, and that two refunds on one order both keep their stock movement.
 
-Not covered, with the reason stated in the spec rather than omitted:
+Not covered:
 
-- **36** — a crash between the two datastores. See
-  `specs/inventory/cross-store-gap.spec.ts`: a deployed Lambda cannot be killed
-  mid-invocation, and adding a fault-injection seam would put a crash path into
-  production code. The *detection* half is covered by reconciliation.
+- **36** — a crash between the two datastores. A deployed Lambda cannot be
+  killed mid-invocation, and a fault-injection seam would put a crash path into
+  production code, so this belongs to the Go tier against a local stack. The
+  *detection* half is covered by reconciliation and by
+  `TestInventoryRepository_FindOrphanReservations`.
 - **12, 15, 16** are browser specs and run only in the `admin-ui` project.
 
 ## Known divergence from #223

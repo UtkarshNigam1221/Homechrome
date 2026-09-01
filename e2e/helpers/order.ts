@@ -1,6 +1,11 @@
 import { APIRequestContext, request } from '@playwright/test';
 
 import { adminClient, json, Order } from '../fixtures/api';
+import {
+  isSuiteAddress,
+  SUITE_ADDRESS_LINE1,
+  SuiteAddress,
+} from '../fixtures/suite-address';
 import { testPhone } from '../fixtures/test-phone';
 import { payWithSandbox } from '../pages/phonepe-sandbox';
 import { TARGETS } from '../playwright.config';
@@ -41,6 +46,37 @@ export async function customerClient(): Promise<APIRequestContext> {
   return ctx;
 }
 
+/**
+ * Reuses the suite's address on this customer, creating it only when absent.
+ *
+ * A fresh POST per checkout left one address behind per checkout per run, on a
+ * fixed pool of phones, forever — and addresses are embedded on the customer
+ * item, so the pile is an item-size problem, not just a noisy profile (#283).
+ * Reuse caps it at one per phone; cleanup then reaps that one.
+ */
+export async function suiteAddressId(store: APIRequestContext): Promise<string> {
+  const me = await json<{ addresses?: SuiteAddress[] }>(await store.get('/api/v1/store/me'));
+  const existing = (me.addresses ?? []).find(isSuiteAddress);
+  if (existing?.id) return existing.id;
+
+  const address = await json<{ id: string }>(
+    await store.post('/api/v1/store/me/addresses', {
+      data: {
+        first_name: 'E2E',
+        last_name: 'Suite',
+        phone: '9999900001',
+        address_line1: SUITE_ADDRESS_LINE1,
+        city: 'Mumbai',
+        state: 'Maharashtra',
+        postal_code: '400001',
+        country: 'India',
+        is_default: true,
+      },
+    })
+  );
+  return address.id;
+}
+
 export async function prepareCheckout(
   store: APIRequestContext,
   lines: { productId: string; quantity: number }[]
@@ -56,22 +92,7 @@ export async function prepareCheckout(
     }
   }
 
-  const address = await json<{ id: string }>(
-    await store.post('/api/v1/store/me/addresses', {
-      data: {
-        first_name: 'E2E',
-        last_name: 'Suite',
-        phone: '9999900001',
-        address_line1: '1 Test Street',
-        city: 'Mumbai',
-        state: 'Maharashtra',
-        postal_code: '400001',
-        country: 'India',
-        is_default: true,
-      },
-    })
-  );
-  return address.id;
+  return suiteAddressId(store);
 }
 
 interface CheckoutResult {
