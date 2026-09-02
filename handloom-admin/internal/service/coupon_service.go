@@ -63,6 +63,20 @@ func (s *CouponService) Create(ctx context.Context, req domain.CreateCouponReque
 		return nil, errors.Validation("Valid until date must be after valid from date")
 	}
 
+	// Resolved before the write, so a coupon never reaches storage bound to nothing.
+	customerID := ""
+	if req.Audience == domain.AudienceSpecificCustomer {
+		phone, phoneErr := normalizePhone(req.CustomerPhone)
+		if phoneErr != nil {
+			return nil, phoneErr
+		}
+		customer, custErr := s.customerRepo.GetByPhone(ctx, phone)
+		if custErr != nil || customer == nil {
+			return nil, errors.Validation("No customer with that number")
+		}
+		customerID = customer.ID
+	}
+
 	coupon := &domain.Coupon{
 		ID:                 "coupon_" + uuid.New().String()[:8],
 		Code:               strings.ToUpper(req.Code),
@@ -76,7 +90,7 @@ func (s *CouponService) Create(ctx context.Context, req domain.CreateCouponReque
 		UsagePerUser:       req.UsagePerUser,
 		UsageCount:         0,
 		Audience:           req.Audience,
-		CustomerID:         req.CustomerID,
+		CustomerID:         customerID,
 		CombinesWithOffers: req.CombinesWithOffers,
 		ValidFrom:          req.ValidFrom,
 		ValidUntil:         req.ValidUntil,
@@ -512,3 +526,29 @@ func (s *CouponService) ListForCart(
 
 // Ensure interface compliance
 var _ domain.CouponService = (*CouponService)(nil)
+
+// normalizePhone turns anything an operator might paste into the E.164 form storage
+// actually holds. GetByPhone is an exact-match read, so this is the whole contract.
+func normalizePhone(raw string) (string, error) {
+	var digits strings.Builder
+	for _, r := range raw {
+		if r >= '0' && r <= '9' {
+			digits.WriteRune(r)
+		}
+	}
+	d := digits.String()
+
+	// A pasted +91 leaves twelve digits, and a domestic 0-prefix eleven. Both have to
+	// go before the length check, or a valid number reads as a missing customer.
+	switch {
+	case len(d) == 12 && strings.HasPrefix(d, "91"):
+		d = d[2:]
+	case len(d) == 11 && strings.HasPrefix(d, "0"):
+		d = d[1:]
+	}
+
+	if len(d) != 10 {
+		return "", errors.Validation("Enter a 10-digit Indian mobile number")
+	}
+	return "+91" + d, nil
+}
