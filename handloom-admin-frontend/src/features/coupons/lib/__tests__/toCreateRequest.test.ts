@@ -367,13 +367,14 @@ describe('customer_phone mapping', () => {
   });
 
   // The server owns normalisation; the form must not send a half-cleaned string that
-  // looks normalised but isn't. A leading zero is the shape a naive client might strip.
+  // looks normalised but isn't. A spaced country-coded paste is the shape a naive client
+  // would tidy — the schema accepts it, and the mapper must still forward it verbatim.
   it('sends what was typed, unaltered', () => {
     const req = toCreateRequest({
       ...baseForm,
       audience: 'SPECIFIC_CUSTOMER',
-      customerPhone: '0987654321',
+      customerPhone: '+91 98765 43210',
     });
-    expect(req.customer_phone).toBe('0987654321');
+    expect(req.customer_phone).toBe('+91 98765 43210');
   });
 });

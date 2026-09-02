@@ -58,5 +58,10 @@ export const couponSchema = z
 // The field carries a fixed +91 prefix and a 10-digit maxLength, so anything reaching
 // here is either a clean ten-digit number or not a phone at all.
 function looksLikeAPhone(raw: string): boolean {
-  return /^\d{10}$/.test(raw);
+  let digits = raw.replace(/\D/g, '');
+  if (digits.length === 12 && digits.startsWith('91')) digits = digits.slice(2);
+  else if (digits.length === 11 && digits.startsWith('0')) digits = digits.slice(1);
+  // Leading 6-9 is what makes every shape either resolve or fail here: without it a
+  // doubly-prefixed paste strips to a stray-zero number the server cannot find.
+  return /^[6-9]\d{9}$/.test(digits);
 }
