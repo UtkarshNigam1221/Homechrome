@@ -37,13 +37,19 @@ const minPayableAmount int64 = 100
 
 // CouponService implements domain.CouponService
 type CouponService struct {
-	couponRepo domain.CouponRepository
+	couponRepo   domain.CouponRepository
+	customerRepo domain.CustomerRepository
 }
 
-// NewCouponService creates a new CouponService
-func NewCouponService(couponRepo domain.CouponRepository) *CouponService {
+// NewCouponService creates a new CouponService. The customer repository resolves order
+// history for a targeted audience, and a phone number to a customer id on create.
+func NewCouponService(
+	couponRepo domain.CouponRepository,
+	customerRepo domain.CustomerRepository,
+) *CouponService {
 	return &CouponService{
-		couponRepo: couponRepo,
+		couponRepo:   couponRepo,
+		customerRepo: customerRepo,
 	}
 }
 
@@ -227,11 +233,28 @@ func (s *CouponService) Validate(
 		}
 	}
 
-	result := evaluate(coupon, cc, used, nil)
+	// Resolved only when the audience actually needs it, so an ALL coupon — every coupon
+	// on the banner and in the picker — costs no extra read.
+	var orderCount *int
+	if needsOrderCount(coupon.Audience) && cc.CustomerID != "" {
+		if customer, custErr := s.customerRepo.GetByID(ctx, cc.CustomerID); custErr == nil {
+			orderCount = &customer.OrderCount
+		} else {
+			slog.WarnContext(ctx, "Coupon audience unresolved", "error", custErr)
+		}
+	}
+
+	result := evaluate(coupon, cc, used, orderCount)
 	if !result.Valid {
 		outcome = result.Outcome
 	}
 	return result, nil
+}
+
+// needsOrderCount reports whether an audience is decided by order history.
+// SPECIFIC_CUSTOMER is an id comparison, and ALL has no rule.
+func needsOrderCount(a domain.CouponAudience) bool {
+	return a == domain.AudienceFirstOrder || a == domain.AudienceReturning
 }
 
 // evaluate is the whole eligibility rule, given a coupon and how many times this
