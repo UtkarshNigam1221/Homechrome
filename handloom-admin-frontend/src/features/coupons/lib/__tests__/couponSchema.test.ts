@@ -75,14 +75,16 @@ describe('couponSchema: audience targeting', () => {
     ).toEqual([]);
   });
 
-  it('accepts a phone the operator spaced out', () => {
+  // The field is now a fixed +91 prefix plus a 10-digit maxLength input, so a spaced or
+  // country-coded paste can no longer be typed — only a clean ten-digit run reaches here.
+  it('rejects a formatted number, since the field cannot produce one', () => {
     expect(
       errorsFor({
         audience: 'SPECIFIC_CUSTOMER',
         customerId: '',
-        customerPhone: '+91 98765 43210',
+        customerPhone: '98765 432',
       })
-    ).toEqual([]);
+    ).toContain('Enter the customer’s 10-digit mobile number');
   });
 
   it('rejects a phone that is not ten digits', () => {

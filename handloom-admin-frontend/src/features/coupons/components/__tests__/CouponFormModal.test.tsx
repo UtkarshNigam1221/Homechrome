@@ -3,6 +3,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { type ReactNode, useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 
+import type { Coupon } from '../../types';
 import { CouponFormModal } from '../CouponFormModal';
 
 vi.mock('@/features/coupons/api', () => ({
@@ -54,5 +55,31 @@ describe('CouponFormModal — audience targeting', () => {
   it('mentions no phase in any audience option', () => {
     render(<CouponFormModal isOpen onClose={() => {}} />, { wrapper: Wrapper });
     expect(audienceSelect().textContent).not.toMatch(/Phase \d/);
+  });
+
+  // The backend has no path to change audience post-creation; the design requires the
+  // field to stay locked on edit even though the three options are now enabled.
+  it('locks the audience select on edit', () => {
+    const coupon: Coupon = {
+      id: 'coupon_1',
+      code: 'FEST20',
+      name: 'Festive 20',
+      type: 'PERCENTAGE',
+      value: 2000,
+      min_order_value: 0,
+      usage_limit: 0,
+      usage_per_user: 0,
+      usage_count: 0,
+      audience: 'ALL',
+      combines_with_offers: false,
+      valid_from: '2026-01-01T00:00:00.000Z',
+      status: 'ACTIVE',
+      created_at: '2026-01-01T00:00:00.000Z',
+      updated_at: '2026-01-01T00:00:00.000Z',
+    };
+
+    render(<CouponFormModal isOpen onClose={() => {}} coupon={coupon} />, { wrapper: Wrapper });
+
+    expect(audienceSelect()).toBeDisabled();
   });
 });

@@ -5,15 +5,6 @@ import { z } from 'zod';
 //
 // Units are the form's, not the wire's: `value` is entered percentage points or entered
 // rupees, so the 100% ceiling reads as 100 here and 10000 once toStoredAmount has run.
-// Loose acceptance mirroring the server's own normalisation, so a country-coded paste
-// validates here the same way it will resolve there. It never reshapes what is sent.
-function looksLikeAPhone(raw: string): boolean {
-  let digits = raw.replace(/\D/g, '');
-  if (digits.length === 12 && digits.startsWith('91')) digits = digits.slice(2);
-  else if (digits.length === 11 && digits.startsWith('0')) digits = digits.slice(1);
-  return /^\d{10}$/.test(digits);
-}
-
 export const couponSchema = z
   .object({
     code: z
@@ -63,3 +54,9 @@ export const couponSchema = z
     message: 'A percentage discount cannot exceed 100%',
     path: ['value'],
   });
+
+// The field carries a fixed +91 prefix and a 10-digit maxLength, so anything reaching
+// here is either a clean ten-digit number or not a phone at all.
+function looksLikeAPhone(raw: string): boolean {
+  return /^\d{10}$/.test(raw);
+}
