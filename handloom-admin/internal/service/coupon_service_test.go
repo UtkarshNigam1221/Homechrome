@@ -822,6 +822,14 @@ func TestEvaluate_Audience(t *testing.T) {
 		res := evaluate(c, cc, 0, intPtr(3))
 		require.Equal(t, "This coupon is no longer available", res.ErrorMessage)
 	})
+
+	// A value outside the four constants must refuse, not fall through to granted.
+	t.Run("an unrecognized audience fails closed", func(t *testing.T) {
+		res := evaluate(audienceCoupon(domain.CouponAudience("BOGUS")), cc, 0, nil)
+		require.False(t, res.Valid)
+		require.Equal(t, msgCodeInvalid, res.ErrorMessage)
+		require.Equal(t, outcomeAudience, res.Outcome)
+	})
 }
 
 // setupAudienceService wires a coupon and an optional customer into a real service.
@@ -1093,6 +1101,29 @@ func TestCouponService_Create_SpecificCustomer(t *testing.T) {
 		_, err := NewCouponService(couponRepo, customerRepo).
 			Create(ctx, newReq("9999999999"), "admin_1")
 		require.Error(t, err)
+		appErr, ok := errors.AsAppError(err)
+		require.True(t, ok)
+		require.Equal(t, "No customer with that number", appErr.Message,
+			"a genuine not-found keeps the specific message")
+	})
+
+	// A transient store failure must not be blamed on the operator's input.
+	t.Run("a transient customer-store failure is an internal error, not a 400", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		couponRepo := mocks.NewMockCouponRepository(ctrl)
+		customerRepo := mocks.NewMockCustomerRepository(ctrl)
+
+		customerRepo.EXPECT().GetByPhone(gomock.Any(), "+919999999999").
+			Return(nil, errors.Internal("DynamoDB is unavailable"))
+		couponRepo.EXPECT().Create(gomock.Any(), gomock.Any()).Times(0)
+
+		_, err := NewCouponService(couponRepo, customerRepo).
+			Create(ctx, newReq("9999999999"), "admin_1")
+		require.Error(t, err)
+		appErr, ok := errors.AsAppError(err)
+		require.True(t, ok)
+		require.NotEqual(t, "No customer with that number", appErr.Message,
+			"an outage is not the same claim as a nonexistent customer")
 	})
 
 	t.Run("a malformed number never reaches the repository", func(t *testing.T) {

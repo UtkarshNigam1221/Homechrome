@@ -71,7 +71,13 @@ func (s *CouponService) Create(ctx context.Context, req domain.CreateCouponReque
 			return nil, phoneErr
 		}
 		customer, custErr := s.customerRepo.GetByPhone(ctx, phone)
-		if custErr != nil || customer == nil {
+		if custErr != nil {
+			if errors.IsNotFound(custErr) {
+				return nil, errors.Validation("No customer with that number")
+			}
+			return nil, errors.Internal(custErr)
+		}
+		if customer == nil {
 			return nil, errors.Validation("No customer with that number")
 		}
 		customerID = customer.ID
@@ -254,7 +260,12 @@ func (s *CouponService) Validate(
 		if customer, custErr := s.customerRepo.GetByID(ctx, cc.CustomerID); custErr == nil && customer != nil {
 			orderCount = &customer.OrderCount
 		} else {
-			slog.WarnContext(ctx, "Coupon audience unresolved", "error", custErr)
+			reason := "customer not found"
+			if custErr != nil {
+				reason = custErr.Error()
+			}
+			slog.WarnContext(ctx, "Coupon audience unresolved",
+				"customer_id", cc.CustomerID, "coupon_code", coupon.Code, "reason", reason)
 		}
 	}
 
@@ -302,6 +313,8 @@ func evaluate(
 	// A nil orderCount means it was not resolved, so a targeted audience refuses rather
 	// than assuming — zero would read as "first order", the permissive case.
 	switch coupon.Audience {
+	case domain.AudienceAll:
+		// Always passes; no customer signal to check.
 	case domain.AudienceFirstOrder:
 		if orderCount == nil {
 			return reject(outcomeAudience, msgCodeInvalid)
@@ -321,6 +334,10 @@ func evaluate(
 		if cc.CustomerID == "" || coupon.CustomerID != cc.CustomerID {
 			return reject(outcomeAudience, msgCodeInvalid)
 		}
+	default:
+		// A value outside the four known constants is corrupt, not legacy-permissive
+		// ALL — fail closed rather than default to granted.
+		return reject(outcomeAudience, msgCodeInvalid)
 	}
 
 	if cc.CartTotal < coupon.MinOrderValue {
