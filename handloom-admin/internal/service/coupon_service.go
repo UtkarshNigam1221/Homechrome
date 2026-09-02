@@ -237,7 +237,7 @@ func (s *CouponService) Validate(
 	// on the banner and in the picker — costs no extra read.
 	var orderCount *int
 	if needsOrderCount(coupon.Audience) && cc.CustomerID != "" {
-		if customer, custErr := s.customerRepo.GetByID(ctx, cc.CustomerID); custErr == nil {
+		if customer, custErr := s.customerRepo.GetByID(ctx, cc.CustomerID); custErr == nil && customer != nil {
 			orderCount = &customer.OrderCount
 		} else {
 			slog.WarnContext(ctx, "Coupon audience unresolved", "error", custErr)

@@ -943,6 +943,25 @@ func TestCouponService_Validate_Audience(t *testing.T) {
 		require.True(t, res.Valid,
 			"validation happens at checkout, before RecordPurchase; this is the accepted overshoot")
 	})
+
+	// A repository returning (nil, nil) — no customer, no error — must refuse, not panic.
+	// Fail-closed has to hold by construction, not by what today's one implementation does.
+	t.Run("a customer repository returning no customer and no error refuses, not panics", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		couponRepo := mocks.NewMockCouponRepository(ctrl)
+		couponRepo.EXPECT().GetByCode(gomock.Any(), gomock.Any()).
+			Return(audienceCoupon(domain.AudienceFirstOrder), nil)
+		couponRepo.EXPECT().GetCustomerUsage(gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(0, nil).AnyTimes()
+
+		customerRepo := mocks.NewMockCustomerRepository(ctrl)
+		customerRepo.EXPECT().GetByID(gomock.Any(), gomock.Any()).Return(nil, nil)
+
+		res, err := NewCouponService(couponRepo, customerRepo).Validate(ctx, "FESTIVE20", cc)
+		require.NoError(t, err)
+		require.False(t, res.Valid)
+		require.Equal(t, msgCodeInvalid, res.ErrorMessage)
+	})
 }
 
 // Pricing M candidates must not cost M customer reads.
