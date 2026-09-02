@@ -177,5 +177,5 @@ This is the second use of the `customerRepo` dependency: order count at validate
 
 - **New-account farming is not solved.** A phone-authenticated customer can register a new number and claim a `WELCOME` code again. Perfect prevention is not available; `UsagePerUser` plus a modest discount caps the damage. #255 explicitly asks whether that is acceptable rather than building device fingerprinting: it is, and the new `audience` metric makes the cost measurable.
 - **`FIRST_ORDER` can over-grant across concurrent unpaid checkouts**, as described above.
-- **The coupon list still shows a raw `customer_id`**, which tells an operator nothing. Rendering the phone needs a customer lookup on read. Out of scope.
+- **A `SPECIFIC_CUSTOMER` coupon never appears in the admin list at all** — it lives in the `CUSTOMER_COUPON#<id>` GSI1 partition, which the list query never reads. The admin form's "find by code" lookup (`couponsApi.getByCode`) is the operator's path to it: confirm, edit, or switch one off by its code. Rendering the bound customer's phone on that view still needs a lookup and stays out of scope.
 - **No storefront surface for targeted coupons.** Codes are handed out directly until the segmentation work lands.
