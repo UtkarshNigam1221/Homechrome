@@ -575,7 +575,7 @@ func TestCouponService_ListForCart(t *testing.T) {
 		require.Equal(t, "BIG500", offers[1].Coupon.Code)
 		require.Zero(t, offers[1].DiscountAmount)
 		// Cross-checked against evaluate, not a pinned literal, so they cannot drift.
-		want := evaluate(offers[1].Coupon, cc, 0)
+		want := evaluate(offers[1].Coupon, cc, 0, nil)
 		require.False(t, want.Valid)
 		require.Equal(t, want.ErrorMessage, offers[1].Reason)
 	})
@@ -707,4 +707,120 @@ func TestCouponService_GetByCode_Uppercases(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Equal(t, "FESTIVE20", coupon.Code)
+}
+
+// audienceCoupon is an otherwise-valid coupon targeted at one audience.
+func audienceCoupon(a domain.CouponAudience) *domain.Coupon {
+	c := activeCoupon()
+	c.Audience = a
+	return c
+}
+
+func intPtr(n int) *int { return &n }
+
+// The rule, exercised directly rather than through Validate, so no repository
+// behavior can mask a branch.
+func TestEvaluate_Audience(t *testing.T) {
+	cc := domain.CouponContext{CartTotal: 100000, CustomerID: "cust_1"}
+
+	t.Run("ALL ignores the order count entirely", func(t *testing.T) {
+		for _, oc := range []*int{nil, intPtr(0), intPtr(7)} {
+			res := evaluate(audienceCoupon(domain.AudienceAll), cc, 0, oc)
+			require.True(t, res.Valid, "an ALL coupon must not depend on order history")
+		}
+	})
+
+	t.Run("FIRST_ORDER passes on a first order", func(t *testing.T) {
+		res := evaluate(audienceCoupon(domain.AudienceFirstOrder), cc, 0, intPtr(0))
+		require.True(t, res.Valid)
+	})
+
+	t.Run("FIRST_ORDER names its reason to a returning customer", func(t *testing.T) {
+		res := evaluate(audienceCoupon(domain.AudienceFirstOrder), cc, 0, intPtr(1))
+		require.False(t, res.Valid)
+		require.Equal(t, "This code is for first orders only", res.ErrorMessage)
+		require.Equal(t, outcomeAudience, res.Outcome)
+	})
+
+	t.Run("RETURNING passes once there is an order", func(t *testing.T) {
+		res := evaluate(audienceCoupon(domain.AudienceReturning), cc, 0, intPtr(1))
+		require.True(t, res.Valid)
+	})
+
+	t.Run("RETURNING names its reason to a first-time buyer", func(t *testing.T) {
+		res := evaluate(audienceCoupon(domain.AudienceReturning), cc, 0, intPtr(0))
+		require.False(t, res.Valid)
+		require.Equal(t, "This code is for returning customers", res.ErrorMessage)
+		require.Equal(t, outcomeAudience, res.Outcome)
+	})
+
+	t.Run("SPECIFIC_CUSTOMER passes for its own customer", func(t *testing.T) {
+		c := audienceCoupon(domain.AudienceSpecificCustomer)
+		c.CustomerID = "cust_1"
+		res := evaluate(c, cc, 0, nil)
+		require.True(t, res.Valid, "no order count is needed to match an id")
+	})
+
+	// The refusal must be indistinguishable from a typo, or it confirms the code exists.
+	t.Run("SPECIFIC_CUSTOMER is silent to anyone else", func(t *testing.T) {
+		c := audienceCoupon(domain.AudienceSpecificCustomer)
+		c.CustomerID = "cust_someone_else"
+		res := evaluate(c, cc, 0, nil)
+		require.False(t, res.Valid)
+		require.Equal(t, msgCodeInvalid, res.ErrorMessage)
+		require.Equal(t, outcomeAudience, res.Outcome,
+			"the customer cannot tell, but the funnel must")
+	})
+
+	// The shared constant makes drift impossible, but only while both paths use it.
+	// This compares the two outputs, so reinstating an inline literal anywhere fails.
+	t.Run("its refusal is identical to an unknown code's", func(t *testing.T) {
+		mine := audienceCoupon(domain.AudienceSpecificCustomer)
+		mine.CustomerID = "cust_someone_else"
+		targeted := evaluate(mine, cc, 0, nil)
+
+		unknown := &domain.CouponValidationResult{ErrorMessage: msgCodeInvalid}
+		require.Equal(t, unknown.ErrorMessage, targeted.ErrorMessage,
+			"a distinct message would confirm the code is real")
+	})
+
+	t.Run("an unresolved order count rejects rather than assuming", func(t *testing.T) {
+		for _, a := range []domain.CouponAudience{
+			domain.AudienceFirstOrder, domain.AudienceReturning,
+		} {
+			res := evaluate(audienceCoupon(a), cc, 0, nil)
+			require.False(t, res.Valid, "%s must not pass on an unresolved count", a)
+			require.Equal(t, msgCodeInvalid, res.ErrorMessage)
+		}
+	})
+
+	t.Run("a targeted coupon rejects when there is no customer at all", func(t *testing.T) {
+		anon := domain.CouponContext{CartTotal: 100000}
+		for _, a := range []domain.CouponAudience{
+			domain.AudienceFirstOrder, domain.AudienceReturning,
+			domain.AudienceSpecificCustomer,
+		} {
+			res := evaluate(audienceCoupon(a), anon, 0, nil)
+			require.False(t, res.Valid, "%s must not pass without an identity", a)
+			require.Equal(t, msgCodeInvalid, res.ErrorMessage)
+		}
+	})
+
+	// Order history cannot change; a cart can. So the audience refusal is the more
+	// useful one when both apply.
+	t.Run("audience is reported before the cart minimum", func(t *testing.T) {
+		c := audienceCoupon(domain.AudienceFirstOrder)
+		c.MinOrderValue = 500000
+		small := domain.CouponContext{CartTotal: 1000, CustomerID: "cust_1"}
+		res := evaluate(c, small, 0, intPtr(3))
+		require.Equal(t, "This code is for first orders only", res.ErrorMessage)
+	})
+
+	// A dead coupon is dead for everyone, so status still wins over audience.
+	t.Run("status is reported before audience", func(t *testing.T) {
+		c := audienceCoupon(domain.AudienceFirstOrder)
+		c.Status = domain.CouponStatusInactive
+		res := evaluate(c, cc, 0, intPtr(3))
+		require.Equal(t, "This coupon is no longer available", res.ErrorMessage)
+	})
 }
