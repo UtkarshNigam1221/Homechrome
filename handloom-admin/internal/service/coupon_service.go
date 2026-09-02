@@ -20,6 +20,14 @@ import (
 // coupon validation outcome label (repeated across validation branches).
 const outcomeInvalid = "invalid"
 
+// outcomeAudience labels a rejection the customer is not always told the reason for,
+// so the funnel can still see it. Outcome is json:"-" and never reaches a customer.
+const outcomeAudience = "audience"
+
+// msgCodeInvalid is shared by the unknown-code rejection and every rejection that must
+// not confirm a code exists. One constant, so the two cannot drift apart.
+const msgCodeInvalid = "That code isn't valid"
+
 // minPayableAmount is the smallest total the payment gateway will accept, in paise.
 // A discount that cleared the cart made InitiatePayment(Amount: 0) fail: stock was
 // released, the sale was lost, and the PENDING order row survived at total 0. A coupon
@@ -209,7 +217,7 @@ func (s *CouponService) Validate(
 
 	coupon, err := s.couponRepo.GetByCode(ctx, code)
 	if err != nil || coupon == nil {
-		return reject(outcomeInvalid, "That code isn't valid")
+		return reject(outcomeInvalid, msgCodeInvalid)
 	}
 
 	used := 0
@@ -219,7 +227,7 @@ func (s *CouponService) Validate(
 		}
 	}
 
-	result := evaluate(coupon, cc, used)
+	result := evaluate(coupon, cc, used, nil)
 	if !result.Valid {
 		outcome = result.Outcome
 	}
@@ -228,7 +236,12 @@ func (s *CouponService) Validate(
 
 // evaluate is the whole eligibility rule, given a coupon and how many times this
 // customer has redeemed it. Validate and ListForCart share it so verdicts agree.
-func evaluate(coupon *domain.Coupon, cc domain.CouponContext, used int) *domain.CouponValidationResult {
+func evaluate(
+	coupon *domain.Coupon,
+	cc domain.CouponContext,
+	used int,
+	orderCount *int,
+) *domain.CouponValidationResult {
 	reject := func(o, message string) *domain.CouponValidationResult {
 		return &domain.CouponValidationResult{
 			Valid: false, Code: coupon.Code, Outcome: o, ErrorMessage: message,
@@ -247,6 +260,30 @@ func evaluate(coupon *domain.Coupon, cc domain.CouponContext, used int) *domain.
 	// how such a coupon ends.
 	if coupon.ValidUntil != nil && now.After(*coupon.ValidUntil) {
 		return reject("expired", "This coupon has expired")
+	}
+
+	// A nil orderCount means it was not resolved, so a targeted audience refuses rather
+	// than assuming — zero would read as "first order", the permissive case.
+	switch coupon.Audience {
+	case domain.AudienceFirstOrder:
+		if orderCount == nil {
+			return reject(outcomeAudience, msgCodeInvalid)
+		}
+		if *orderCount != 0 {
+			return reject(outcomeAudience, "This code is for first orders only")
+		}
+	case domain.AudienceReturning:
+		if orderCount == nil {
+			return reject(outcomeAudience, msgCodeInvalid)
+		}
+		if *orderCount < 1 {
+			return reject(outcomeAudience, "This code is for returning customers")
+		}
+	case domain.AudienceSpecificCustomer:
+		// Same message as an unknown code: a distinct one would confirm this code is real.
+		if cc.CustomerID == "" || coupon.CustomerID != cc.CustomerID {
+			return reject(outcomeAudience, msgCodeInvalid)
+		}
 	}
 
 	if cc.CartTotal < coupon.MinOrderValue {
@@ -428,7 +465,9 @@ func (s *CouponService) ListForCart(
 
 	offers := make([]*domain.CouponOffer, 0, len(coupons))
 	for _, c := range coupons {
-		v := evaluate(c, cc, used[c.ID])
+		// nil, and it stays nil: ListPublic returns only audience=ALL, so no candidate
+		// can need a count. If that ever changes, nil under-shows rather than over-promises.
+		v := evaluate(c, cc, used[c.ID], nil)
 		offers = append(offers, &domain.CouponOffer{
 			Coupon:         c,
 			Eligible:       v.Valid,
