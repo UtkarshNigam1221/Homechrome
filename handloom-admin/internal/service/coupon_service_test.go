@@ -459,21 +459,20 @@ func TestCouponService_Create_FieldMapping(t *testing.T) {
 		repo.EXPECT().Create(gomock.Any(), gomock.Any()).
 			DoAndReturn(func(_ context.Context, c *domain.Coupon) error {
 				require.Equal(t, "FESTIVE20", c.Code)
-				require.Equal(t, domain.AudienceSpecificCustomer, c.Audience)
-				require.Equal(t, "cust_1", c.CustomerID)
+				require.Equal(t, domain.AudienceAll, c.Audience)
+				require.Empty(t, c.CustomerID, "non-targeted coupon has no customer")
 				require.True(t, c.CombinesWithOffers)
 				require.Nil(t, c.ValidUntil, "a nil ValidUntil must survive Create as open-ended")
 				return nil
 			})
 
-		s := NewCouponService(repo, nil)
+		s := NewCouponService(repo, mocks.NewMockCustomerRepository(gomock.NewController(t)))
 		coupon, err := s.Create(ctx, domain.CreateCouponRequest{
 			Code:               "festive20",
 			Name:               "Festive 20",
 			Type:               domain.CouponTypePercentage,
 			Value:              2000,
-			Audience:           domain.AudienceSpecificCustomer,
-			CustomerID:         "cust_1",
+			Audience:           domain.AudienceAll,
 			CombinesWithOffers: true,
 			ValidFrom:          time.Now(),
 			ValidUntil:         nil,
@@ -1012,4 +1011,122 @@ func TestCouponService_Validate_UnknownCodeIndistinguishableFromAudienceRefusal(
 	require.Equal(t, unknownRes.ErrorMessage, targetedRes.ErrorMessage,
 		"a stranger guessing a real targeted code must not be able to tell it from a typo")
 	require.Equal(t, msgCodeInvalid, unknownRes.ErrorMessage)
+}
+
+// Every shape an operator might paste has to reach the same stored E.164 string.
+func TestNormalizePhone(t *testing.T) {
+	for _, tc := range []struct {
+		name, in, want string
+	}{
+		{"bare ten digits", "9876543210", "+919876543210"},
+		{"spaced with country code", "+91 98765 43210", "+919876543210"},
+		{"hyphenated with a leading zero", "098765-43210", "+919876543210"},
+		{"country code without a plus", "919876543210", "+919876543210"},
+		{"parenthesised", "(+91) 98765-43210", "+919876543210"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := normalizePhone(tc.in)
+			require.NoError(t, err)
+			require.Equal(t, tc.want, got)
+		})
+	}
+
+	for _, tc := range []struct{ name, in string }{
+		{"too short", "98765"},
+		{"too long", "98765432101234"},
+		{"empty", ""},
+		{"letters only", "not-a-number"},
+	} {
+		t.Run("rejects "+tc.name, func(t *testing.T) {
+			_, err := normalizePhone(tc.in)
+			require.Error(t, err)
+		})
+	}
+}
+
+func TestCouponService_Create_SpecificCustomer(t *testing.T) {
+	ctx := context.Background()
+
+	newReq := func(phone string) domain.CreateCouponRequest {
+		return domain.CreateCouponRequest{
+			Code:          "APOLOGY50",
+			Name:          "Apology",
+			Type:          domain.CouponTypeFixed,
+			Value:         50000,
+			Audience:      domain.AudienceSpecificCustomer,
+			CustomerPhone: phone,
+			ValidFrom:     time.Now(),
+		}
+	}
+
+	t.Run("stores the resolved customer id, never the phone", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		couponRepo := mocks.NewMockCouponRepository(ctrl)
+		customerRepo := mocks.NewMockCustomerRepository(ctrl)
+
+		customerRepo.EXPECT().GetByPhone(gomock.Any(), "+919876543210").
+			Return(&domain.Customer{ID: "cust_42", Phone: "+919876543210"}, nil)
+
+		var saved *domain.Coupon
+		couponRepo.EXPECT().Create(gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, c *domain.Coupon) error {
+				saved = c
+				return nil
+			})
+
+		_, err := NewCouponService(couponRepo, customerRepo).
+			Create(ctx, newReq("+91 98765 43210"), "admin_1")
+		require.NoError(t, err)
+		require.Equal(t, "cust_42", saved.CustomerID)
+		require.NotContains(t, saved.CustomerID, "+91", "the phone is not the identity")
+	})
+
+	t.Run("an unresolvable number is a validation error, not a saved coupon", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		couponRepo := mocks.NewMockCouponRepository(ctrl)
+		customerRepo := mocks.NewMockCustomerRepository(ctrl)
+
+		customerRepo.EXPECT().GetByPhone(gomock.Any(), "+919999999999").
+			Return(nil, errors.NotFound("Customer not found"))
+		couponRepo.EXPECT().Create(gomock.Any(), gomock.Any()).Times(0)
+
+		_, err := NewCouponService(couponRepo, customerRepo).
+			Create(ctx, newReq("9999999999"), "admin_1")
+		require.Error(t, err)
+	})
+
+	t.Run("a malformed number never reaches the repository", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		couponRepo := mocks.NewMockCouponRepository(ctrl)
+		customerRepo := mocks.NewMockCustomerRepository(ctrl)
+
+		customerRepo.EXPECT().GetByPhone(gomock.Any(), gomock.Any()).Times(0)
+		couponRepo.EXPECT().Create(gomock.Any(), gomock.Any()).Times(0)
+
+		_, err := NewCouponService(couponRepo, customerRepo).
+			Create(ctx, newReq("98765"), "admin_1")
+		require.Error(t, err)
+	})
+
+	// An ALL coupon must not touch the customer store or require a phone.
+	t.Run("a non-targeted coupon resolves nothing", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		couponRepo := mocks.NewMockCouponRepository(ctrl)
+		customerRepo := mocks.NewMockCustomerRepository(ctrl)
+
+		customerRepo.EXPECT().GetByPhone(gomock.Any(), gomock.Any()).Times(0)
+
+		var saved *domain.Coupon
+		couponRepo.EXPECT().Create(gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, c *domain.Coupon) error {
+				saved = c
+				return nil
+			})
+
+		req := newReq("")
+		req.Audience = domain.AudienceAll
+		_, err := NewCouponService(couponRepo, customerRepo).Create(ctx, req, "admin_1")
+		require.NoError(t, err)
+		require.Empty(t, saved.CustomerID)
+	})
 }
