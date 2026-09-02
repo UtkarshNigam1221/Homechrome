@@ -136,22 +136,6 @@ describe('audience and validity', () => {
     expect(req.audience).toBe('RETURNING');
   });
 
-  it('sends customer_id only for a named-customer coupon', () => {
-    const named = toCreateRequest({
-      ...baseForm,
-      audience: 'SPECIFIC_CUSTOMER',
-      customerId: 'cust_1',
-    });
-    expect(named.customer_id).toBe('cust_1');
-
-    const publicCoupon = toCreateRequest({
-      ...baseForm,
-      audience: 'ALL',
-      customerId: 'cust_1',
-    });
-    expect(publicCoupon.customer_id).toBeUndefined();
-  });
-
   // Open-ended must be an explicit null, not an omitted field — omitted is
   // indistinguishable from "unchanged" on the update path.
   it('sends valid_until as null when the coupon is open-ended', () => {
@@ -362,5 +346,34 @@ describe('a real API response for an open-ended coupon (valid_until key absent)'
     const form = couponToFormValues(openEndedFromApi);
     expect(form.noEndDate).toBe(true);
     expect(form.expiryDate).toBe('');
+  });
+});
+
+describe('customer_phone mapping', () => {
+  it('sends the phone for a single-customer coupon', () => {
+    const req = toCreateRequest({
+      ...baseForm,
+      audience: 'SPECIFIC_CUSTOMER',
+      customerPhone: '9876543210',
+    });
+    expect(req.customer_phone).toBe('9876543210');
+  });
+
+  it('omits it for every other audience', () => {
+    for (const audience of ['ALL', 'FIRST_ORDER', 'RETURNING'] as const) {
+      const req = toCreateRequest({ ...baseForm, audience, customerPhone: '9876543210' });
+      expect(req.customer_phone).toBeUndefined();
+    }
+  });
+
+  // The server owns normalisation; the form must not send a half-cleaned string that
+  // looks normalised but isn't.
+  it('sends what was typed, unaltered', () => {
+    const req = toCreateRequest({
+      ...baseForm,
+      audience: 'SPECIFIC_CUSTOMER',
+      customerPhone: '+91 98765 43210',
+    });
+    expect(req.customer_phone).toBe('+91 98765 43210');
   });
 });

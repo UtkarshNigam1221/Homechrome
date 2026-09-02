@@ -18,6 +18,7 @@ const validForm: CouponFormValues = {
   usagePerUser: 0,
   audience: 'ALL',
   customerId: '',
+  customerPhone: '',
   combinesWithOffers: false,
   validFrom: '2026-01-01',
   noEndDate: false,
@@ -58,5 +59,49 @@ describe('couponSchema: the percentage ceiling', () => {
 
   it('still rejects a zero value', () => {
     expect(errorsFor({ value: 0 })).toContain('Must be greater than 0');
+  });
+});
+
+describe('couponSchema: audience targeting', () => {
+  it('requires a phone when creating a single-customer coupon', () => {
+    expect(
+      errorsFor({ audience: 'SPECIFIC_CUSTOMER', customerId: '', customerPhone: '' })
+    ).toContain('Enter the customer’s 10-digit mobile number');
+  });
+
+  it('accepts a ten-digit phone', () => {
+    expect(
+      errorsFor({ audience: 'SPECIFIC_CUSTOMER', customerId: '', customerPhone: '9876543210' })
+    ).toEqual([]);
+  });
+
+  it('accepts a phone the operator spaced out', () => {
+    expect(
+      errorsFor({
+        audience: 'SPECIFIC_CUSTOMER',
+        customerId: '',
+        customerPhone: '+91 98765 43210',
+      })
+    ).toEqual([]);
+  });
+
+  it('rejects a phone that is not ten digits', () => {
+    expect(
+      errorsFor({ audience: 'SPECIFIC_CUSTOMER', customerId: '', customerPhone: '98765' })
+    ).toContain('Enter the customer’s 10-digit mobile number');
+  });
+
+  // An existing targeted coupon has an id and no phone, and its update sends neither.
+  // Requiring one would make such a coupon unsavable on edit.
+  it('does not demand a phone when a customer is already bound', () => {
+    expect(
+      errorsFor({ audience: 'SPECIFIC_CUSTOMER', customerId: 'cust_42', customerPhone: '' })
+    ).toEqual([]);
+  });
+
+  it('ignores the phone entirely for the other audiences', () => {
+    for (const audience of ['ALL', 'FIRST_ORDER', 'RETURNING'] as const) {
+      expect(errorsFor({ audience, customerId: '', customerPhone: '' })).toEqual([]);
+    }
   });
 });
