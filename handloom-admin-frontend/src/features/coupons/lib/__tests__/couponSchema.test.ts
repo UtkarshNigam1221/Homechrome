@@ -77,13 +77,33 @@ describe('couponSchema: audience targeting', () => {
 
   // The field is now a fixed +91 prefix plus a 10-digit maxLength input, so a spaced or
   // country-coded paste can no longer be typed — only a clean ten-digit run reaches here.
-  it('rejects a formatted number, since the field cannot produce one', () => {
+  // Every shape an operator might paste, now that the field imposes no length cap: a
+  // cap could only truncate a country-coded paste into a different, plausible number.
+  it('accepts the shapes an operator actually pastes', () => {
+    for (const customerPhone of [
+      '9876543210',
+      '+91 98765 43210',
+      '919876543210',
+      '098765-43210',
+      '+919876543210',
+    ]) {
+      expect(errorsFor({ audience: 'SPECIFIC_CUSTOMER', customerId: '', customerPhone })).toEqual(
+        []
+      );
+    }
+  });
+
+  // A doubly-prefixed paste strips to a stray-zero number no record can match. The
+  // leading-digit rule refuses it at the field instead of after a round-trip.
+  it('rejects a doubly-prefixed number rather than sending it', () => {
     expect(
-      errorsFor({
-        audience: 'SPECIFIC_CUSTOMER',
-        customerId: '',
-        customerPhone: '98765 432',
-      })
+      errorsFor({ audience: 'SPECIFIC_CUSTOMER', customerId: '', customerPhone: '+910987654321' })
+    ).toContain('Enter the customer’s 10-digit mobile number');
+  });
+
+  it('rejects a number that cannot be an Indian mobile', () => {
+    expect(
+      errorsFor({ audience: 'SPECIFIC_CUSTOMER', customerId: '', customerPhone: '1234567890' })
     ).toContain('Enter the customer’s 10-digit mobile number');
   });
 

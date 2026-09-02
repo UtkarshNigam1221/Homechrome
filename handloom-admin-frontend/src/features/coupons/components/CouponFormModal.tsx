@@ -209,7 +209,6 @@ export function CouponFormModal({ isOpen, onClose, coupon }: CouponFormModalProp
             placeholder="98765 43210"
             hint="The number the customer signs in with."
             leftIcon={<span className="text-sm font-medium text-gray-600">+91</span>}
-            maxLength={10}
             inputMode="numeric"
             error={errors.customerPhone?.message}
             {...register('customerPhone')}
