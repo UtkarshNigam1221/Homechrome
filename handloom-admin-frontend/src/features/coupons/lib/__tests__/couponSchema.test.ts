@@ -75,8 +75,6 @@ describe('couponSchema: audience targeting', () => {
     ).toEqual([]);
   });
 
-  // The field is now a fixed +91 prefix plus a 10-digit maxLength input, so a spaced or
-  // country-coded paste can no longer be typed — only a clean ten-digit run reaches here.
   // Every shape an operator might paste, now that the field imposes no length cap: a
   // cap could only truncate a country-coded paste into a different, plausible number.
   it('accepts the shapes an operator actually pastes', () => {
@@ -98,13 +96,15 @@ describe('couponSchema: audience targeting', () => {
   it('rejects a doubly-prefixed number rather than sending it', () => {
     expect(
       errorsFor({ audience: 'SPECIFIC_CUSTOMER', customerId: '', customerPhone: '+910987654321' })
-    ).toContain('Enter the customer’s 10-digit mobile number');
+    ).toContain('An Indian mobile number starts with 6, 7, 8, or 9');
   });
 
+  // Ten digits but the wrong leading one gets its own message — not the length message,
+  // which would tell an operator who already typed ten digits that they typed too few.
   it('rejects a number that cannot be an Indian mobile', () => {
     expect(
       errorsFor({ audience: 'SPECIFIC_CUSTOMER', customerId: '', customerPhone: '1234567890' })
-    ).toContain('Enter the customer’s 10-digit mobile number');
+    ).toContain('An Indian mobile number starts with 6, 7, 8, or 9');
   });
 
   it('rejects a phone that is not ten digits', () => {

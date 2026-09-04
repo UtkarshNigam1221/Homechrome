@@ -38,9 +38,22 @@ export const couponSchema = z
     (data) =>
       data.audience !== 'SPECIFIC_CUSTOMER' ||
       data.customerId.trim().length > 0 ||
-      looksLikeAPhone(data.customerPhone),
+      normalizedPhoneDigits(data.customerPhone).length === 10,
     {
       message: 'Enter the customer’s 10-digit mobile number',
+      path: ['customerPhone'],
+    }
+  )
+  // A right-length number can still not be a real Indian mobile; say so distinctly so a
+  // wrong-leading-digit retry doesn't look like the same "wrong length" mistake again.
+  .refine(
+    (data) =>
+      data.audience !== 'SPECIFIC_CUSTOMER' ||
+      data.customerId.trim().length > 0 ||
+      normalizedPhoneDigits(data.customerPhone).length !== 10 ||
+      looksLikeAPhone(data.customerPhone),
+    {
+      message: 'An Indian mobile number starts with 6, 7, 8, or 9',
       path: ['customerPhone'],
     }
   )
@@ -55,13 +68,17 @@ export const couponSchema = z
     path: ['value'],
   });
 
-// The field carries a fixed +91 prefix and a 10-digit maxLength, so anything reaching
-// here is either a clean ten-digit number or not a phone at all.
-function looksLikeAPhone(raw: string): boolean {
+// Mirrors the server's normalizePhone (strip, de-prefix). No length cap: any cap can
+// truncate a country-coded paste into a different, plausible number.
+function normalizedPhoneDigits(raw: string): string {
   let digits = raw.replace(/\D/g, '');
   if (digits.length === 12 && digits.startsWith('91')) digits = digits.slice(2);
   else if (digits.length === 11 && digits.startsWith('0')) digits = digits.slice(1);
-  // Leading 6-9 is what makes every shape either resolve or fail here: without it a
-  // doubly-prefixed paste strips to a stray-zero number the server cannot find.
-  return /^[6-9]\d{9}$/.test(digits);
+  return digits;
+}
+
+function looksLikeAPhone(raw: string): boolean {
+  // Deliberately stricter than the server's length-only normalizePhone check: an Indian
+  // mobile always starts 6-9, so this rejects early rather than round-tripping to a 404.
+  return /^[6-9]\d{9}$/.test(normalizedPhoneDigits(raw));
 }

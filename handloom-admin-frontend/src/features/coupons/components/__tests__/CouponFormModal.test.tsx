@@ -42,6 +42,21 @@ describe('CouponFormModal — audience targeting', () => {
     expect(screen.getByLabelText(/customer mobile number/i)).toBeInTheDocument();
   });
 
+  // Regression guard: a maxLength on this input once truncated a pasted country-coded
+  // number into a different, well-formed one that resolved to the wrong customer.
+  it('keeps a full country-coded paste in the phone field, uncapped', () => {
+    render(<CouponFormModal isOpen onClose={() => {}} />, { wrapper: Wrapper });
+
+    fireEvent.change(audienceSelect(), { target: { value: 'SPECIFIC_CUSTOMER' } });
+    const phoneInput = screen.getByLabelText(/customer mobile number/i) as HTMLInputElement;
+
+    // jsdom doesn't enforce maxlength on a programmatic value set, so the attribute
+    // itself — not just the resulting value — is what has to stay absent.
+    expect(phoneInput).not.toHaveAttribute('maxlength');
+    fireEvent.change(phoneInput, { target: { value: '919876543210' } });
+    expect(phoneInput.value).toBe('919876543210');
+  });
+
   it('leaves none of the three targeting options disabled', () => {
     render(<CouponFormModal isOpen onClose={() => {}} />, { wrapper: Wrapper });
 
