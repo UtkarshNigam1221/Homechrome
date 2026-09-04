@@ -98,7 +98,7 @@ func TestCouponUseCounter_SetKeys(t *testing.T) {
 }
 
 // validCreateCouponRequest returns a request that satisfies every field's tag on its
-// own, so each subtest below only has to vary Audience/CustomerID.
+// own, so each subtest below only has to vary Audience/CustomerPhone.
 func validCreateCouponRequest() CreateCouponRequest {
 	return CreateCouponRequest{
 		Code:      "FESTIVE20",
@@ -174,26 +174,26 @@ func TestCreateCouponRequest_AudienceValidation(t *testing.T) {
 			"a typo'd audience must not fail open to ALL")
 	})
 
-	t.Run("SPECIFIC_CUSTOMER with an empty CustomerID is rejected", func(t *testing.T) {
+	t.Run("SPECIFIC_CUSTOMER with an empty CustomerPhone is rejected", func(t *testing.T) {
 		req := validCreateCouponRequest()
 		req.Audience = AudienceSpecificCustomer
-		req.CustomerID = ""
+		req.CustomerPhone = ""
 		require.Error(t, v.Validate(ctx, &req),
 			"otherwise SetKeys would produce an unreachable GSI1PK of just \"CUSTOMER_COUPON#\"")
 	})
 
-	t.Run("SPECIFIC_CUSTOMER with a customer id passes", func(t *testing.T) {
+	t.Run("SPECIFIC_CUSTOMER with a phone passes", func(t *testing.T) {
 		req := validCreateCouponRequest()
 		req.Audience = AudienceSpecificCustomer
-		req.CustomerID = "cust_9"
+		req.CustomerPhone = "+919876543210"
 		require.NoError(t, v.Validate(ctx, &req))
 	})
 
-	t.Run("a non-specific audience with an empty CustomerID passes", func(t *testing.T) {
+	t.Run("a non-specific audience with an empty CustomerPhone passes", func(t *testing.T) {
 		req := validCreateCouponRequest()
 		req.Audience = AudienceReturning
-		req.CustomerID = ""
+		req.CustomerPhone = ""
 		require.NoError(t, v.Validate(ctx, &req),
-			"CustomerID must stay optional for every audience except SPECIFIC_CUSTOMER")
+			"CustomerPhone must stay optional for every audience except SPECIFIC_CUSTOMER")
 	})
 }

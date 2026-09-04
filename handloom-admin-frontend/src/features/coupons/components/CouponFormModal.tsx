@@ -19,12 +19,10 @@ import type { Coupon, CreateCouponRequest, UpdateCouponRequest } from '../types'
 
 const audienceOptions: SelectOption[] = [
   { value: 'ALL', label: 'Everyone' },
-  { value: 'FIRST_ORDER', label: 'First order only (Phase 3)', disabled: true },
-  { value: 'RETURNING', label: 'Returning customers (Phase 3)', disabled: true },
-  { value: 'SPECIFIC_CUSTOMER', label: 'One specific customer (Phase 3)', disabled: true },
+  { value: 'FIRST_ORDER', label: 'First order only' },
+  { value: 'RETURNING', label: 'Returning customers' },
+  { value: 'SPECIFIC_CUSTOMER', label: 'One specific customer' },
 ];
-
-const audienceHint = 'Only "Everyone" is enforced today — targeting arrives in Phase 3.';
 
 interface CouponFormModalProps {
   isOpen: boolean;
@@ -50,6 +48,7 @@ export function CouponFormModal({ isOpen, onClose, coupon }: CouponFormModalProp
   });
 
   const type = watch('type');
+  const audience = watch('audience');
   const noEndDate = watch('noEndDate');
 
   // Reset the form when the modal opens, or when it switches between create and edit.
@@ -200,9 +199,21 @@ export function CouponFormModal({ isOpen, onClose, coupon }: CouponFormModalProp
           error={errors.audience?.message}
           required
           disabled={lockedAfterCreate}
-          hint={lockedAfterCreate ? "Can't be changed after creation" : audienceHint}
+          hint={lockedAfterCreate ? "Can't be changed after creation" : undefined}
           {...register('audience')}
         />
+
+        {audience === 'SPECIFIC_CUSTOMER' && !isEditing && (
+          <Input
+            label="Customer mobile number"
+            placeholder="98765 43210"
+            hint="The number the customer signs in with."
+            leftIcon={<span className="text-sm font-medium text-gray-600">+91</span>}
+            inputMode="numeric"
+            error={errors.customerPhone?.message}
+            {...register('customerPhone')}
+          />
+        )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Input

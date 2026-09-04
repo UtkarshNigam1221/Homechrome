@@ -38,7 +38,7 @@ func TestCouponService_Validate(t *testing.T) {
 		repo.EXPECT().GetByCode(gomock.Any(), "FESTIVE20").Return(c, nil).AnyTimes()
 		repo.EXPECT().GetCustomerUsage(gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(0, nil).AnyTimes()
-		return NewCouponService(repo)
+		return NewCouponService(repo, nil)
 	}
 
 	t.Run("a percentage coupon discounts the cart total", func(t *testing.T) {
@@ -162,7 +162,7 @@ func TestCouponService_Validate(t *testing.T) {
 		c.UsagePerUser = 1
 		repo.EXPECT().GetByCode(gomock.Any(), "FESTIVE20").Return(c, nil)
 		repo.EXPECT().GetCustomerUsage(gomock.Any(), "cust_1", "coupon_1").Return(1, nil)
-		s := NewCouponService(repo)
+		s := NewCouponService(repo, nil)
 
 		res, err := s.Validate(ctx, "FESTIVE20", domain.CouponContext{
 			CartTotal: 300000, CustomerID: "cust_1",
@@ -175,7 +175,7 @@ func TestCouponService_Validate(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		repo := mocks.NewMockCouponRepository(ctrl)
 		repo.EXPECT().GetByCode(gomock.Any(), "NOPE").Return(nil, errors.NotFound("Coupon"))
-		s := NewCouponService(repo)
+		s := NewCouponService(repo, nil)
 
 		res, err := s.Validate(ctx, "NOPE", domain.CouponContext{CartTotal: 300000})
 		require.NoError(t, err, "an unknown code is a rejection, not a server error")
@@ -198,7 +198,7 @@ func TestCouponService_Validate_LeavesSomethingToPay(t *testing.T) {
 		repo.EXPECT().GetByCode(gomock.Any(), "FESTIVE20").Return(c, nil).AnyTimes()
 		repo.EXPECT().GetCustomerUsage(gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(0, nil).AnyTimes()
-		return NewCouponService(repo)
+		return NewCouponService(repo, nil)
 	}
 
 	// ₹500 off a ₹450 cart. No malice needed and no invalid data — just a fixed-amount
@@ -283,7 +283,7 @@ func TestCouponService_Validate_OfferGate(t *testing.T) {
 		repo.EXPECT().GetByCode(gomock.Any(), "FESTIVE20").Return(c, nil).AnyTimes()
 		repo.EXPECT().GetCustomerUsage(gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(0, nil).AnyTimes()
-		return NewCouponService(repo)
+		return NewCouponService(repo, nil)
 	}
 
 	t.Run("refuses to stack when the flag is off", func(t *testing.T) {
@@ -338,7 +338,7 @@ func TestCouponService_Redeem(t *testing.T) {
 			IncrementCustomerUsage(gomock.Any(), "cust_1", "coupon_1", 0).
 			Return(true, nil)
 
-		s := NewCouponService(repo)
+		s := NewCouponService(repo, nil)
 		claimed, err := s.Redeem(ctx, "coupon_1", "order_9", "cust_1", 60000)
 		require.NoError(t, err)
 		require.True(t, claimed)
@@ -355,7 +355,7 @@ func TestCouponService_Redeem(t *testing.T) {
 		// No RecordUsage, no IncrementCustomerUsage — gomock fails the test if either
 		// is called, which is the assertion.
 
-		s := NewCouponService(repo)
+		s := NewCouponService(repo, nil)
 		claimed, err := s.Redeem(ctx, "coupon_1", "order_9", "cust_1", 60000)
 		require.NoError(t, err, "exhaustion is an outcome, not an error")
 		require.False(t, claimed)
@@ -388,7 +388,7 @@ func TestCouponService_Redeem_PerCustomerLimit(t *testing.T) {
 			Return(false, nil),
 	)
 
-	s := NewCouponService(repo)
+	s := NewCouponService(repo, nil)
 
 	claimed, err := s.Redeem(ctx, "coupon_1", "order_1", "cust_1", 60000)
 	require.NoError(t, err)
@@ -419,7 +419,7 @@ func TestCouponService_Update_ClearValidUntilPrecedence(t *testing.T) {
 			})
 
 		newUntil := time.Now().Add(48 * time.Hour)
-		s := NewCouponService(repo)
+		s := NewCouponService(repo, nil)
 		coupon, err := s.Update(ctx, "coupon_1", domain.UpdateCouponRequest{
 			ValidUntil:      &newUntil,
 			ClearValidUntil: true,
@@ -440,7 +440,7 @@ func TestCouponService_Update_ClearValidUntilPrecedence(t *testing.T) {
 				return nil
 			})
 
-		s := NewCouponService(repo)
+		s := NewCouponService(repo, nil)
 		coupon, err := s.Update(ctx, "coupon_1", domain.UpdateCouponRequest{
 			ClearValidUntil: true,
 		}, "admin_1")
@@ -459,21 +459,20 @@ func TestCouponService_Create_FieldMapping(t *testing.T) {
 		repo.EXPECT().Create(gomock.Any(), gomock.Any()).
 			DoAndReturn(func(_ context.Context, c *domain.Coupon) error {
 				require.Equal(t, "FESTIVE20", c.Code)
-				require.Equal(t, domain.AudienceSpecificCustomer, c.Audience)
-				require.Equal(t, "cust_1", c.CustomerID)
+				require.Equal(t, domain.AudienceAll, c.Audience)
+				require.Empty(t, c.CustomerID, "non-targeted coupon has no customer")
 				require.True(t, c.CombinesWithOffers)
 				require.Nil(t, c.ValidUntil, "a nil ValidUntil must survive Create as open-ended")
 				return nil
 			})
 
-		s := NewCouponService(repo)
+		s := NewCouponService(repo, mocks.NewMockCustomerRepository(gomock.NewController(t)))
 		coupon, err := s.Create(ctx, domain.CreateCouponRequest{
 			Code:               "festive20",
 			Name:               "Festive 20",
 			Type:               domain.CouponTypePercentage,
 			Value:              2000,
-			Audience:           domain.AudienceSpecificCustomer,
-			CustomerID:         "cust_1",
+			Audience:           domain.AudienceAll,
 			CombinesWithOffers: true,
 			ValidFrom:          time.Now(),
 			ValidUntil:         nil,
@@ -490,7 +489,7 @@ func TestCouponService_Create_FieldMapping(t *testing.T) {
 
 		until := time.Now()
 		from := until.Add(time.Hour)
-		s := NewCouponService(repo)
+		s := NewCouponService(repo, nil)
 		coupon, err := s.Create(ctx, domain.CreateCouponRequest{
 			Code:       "BADDATES",
 			Name:       "Bad Dates",
@@ -518,7 +517,7 @@ func TestCouponService_ListPublic(t *testing.T) {
 			return []*domain.Coupon{activeCoupon()}, nil
 		})
 
-	got, err := NewCouponService(repo).ListPublic(ctx)
+	got, err := NewCouponService(repo, nil).ListPublic(ctx)
 	require.NoError(t, err)
 	require.Len(t, got, 1)
 	require.Equal(t, "FESTIVE20", got[0].Code)
@@ -555,7 +554,7 @@ func TestCouponService_ListForCart(t *testing.T) {
 			Return([]*domain.Coupon{withUsagePerUser(), withMinimum()}, nil)
 		// Exactly once for the whole list — the N+1 guard.
 		repo.EXPECT().GetCustomerUsageAll(gomock.Any(), "cust_1").Return(counts, nil).Times(1)
-		return NewCouponService(repo)
+		return NewCouponService(repo, nil)
 	}
 
 	t.Run("annotates each coupon against the cart", func(t *testing.T) {
@@ -575,7 +574,7 @@ func TestCouponService_ListForCart(t *testing.T) {
 		require.Equal(t, "BIG500", offers[1].Coupon.Code)
 		require.Zero(t, offers[1].DiscountAmount)
 		// Cross-checked against evaluate, not a pinned literal, so they cannot drift.
-		want := evaluate(offers[1].Coupon, cc, 0)
+		want := evaluate(offers[1].Coupon, cc, 0, nil)
 		require.False(t, want.Valid)
 		require.Equal(t, want.ErrorMessage, offers[1].Reason)
 	})
@@ -603,7 +602,7 @@ func TestCouponService_ListForCart(t *testing.T) {
 		boom := errors.NotFound("usage counters")
 		repo.EXPECT().GetCustomerUsageAll(gomock.Any(), "cust_1").Return(nil, boom)
 
-		offers, err := NewCouponService(repo).ListForCart(ctx, domain.CouponContext{
+		offers, err := NewCouponService(repo, nil).ListForCart(ctx, domain.CouponContext{
 			CartTotal: 100000, CustomerID: "cust_1",
 		})
 		require.Equal(t, boom, err, "a read failure must surface, not read every cap as unused")
@@ -641,7 +640,7 @@ func TestCouponService_ListForCart(t *testing.T) {
 		repo.EXPECT().ListPublic(gomock.Any(), gomock.Any()).
 			Return([]*domain.Coupon{inelig1(), eligSmall(), inelig2(), eligBig()}, nil)
 
-		offers, err := NewCouponService(repo).ListForCart(ctx, domain.CouponContext{CartTotal: 300000})
+		offers, err := NewCouponService(repo, nil).ListForCart(ctx, domain.CouponContext{CartTotal: 300000})
 		require.NoError(t, err)
 		require.Len(t, offers, 4)
 
@@ -665,7 +664,7 @@ func TestCouponService_ListForCart(t *testing.T) {
 		// Times(0) is the assertion: gomock fails the test if the read happens.
 		repo.EXPECT().GetCustomerUsageAll(gomock.Any(), gomock.Any()).Times(0)
 
-		offers, err := NewCouponService(repo).ListForCart(ctx, domain.CouponContext{
+		offers, err := NewCouponService(repo, nil).ListForCart(ctx, domain.CouponContext{
 			CartTotal: 100000, CustomerID: "cust_1",
 		})
 		require.NoError(t, err)
@@ -687,7 +686,7 @@ func TestCouponService_ListForCart(t *testing.T) {
 			})
 		repo.EXPECT().GetCustomerUsageAll(gomock.Any(), "cust_1").Return(nil, nil)
 
-		_, err := NewCouponService(repo).ListForCart(ctx, domain.CouponContext{
+		_, err := NewCouponService(repo, nil).ListForCart(ctx, domain.CouponContext{
 			CartTotal: 100000, CustomerID: "cust_1",
 		})
 		require.NoError(t, err)
@@ -702,9 +701,463 @@ func TestCouponService_GetByCode_Uppercases(t *testing.T) {
 	repo := mocks.NewMockCouponRepository(ctrl)
 	repo.EXPECT().GetByCode(gomock.Any(), "FESTIVE20").Return(activeCoupon(), nil)
 
-	s := NewCouponService(repo)
+	s := NewCouponService(repo, nil)
 	coupon, err := s.GetByCode(context.Background(), "festive20")
 
 	require.NoError(t, err)
 	require.Equal(t, "FESTIVE20", coupon.Code)
+}
+
+// audienceCoupon is an otherwise-valid coupon targeted at one audience.
+func audienceCoupon(a domain.CouponAudience) *domain.Coupon {
+	c := activeCoupon()
+	c.Audience = a
+	return c
+}
+
+func intPtr(n int) *int { return &n }
+
+// The rule, exercised directly rather than through Validate, so no repository
+// behavior can mask a branch.
+func TestEvaluate_Audience(t *testing.T) {
+	cc := domain.CouponContext{CartTotal: 100000, CustomerID: "cust_1"}
+
+	t.Run("ALL ignores the order count entirely", func(t *testing.T) {
+		for _, oc := range []*int{nil, intPtr(0), intPtr(7)} {
+			res := evaluate(audienceCoupon(domain.AudienceAll), cc, 0, oc)
+			require.True(t, res.Valid, "an ALL coupon must not depend on order history")
+		}
+	})
+
+	t.Run("FIRST_ORDER passes on a first order", func(t *testing.T) {
+		res := evaluate(audienceCoupon(domain.AudienceFirstOrder), cc, 0, intPtr(0))
+		require.True(t, res.Valid)
+	})
+
+	t.Run("FIRST_ORDER names its reason to a returning customer", func(t *testing.T) {
+		res := evaluate(audienceCoupon(domain.AudienceFirstOrder), cc, 0, intPtr(1))
+		require.False(t, res.Valid)
+		require.Equal(t, "This code is for first orders only", res.ErrorMessage)
+		require.Equal(t, outcomeAudience, res.Outcome)
+	})
+
+	t.Run("RETURNING passes once there is an order", func(t *testing.T) {
+		res := evaluate(audienceCoupon(domain.AudienceReturning), cc, 0, intPtr(1))
+		require.True(t, res.Valid)
+	})
+
+	t.Run("RETURNING names its reason to a first-time buyer", func(t *testing.T) {
+		res := evaluate(audienceCoupon(domain.AudienceReturning), cc, 0, intPtr(0))
+		require.False(t, res.Valid)
+		require.Equal(t, "This code is for returning customers", res.ErrorMessage)
+		require.Equal(t, outcomeAudience, res.Outcome)
+	})
+
+	t.Run("SPECIFIC_CUSTOMER passes for its own customer", func(t *testing.T) {
+		c := audienceCoupon(domain.AudienceSpecificCustomer)
+		c.CustomerID = "cust_1"
+		res := evaluate(c, cc, 0, nil)
+		require.True(t, res.Valid, "no order count is needed to match an id")
+	})
+
+	// The refusal must be indistinguishable from a typo, or it confirms the code exists.
+	t.Run("SPECIFIC_CUSTOMER is silent to anyone else", func(t *testing.T) {
+		c := audienceCoupon(domain.AudienceSpecificCustomer)
+		c.CustomerID = "cust_someone_else"
+		res := evaluate(c, cc, 0, nil)
+		require.False(t, res.Valid)
+		require.Equal(t, msgCodeInvalid, res.ErrorMessage)
+		require.Equal(t, outcomeAudience, res.Outcome,
+			"the customer cannot tell, but the funnel must")
+	})
+
+	// The shared constant makes drift impossible, but only while both paths use it.
+	// This compares the two outputs, so reinstating an inline literal anywhere fails.
+	t.Run("its refusal is identical to an unknown code's", func(t *testing.T) {
+		mine := audienceCoupon(domain.AudienceSpecificCustomer)
+		mine.CustomerID = "cust_someone_else"
+		targeted := evaluate(mine, cc, 0, nil)
+
+		unknown := &domain.CouponValidationResult{ErrorMessage: msgCodeInvalid}
+		require.Equal(t, unknown.ErrorMessage, targeted.ErrorMessage,
+			"a distinct message would confirm the code is real")
+	})
+
+	t.Run("an unresolved order count rejects rather than assuming", func(t *testing.T) {
+		for _, a := range []domain.CouponAudience{
+			domain.AudienceFirstOrder, domain.AudienceReturning,
+		} {
+			res := evaluate(audienceCoupon(a), cc, 0, nil)
+			require.False(t, res.Valid, "%s must not pass on an unresolved count", a)
+			require.Equal(t, msgCodeInvalid, res.ErrorMessage)
+		}
+	})
+
+	t.Run("a targeted coupon rejects when there is no customer at all", func(t *testing.T) {
+		anon := domain.CouponContext{CartTotal: 100000}
+		for _, a := range []domain.CouponAudience{
+			domain.AudienceFirstOrder, domain.AudienceReturning,
+			domain.AudienceSpecificCustomer,
+		} {
+			res := evaluate(audienceCoupon(a), anon, 0, nil)
+			require.False(t, res.Valid, "%s must not pass without an identity", a)
+			require.Equal(t, msgCodeInvalid, res.ErrorMessage)
+		}
+	})
+
+	// Order history cannot change; a cart can. So the audience refusal is the more
+	// useful one when both apply.
+	t.Run("audience is reported before the cart minimum", func(t *testing.T) {
+		c := audienceCoupon(domain.AudienceFirstOrder)
+		c.MinOrderValue = 500000
+		small := domain.CouponContext{CartTotal: 1000, CustomerID: "cust_1"}
+		res := evaluate(c, small, 0, intPtr(3))
+		require.Equal(t, "This code is for first orders only", res.ErrorMessage)
+	})
+
+	// A dead coupon is dead for everyone, so status still wins over audience.
+	t.Run("status is reported before audience", func(t *testing.T) {
+		c := audienceCoupon(domain.AudienceFirstOrder)
+		c.Status = domain.CouponStatusInactive
+		res := evaluate(c, cc, 0, intPtr(3))
+		require.Equal(t, "This coupon is no longer available", res.ErrorMessage)
+	})
+
+	// A value outside the four constants must refuse, not fall through to granted.
+	t.Run("an unrecognized audience fails closed", func(t *testing.T) {
+		res := evaluate(audienceCoupon(domain.CouponAudience("BOGUS")), cc, 0, nil)
+		require.False(t, res.Valid)
+		require.Equal(t, msgCodeInvalid, res.ErrorMessage)
+		require.Equal(t, outcomeAudience, res.Outcome)
+	})
+}
+
+// setupAudienceService wires a coupon and an optional customer into a real service.
+// customer == nil means GetByID fails, which must reject rather than grant.
+func setupAudienceService(
+	t *testing.T, c *domain.Coupon, customer *domain.Customer,
+) (*CouponService, *mocks.MockCustomerRepository) {
+	t.Helper()
+	ctrl := gomock.NewController(t)
+
+	couponRepo := mocks.NewMockCouponRepository(ctrl)
+	couponRepo.EXPECT().GetByCode(gomock.Any(), gomock.Any()).Return(c, nil).AnyTimes()
+	couponRepo.EXPECT().GetCustomerUsage(gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(0, nil).AnyTimes()
+
+	customerRepo := mocks.NewMockCustomerRepository(ctrl)
+	if customer != nil {
+		customerRepo.EXPECT().GetByID(gomock.Any(), "cust_1").Return(customer, nil).AnyTimes()
+	} else {
+		customerRepo.EXPECT().GetByID(gomock.Any(), gomock.Any()).
+			Return(nil, errors.Internal("customer store is down")).AnyTimes()
+	}
+
+	return NewCouponService(couponRepo, customerRepo), customerRepo
+}
+
+func TestCouponService_Validate_Audience(t *testing.T) {
+	ctx := context.Background()
+	cc := domain.CouponContext{CartTotal: 100000, CustomerID: "cust_1"}
+
+	t.Run("FIRST_ORDER passes for a customer with no paid orders", func(t *testing.T) {
+		s, _ := setupAudienceService(t,
+			audienceCoupon(domain.AudienceFirstOrder),
+			&domain.Customer{ID: "cust_1", OrderCount: 0})
+
+		res, err := s.Validate(ctx, "FESTIVE20", cc)
+		require.NoError(t, err)
+		require.True(t, res.Valid)
+	})
+
+	t.Run("FIRST_ORDER refuses a customer who has bought before", func(t *testing.T) {
+		s, _ := setupAudienceService(t,
+			audienceCoupon(domain.AudienceFirstOrder),
+			&domain.Customer{ID: "cust_1", OrderCount: 2})
+
+		res, err := s.Validate(ctx, "FESTIVE20", cc)
+		require.NoError(t, err)
+		require.False(t, res.Valid)
+		require.Equal(t, "This code is for first orders only", res.ErrorMessage)
+	})
+
+	t.Run("RETURNING refuses a first-time buyer", func(t *testing.T) {
+		s, _ := setupAudienceService(t,
+			audienceCoupon(domain.AudienceReturning),
+			&domain.Customer{ID: "cust_1", OrderCount: 0})
+
+		res, err := s.Validate(ctx, "FESTIVE20", cc)
+		require.NoError(t, err)
+		require.False(t, res.Valid)
+		require.Equal(t, "This code is for returning customers", res.ErrorMessage)
+	})
+
+	// A read failure must not become a discount.
+	t.Run("a failed customer read refuses the coupon", func(t *testing.T) {
+		s, _ := setupAudienceService(t, audienceCoupon(domain.AudienceFirstOrder), nil)
+
+		res, err := s.Validate(ctx, "FESTIVE20", cc)
+		require.NoError(t, err, "a coupon problem is a result, not an error")
+		require.False(t, res.Valid)
+		require.Equal(t, msgCodeInvalid, res.ErrorMessage)
+	})
+
+	// The guard against reintroducing a per-validate customer read.
+	t.Run("an ALL coupon reads no customer at all", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		couponRepo := mocks.NewMockCouponRepository(ctrl)
+		couponRepo.EXPECT().GetByCode(gomock.Any(), gomock.Any()).
+			Return(audienceCoupon(domain.AudienceAll), nil)
+		couponRepo.EXPECT().GetCustomerUsage(gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(0, nil).AnyTimes()
+
+		customerRepo := mocks.NewMockCustomerRepository(ctrl)
+		customerRepo.EXPECT().GetByID(gomock.Any(), gomock.Any()).Times(0)
+
+		res, err := NewCouponService(couponRepo, customerRepo).Validate(ctx, "FESTIVE20", cc)
+		require.NoError(t, err)
+		require.True(t, res.Valid)
+	})
+
+	// SPECIFIC_CUSTOMER is an id comparison; it needs no order history.
+	t.Run("SPECIFIC_CUSTOMER reads no customer either", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		c := audienceCoupon(domain.AudienceSpecificCustomer)
+		c.CustomerID = "cust_1"
+
+		couponRepo := mocks.NewMockCouponRepository(ctrl)
+		couponRepo.EXPECT().GetByCode(gomock.Any(), gomock.Any()).Return(c, nil)
+		couponRepo.EXPECT().GetCustomerUsage(gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(0, nil).AnyTimes()
+
+		customerRepo := mocks.NewMockCustomerRepository(ctrl)
+		customerRepo.EXPECT().GetByID(gomock.Any(), gomock.Any()).Times(0)
+
+		res, err := NewCouponService(couponRepo, customerRepo).Validate(ctx, "FESTIVE20", cc)
+		require.NoError(t, err)
+		require.True(t, res.Valid)
+	})
+
+	// #255 asks us to confirm this rather than assume it: RecordPurchase runs in
+	// HandlePaymentSuccess, so OrderCount is still 0 while an order sits unpaid.
+	t.Run("an unpaid order leaves a first-order code usable", func(t *testing.T) {
+		s, _ := setupAudienceService(t,
+			audienceCoupon(domain.AudienceFirstOrder),
+			&domain.Customer{ID: "cust_1", OrderCount: 0})
+
+		res, err := s.Validate(ctx, "FESTIVE20", cc)
+		require.NoError(t, err)
+		require.True(t, res.Valid,
+			"validation happens at checkout, before RecordPurchase; this is the accepted overshoot")
+	})
+
+	// A repository returning (nil, nil) — no customer, no error — must refuse, not panic.
+	// Fail-closed has to hold by construction, not by what today's one implementation does.
+	t.Run("a customer repository returning no customer and no error refuses, not panics", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		couponRepo := mocks.NewMockCouponRepository(ctrl)
+		couponRepo.EXPECT().GetByCode(gomock.Any(), gomock.Any()).
+			Return(audienceCoupon(domain.AudienceFirstOrder), nil)
+		couponRepo.EXPECT().GetCustomerUsage(gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(0, nil).AnyTimes()
+
+		customerRepo := mocks.NewMockCustomerRepository(ctrl)
+		customerRepo.EXPECT().GetByID(gomock.Any(), gomock.Any()).Return(nil, nil)
+
+		res, err := NewCouponService(couponRepo, customerRepo).Validate(ctx, "FESTIVE20", cc)
+		require.NoError(t, err)
+		require.False(t, res.Valid)
+		require.Equal(t, msgCodeInvalid, res.ErrorMessage)
+	})
+}
+
+// Pricing M candidates must not cost M customer reads.
+func TestCouponService_ListForCart_ReadsNoCustomer(t *testing.T) {
+	ctx := context.Background()
+	ctrl := gomock.NewController(t)
+
+	couponRepo := mocks.NewMockCouponRepository(ctrl)
+	couponRepo.EXPECT().ListPublic(gomock.Any(), gomock.Any()).
+		Return([]*domain.Coupon{
+			audienceCoupon(domain.AudienceAll),
+			audienceCoupon(domain.AudienceAll),
+			audienceCoupon(domain.AudienceAll),
+		}, nil)
+	couponRepo.EXPECT().GetCustomerUsageAll(gomock.Any(), "cust_1").
+		Return(map[string]int{}, nil)
+
+	customerRepo := mocks.NewMockCustomerRepository(ctrl)
+	customerRepo.EXPECT().GetByID(gomock.Any(), gomock.Any()).Times(0)
+
+	offers, err := NewCouponService(couponRepo, customerRepo).
+		ListForCart(ctx, domain.CouponContext{CartTotal: 100000, CustomerID: "cust_1"})
+	require.NoError(t, err)
+	require.Len(t, offers, 3)
+}
+
+// #255's enumeration guard, proven through Validate rather than a constant compared to
+// itself: a stranger guessing a real targeted code must see what a typo shows.
+func TestCouponService_Validate_UnknownCodeIndistinguishableFromAudienceRefusal(t *testing.T) {
+	ctx := context.Background()
+	cc := domain.CouponContext{CartTotal: 100000, CustomerID: "cust_1"}
+	ctrl := gomock.NewController(t)
+
+	unknownRepo := mocks.NewMockCouponRepository(ctrl)
+	unknownRepo.EXPECT().GetByCode(gomock.Any(), "NOPE").Return(nil, nil)
+	unknownRes, err := NewCouponService(unknownRepo, mocks.NewMockCustomerRepository(ctrl)).
+		Validate(ctx, "NOPE", cc)
+	require.NoError(t, err)
+
+	targeted := audienceCoupon(domain.AudienceSpecificCustomer)
+	targeted.CustomerID = "cust_someone_else"
+	targetedRepo := mocks.NewMockCouponRepository(ctrl)
+	targetedRepo.EXPECT().GetByCode(gomock.Any(), gomock.Any()).Return(targeted, nil)
+	targetedRes, err := NewCouponService(targetedRepo, mocks.NewMockCustomerRepository(ctrl)).
+		Validate(ctx, "FESTIVE20", cc)
+	require.NoError(t, err)
+
+	require.Equal(t, unknownRes.ErrorMessage, targetedRes.ErrorMessage,
+		"a stranger guessing a real targeted code must not be able to tell it from a typo")
+	require.Equal(t, msgCodeInvalid, unknownRes.ErrorMessage)
+}
+
+// Every shape an operator might paste has to reach the same stored E.164 string.
+func TestNormalizePhone(t *testing.T) {
+	for _, tc := range []struct {
+		name, in, want string
+	}{
+		{"bare ten digits", "9876543210", "+919876543210"},
+		{"spaced with country code", "+91 98765 43210", "+919876543210"},
+		{"hyphenated with a leading zero", "098765-43210", "+919876543210"},
+		{"country code without a plus", "919876543210", "+919876543210"},
+		{"parenthesised", "(+91) 98765-43210", "+919876543210"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := normalizePhone(tc.in)
+			require.NoError(t, err)
+			require.Equal(t, tc.want, got)
+		})
+	}
+
+	for _, tc := range []struct{ name, in string }{
+		{"too short", "98765"},
+		{"too long", "98765432101234"},
+		{"empty", ""},
+		{"letters only", "not-a-number"},
+	} {
+		t.Run("rejects "+tc.name, func(t *testing.T) {
+			_, err := normalizePhone(tc.in)
+			require.Error(t, err)
+		})
+	}
+}
+
+func TestCouponService_Create_SpecificCustomer(t *testing.T) {
+	ctx := context.Background()
+
+	newReq := func(phone string) domain.CreateCouponRequest {
+		return domain.CreateCouponRequest{
+			Code:          "APOLOGY50",
+			Name:          "Apology",
+			Type:          domain.CouponTypeFixed,
+			Value:         50000,
+			Audience:      domain.AudienceSpecificCustomer,
+			CustomerPhone: phone,
+			ValidFrom:     time.Now(),
+		}
+	}
+
+	t.Run("stores the resolved customer id, never the phone", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		couponRepo := mocks.NewMockCouponRepository(ctrl)
+		customerRepo := mocks.NewMockCustomerRepository(ctrl)
+
+		customerRepo.EXPECT().GetByPhone(gomock.Any(), "+919876543210").
+			Return(&domain.Customer{ID: "cust_42", Phone: "+919876543210"}, nil)
+
+		var saved *domain.Coupon
+		couponRepo.EXPECT().Create(gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, c *domain.Coupon) error {
+				saved = c
+				return nil
+			})
+
+		_, err := NewCouponService(couponRepo, customerRepo).
+			Create(ctx, newReq("+91 98765 43210"), "admin_1")
+		require.NoError(t, err)
+		require.Equal(t, "cust_42", saved.CustomerID)
+		require.NotContains(t, saved.CustomerID, "+91", "the phone is not the identity")
+	})
+
+	t.Run("an unresolvable number is a validation error, not a saved coupon", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		couponRepo := mocks.NewMockCouponRepository(ctrl)
+		customerRepo := mocks.NewMockCustomerRepository(ctrl)
+
+		customerRepo.EXPECT().GetByPhone(gomock.Any(), "+919999999999").
+			Return(nil, errors.NotFound("Customer not found"))
+		couponRepo.EXPECT().Create(gomock.Any(), gomock.Any()).Times(0)
+
+		_, err := NewCouponService(couponRepo, customerRepo).
+			Create(ctx, newReq("9999999999"), "admin_1")
+		require.Error(t, err)
+		appErr, ok := errors.AsAppError(err)
+		require.True(t, ok)
+		require.Equal(t, "No customer with that number", appErr.Message,
+			"a genuine not-found keeps the specific message")
+	})
+
+	// A transient store failure must not be blamed on the operator's input.
+	t.Run("a transient customer-store failure is an internal error, not a 400", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		couponRepo := mocks.NewMockCouponRepository(ctrl)
+		customerRepo := mocks.NewMockCustomerRepository(ctrl)
+
+		customerRepo.EXPECT().GetByPhone(gomock.Any(), "+919999999999").
+			Return(nil, errors.Internal("DynamoDB is unavailable"))
+		couponRepo.EXPECT().Create(gomock.Any(), gomock.Any()).Times(0)
+
+		_, err := NewCouponService(couponRepo, customerRepo).
+			Create(ctx, newReq("9999999999"), "admin_1")
+		require.Error(t, err)
+		appErr, ok := errors.AsAppError(err)
+		require.True(t, ok)
+		require.NotEqual(t, "No customer with that number", appErr.Message,
+			"an outage is not the same claim as a nonexistent customer")
+	})
+
+	t.Run("a malformed number never reaches the repository", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		couponRepo := mocks.NewMockCouponRepository(ctrl)
+		customerRepo := mocks.NewMockCustomerRepository(ctrl)
+
+		customerRepo.EXPECT().GetByPhone(gomock.Any(), gomock.Any()).Times(0)
+		couponRepo.EXPECT().Create(gomock.Any(), gomock.Any()).Times(0)
+
+		_, err := NewCouponService(couponRepo, customerRepo).
+			Create(ctx, newReq("98765"), "admin_1")
+		require.Error(t, err)
+	})
+
+	// An ALL coupon must not touch the customer store or require a phone.
+	t.Run("a non-targeted coupon resolves nothing", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		couponRepo := mocks.NewMockCouponRepository(ctrl)
+		customerRepo := mocks.NewMockCustomerRepository(ctrl)
+
+		customerRepo.EXPECT().GetByPhone(gomock.Any(), gomock.Any()).Times(0)
+
+		var saved *domain.Coupon
+		couponRepo.EXPECT().Create(gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, c *domain.Coupon) error {
+				saved = c
+				return nil
+			})
+
+		req := newReq("")
+		req.Audience = domain.AudienceAll
+		_, err := NewCouponService(couponRepo, customerRepo).Create(ctx, req, "admin_1")
+		require.NoError(t, err)
+		require.Empty(t, saved.CustomerID)
+	})
 }

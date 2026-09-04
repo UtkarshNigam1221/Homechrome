@@ -1,9 +1,10 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { Calendar, Edit, Percent, Plus, Search, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 
 import { couponsApi } from '@/features/coupons/api';
+import { getErrorMessage } from '@/shared/api/client';
 import {
   Badge,
   Button,
@@ -48,6 +49,7 @@ export function CouponsPage() {
   const debouncedSearch = useDebounce(searchQuery, 300);
   const [showFormModal, setShowFormModal] = useState(false);
   const [editingCoupon, setEditingCoupon] = useState<Coupon | null>(null);
+  const [findCode, setFindCode] = useState('');
 
   const { data, isLoading } = useQuery({
     queryKey: ['coupons', { limit, cursor, search: debouncedSearch }],
@@ -72,6 +74,21 @@ export function CouponsPage() {
   const handleEdit = (coupon: Coupon) => {
     setEditingCoupon(coupon);
     setShowFormModal(true);
+  };
+
+  // A SPECIFIC_CUSTOMER coupon lives in a GSI1 partition this page's list never
+  // queries, so a code lookup is the only way to reach it once it's created.
+  const findByCodeMutation = useMutation({
+    mutationFn: (code: string) => couponsApi.getByCode(code),
+    onSuccess: (coupon) => {
+      setFindCode('');
+      handleEdit(coupon);
+    },
+  });
+
+  const handleFindByCode = () => {
+    const code = findCode.trim();
+    if (code) findByCodeMutation.mutate(code);
   };
 
   const formatDiscount = (coupon: Coupon) => {
@@ -111,6 +128,32 @@ export function CouponsPage() {
           }}
           leftIcon={<Search className="w-4 h-4" />}
         />
+      </Card>
+
+      <Card padding="sm">
+        <div className="flex flex-col sm:flex-row sm:items-end gap-3">
+          <div className="flex-1">
+            <Input
+              label="Find a coupon by code"
+              placeholder="e.g., APOLOGY50"
+              hint="Targeted coupons don't appear in the list below — look one up here to edit or switch it off."
+              value={findCode}
+              onChange={(e) => setFindCode(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleFindByCode()}
+              error={
+                findByCodeMutation.isError ? getErrorMessage(findByCodeMutation.error) : undefined
+              }
+            />
+          </div>
+          <Button
+            variant="secondary"
+            onClick={handleFindByCode}
+            loading={findByCodeMutation.isPending}
+            disabled={!findCode.trim()}
+          >
+            Find
+          </Button>
+        </div>
       </Card>
 
       <Card padding="none">

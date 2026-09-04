@@ -20,6 +20,14 @@ import (
 // coupon validation outcome label (repeated across validation branches).
 const outcomeInvalid = "invalid"
 
+// outcomeAudience labels a rejection the customer is not always told the reason for,
+// so the funnel can still see it. Outcome is json:"-" and never reaches a customer.
+const outcomeAudience = "audience"
+
+// msgCodeInvalid is shared by the unknown-code rejection and every rejection that must
+// not confirm a code exists. One constant, so the two cannot drift apart.
+const msgCodeInvalid = "That code isn't valid"
+
 // minPayableAmount is the smallest total the payment gateway will accept, in paise.
 // A discount that cleared the cart made InitiatePayment(Amount: 0) fail: stock was
 // released, the sale was lost, and the PENDING order row survived at total 0. A coupon
@@ -29,13 +37,19 @@ const minPayableAmount int64 = 100
 
 // CouponService implements domain.CouponService
 type CouponService struct {
-	couponRepo domain.CouponRepository
+	couponRepo   domain.CouponRepository
+	customerRepo domain.CustomerRepository
 }
 
-// NewCouponService creates a new CouponService
-func NewCouponService(couponRepo domain.CouponRepository) *CouponService {
+// NewCouponService creates a new CouponService. The customer repository resolves order
+// history for a targeted audience, and a phone number to a customer id on create.
+func NewCouponService(
+	couponRepo domain.CouponRepository,
+	customerRepo domain.CustomerRepository,
+) *CouponService {
 	return &CouponService{
-		couponRepo: couponRepo,
+		couponRepo:   couponRepo,
+		customerRepo: customerRepo,
 	}
 }
 
@@ -47,6 +61,26 @@ func (s *CouponService) Create(ctx context.Context, req domain.CreateCouponReque
 	// Validate dates. ValidUntil is nil-able (open-ended), so only compare when set.
 	if req.ValidUntil != nil && req.ValidUntil.Before(req.ValidFrom) {
 		return nil, errors.Validation("Valid until date must be after valid from date")
+	}
+
+	// Resolved before the write, so a coupon never reaches storage bound to nothing.
+	customerID := ""
+	if req.Audience == domain.AudienceSpecificCustomer {
+		phone, phoneErr := normalizePhone(req.CustomerPhone)
+		if phoneErr != nil {
+			return nil, phoneErr
+		}
+		customer, custErr := s.customerRepo.GetByPhone(ctx, phone)
+		if custErr != nil {
+			if errors.IsNotFound(custErr) {
+				return nil, errors.Validation("No customer with that number")
+			}
+			return nil, errors.Internal(custErr)
+		}
+		if customer == nil {
+			return nil, errors.Validation("No customer with that number")
+		}
+		customerID = customer.ID
 	}
 
 	coupon := &domain.Coupon{
@@ -62,7 +96,7 @@ func (s *CouponService) Create(ctx context.Context, req domain.CreateCouponReque
 		UsagePerUser:       req.UsagePerUser,
 		UsageCount:         0,
 		Audience:           req.Audience,
-		CustomerID:         req.CustomerID,
+		CustomerID:         customerID,
 		CombinesWithOffers: req.CombinesWithOffers,
 		ValidFrom:          req.ValidFrom,
 		ValidUntil:         req.ValidUntil,
@@ -209,7 +243,7 @@ func (s *CouponService) Validate(
 
 	coupon, err := s.couponRepo.GetByCode(ctx, code)
 	if err != nil || coupon == nil {
-		return reject(outcomeInvalid, "That code isn't valid")
+		return reject(outcomeInvalid, msgCodeInvalid)
 	}
 
 	used := 0
@@ -219,16 +253,43 @@ func (s *CouponService) Validate(
 		}
 	}
 
-	result := evaluate(coupon, cc, used)
+	// Resolved only when the audience actually needs it, so an ALL coupon — every coupon
+	// on the banner and in the picker — costs no extra read.
+	var orderCount *int
+	if needsOrderCount(coupon.Audience) && cc.CustomerID != "" {
+		if customer, custErr := s.customerRepo.GetByID(ctx, cc.CustomerID); custErr == nil && customer != nil {
+			orderCount = &customer.OrderCount
+		} else {
+			reason := "customer not found"
+			if custErr != nil {
+				reason = custErr.Error()
+			}
+			slog.WarnContext(ctx, "Coupon audience unresolved",
+				"customer_id", cc.CustomerID, "coupon_code", coupon.Code, "reason", reason)
+		}
+	}
+
+	result := evaluate(coupon, cc, used, orderCount)
 	if !result.Valid {
 		outcome = result.Outcome
 	}
 	return result, nil
 }
 
+// needsOrderCount reports whether an audience is decided by order history.
+// SPECIFIC_CUSTOMER is an id comparison, and ALL has no rule.
+func needsOrderCount(a domain.CouponAudience) bool {
+	return a == domain.AudienceFirstOrder || a == domain.AudienceReturning
+}
+
 // evaluate is the whole eligibility rule, given a coupon and how many times this
 // customer has redeemed it. Validate and ListForCart share it so verdicts agree.
-func evaluate(coupon *domain.Coupon, cc domain.CouponContext, used int) *domain.CouponValidationResult {
+func evaluate(
+	coupon *domain.Coupon,
+	cc domain.CouponContext,
+	used int,
+	orderCount *int,
+) *domain.CouponValidationResult {
 	reject := func(o, message string) *domain.CouponValidationResult {
 		return &domain.CouponValidationResult{
 			Valid: false, Code: coupon.Code, Outcome: o, ErrorMessage: message,
@@ -247,6 +308,36 @@ func evaluate(coupon *domain.Coupon, cc domain.CouponContext, used int) *domain.
 	// how such a coupon ends.
 	if coupon.ValidUntil != nil && now.After(*coupon.ValidUntil) {
 		return reject("expired", "This coupon has expired")
+	}
+
+	// A nil orderCount means it was not resolved, so a targeted audience refuses rather
+	// than assuming — zero would read as "first order", the permissive case.
+	switch coupon.Audience {
+	case domain.AudienceAll:
+		// Always passes; no customer signal to check.
+	case domain.AudienceFirstOrder:
+		if orderCount == nil {
+			return reject(outcomeAudience, msgCodeInvalid)
+		}
+		if *orderCount != 0 {
+			return reject(outcomeAudience, "This code is for first orders only")
+		}
+	case domain.AudienceReturning:
+		if orderCount == nil {
+			return reject(outcomeAudience, msgCodeInvalid)
+		}
+		if *orderCount < 1 {
+			return reject(outcomeAudience, "This code is for returning customers")
+		}
+	case domain.AudienceSpecificCustomer:
+		// Same message as an unknown code: a distinct one would confirm this code is real.
+		if cc.CustomerID == "" || coupon.CustomerID != cc.CustomerID {
+			return reject(outcomeAudience, msgCodeInvalid)
+		}
+	default:
+		// A value outside the four known constants is corrupt, not legacy-permissive
+		// ALL — fail closed rather than default to granted.
+		return reject(outcomeAudience, msgCodeInvalid)
 	}
 
 	if cc.CartTotal < coupon.MinOrderValue {
@@ -428,7 +519,9 @@ func (s *CouponService) ListForCart(
 
 	offers := make([]*domain.CouponOffer, 0, len(coupons))
 	for _, c := range coupons {
-		v := evaluate(c, cc, used[c.ID])
+		// nil, and it stays nil: ListPublic returns only audience=ALL, so no candidate
+		// can need a count. If that ever changes, nil under-shows rather than over-promises.
+		v := evaluate(c, cc, used[c.ID], nil)
 		offers = append(offers, &domain.CouponOffer{
 			Coupon:         c,
 			Eligible:       v.Valid,
@@ -450,3 +543,29 @@ func (s *CouponService) ListForCart(
 
 // Ensure interface compliance
 var _ domain.CouponService = (*CouponService)(nil)
+
+// normalizePhone turns anything an operator might paste into the E.164 form storage
+// actually holds. GetByPhone is an exact-match read, so this is the whole contract.
+func normalizePhone(raw string) (string, error) {
+	var digits strings.Builder
+	for _, r := range raw {
+		if r >= '0' && r <= '9' {
+			digits.WriteRune(r)
+		}
+	}
+	d := digits.String()
+
+	// A pasted +91 leaves twelve digits, and a domestic 0-prefix eleven. Both have to
+	// go before the length check, or a valid number reads as a missing customer.
+	switch {
+	case len(d) == 12 && strings.HasPrefix(d, "91"):
+		d = d[2:]
+	case len(d) == 11 && strings.HasPrefix(d, "0"):
+		d = d[1:]
+	}
+
+	if len(d) != 10 {
+		return "", errors.Validation("Enter a 10-digit Indian mobile number")
+	}
+	return "+91" + d, nil
+}
