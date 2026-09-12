@@ -1,6 +1,6 @@
 'use client';
 
-import { PhotoIcon } from '@heroicons/react/24/outline';
+import { PhotoIcon, ShoppingBagIcon } from '@heroicons/react/24/outline';
 import {
   AspectRatio,
   Badge,
@@ -18,6 +18,7 @@ import { useState } from 'react';
 
 import { DiscountBadge } from '@/components/ui/discount-badge';
 import { QuantityStepper } from '@/components/ui/quantity-stepper';
+import { displayFont } from '@/app/fonts';
 import { useCart } from '@/hooks/useCart';
 import { calculateDiscountPercent, formatPrice } from '@/lib/utils';
 import { useCartStore } from '@/stores/cart';
@@ -37,6 +38,9 @@ export default function ProductCard({ product }: ProductCardProps) {
   // never sends, so reading it left the discount UI dead. Match the admin: use base_price.
   const hasDiscount = product.base_price > product.selling_price;
   const discountPercent = calculateDiscountPercent(product.base_price, product.selling_price);
+  // The mockup's cluster chip, sourced from the product's own fields so it
+  // never asserts a provenance the catalogue does not record.
+  const provenance = product.craft_type || product.weave_type || product.material;
 
   const handleAddToCart = async (e: React.MouseEvent) => {
     e.preventDefault();
@@ -107,10 +111,17 @@ export default function ProductCard({ product }: ProductCardProps) {
             </Center>
           )}
         </AspectRatio>
-        {hasDiscount && (
-          <Box pos="absolute" top={8} left={8}>
-            <DiscountBadge percent={discountPercent} variant="solid" />
-          </Box>
+        {(hasDiscount || provenance) && (
+          <Stack pos="absolute" top={8} left={8} gap={6} align="flex-start">
+            {hasDiscount && <DiscountBadge percent={discountPercent} variant="solid" />}
+            {provenance && (
+              <Box px={8} py={3} bg="rgba(252,249,244,0.93)" style={{ borderRadius: 4 }}>
+                <Text fz={10} fw={700} c="navy.8" tt="capitalize" lineClamp={1}>
+                  {provenance.toLowerCase()}
+                </Text>
+              </Box>
+            )}
+          </Stack>
         )}
         {!product.in_stock && (
           <Center pos="absolute" inset={0} bg="rgba(28,41,81,0.4)">
@@ -123,19 +134,36 @@ export default function ProductCard({ product }: ProductCardProps) {
 
       <Stack p="md" gap="xs">
         <Link href={`/p/${product.slug}`} style={{ textDecoration: 'none' }}>
-          <Text size="sm" fw={500} c="navy.7" lineClamp={2} style={{ minHeight: '2lh' }}>
+          <Text
+            fz="md"
+            fw={600}
+            c="navy.9"
+            lineClamp={2}
+            style={{ minHeight: '2lh', fontFamily: displayFont.style.fontFamily }}
+          >
             {product.name}
           </Text>
         </Link>
 
-        <Group align="baseline" gap="xs">
-          <Text size="lg" fw={700} c="navy.7">
+        {product.description && (
+          <Text fz="xs" c="navy.6" lineClamp={1} mt={-4}>
+            {product.description.replace(/[*_`#]/g, '').trim()}
+          </Text>
+        )}
+
+        <Group align="baseline" gap="xs" wrap="nowrap">
+          <Text fz="xl" fw={700} c="navy.9">
             {formatPrice(product.selling_price)}
           </Text>
           {hasDiscount && (
-            <Text size="sm" c="dimmed" td="line-through">
-              {formatPrice(product.base_price)}
-            </Text>
+            <>
+              <Text size="sm" c="dimmed" td="line-through">
+                {formatPrice(product.base_price)}
+              </Text>
+              <Text size="xs" fw={600} c="brand.6" style={{ whiteSpace: 'nowrap' }}>
+                Save {formatPrice(product.base_price - product.selling_price)}
+              </Text>
+            </>
           )}
         </Group>
 
@@ -167,12 +195,16 @@ export default function ProductCard({ product }: ProductCardProps) {
               variant="filled"
               color="brand"
               size="sm"
+              radius="sm"
               fullWidth
+              leftSection={
+                product.in_stock ? <ShoppingBagIcon width={16} height={16} /> : undefined
+              }
               onClick={handleAddToCart}
               loading={loading}
               disabled={!product.in_stock}
             >
-              {product.in_stock ? 'Add to Cart' : 'Out of Stock'}
+              {product.in_stock ? 'Add to Bag' : 'Out of Stock'}
             </Button>
           )}
         </Box>

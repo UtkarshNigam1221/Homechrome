@@ -79,8 +79,9 @@ export default function ProductsView({
       />
 
       <PageHeader
-        title={currentSearch ? `Results for "${currentSearch}"` : 'All Products'}
-        description={`${products.length}${hasMore ? '+' : ''} ${products.length === 1 && !hasMore ? 'product' : 'products'}${currentSearch ? ' found' : ''}`}
+        eyebrow={currentSearch ? undefined : 'The full catalogue'}
+        title={currentSearch ? `Results for "${currentSearch}"` : 'All Handcrafted Collections'}
+        description={`${products.length}${hasMore ? '+' : ''} ${products.length === 1 && !hasMore ? 'piece' : 'pieces'}${currentSearch ? ' found' : ' — bedsheets, dohars and cushions woven and printed across India.'}`}
       />
 
       <ProductsBrowser
