@@ -12,7 +12,7 @@ import { formatPrice } from '@/lib/utils';
 const BAND = 'var(--mantine-color-navy-1)';
 const INK = 'var(--mantine-color-navy-7)';
 
-function offerParts(coupon: PublicCoupon): { magnitude: string; terms: string } {
+function offerParts(coupon: PublicCoupon): { full: string; compact: string } {
   const magnitude =
     coupon.type === 'PERCENTAGE' ? `${coupon.value / 100}%` : formatPrice(coupon.value);
   const above = coupon.min_order_value > 0 ? ` above ${formatPrice(coupon.min_order_value)}` : '';
@@ -21,7 +21,8 @@ function offerParts(coupon: PublicCoupon): { magnitude: string; terms: string } 
     coupon.type === 'PERCENTAGE' && coupon.max_discount
       ? ` · up to ${formatPrice(coupon.max_discount)}`
       : '';
-  return { magnitude, terms: `off${above}${cap}` };
+  // The phone band has one line to spend: drop the cap clause and the lead-in.
+  return { full: `${magnitude} off${above}${cap} — use code`, compact: `${magnitude} off${above}` };
 }
 
 /** Dashed chip carrying the code; clicking it copies. */
@@ -90,10 +91,15 @@ export default function OffersBanner({ coupons }: OffersBannerProps) {
       style={{ background: BAND, borderBottom: '1px solid var(--mantine-color-navy-2)' }}
     >
       <Container size="xl">
-        <Group justify="center" gap="md" wrap="wrap">
-          <SparklesIcon width={15} height={15} color="var(--mantine-color-brand-5)" />
+        <Group justify="center" gap="md" wrap="nowrap" style={{ overflow: 'hidden' }}>
+          <SparklesIcon
+            width={15}
+            height={15}
+            color="var(--mantine-color-brand-5)"
+            style={{ flexShrink: 0 }}
+          />
           {shown.map((coupon, i) => {
-            const { magnitude, terms } = offerParts(coupon);
+            const { full, compact } = offerParts(coupon);
             return (
               <Group
                 key={coupon.code}
@@ -103,8 +109,11 @@ export default function OffersBanner({ coupons }: OffersBannerProps) {
                 // One per line on a phone would make the band as tall as the hero.
                 visibleFrom={i > 0 ? 'sm' : undefined}
               >
-                <Text component="span" c={INK} fz="0.8125rem" fw={500} lh={1.4}>
-                  {magnitude} {terms} — use code
+                <Text component="span" c={INK} fz="0.8125rem" fw={500} lh={1.4} visibleFrom="sm">
+                  {full}
+                </Text>
+                <Text component="span" c={INK} fz="0.75rem" fw={500} lh={1.3} hiddenFrom="sm">
+                  {compact}
                 </Text>
                 <CodeChip code={coupon.code} />
               </Group>
