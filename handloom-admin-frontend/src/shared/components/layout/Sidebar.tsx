@@ -8,6 +8,7 @@ import {
   Gauge,
   LayoutDashboard,
   Link2,
+  Megaphone,
   Package,
   Percent,
   Settings,
@@ -34,6 +35,7 @@ const navigation = [
   { name: 'Dashboards', href: '/dashboards', icon: Gauge },
   { name: 'Reports', href: '/reports', icon: FileText },
   { name: 'Notifications', href: '/notifications', icon: Bell },
+  { name: 'Push Broadcast', href: '/push', icon: Megaphone },
   { name: 'Settings', href: '/settings', icon: Settings },
 ];
 
