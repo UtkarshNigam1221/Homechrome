@@ -12,12 +12,11 @@ import { Anchor, Box, Card, Group, Stack, Text } from '@mantine/core';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
-import { WhatsAppIcon } from '@/components/ui/whatsapp-icon';
+import { WhatsAppButton } from '@/components/ui/whatsapp-button';
 import {
   SUPPORT_EMAIL,
   SUPPORT_PHONE,
 } from '@/lib/constants';
-import { whatsappHref } from '@/lib/whatsapp';
 
 import { displayFont } from '@/app/fonts';
 
@@ -99,19 +98,11 @@ export function PolicyNav() {
             your order ID.
           </Text>
 
-          <Anchor
-            href={whatsappHref('Hi, I have a question about a policy')}
-            target="_blank"
-            rel="noopener noreferrer"
-            underline="never"
-          >
-            <Group gap={8} justify="center" c="white" py={9} style={{ background: 'var(--mantine-color-leaf-5)', borderRadius: 'var(--mantine-radius-md)' }}>
-              <WhatsAppIcon size={16} />
-              <Text fz="xs" fw={600} c="white">
-                WhatsApp {SUPPORT_PHONE}
-              </Text>
-            </Group>
-          </Anchor>
+          <WhatsAppButton
+            message="Hi, I have a question about a policy"
+            label={`WhatsApp ${SUPPORT_PHONE}`}
+            size="sm"
+          />
 
           <Anchor href={`mailto:${SUPPORT_EMAIL}`} underline="never">
             <Box py={8} style={{ borderRadius: 'var(--mantine-radius-md)', background: 'var(--mantine-color-navy-2)' }}>

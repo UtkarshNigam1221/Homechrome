@@ -1,12 +1,12 @@
-import { Anchor, Box, Center, Container, Stack, Text } from '@mantine/core';
+import { Box, Center, Container, Stack, Text } from '@mantine/core';
 import type { Metadata } from 'next';
 
 import { CategoryChips } from '@/components/catalog/CategoryChips';
 import { CategoryFeatureRow } from '@/components/catalog/CategoryFeatureRow';
 import { Breadcrumb } from '@/components/ui/breadcrumb';
 import { PageHeader } from '@/components/ui/page-header';
+import { WhatsAppButton } from '@/components/ui/whatsapp-button';
 import { API_BASE } from '@/lib/constants';
-import { whatsappHref } from '@/lib/whatsapp';
 import { ROUTES } from '@/lib/routes';
 import { Category } from '@/types';
 
@@ -60,18 +60,11 @@ export default async function CategoriesPage() {
                 Send us the bed size or room you are buying for and we will point you to the right
                 weave.
               </Text>
-              <Anchor
-                href={whatsappHref('Hi, I need help choosing a size')}
-                target="_blank"
-                rel="noopener noreferrer"
-                underline="never"
-              >
-                <Box px={20} py={11} bg="var(--mantine-color-leaf-5)" style={{ borderRadius: 'var(--mantine-radius-md)' }}>
-                  <Text fz="sm" fw={600} c="white">
-                    Ask us on WhatsApp
-                  </Text>
-                </Box>
-              </Anchor>
+              <WhatsAppButton
+                message="Hi, I need help choosing a size"
+                label="Ask us on WhatsApp"
+                fullWidth={false}
+              />
             </Stack>
           </Box>
         </>

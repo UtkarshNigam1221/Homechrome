@@ -2,8 +2,6 @@
 
 import {
   ArrowRightIcon,
-  ClockIcon,
-  LockClosedIcon,
   ShieldCheckIcon,
   SparklesIcon,
   TruckIcon,
@@ -23,40 +21,15 @@ import {
 import Link from 'next/link';
 
 import { AssetImage } from '@/components/ui/asset-image';
+import { AssuranceRow } from '@/components/ui/assurance-row';
 import { SectionHeading } from '@/components/ui/section-heading';
 import CategoryCard from '@/components/catalog/CategoryCard';
 import ProductCard from '@/components/catalog/ProductCard';
 import { Category, Product } from '@/types';
 
-import { DISPATCH_DAYS } from '@/lib/constants';
 
 import { displayFont } from './fonts';
 import HomePageTracker from './HomePageTracker';
-
-// Every claim here is one the policy pages already make. Do not add a
-// promise (returns, organic, fair-trade) the site cannot back.
-const TRUST_ITEMS = [
-  {
-    icon: TruckIcon,
-    title: 'Free Pan-India Delivery',
-    body: 'Shipping is free on every order, to serviceable pincodes across India.',
-  },
-  {
-    icon: ClockIcon,
-    title: `Dispatched in ${DISPATCH_DAYS} Days`,
-    body: 'Orders leave our workshop within a few business days of confirmation.',
-  },
-  {
-    icon: ShieldCheckIcon,
-    title: 'Damage Replacement',
-    body: 'Damaged or defective pieces are replaced — just send an unboxing video.',
-  },
-  {
-    icon: LockClosedIcon,
-    title: 'Secure Payments',
-    body: 'Every checkout runs through an encrypted, PCI-compliant gateway.',
-  },
-];
 
 function HeroVisual({ product }: { product?: Product }) {
   const image = product?.images?.find((i) => i.is_primary) ?? product?.images?.[0];
@@ -174,7 +147,6 @@ export default function HomeView({ categories, products }: HomeViewProps) {
                   fw={600}
                   lh={1.08}
                   c="navy.9"
-                  style={{ fontFamily: displayFont.style.fontFamily }}
                 >
                   Handwoven with{' '}
                   <Text span inherit c="brand.5" fs="italic">
@@ -231,33 +203,7 @@ export default function HomeView({ categories, products }: HomeViewProps) {
 
       <Box component="section" bg="white" py={{ base: 32, sm: 40 }}>
         <Container size="xl">
-          <SimpleGrid cols={{ base: 1, xs: 2, lg: 4 }} spacing="md">
-            {TRUST_ITEMS.map(({ icon: Icon, title, body }) => (
-              <Group key={title} gap="sm" wrap="nowrap" align="flex-start">
-                <Box
-                  w={40}
-                  h={40}
-                  bg="brand.1"
-                  style={{
-                    borderRadius: 'var(--mantine-radius-md)',
-                    display: 'grid',
-                    placeItems: 'center',
-                    flexShrink: 0,
-                  }}
-                >
-                  <Icon width={19} height={19} color="var(--mantine-color-brand-6)" />
-                </Box>
-                <Stack gap={2}>
-                  <Text fz="sm" fw={600} c="navy.9">
-                    {title}
-                  </Text>
-                  <Text fz="xs" c="navy.6" lh={1.5}>
-                    {body}
-                  </Text>
-                </Stack>
-              </Group>
-            ))}
-          </SimpleGrid>
+          <AssuranceRow withTile />
         </Container>
       </Box>
 

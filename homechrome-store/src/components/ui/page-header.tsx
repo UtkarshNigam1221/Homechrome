@@ -2,7 +2,8 @@
 
 import { Box, Stack, Text, Title } from '@mantine/core';
 
-import { displayFont } from '@/app/fonts';
+import { Eyebrow } from '@/components/ui/eyebrow';
+
 
 interface PageHeaderProps {
   /** Small letterspaced label above the title. */
@@ -23,18 +24,13 @@ export function PageHeader({
   return (
     <Box mb="xl" className={className}>
       <Stack gap={6}>
-        {eyebrow && (
-          <Text fz={12} fw={700} c="brand.5" style={{ letterSpacing: '0.14em' }}>
-            {eyebrow.toUpperCase()}
-          </Text>
-        )}
+        {eyebrow && <Eyebrow size={12}>{eyebrow}</Eyebrow>}
         <Title
           order={1}
           fz={{ base: '1.75rem', sm: '2.25rem' }}
           fw={600}
           lh={1.22}
           c="navy.9"
-          style={{ fontFamily: displayFont.style.fontFamily }}
         >
           {title}
         </Title>

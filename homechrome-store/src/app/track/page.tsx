@@ -1,11 +1,7 @@
 'use client';
 
 import {
-  ClockIcon,
-  LockClosedIcon,
   MagnifyingGlassIcon,
-  ShieldCheckIcon,
-  TruckIcon,
 } from '@heroicons/react/24/outline';
 import {
   Anchor,
@@ -22,29 +18,16 @@ import {
 } from '@mantine/core';
 import { useState } from 'react';
 
+import { AssuranceRow } from '@/components/ui/assurance-row';
 import { Breadcrumb } from '@/components/ui/breadcrumb';
-import { WhatsAppIcon } from '@/components/ui/whatsapp-icon';
+import { WhatsAppButton } from '@/components/ui/whatsapp-button';
 import api from '@/lib/api';
-import {
-  DELIVERY_DAYS,
-  DISPATCH_DAYS,
-  SUPPORT_PHONE,
-} from '@/lib/constants';
-import { whatsappHref } from '@/lib/whatsapp';
+import { SUPPORT_PHONE } from '@/lib/constants';
 import { ROUTES } from '@/lib/routes';
 import { formatDateTime as formatDate } from '@/lib/utils';
 
 import { displayFont } from '../fonts';
 
-// Policy-backed only. The design's "7-Day Free Exchange", insured transit and
-// OTP handover tiles are absent: the refund policy grants replacements for
-// damage alone, and the other two are not things the site can attest to.
-const ASSURANCES = [
-  { icon: TruckIcon, title: 'Free delivery', body: 'Every order ships free across India' },
-  { icon: ClockIcon, title: `Dispatch in ${DISPATCH_DAYS} days`, body: `Then ${DELIVERY_DAYS} days in transit` },
-  { icon: ShieldCheckIcon, title: 'Damage replaced', body: 'Send an unboxing video within 48 hours' },
-  { icon: LockClosedIcon, title: 'Secure payments', body: 'Encrypted PhonePe checkout' },
-];
 
 interface StatusHistoryEntry {
   status: string;
@@ -110,7 +93,6 @@ export default function TrackOrderPage() {
           fw={600}
           lh={1.12}
           c="navy.9"
-          style={{ fontFamily: displayFont.style.fontFamily }}
         >
           Track Your{' '}
           <Text span inherit c="brand.5" fs="italic">
@@ -167,7 +149,6 @@ export default function TrackOrderPage() {
                   fz={{ base: '1.25rem', sm: '1.5rem' }}
                   fw={600}
                   c="navy.9"
-                  style={{ fontFamily: displayFont.style.fontFamily }}
                 >
                   Order #{tracking.order_number}
                 </Title>
@@ -234,7 +215,6 @@ export default function TrackOrderPage() {
                   fz="1.125rem"
                   fw={600}
                   c="navy.9"
-                  style={{ fontFamily: displayFont.style.fontFamily }}
                 >
                   Dispatch log
                 </Title>
@@ -292,39 +272,19 @@ export default function TrackOrderPage() {
                   Message us with your order number and we will pick it up from there.
                 </Text>
               </Stack>
-              <Anchor
-                href={whatsappHref(`Hi, I need help with order ${tracking.order_number}`)}
-                target="_blank"
-                rel="noopener noreferrer"
-                underline="never"
-              >
-                <Group gap={8} c="white" px={18} py={10} style={{ background: 'var(--mantine-color-leaf-5)', borderRadius: 'var(--mantine-radius-md)' }}>
-                  <WhatsAppIcon size={17} />
-                  <Text fz="sm" fw={600} c="white">
-                    WhatsApp {SUPPORT_PHONE}
-                  </Text>
-                </Group>
-              </Anchor>
+              <WhatsAppButton
+                message={`Hi, I need help with order ${tracking.order_number}`}
+                label={`WhatsApp ${SUPPORT_PHONE}`}
+                fullWidth={false}
+              />
             </Group>
           </Card>
         </Stack>
       )}
 
-      <SimpleGrid cols={{ base: 2, md: 4 }} spacing="md" mt="xl">
-        {ASSURANCES.map(({ icon: Icon, title, body }) => (
-          <Card key={title} shadow="sm" radius="lg" padding="md" withBorder={false}>
-            <Stack gap={5}>
-              <Icon width={20} height={20} color="var(--mantine-color-brand-6)" />
-              <Text fz="sm" fw={600} c="navy.9">
-                {title}
-              </Text>
-              <Text fz={11} c="navy.6" lh={1.5}>
-                {body}
-              </Text>
-            </Stack>
-          </Card>
-        ))}
-      </SimpleGrid>
+      <Box mt="xl">
+        <AssuranceRow variant="cards" copy="short" />
+      </Box>
     </Container>
   );
 }

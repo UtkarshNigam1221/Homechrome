@@ -2,9 +2,9 @@ import { Box, Card, Container, Flex, Group, Stack, Text, Title } from '@mantine/
 
 import { PolicyNav } from '@/components/legal/PolicyNav';
 import { Breadcrumb } from '@/components/ui/breadcrumb';
+import { Eyebrow } from '@/components/ui/eyebrow';
 import { LEGAL_LAST_UPDATED } from '@/lib/constants';
 
-import { displayFont } from '@/app/fonts';
 
 // Shared shell for the static legal pages: chapter rail, one h1, last-updated
 // stamp, consistent section typography. The prose itself is passed in and left
@@ -34,9 +34,7 @@ export function LegalPageLayout({
           <Stack gap="sm" maw={720}>
             {eyebrow && (
               <Group gap={8} w="fit-content" px={12} py={6} bg="brand.1" style={{ borderRadius: 999 }}>
-                <Text fz={11} fw={700} c="brand.6" style={{ letterSpacing: '0.12em' }}>
-                  {eyebrow.toUpperCase()}
-                </Text>
+                <Eyebrow>{eyebrow}</Eyebrow>
               </Group>
             )}
             <Title
@@ -45,7 +43,6 @@ export function LegalPageLayout({
               fw={600}
               lh={1.15}
               c="navy.9"
-              style={{ fontFamily: displayFont.style.fontFamily }}
             >
               {title}
             </Title>
@@ -91,7 +88,6 @@ export function LegalSection({
         fw={600}
         c="navy.9"
         mb="sm"
-        style={{ fontFamily: displayFont.style.fontFamily }}
       >
         {heading}
       </Title>

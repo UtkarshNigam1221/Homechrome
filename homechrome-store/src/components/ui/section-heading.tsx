@@ -1,10 +1,11 @@
 'use client';
 
 import { ArrowRightIcon } from '@heroicons/react/24/outline';
-import { Anchor, Group, Stack, Text, Title } from '@mantine/core';
+import { Anchor, Group, Stack, Title } from '@mantine/core';
+
+import { Eyebrow } from '@/components/ui/eyebrow';
 import Link from 'next/link';
 
-import { displayFont } from '@/app/fonts';
 
 interface SectionHeadingProps {
   /** Small letterspaced label above the title. */
@@ -25,11 +26,7 @@ export function SectionHeading({
   return (
     <Group justify="space-between" align="flex-end" mb="xl" gap="md" wrap="wrap">
       <Stack gap={6}>
-        {eyebrow && (
-          <Text fz={12} fw={700} c="brand.5" style={{ letterSpacing: '0.14em' }}>
-            {eyebrow.toUpperCase()}
-          </Text>
-        )}
+        {eyebrow && <Eyebrow size={12}>{eyebrow}</Eyebrow>}
         <Title
           id={id}
           order={2}
@@ -37,7 +34,6 @@ export function SectionHeading({
           fw={600}
           lh={1.15}
           c="navy.9"
-          style={{ fontFamily: displayFont.style.fontFamily }}
         >
           {title}
         </Title>

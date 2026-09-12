@@ -9,7 +9,6 @@ import { Category } from '@/types';
 
 import { stripMarkdown } from '@/lib/utils';
 
-import { displayFont } from '@/app/fonts';
 
 interface CategoryFeatureRowProps {
   category: Category;
@@ -75,7 +74,6 @@ export function CategoryFeatureRow({ category, index }: CategoryFeatureRowProps)
         fw={600}
         lh={1.15}
         c="navy.9"
-        style={{ fontFamily: displayFont.style.fontFamily }}
       >
         {category.name}
       </Title>

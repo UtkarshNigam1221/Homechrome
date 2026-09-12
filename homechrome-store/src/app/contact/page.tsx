@@ -1,7 +1,6 @@
 import {
   BuildingStorefrontIcon,
   ChatBubbleLeftRightIcon,
-  ClockIcon,
   EnvelopeIcon,
   ScaleIcon,
   ShieldCheckIcon,
@@ -20,6 +19,7 @@ import {
 } from '@mantine/core';
 import type { Metadata } from 'next';
 
+import { AssuranceRow } from '@/components/ui/assurance-row';
 import { Breadcrumb } from '@/components/ui/breadcrumb';
 import { WhatsAppIcon } from '@/components/ui/whatsapp-icon';
 import {
@@ -39,7 +39,6 @@ import { whatsappHref } from '@/lib/whatsapp';
 import { ContactForm } from './ContactForm';
 import { ContactFaq } from './ContactFaq';
 import { DeskCard, ReachTile } from './ContactCards';
-import { displayFont } from '../fonts';
 
 export const metadata: Metadata = {
   alternates: { canonical: '/contact' },
@@ -51,25 +50,6 @@ const LEAF = { bg: 'var(--mantine-color-leaf-1)', fg: 'var(--mantine-color-leaf-
 const CLAY = { bg: 'var(--mantine-color-brand-1)', fg: 'var(--mantine-color-brand-6)' };
 const MIST = { bg: 'var(--mantine-color-mist-1)', fg: 'var(--mantine-color-mist-6)' };
 const SAND = { bg: 'var(--mantine-color-navy-3)', fg: 'var(--mantine-color-navy-6)' };
-
-// Every promise below is one a policy page already makes.
-const PROMISES = [
-  {
-    icon: TruckIcon,
-    title: 'Free shipping, always',
-    body: 'Every order ships free to serviceable pincodes across India. We do not ship internationally.',
-  },
-  {
-    icon: ClockIcon,
-    title: `Dispatched in ${DISPATCH_DAYS} business days`,
-    body: `Delivery then takes ${DELIVERY_DAYS} business days depending on where you are.`,
-  },
-  {
-    icon: ShieldCheckIcon,
-    title: 'Damaged or defective is replaced',
-    body: `Send an unboxing video within ${DAMAGE_CLAIM_WINDOW_HOURS} hours and we replace the piece.`,
-  },
-];
 
 const FAQS = [
   {
@@ -117,7 +97,6 @@ export default function ContactPage() {
             fw={600}
             lh={1.1}
             c="navy.9"
-            style={{ fontFamily: displayFont.style.fontFamily }}
           >
             Connect with the{' '}
             <Text span inherit c="brand.5" fs="italic">
@@ -193,31 +172,13 @@ export default function ContactPage() {
                       fz="1.25rem"
                       fw={600}
                       c="navy.9"
-                      style={{ fontFamily: displayFont.style.fontFamily }}
                     >
                       The Homechrome Promise
                     </Title>
                   </Stack>
                 </Group>
 
-                {PROMISES.map(({ icon: Icon, title, body }) => (
-                  <Group key={title} gap="sm" wrap="nowrap" align="flex-start">
-                    <Icon
-                      width={17}
-                      height={17}
-                      color="var(--mantine-color-navy-6)"
-                      style={{ flexShrink: 0, marginTop: 3 }}
-                    />
-                    <Stack gap={2}>
-                      <Text fz="sm" fw={600} c="navy.9">
-                        {title}
-                      </Text>
-                      <Text fz="xs" c="navy.6" lh={1.55}>
-                        {body}
-                      </Text>
-                    </Stack>
-                  </Group>
-                ))}
+                <AssuranceRow columns={1} />
               </Stack>
             </Card>
 
@@ -248,7 +209,6 @@ export default function ContactPage() {
                   fz="1.25rem"
                   fw={600}
                   c="navy.9"
-                  style={{ fontFamily: displayFont.style.fontFamily }}
                 >
                   Grievance Officer
                 </Title>
@@ -292,7 +252,6 @@ export default function ContactPage() {
               fw={600}
               c="navy.9"
               ta="center"
-              style={{ fontFamily: displayFont.style.fontFamily }}
             >
               Frequently Asked Questions
             </Title>

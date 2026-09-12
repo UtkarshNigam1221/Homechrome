@@ -18,7 +18,6 @@ import { useState } from 'react';
 
 import { whatsappHref } from '@/lib/whatsapp';
 
-import { displayFont } from '../fonts';
 
 const PURPOSES = [
   'Where is my order',
@@ -79,7 +78,6 @@ export function ContactForm() {
           fw={600}
           c="navy.9"
           lh={1.2}
-          style={{ fontFamily: displayFont.style.fontFamily }}
         >
           Tell us what you need
         </Title>

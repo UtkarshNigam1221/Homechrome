@@ -3,9 +3,6 @@
 import {
   ArrowRightIcon,
   ChevronDownIcon,
-  ClockIcon,
-  LockClosedIcon,
-  ShieldCheckIcon,
   ShoppingBagIcon,
   TruckIcon,
 } from '@heroicons/react/24/outline';
@@ -14,26 +11,18 @@ import {
   Box,
   Button,
   Group,
-  SimpleGrid,
   Stack,
   Text,
   Title,
 } from '@mantine/core';
 
+import { AssuranceRow } from '@/components/ui/assurance-row';
 import { QuantityStepper } from '@/components/ui/quantity-stepper';
 import { useProductCartActions } from '@/hooks/useProductCartActions';
 import { DISPATCH_DAYS } from '@/lib/constants';
 import { calculateDiscountPercent, formatPrice } from '@/lib/utils';
 import { Product } from '@/types';
 
-import { displayFont } from '@/app/fonts';
-
-const BENEFITS = [
-  { icon: TruckIcon, title: 'Free Delivery', body: 'Free on every order across India' },
-  { icon: ClockIcon, title: `Dispatch in ${DISPATCH_DAYS} Days`, body: 'From order confirmation' },
-  { icon: ShieldCheckIcon, title: 'Damage Replacement', body: 'Unboxing video required' },
-  { icon: LockClosedIcon, title: 'Secure Payment', body: 'Encrypted checkout' },
-];
 
 type Spec = { label: string; value: string };
 
@@ -114,7 +103,6 @@ export function ProductInfo({ product }: ProductInfoProps) {
         fw={600}
         lh={1.15}
         c="navy.9"
-        style={{ fontFamily: displayFont.style.fontFamily }}
       >
         {product.name}
       </Title>
@@ -214,34 +202,9 @@ export function ProductInfo({ product }: ProductInfoProps) {
         </Button>
       </Group>
 
-      <SimpleGrid cols={{ base: 1, xs: 2 }} spacing="xs" mt="xs">
-        {BENEFITS.map(({ icon: Icon, title, body }) => (
-          <Group
-            key={title}
-            gap="sm"
-            wrap="nowrap"
-            align="flex-start"
-            p="sm"
-            bg="navy.1"
-            style={{ borderRadius: 'var(--mantine-radius-sm)' }}
-          >
-            <Icon
-              width={18}
-              height={18}
-              color="var(--mantine-color-brand-6)"
-              style={{ flexShrink: 0, marginTop: 2 }}
-            />
-            <Stack gap={1}>
-              <Text fz="sm" fw={600} c="navy.9" lh={1.3}>
-                {title}
-              </Text>
-              <Text fz="xs" c="navy.6" lh={1.4}>
-                {body}
-              </Text>
-            </Stack>
-          </Group>
-        ))}
-      </SimpleGrid>
+      <Box mt="xs">
+        <AssuranceRow variant="cards" copy="short" columns={2} />
+      </Box>
     </Stack>
   );
 }
@@ -269,7 +232,6 @@ function Section({ title, children }: { title: string; children: React.ReactNode
         fz="1.25rem"
         fw={600}
         c="navy.9"
-        style={{ fontFamily: displayFont.style.fontFamily }}
       >
         {title}
       </Title>

@@ -26,14 +26,13 @@ import logo80 from '@/assets/logo-80.webp';
 
 import { displayFont } from '@/app/fonts';
 import { Category } from '@/types';
-import { WhatsAppIcon } from '@/components/ui/whatsapp-icon';
+import { WhatsAppButton } from '@/components/ui/whatsapp-button';
 import {
   INSTAGRAM_URL,
   SUPPORT_EMAIL,
   SUPPORT_PHONE,
   SUPPORT_PHONE_TEL,
 } from '@/lib/constants';
-import { whatsappHref } from '@/lib/whatsapp';
 
 export default function Footer({ categories = [] }: { categories?: Category[] }) {
   return (
@@ -117,28 +116,12 @@ export default function Footer({ categories = [] }: { categories?: Category[] })
             </FooterColumn>
 
             <FooterColumn title="Need Help?">
-              <Anchor
-                href={whatsappHref('Hi, I need help with my order')}
-                target="_blank"
-                rel="noopener noreferrer"
-                underline="never"
-                mb={4}
-              >
-                <Group
-                  gap={8}
-                  wrap="nowrap"
-                  align="center"
-                  c="white"
-                  px="md"
-                  py={9}
-                  style={{ background: 'var(--mantine-color-leaf-5)', borderRadius: 'var(--mantine-radius-md)' }}
-                >
-                  <WhatsAppIcon size={16} />
-                  <Text size="sm" fw={600} c="white">
-                    WhatsApp Us
-                  </Text>
-                </Group>
-              </Anchor>
+              <WhatsAppButton
+                message="Hi, I need help with my order"
+                label="WhatsApp Us"
+                fullWidth={false}
+                size="sm"
+              />
               <FooterLink href={`mailto:${SUPPORT_EMAIL}`} icon={<EnvelopeIcon width={15} height={15} />}>
                 Email us
               </FooterLink>

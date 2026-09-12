@@ -24,8 +24,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 
 import logo80 from '@/assets/logo-80.webp';
-import { WhatsAppIcon } from '@/components/ui/whatsapp-icon';
-import { whatsappHref } from '@/lib/whatsapp';
+import { WhatsAppButton } from '@/components/ui/whatsapp-button';
 import { useAuthStore } from '@/stores/auth';
 import { Category } from '@/types';
 
@@ -139,27 +138,11 @@ export default function MobileNav({ isOpen, onClose, categories }: MobileNavProp
       </ScrollArea>
 
       <Box p="md" bg="navy.1" style={{ borderTop: '1px solid var(--mantine-color-navy-2)' }}>
-        <Anchor
-          href={whatsappHref('Hi, I need help with my order')}
-          target="_blank"
-          rel="noopener noreferrer"
-          underline="never"
+        <WhatsAppButton
+          message="Hi, I need help with my order"
+          label="WhatsApp Concierge"
           onClick={onClose}
-        >
-          <Group
-            gap={8}
-            justify="center"
-            align="center"
-            c="white"
-            py={11}
-            style={{ background: 'var(--mantine-color-leaf-5)', borderRadius: 'var(--mantine-radius-lg)' }}
-          >
-            <WhatsAppIcon size={18} />
-            <Text fz="sm" fw={600} c="white">
-              WhatsApp Concierge
-            </Text>
-          </Group>
-        </Anchor>
+        />
         <Text ta="center" fz="xs" c="navy.5" mt={8}>
           Free shipping on every order
         </Text>

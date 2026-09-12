@@ -3,10 +3,7 @@ import {
   CheckCircleIcon,
   ExclamationTriangleIcon,
   InformationCircleIcon,
-  LockClosedIcon,
-  ShieldCheckIcon,
   SwatchIcon,
-  TruckIcon,
   VideoCameraIcon,
 } from '@heroicons/react/24/outline';
 import { Box, Card, Container, Flex, Group, SimpleGrid, Stack, Text, Title } from '@mantine/core';
@@ -21,6 +18,7 @@ import {
 } from '@/lib/constants';
 
 import { PolicyNav } from '@/components/legal/PolicyNav';
+import { AssuranceRow } from '@/components/ui/assurance-row';
 import { displayFont } from '../fonts';
 
 export const metadata: Metadata = {
@@ -94,13 +92,6 @@ const NOT_COVERED = [
   },
 ];
 
-const ASSURANCES = [
-  { icon: TruckIcon, title: 'Free shipping', body: 'On every order, across India' },
-  { icon: ShieldCheckIcon, title: 'Damage replaced', body: 'Free replacement when approved' },
-  { icon: LockClosedIcon, title: 'Secure payments', body: 'Encrypted PhonePe checkout' },
-  { icon: SwatchIcon, title: 'Handloom textiles', body: 'Woven and printed in India' },
-];
-
 export default function PoliciesPage() {
   return (
     <>
@@ -121,7 +112,6 @@ export default function PoliciesPage() {
               fw={600}
               lh={1.12}
               c="navy.9"
-              style={{ fontFamily: displayFont.style.fontFamily }}
             >
               Our Handloom Promise &amp;{' '}
               <Text span inherit c="brand.5" fs="italic">
@@ -156,7 +146,6 @@ export default function PoliciesPage() {
                     fz={{ base: '1.5rem', sm: '1.75rem' }}
                     fw={600}
                     c="navy.9"
-                    style={{ fontFamily: displayFont.style.fontFamily }}
                   >
                     Replacement for damage or defects
                   </Title>
@@ -222,7 +211,6 @@ export default function PoliciesPage() {
                       fz={{ base: '1.25rem', sm: '1.5rem' }}
                       fw={600}
                       c="navy.9"
-                      style={{ fontFamily: displayFont.style.fontFamily }}
                     >
                       What handloom does naturally
                     </Title>
@@ -298,19 +286,7 @@ export default function PoliciesPage() {
               </Box>
 
               <Card shadow="sm" radius="lg" padding="lg" withBorder={false} bg="navy.1">
-                <SimpleGrid cols={{ base: 2, md: 4 }} spacing="md">
-                  {ASSURANCES.map(({ icon: Icon, title, body }) => (
-                    <Stack key={title} gap={4} align="center" ta="center">
-                      <Icon width={22} height={22} color="var(--mantine-color-brand-6)" />
-                      <Text fz="sm" fw={600} c="navy.9">
-                        {title}
-                      </Text>
-                      <Text fz={10} c="navy.6" lh={1.5}>
-                        {body}
-                      </Text>
-                    </Stack>
-                  ))}
-                </SimpleGrid>
+                <AssuranceRow copy="short" />
               </Card>
 
               <Text fz="xs" c="navy.5" ta="center">
@@ -337,7 +313,6 @@ function SectionHead({ eyebrow, title }: { eyebrow: string; title: string }) {
         fz={{ base: '1.25rem', sm: '1.5rem' }}
         fw={600}
         c="navy.9"
-        style={{ fontFamily: displayFont.style.fontFamily }}
       >
         {title}
       </Title>
