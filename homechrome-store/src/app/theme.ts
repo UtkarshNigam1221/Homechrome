@@ -17,13 +17,14 @@ const brand: MantineColorsTuple = [
   '#3A0B00',
 ];
 
-// Warm neutral ink ramp — surfaces at the low end, text at the high end.
-// Still named `navy` for its 80 call sites; it is no longer blue.
+// Warm neutral ink ramp — the design's four surface steps at the low end,
+// its outline and text at the high end. Still named `navy` for its 80 call
+// sites; it is no longer blue.
 const navy: MantineColorsTuple = [
   '#FCF9F4',
+  '#F6F3EE',
   '#F0EDE9',
   '#E5E2DD',
-  '#DCC1B9',
   '#89726B',
   '#6D5A54',
   '#56423D',

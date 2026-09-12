@@ -1,6 +1,6 @@
 'use client';
 
-import { MantineProvider } from '@mantine/core';
+import { CSSVariablesResolver, MantineProvider } from '@mantine/core';
 import { ModalsProvider } from '@mantine/modals';
 import { Notifications } from '@mantine/notifications';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -38,6 +38,15 @@ function AnalyticsProvider({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+// --mantine-color-body derives from theme.white, which cards still need white.
+// Mantine emits it from the theme at runtime, so a stylesheet override loses
+// on specificity; this is the supported seam for changing it.
+const cssVariablesResolver: CSSVariablesResolver = () => ({
+  variables: {},
+  light: { '--mantine-color-body': '#FCF9F4' },
+  dark: {},
+});
+
 export function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(
     () =>
@@ -55,7 +64,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <MantineProvider theme={theme}>
+    <MantineProvider theme={theme} cssVariablesResolver={cssVariablesResolver}>
       <ModalsProvider>
         <Notifications position="top-right" />
         <QueryClientProvider client={queryClient}>

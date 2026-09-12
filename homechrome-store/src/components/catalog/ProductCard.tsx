@@ -155,7 +155,7 @@ export default function ProductCard({ product }: ProductCardProps) {
 
         <Link href={`/p/${product.slug}`} style={{ textDecoration: 'none' }}>
           <Text
-            fz="md"
+            fz="1.125rem"
             fw={600}
             c="navy.9"
             lineClamp={2}
@@ -172,7 +172,7 @@ export default function ProductCard({ product }: ProductCardProps) {
         )}
 
         <Group align="baseline" gap={6} wrap="wrap">
-          <Text fz={{ base: 'lg', sm: 'xl' }} fw={700} c="navy.9">
+          <Text fz="1.125rem" fw={700} c="navy.9">
             {formatPrice(product.selling_price)}
           </Text>
           {hasDiscount && (
@@ -221,6 +221,8 @@ export default function ProductCard({ product }: ProductCardProps) {
               variant="default"
               size="sm"
               radius="sm"
+              bg="navy.1"
+              styles={{ label: { fontWeight: 600 } }}
               fullWidth
               leftSection={
                 product.in_stock ? <ShoppingBagIcon width={16} height={16} /> : undefined

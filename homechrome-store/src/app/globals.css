@@ -1,25 +1,24 @@
 html {
-  /* Scale all rem-based sizes site-wide. Default browser is 16px; 17px bumps
-     all font/spacing rem values ~6%. Affects every Mantine size token. */
-  font-size: 17px;
+  /* The design is drawn on a 16px root; a bump here rescales every rem token
+     and pushes the whole type ramp off the mockup. */
+  font-size: 16px;
 }
 
 :root {
   /* Single source of truth for the sticky header's height. Header enforces it
-     via min-height; sticky columns offset against it (+ a gap). rem so it
-     scales with the font-size bump above. */
+     via min-height; sticky columns offset against it (+ a gap). */
   --app-header-h: 3.5rem;
 }
 
 body {
-  background: #FCF9F4;
+  background: var(--mantine-color-body);
   color: var(--mantine-color-text);
 }
 
 /* iOS Safari auto-zooms (and stays zoomed) when a focused input's font-size is
    < 16px, which left the page zoomed/misaligned after the OTP step and across
-   subsequent navigations. Mantine's default input size is ~14.9px at our 17px
-   root, so force >=16px on small screens — focusing any field (phone, OTP,
+   subsequent navigations. Mantine's default input size is still under 16px at
+   our root, so force >=16px on small screens — focusing any field (phone, OTP,
    checkout, search) then never triggers the zoom. */
 @media (max-width: 768px) {
   input,

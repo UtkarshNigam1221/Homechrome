@@ -122,7 +122,7 @@ export default function FilterSidebar({
       )}
 
       <Group justify="space-between">
-        <Title order={3} size="md">Filters</Title>
+        <Title order={3} fz="1.125rem" fw={600}>Filters</Title>
         {hasActive && (
           <Anchor component="button" size="sm" onClick={handleClearAll}>
             Clear all

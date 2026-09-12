@@ -30,9 +30,9 @@ export function PageHeader({
         )}
         <Title
           order={1}
-          fz={{ base: '1.875rem', sm: '2.5rem' }}
+          fz={{ base: '1.75rem', sm: '2.25rem' }}
           fw={600}
-          lh={1.15}
+          lh={1.22}
           c="navy.9"
           style={{ fontFamily: displayFont.style.fontFamily }}
         >
