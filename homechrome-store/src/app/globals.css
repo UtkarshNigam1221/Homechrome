@@ -54,3 +54,14 @@ img {
 [data-usable]:hover {
   background: var(--mantine-color-brand-1);
 }
+
+/* Alternate category rows mirror themselves, but only once they sit side by
+   side: stacked, every row must still lead with its image. */
+@media (min-width: 62em) {
+  [data-feature-flip] > *:first-child {
+    order: 2;
+  }
+  [data-feature-flip] > *:last-child {
+    order: 1;
+  }
+}

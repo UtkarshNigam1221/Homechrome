@@ -17,7 +17,8 @@ interface CategoryFeatureRowProps {
   index: number;
 }
 
-/** Image and copy swap sides on alternate rows, as in the design. */
+/** Image and copy swap sides on alternate rows — only once side by side, so
+ *  the stacked phone layout always leads with the image. */
 export function CategoryFeatureRow({ category, index }: CategoryFeatureRowProps) {
   const flipped = index % 2 === 1;
 
@@ -28,7 +29,6 @@ export function CategoryFeatureRow({ category, index }: CategoryFeatureRowProps)
         borderRadius: 'var(--mantine-radius-lg)',
         overflow: 'hidden',
         aspectRatio: '4 / 3',
-        order: flipped ? 2 : 1,
       }}
     >
       {category.image_url ? (
@@ -65,7 +65,7 @@ export function CategoryFeatureRow({ category, index }: CategoryFeatureRowProps)
   );
 
   const copy = (
-    <Stack gap="md" justify="center" style={{ order: flipped ? 1 : 2 }}>
+    <Stack gap="md" justify="center">
       <Text fz={11} fw={700} c="navy.5" style={{ letterSpacing: '0.14em' }}>
         CATEGORY {String(index + 1).padStart(2, '0')}
       </Text>
@@ -106,6 +106,7 @@ export function CategoryFeatureRow({ category, index }: CategoryFeatureRowProps)
 
   return (
     <SimpleGrid
+      data-feature-flip={flipped || undefined}
       cols={{ base: 1, md: 2 }}
       spacing={{ base: 'lg', md: 48 }}
       p={{ base: 'md', md: 'xl' }}
