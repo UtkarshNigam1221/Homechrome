@@ -1,13 +1,39 @@
 'use client';
 
-import { ChevronDownIcon } from '@heroicons/react/24/outline';
-import { Accordion, Box, Button, Divider, Group, Stack, Text, Title } from '@mantine/core';
+import {
+  ArrowRightIcon,
+  ChevronDownIcon,
+  ClockIcon,
+  LockClosedIcon,
+  ShieldCheckIcon,
+  ShoppingBagIcon,
+  TruckIcon,
+} from '@heroicons/react/24/outline';
+import {
+  Accordion,
+  Box,
+  Button,
+  Group,
+  SimpleGrid,
+  Stack,
+  Text,
+  Title,
+} from '@mantine/core';
 
-import { DiscountBadge } from '@/components/ui/discount-badge';
 import { QuantityStepper } from '@/components/ui/quantity-stepper';
 import { useProductCartActions } from '@/hooks/useProductCartActions';
+import { DISPATCH_DAYS } from '@/lib/constants';
 import { calculateDiscountPercent, formatPrice } from '@/lib/utils';
 import { Product } from '@/types';
+
+import { displayFont } from '@/app/fonts';
+
+const BENEFITS = [
+  { icon: TruckIcon, title: 'Free Delivery', body: 'Free on every order across India' },
+  { icon: ClockIcon, title: `Dispatch in ${DISPATCH_DAYS} Days`, body: 'From order confirmation' },
+  { icon: ShieldCheckIcon, title: 'Damage Replacement', body: 'Unboxing video required' },
+  { icon: LockClosedIcon, title: 'Secure Payment', body: 'Encrypted checkout' },
+];
 
 type Spec = { label: string; value: string };
 
@@ -69,37 +95,59 @@ export function ProductInfo({ product }: ProductInfoProps) {
 
   return (
     <Stack gap="md">
-      <Stack gap={4}>
-        <Title order={1} size="h2">{product.name}</Title>
-        {product.sku && (
-          <Text size="sm" c="dimmed">SKU: {product.sku}</Text>
-        )}
-      </Stack>
-
-      <Group align="baseline" gap="sm">
-        <Text size="2rem" fw={700} c="navy.7">
-          {formatPrice(product.selling_price)}
+      <Group justify="space-between" align="center" gap="sm" wrap="nowrap">
+        <Text fz="xs" fw={600} c="navy.6" tt="capitalize" lineClamp={1}>
+          {[product.craft_type?.toLowerCase(), product.origin].filter(Boolean).join(' · ')}
+          {product.sku ? `${product.craft_type || product.origin ? ' · ' : ''}SKU: ${product.sku}` : ''}
         </Text>
-        {hasDiscount && (
-          <>
-            <Text size="lg" c="dimmed" td="line-through">
-              {formatPrice(product.base_price)}
-            </Text>
-            <DiscountBadge percent={discountPercent} variant="soft" />
-          </>
-        )}
+        <Group gap={5} wrap="nowrap" style={{ flexShrink: 0 }}>
+          <TruckIcon width={14} height={14} color="var(--mantine-color-navy-6)" />
+          <Text fz="xs" fw={600} c="navy.6" style={{ letterSpacing: '0.05em' }}>
+            FAST DISPATCH
+          </Text>
+        </Group>
       </Group>
 
-      {hasDiscount && (
-        <Text size="sm" fw={600} c="teal.7">
-          You save {formatPrice(product.base_price - product.selling_price)} ({discountPercent}% off)
-        </Text>
-      )}
+      <Title
+        order={1}
+        fz={{ base: '1.75rem', sm: '2.25rem' }}
+        fw={600}
+        lh={1.15}
+        c="navy.9"
+        style={{ fontFamily: displayFont.style.fontFamily }}
+      >
+        {product.name}
+      </Title>
 
-      <StockStatus inStock={product.in_stock} />
+      <Box bg="navy.1" p="md" style={{ borderRadius: 'var(--mantine-radius-md)' }}>
+        <Group align="baseline" gap="sm" wrap="wrap">
+          <Text fz="2.25rem" fw={700} c="brand.5" lh={1}>
+            {formatPrice(product.selling_price)}
+          </Text>
+          {hasDiscount && (
+            <>
+              <Text size="lg" c="dimmed" td="line-through">
+                MRP {formatPrice(product.base_price)}
+              </Text>
+              <Box px={9} py={3} bg="brand.1" style={{ borderRadius: 4 }}>
+                <Text fz="xs" fw={700} c="brand.6">
+                  SAVE {formatPrice(product.base_price - product.selling_price)} ({discountPercent}% OFF)
+                </Text>
+              </Box>
+            </>
+          )}
+        </Group>
+
+        <Group gap="xs" mt={10} wrap="wrap">
+          <StockStatus inStock={product.in_stock} />
+          <Text size="sm" c="navy.6">
+            · Dispatched in {DISPATCH_DAYS} business days · Inclusive of all taxes
+          </Text>
+        </Group>
+      </Box>
 
       {product.description && (
-        <Section title="Description">
+        <Section title="The Craft Story">
           <Text size="md" c="gray.7" maw="62ch" style={{ whiteSpace: 'pre-line', lineHeight: 1.7 }}>
             {product.description}
           </Text>
@@ -107,7 +155,7 @@ export function ProductInfo({ product }: ProductInfoProps) {
       )}
 
       {specs.length > 0 && (
-        <Section title="Details">
+        <Section title="Specifications & Dimensions">
           <Accordion
             multiple
             variant="separated"
@@ -129,9 +177,7 @@ export function ProductInfo({ product }: ProductInfoProps) {
         </Section>
       )}
 
-      <Divider my="md" />
-
-      <Group grow align="stretch" gap="sm">
+      <Group grow align="stretch" gap="sm" mt="xs">
         {cartQty > 0 ? (
           <QuantityStepper
             value={cartQty}
@@ -144,9 +190,10 @@ export function ProductInfo({ product }: ProductInfoProps) {
           />
         ) : (
           <Button
-            variant="light"
-            color="brand"
+            variant="default"
             size="lg"
+            radius="sm"
+            leftSection={<ShoppingBagIcon width={18} height={18} />}
             onClick={handleAdd}
             loading={loading}
             disabled={!product.in_stock}
@@ -157,6 +204,8 @@ export function ProductInfo({ product }: ProductInfoProps) {
         <Button
           color="brand"
           size="lg"
+          radius="sm"
+          rightSection={<ArrowRightIcon width={18} height={18} />}
           onClick={handleBuyNow}
           loading={loading}
           disabled={!product.in_stock}
@@ -164,6 +213,35 @@ export function ProductInfo({ product }: ProductInfoProps) {
           Buy Now
         </Button>
       </Group>
+
+      <SimpleGrid cols={{ base: 1, xs: 2 }} spacing="xs" mt="xs">
+        {BENEFITS.map(({ icon: Icon, title, body }) => (
+          <Group
+            key={title}
+            gap="sm"
+            wrap="nowrap"
+            align="flex-start"
+            p="sm"
+            bg="navy.1"
+            style={{ borderRadius: 'var(--mantine-radius-sm)' }}
+          >
+            <Icon
+              width={18}
+              height={18}
+              color="var(--mantine-color-brand-6)"
+              style={{ flexShrink: 0, marginTop: 2 }}
+            />
+            <Stack gap={1}>
+              <Text fz="sm" fw={600} c="navy.9" lh={1.3}>
+                {title}
+              </Text>
+              <Text fz="xs" c="navy.6" lh={1.4}>
+                {body}
+              </Text>
+            </Stack>
+          </Group>
+        ))}
+      </SimpleGrid>
     </Stack>
   );
 }
@@ -186,7 +264,13 @@ function StockStatus({ inStock }: { inStock: boolean }) {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <Stack gap="sm">
-      <Title order={2} size="h4" c="navy.7">
+      <Title
+        order={2}
+        fz="1.25rem"
+        fw={600}
+        c="navy.9"
+        style={{ fontFamily: displayFont.style.fontFamily }}
+      >
         {title}
       </Title>
       {children}
