@@ -71,3 +71,9 @@ img {
     padding-bottom: 64px;
   }
 }
+
+/* Anchored targets land under the sticky header otherwise — following
+   /contact#grievance hid the card's heading behind it. */
+:target {
+  scroll-margin-top: calc(var(--app-header-h) + 1rem);
+}

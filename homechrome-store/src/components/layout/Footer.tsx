@@ -104,6 +104,9 @@ export default function Footer({ categories = [] }: { categories?: Category[] })
             <FooterColumn title="Customer Care">
               <FooterLink href="/track">Track Order</FooterLink>
               <FooterLink href="/account">My Account</FooterLink>
+              {/* The only other route here was the grievance deep link, which
+                  lands past the top of the page. */}
+              <FooterLink href="/contact">Contact Us</FooterLink>
             </FooterColumn>
 
             <FooterColumn title="Policies">
