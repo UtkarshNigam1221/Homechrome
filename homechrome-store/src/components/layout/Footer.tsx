@@ -78,8 +78,8 @@ export default function Footer({ categories = [] }: { categories?: Category[] })
               Premium handloom textiles from across India. Celebrating the art of traditional weaving.
             </Text>
             <Group gap="xs" mt={6} wrap="nowrap">
-              <CraftPill icon={<SparklesIcon width={13} height={13} />}>100% HANDSPUN COTTON</CraftPill>
-              <CraftPill icon={<CheckBadgeIcon width={13} height={13} />}>DIRECT FROM ARTISANS</CraftPill>
+              <CraftPill icon={<SparklesIcon width={13} height={13} />}>MADE IN INDIA</CraftPill>
+              <CraftPill icon={<CheckBadgeIcon width={13} height={13} />}>FREE SHIPPING ALWAYS</CraftPill>
             </Group>
           </Flex>
 
