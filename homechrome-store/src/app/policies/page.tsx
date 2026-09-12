@@ -20,7 +20,7 @@ import {
   REFUND_DAYS,
 } from '@/lib/constants';
 
-import { PoliciesNav } from './PoliciesNav';
+import { PolicyNav } from '@/components/legal/PolicyNav';
 import { displayFont } from '../fonts';
 
 export const metadata: Metadata = {
@@ -141,7 +141,7 @@ export default function PoliciesPage() {
       <Container size="xl" py="xl">
         <Flex gap="lg" align="flex-start" direction={{ base: 'column', lg: 'row' }}>
           <Box w={{ base: '100%', lg: 280 }} flex="none">
-            <PoliciesNav />
+            <PolicyNav />
           </Box>
 
           <Box flex={1} w="100%">

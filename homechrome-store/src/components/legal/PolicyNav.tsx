@@ -10,11 +10,12 @@ import {
 } from '@heroicons/react/24/outline';
 import { Anchor, Box, Card, Group, Stack, Text } from '@mantine/core';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 
 import { WhatsAppIcon } from '@/components/ui/whatsapp-icon';
 import { SUPPORT_EMAIL, SUPPORT_PHONE, SUPPORT_WHATSAPP } from '@/lib/constants';
 
-import { displayFont } from '../fonts';
+import { displayFont } from '@/app/fonts';
 
 const CHAPTERS = [
   { href: '/refund-policy', label: 'Refund & Replacement', icon: ArrowPathIcon },
@@ -24,7 +25,9 @@ const CHAPTERS = [
   { href: '/contact#grievance', label: 'Grievance Officer', icon: BuildingLibraryIcon },
 ];
 
-export function PoliciesNav() {
+export function PolicyNav() {
+  const pathname = usePathname();
+
   return (
     <Stack gap="md">
       <Card shadow="sm" radius="lg" padding="md" withBorder={false}>
@@ -43,25 +46,37 @@ export function PoliciesNav() {
         </Stack>
 
         <Stack gap={2}>
-          {CHAPTERS.map(({ href, label, icon: Icon }) => (
-            <Anchor key={href} component={Link} href={href} underline="never">
-              <Group
-                justify="space-between"
-                wrap="nowrap"
-                px={10}
-                py={9}
-                style={{ borderRadius: 'var(--mantine-radius-md)' }}
-              >
-                <Group gap={9} wrap="nowrap">
-                  <Icon width={17} height={17} color="var(--mantine-color-navy-6)" />
-                  <Text fz="sm" fw={500} c="navy.8">
-                    {label}
-                  </Text>
+          {CHAPTERS.map(({ href, label, icon: Icon }) => {
+            const active = pathname === href.split('#')[0];
+            return (
+              <Anchor key={href} component={Link} href={href} underline="never">
+                <Group
+                  justify="space-between"
+                  wrap="nowrap"
+                  px={10}
+                  py={9}
+                  bg={active ? 'brand.5' : undefined}
+                  style={{ borderRadius: 'var(--mantine-radius-md)' }}
+                >
+                  <Group gap={9} wrap="nowrap">
+                    <Icon
+                      width={17}
+                      height={17}
+                      color={`var(--mantine-color-${active ? 'white' : 'navy-6'})`}
+                    />
+                    <Text fz="sm" fw={active ? 600 : 500} c={active ? 'white' : 'navy.8'}>
+                      {label}
+                    </Text>
+                  </Group>
+                  <ChevronRightIcon
+                    width={14}
+                    height={14}
+                    color={`var(--mantine-color-${active ? 'white' : 'navy-5'})`}
+                  />
                 </Group>
-                <ChevronRightIcon width={14} height={14} color="var(--mantine-color-navy-5)" />
-              </Group>
-            </Anchor>
-          ))}
+              </Anchor>
+            );
+          })}
         </Stack>
       </Card>
 
