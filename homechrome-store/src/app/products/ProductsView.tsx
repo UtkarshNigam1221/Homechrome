@@ -17,13 +17,15 @@ import {
 import { useScrollDepth } from '@/hooks/useScrollDepth';
 import { track } from '@/lib/analytics';
 import { ROUTES } from '@/lib/routes';
-import { Category, Product } from '@/types';
+import { Category, CategoryAttribute, Product } from '@/types';
 
 interface ProductsViewProps {
   products: Product[];
   initialCursor?: string;
   initialSearch: string;
   categories?: Category[];
+  filterOptions?: Record<string, string[]>;
+  categoryAttributes?: CategoryAttribute[];
 }
 
 export default function ProductsView({
@@ -31,6 +33,8 @@ export default function ProductsView({
   initialCursor,
   initialSearch,
   categories,
+  filterOptions,
+  categoryAttributes,
 }: ProductsViewProps) {
   const searchParams = useSearchParams();
   const currentSearch = searchParams.get('search') ?? initialSearch;
@@ -101,6 +105,8 @@ export default function ProductsView({
           <FilterSidebar
             filters={filters}
             onFiltersChange={handleFiltersChange}
+            filterOptions={filterOptions}
+            categoryAttributes={categoryAttributes}
             categories={categories}
           />
         }

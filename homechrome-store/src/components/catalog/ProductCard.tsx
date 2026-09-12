@@ -113,7 +113,7 @@ export default function ProductCard({ product }: ProductCardProps) {
         </AspectRatio>
         {(hasDiscount || provenance) && (
           <Stack pos="absolute" top={8} left={8} gap={6} align="flex-start">
-            {hasDiscount && <DiscountBadge percent={discountPercent} variant="solid" />}
+            {hasDiscount && <DiscountBadge percent={discountPercent} />}
             {provenance && (
               <Box
                 px={8}
