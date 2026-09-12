@@ -1,6 +1,6 @@
 html {
   /* Scale all rem-based sizes site-wide. Default browser is 16px; 17px bumps
-     all font/spacing rem values ~6%. Affects Mantine + Tailwind uniformly. */
+     all font/spacing rem values ~6%. Affects every Mantine size token. */
   font-size: 17px;
 }
 
@@ -12,7 +12,7 @@ html {
 }
 
 body {
-  background: #F5F0EB;
+  background: #FCF9F4;
   color: var(--mantine-color-text);
 }
 
@@ -48,13 +48,6 @@ main {
 /* Smooth image loading */
 img {
   transition: opacity 0.3s ease;
-}
-
-/* Mantine draws focus rings in the primary shade: brand.5 is 2.23:1 on white, under the
-   3:1 WCAG asks. Only outline-color — the variable also paints primary buttons. */
-:root .mantine-focus-auto:focus-visible,
-:root .mantine-focus-always:focus {
-  outline-color: var(--mantine-color-navy-7);
 }
 
 /* Coupon offer rows: hover only where there is something to click. */
