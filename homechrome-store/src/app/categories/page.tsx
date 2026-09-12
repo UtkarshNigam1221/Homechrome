@@ -1,9 +1,11 @@
-import { Center, Container, SimpleGrid, Text } from '@mantine/core';
+import { Anchor, Box, Center, Container, Stack, Text } from '@mantine/core';
 import type { Metadata } from 'next';
 
-import CategoryCard from '@/components/catalog/CategoryCard';
+import { CategoryChips } from '@/components/catalog/CategoryChips';
+import { CategoryFeatureRow } from '@/components/catalog/CategoryFeatureRow';
+import { Breadcrumb } from '@/components/ui/breadcrumb';
 import { PageHeader } from '@/components/ui/page-header';
-import { API_BASE } from '@/lib/constants';
+import { API_BASE, SUPPORT_WHATSAPP } from '@/lib/constants';
 import { ROUTES } from '@/lib/routes';
 import { Category } from '@/types';
 
@@ -28,20 +30,50 @@ async function getCategories(): Promise<Category[]> {
 
 export default async function CategoriesPage() {
   const categories = await getCategories();
+  const total = categories.reduce((sum, c) => sum + (c.product_count || 0), 0);
 
   return (
     <Container size="xl" py="xl">
+      <Breadcrumb items={[{ label: 'Home', href: '/' }, { label: 'Categories' }]} />
+
       <PageHeader
-        title="All Categories"
-        description="Explore our curated collections of handloom textiles."
+        eyebrow="The archive"
+        title="Curated Handloom Categories"
+        description={`${total} handcrafted pieces across ${categories.length} collections — bedsheets, dohars and cushions woven and printed across India.`}
       />
 
       {categories.length > 0 ? (
-        <SimpleGrid cols={{ base: 2, sm: 3, lg: 4 }} spacing="md">
-          {categories.map((category) => (
-            <CategoryCard key={category.id} category={category} />
-          ))}
-        </SimpleGrid>
+        <>
+          <CategoryChips categories={categories} />
+
+          <Stack gap="lg">
+            {categories.map((category, index) => (
+              <CategoryFeatureRow key={category.id} category={category} index={index} />
+            ))}
+          </Stack>
+
+          <Box mt={48} p={{ base: 'lg', md: 48 }} bg="white" style={{ borderRadius: 'var(--mantine-radius-lg)' }}>
+            <Stack align="center" gap="md">
+              <PageHeader title="Unsure about dimensions or drape?" />
+              <Text c="navy.6" ta="center" maw={520} mt={-24}>
+                Send us the bed size or room you are buying for and we will point you to the right
+                weave.
+              </Text>
+              <Anchor
+                href={`https://wa.me/${SUPPORT_WHATSAPP}?text=${encodeURIComponent('Hi, I need help choosing a size')}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                underline="never"
+              >
+                <Box px={20} py={11} bg="#42634C" style={{ borderRadius: 'var(--mantine-radius-md)' }}>
+                  <Text fz="sm" fw={600} c="white">
+                    Ask us on WhatsApp
+                  </Text>
+                </Box>
+              </Anchor>
+            </Stack>
+          </Box>
+        </>
       ) : (
         <Center py="xl">
           <Text size="lg" c="dimmed">No categories available at the moment.</Text>
