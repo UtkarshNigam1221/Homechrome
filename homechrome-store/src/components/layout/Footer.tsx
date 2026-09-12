@@ -110,6 +110,7 @@ export default function Footer({ categories = [] }: { categories?: Category[] })
             </FooterColumn>
 
             <FooterColumn title="Policies">
+              <FooterLink href="/policies">All Policies</FooterLink>
               <FooterLink href="/privacy-policy">Privacy Policy</FooterLink>
               <FooterLink href="/terms">Terms &amp; Conditions</FooterLink>
               <FooterLink href="/refund-policy">Refund &amp; Replacement</FooterLink>
