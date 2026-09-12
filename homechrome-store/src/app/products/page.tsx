@@ -4,7 +4,7 @@ import ProductsView from './ProductsView';
 
 import { API_BASE, PRODUCTS_PAGE_SIZE } from '@/lib/constants';
 import { ROUTES } from '@/lib/routes';
-import { Product } from '@/types';
+import { Category, Product } from '@/types';
 
 export const metadata: Metadata = {
   alternates: { canonical: '/products' },
@@ -35,10 +35,33 @@ async function getProducts(search: string): Promise<{ products: Product[]; nextC
   }
 }
 
+async function getCategories(): Promise<Category[]> {
+  try {
+    const res = await fetch(`${API_BASE}${ROUTES.CATALOG.CATEGORIES}`, {
+      next: { revalidate: 3600 },
+    });
+    if (!res.ok) return [];
+    const json = await res.json();
+    return json.data || [];
+  } catch {
+    return [];
+  }
+}
+
 export default async function ProductsPage({ searchParams }: PageProps) {
   const sp = await searchParams;
   const search = typeof sp.search === 'string' ? sp.search : '';
-  const { products, nextCursor } = await getProducts(search);
+  const [{ products, nextCursor }, categories] = await Promise.all([
+    getProducts(search),
+    getCategories(),
+  ]);
 
-  return <ProductsView products={products} initialCursor={nextCursor} initialSearch={search} />;
+  return (
+    <ProductsView
+      products={products}
+      initialCursor={nextCursor}
+      initialSearch={search}
+      categories={categories}
+    />
+  );
 }

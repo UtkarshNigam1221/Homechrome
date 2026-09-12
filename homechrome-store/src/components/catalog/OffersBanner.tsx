@@ -1,20 +1,16 @@
 'use client';
 
+import { ClipboardDocumentIcon } from '@heroicons/react/24/outline';
 import { SparklesIcon } from '@heroicons/react/24/solid';
 import { Box, Container, Group, Text, UnstyledButton } from '@mantine/core';
 import { useClipboard } from '@mantine/hooks';
-import { useMemo } from 'react';
 
 import { PublicCoupon } from '@/types';
 
-import { displayFont } from '@/app/fonts';
 import { formatPrice } from '@/lib/utils';
 
-const INDIGO = 'var(--mantine-color-navy-7)';
 const BAND = 'var(--mantine-color-navy-1)';
-const CHALK = 'var(--mantine-color-brand-0)';
-// Chalk on this red is 4.53:1 — over AA, but only just: do not lighten either side.
-const RED = '#D92D20';
+const INK = 'var(--mantine-color-navy-7)';
 
 function offerParts(coupon: PublicCoupon): { magnitude: string; terms: string } {
   const magnitude =
@@ -28,98 +24,47 @@ function offerParts(coupon: PublicCoupon): { magnitude: string; terms: string } 
   return { magnitude, terms: `off${above}${cap}` };
 }
 
-// Must track the span's own type and padding below, or the outline stops fitting the box.
-const STAMP_CHAR_W = 12 * 0.6 + 12 * 0.09;
-const STAMP_PAD_X = 20;
-const STAMP_H = 12 * 1.5 + 12;
-
-// In px, so a long code and a short one scallop identically.
-const LOBE_PITCH = 9;
-const LOBE_DEPTH = 2.2;
-
-// Walked by arc length, not angle: on a box this wide, equal angles are unequal distances
-// and the lobes pile up at the ends. Returns its assumed width — the caller must pin it.
-function blockStamp(codeLength: number): { clip: string; width: number } {
-  const w = codeLength * STAMP_CHAR_W + STAMP_PAD_X * 2;
-  const a = w / 2;
-  const b = STAMP_H / 2;
-
-  const samples = 256;
-  const ts: number[] = [];
-  const arc: number[] = [];
-  let s = 0;
-  for (let i = 0; i <= samples; i += 1) {
-    const t = (i / samples) * Math.PI * 2;
-    if (i > 0) {
-      const prev = ((i - 1) / samples) * Math.PI * 2;
-      s += Math.hypot(a * (Math.cos(t) - Math.cos(prev)), b * (Math.sin(t) - Math.sin(prev)));
-    }
-    ts.push(t);
-    arc.push(s);
-  }
-  const total = arc[samples];
-  // A whole number, or the seam where the walk closes shows as a flat spot.
-  const lobes = Math.max(8, Math.round(total / LOBE_PITCH));
-
-  // Vertices by arc length too, or the long edges starve and the outline goes ragged.
-  const steps = lobes * 6;
-  const coords: string[] = [];
-  let j = 0;
-  for (let k = 0; k < steps; k += 1) {
-    const target = (k / steps) * total;
-    while (j < samples - 1 && arc[j + 1] < target) j += 1;
-    const span = arc[j + 1] - arc[j] || 1;
-    const t = ts[j] + ((target - arc[j]) / span) * (ts[j + 1] - ts[j]);
-
-    const phase = (target / total) * lobes * Math.PI * 2;
-    const inset = (LOBE_DEPTH * (1 - Math.cos(phase))) / 2;
-    // Outward normal, so the dip cuts perpendicular to the edge.
-    const nx = b * Math.cos(t);
-    const ny = a * Math.sin(t);
-    const n = Math.hypot(nx, ny) || 1;
-    const x = a * Math.cos(t) - (inset * nx) / n;
-    const y = b * Math.sin(t) - (inset * ny) / n;
-    coords.push(`${(((x + a) / w) * 100).toFixed(2)}% ${(((y + b) / STAMP_H) * 100).toFixed(2)}%`);
-  }
-  return { clip: `polygon(${coords.join(', ')})`, width: w };
-}
-
-function CodeStamp({ code, tilt }: { code: string; tilt: string }) {
+/** Dashed chip carrying the code; clicking it copies. */
+function CodeChip({ code }: { code: string }) {
   const clipboard = useClipboard({ timeout: 2000 });
   const { copied } = clipboard;
-  const { clip, width } = useMemo(() => blockStamp(code.length), [code.length]);
 
   return (
     <UnstyledButton
       onClick={() => clipboard.copy(code)}
       aria-label={`Copy coupon code ${code}`}
-      // Focus ring lives on this unclipped box; clip-path on the child would eat it.
-      style={{ borderRadius: 'var(--mantine-radius-xs)', lineHeight: 0, rotate: tilt }}
+      style={{ borderRadius: 'var(--mantine-radius-sm)' }}
     >
       {/* aria-live: aria-label pins the button's name, so "Copied" is otherwise silent.
           userSelect: a refused clipboard write leaves selecting by hand as the only way. */}
-      <span
+      <Group
+        component="span"
         aria-live="polite"
+        gap={5}
+        wrap="nowrap"
+        align="center"
+        px={9}
+        py={2}
         style={{
-          display: 'block',
-          minWidth: width,
-          boxSizing: 'border-box',
-          textAlign: 'center',
           userSelect: 'text',
-          fontFamily: 'var(--mantine-font-family-monospace)',
-          fontSize: '0.75rem',
-          fontWeight: 700,
-          letterSpacing: '0.09em',
-          lineHeight: 1.5,
-          color: CHALK,
-          background: copied ? INDIGO : RED,
-          clipPath: clip,
-          padding: '0.375rem 1.25rem',
-          transition: 'background 140ms ease',
+          borderRadius: 'var(--mantine-radius-sm)',
+          border: `1px dashed var(--mantine-color-${copied ? 'brand-5' : 'navy-4'})`,
+          background: `var(--mantine-color-${copied ? 'brand-1' : 'navy-2'})`,
+          transition: 'background 140ms ease, border-color 140ms ease',
         }}
       >
-        {copied ? 'Copied' : code}
-      </span>
+        <Text
+          component="span"
+          fz={11}
+          fw={700}
+          c="brand.6"
+          tt="uppercase"
+          style={{ letterSpacing: '0.1em' }}
+        >
+          {copied ? 'Copied' : code}
+        </Text>
+        {!copied && <ClipboardDocumentIcon width={11} height={11} color="var(--mantine-color-brand-6)" />}
+      </Group>
     </UnstyledButton>
   );
 }
@@ -141,42 +86,33 @@ export default function OffersBanner({ coupons }: OffersBannerProps) {
     <Box
       component="section"
       aria-label="Current offers"
-      py="0.3125rem"
+      py={6}
       style={{ background: BAND, borderBottom: '1px solid var(--mantine-color-navy-2)' }}
     >
       <Container size="xl">
-        <Group justify="center" gap="lg" wrap="wrap">
+        <Group justify="center" gap="md" wrap="wrap">
           <SparklesIcon width={15} height={15} color="var(--mantine-color-brand-5)" />
           {shown.map((coupon, i) => {
             const { magnitude, terms } = offerParts(coupon);
             return (
               <Group
                 key={coupon.code}
-                gap="0.5rem"
+                gap={7}
                 justify="center"
+                wrap="nowrap"
                 // One per line on a phone would make the band as tall as the hero.
                 visibleFrom={i > 0 ? 'sm' : undefined}
               >
-                <Text
-                  component="span"
-                  c={INDIGO}
-                  fz="1.0625rem"
-                  fw={700}
-                  lh={1.2}
-                  style={{ fontFamily: displayFont.style.fontFamily }}
-                >
-                  {magnitude}
+                <Text component="span" c={INK} fz="0.8125rem" fw={500} lh={1.4}>
+                  {magnitude} {terms} — use code
                 </Text>
-                <Text component="span" c={INDIGO} fz="0.8125rem" fw={500} lh={1.4}>
-                  {terms}
-                </Text>
-                <CodeStamp code={coupon.code} tilt={i % 2 === 0 ? '-1.5deg' : '1.5deg'} />
+                <CodeChip code={coupon.code} />
               </Group>
             );
           })}
           {/* Matches the shipping policy's own wording: free on all orders, no threshold. */}
-          <Text component="span" c={INDIGO} fz="0.8125rem" fw={500} visibleFrom="md">
-            Free Shipping Across India
+          <Text component="span" c={INK} fz="0.8125rem" fw={500} visibleFrom="md">
+            | Free Shipping Across India
           </Text>
         </Group>
       </Container>

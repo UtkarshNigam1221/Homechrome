@@ -13,9 +13,10 @@ import {
   Title,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
+import Link from 'next/link';
 import { useCallback, useState } from 'react';
 
-import { CategoryAttribute } from '@/types';
+import { Category, CategoryAttribute } from '@/types';
 
 export interface FilterValues {
   minPrice: number | null;
@@ -29,6 +30,10 @@ interface FilterSidebarProps {
   onFiltersChange: (filters: FilterValues) => void;
   filterOptions?: Record<string, string[]>;
   categoryAttributes?: CategoryAttribute[];
+  /** Renders the collection list. These navigate — the catalogue API takes no
+   *  category filter, and every collection already has its own route. */
+  categories?: Category[];
+  activeCategorySlug?: string;
 }
 
 export default function FilterSidebar({
@@ -36,6 +41,8 @@ export default function FilterSidebar({
   onFiltersChange,
   filterOptions,
   categoryAttributes,
+  categories,
+  activeCategorySlug,
 }: FilterSidebarProps) {
   const [minInput, setMinInput] = useState<number | ''>(
     filters.minPrice !== null ? filters.minPrice / 100 : '',
@@ -85,6 +92,35 @@ export default function FilterSidebar({
 
   return (
     <Stack gap="lg" component="aside">
+      {categories && categories.length > 0 && (
+        <Stack gap={6}>
+          <Text fz={12} fw={700} c="navy.9" style={{ letterSpacing: '0.1em' }}>
+            CATEGORIES
+          </Text>
+          {categories.map((category) => {
+            const active = category.slug === activeCategorySlug;
+            return (
+              <Anchor
+                key={category.id}
+                component={Link}
+                href={`/c/${category.slug}`}
+                underline="never"
+                py={3}
+              >
+                <Group justify="space-between" wrap="nowrap" gap="xs">
+                  <Text size="sm" fw={active ? 600 : 400} c={active ? 'brand.5' : 'navy.7'}>
+                    {category.name}
+                  </Text>
+                  <Text size="xs" c="navy.5">
+                    {category.product_count}
+                  </Text>
+                </Group>
+              </Anchor>
+            );
+          })}
+        </Stack>
+      )}
+
       <Group justify="space-between">
         <Title order={3} size="md">Filters</Title>
         {hasActive && (

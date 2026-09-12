@@ -16,18 +16,20 @@ import {
 import { useScrollDepth } from '@/hooks/useScrollDepth';
 import { track } from '@/lib/analytics';
 import { ROUTES } from '@/lib/routes';
-import { Product } from '@/types';
+import { Category, Product } from '@/types';
 
 interface ProductsViewProps {
   products: Product[];
   initialCursor?: string;
   initialSearch: string;
+  categories?: Category[];
 }
 
 export default function ProductsView({
   products: initialProducts,
   initialCursor,
   initialSearch,
+  categories,
 }: ProductsViewProps) {
   const searchParams = useSearchParams();
   const currentSearch = searchParams.get('search') ?? initialSearch;
@@ -89,7 +91,13 @@ export default function ProductsView({
         loading={loading}
         hasMore={hasMore}
         onLoadMore={loadMore}
-        filtersSidebar={<FilterSidebar filters={filters} onFiltersChange={handleFiltersChange} />}
+        filtersSidebar={
+          <FilterSidebar
+            filters={filters}
+            onFiltersChange={handleFiltersChange}
+            categories={categories}
+          />
+        }
       />
     </Container>
   );
