@@ -1,6 +1,13 @@
 'use client';
 
-import { EnvelopeIcon, PhoneIcon } from '@heroicons/react/24/outline';
+import {
+  CheckBadgeIcon,
+  EnvelopeIcon,
+  LockClosedIcon,
+  PhoneIcon,
+  SparklesIcon,
+  TruckIcon,
+} from '@heroicons/react/24/outline';
 import {
   ActionIcon,
   Anchor,
@@ -16,22 +23,24 @@ import Image from 'next/image';
 import Link from 'next/link';
 
 import logo80 from '@/assets/logo-80.webp';
-import { WhatsAppIcon } from '@/components/ui/whatsapp-icon';
+
+import { displayFont } from '@/app/fonts';
+import { Category } from '@/types';
+import { WhatsAppButton } from '@/components/ui/whatsapp-button';
 import {
   INSTAGRAM_URL,
   SUPPORT_EMAIL,
   SUPPORT_PHONE,
   SUPPORT_PHONE_TEL,
-  SUPPORT_WHATSAPP,
 } from '@/lib/constants';
 
-export default function Footer() {
+export default function Footer({ categories = [] }: { categories?: Category[] }) {
   return (
     <Box
       component="footer"
-      bg="gray.0"
+      bg="navy.1"
       mt={64}
-      style={{ borderTop: '1px solid var(--mantine-color-gray-2)' }}
+      style={{ borderTop: '1px solid var(--mantine-color-navy-2)' }}
     >
       <Container size="xl">
         {/* Top: brand left, link groups right */}
@@ -42,18 +51,33 @@ export default function Footer() {
           justify="space-between"
           align={{ base: 'center', sm: 'flex-start' }}
         >
-          <Flex direction="column" gap={6} maw={280} align={{ base: 'center', sm: 'flex-start' }}>
+          <Flex direction="column" gap={6} maw={340} align={{ base: 'center', sm: 'flex-start' }}>
             <Anchor component={Link} href="/" underline="never" w="fit-content">
               <Group gap={10} align="center" wrap="nowrap">
                 <Image src={logo80} alt="Homechrome" style={{ height: 36, width: 'auto' }} unoptimized />
-                <Text fw={700} size="lg" c="navy.7" style={{ letterSpacing: '-0.01em' }}>
-                  HOME<Text span c="brand">CHROME</Text>
-                </Text>
+                <Stack gap={0}>
+                  <Text
+                    fz={20}
+                    fw={600}
+                    c="navy.9"
+                    lh={1.1}
+                    style={{ fontFamily: displayFont.style.fontFamily }}
+                  >
+                    HOME<Text span c="brand.5" inherit>CHROME</Text>
+                  </Text>
+                  <Text fz={9} fw={600} c="navy.5" style={{ letterSpacing: '0.12em' }}>
+                    HANDWOVEN COMFORT &amp; LIVING
+                  </Text>
+                </Stack>
               </Group>
             </Anchor>
             <Text size="sm" c="dimmed" ta={{ base: 'center', sm: 'left' }}>
               Premium handloom textiles from across India. Celebrating the art of traditional weaving.
             </Text>
+            <Group gap="xs" mt={6} wrap="nowrap">
+              <CraftPill icon={<SparklesIcon width={13} height={13} />}>MADE IN INDIA</CraftPill>
+              <CraftPill icon={<CheckBadgeIcon width={13} height={13} />}>FREE SHIPPING ALWAYS</CraftPill>
+            </Group>
           </Flex>
 
           {/* Links render on every breakpoint: legal/policy pages must be
@@ -66,15 +90,24 @@ export default function Footer() {
           >
             <FooterColumn title="Shop">
               <FooterLink href="/products">All Products</FooterLink>
+              {categories.slice(0, 3).map((c) => (
+                <FooterLink key={c.slug} href={`/c/${c.slug}`}>
+                  {c.name}
+                </FooterLink>
+              ))}
               <FooterLink href="/categories">Categories</FooterLink>
             </FooterColumn>
 
-            <FooterColumn title="Customer">
+            <FooterColumn title="Customer Care">
               <FooterLink href="/track">Track Order</FooterLink>
               <FooterLink href="/account">My Account</FooterLink>
+              {/* The only other route here was the grievance deep link, which
+                  lands past the top of the page. */}
+              <FooterLink href="/contact">Contact Us</FooterLink>
             </FooterColumn>
 
             <FooterColumn title="Policies">
+              <FooterLink href="/policies">All Policies</FooterLink>
               <FooterLink href="/privacy-policy">Privacy Policy</FooterLink>
               <FooterLink href="/terms">Terms &amp; Conditions</FooterLink>
               <FooterLink href="/refund-policy">Refund &amp; Replacement</FooterLink>
@@ -83,12 +116,12 @@ export default function Footer() {
             </FooterColumn>
 
             <FooterColumn title="Need Help?">
-              <FooterLink
-                href={`https://wa.me/${SUPPORT_WHATSAPP}?text=${encodeURIComponent('Hi, I need help with my order')}`}
-                icon={<WhatsAppIcon size={16} />}
-              >
-                WhatsApp us
-              </FooterLink>
+              <WhatsAppButton
+                message="Hi, I need help with my order"
+                label="WhatsApp Us"
+                fullWidth={false}
+                size="sm"
+              />
               <FooterLink href={`mailto:${SUPPORT_EMAIL}`} icon={<EnvelopeIcon width={15} height={15} />}>
                 Email us
               </FooterLink>
@@ -108,11 +141,21 @@ export default function Footer() {
           direction={{ base: 'column', sm: 'row' }}
           justify="space-between"
           align="center"
-          style={{ borderTop: '1px solid var(--mantine-color-gray-2)' }}
+          style={{ borderTop: '1px solid var(--mantine-color-navy-2)' }}
         >
           <Text size="sm" c="dimmed">
-            &copy; {new Date().getFullYear()} Homechrome. All rights reserved.
+            &copy; {new Date().getFullYear()} Homechrome. All rights reserved. Handcrafted with
+            pride in India.
           </Text>
+          <Group gap="lg" wrap="wrap" justify="center">
+            <Group gap={6} wrap="nowrap">
+              <LockClosedIcon width={14} height={14} color="var(--mantine-color-navy-5)" />
+              <Text size="xs" c="dimmed" fw={500}>100% Safe &amp; Secure Payments</Text>
+            </Group>
+            <Group gap={6} wrap="nowrap">
+              <TruckIcon width={14} height={14} color="var(--mantine-color-navy-5)" />
+              <Text size="xs" c="dimmed" fw={500}>Pan-India Express Delivery</Text>
+            </Group>
           <ActionIcon
             component="a"
             href={INSTAGRAM_URL}
@@ -125,17 +168,39 @@ export default function Footer() {
           >
             <InstagramIcon />
           </ActionIcon>
+          </Group>
         </Flex>
       </Container>
     </Box>
   );
 }
 
+function CraftPill({ icon, children }: { icon: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <Group
+      gap={6}
+      wrap="nowrap"
+      px={10}
+      py={5}
+      c="navy.6"
+      style={{
+        border: '1px solid var(--mantine-color-navy-3)',
+        borderRadius: 'var(--mantine-radius-sm)',
+      }}
+    >
+      {icon}
+      <Text fz={10} fw={700} style={{ letterSpacing: '0.06em' }}>
+        {children}
+      </Text>
+    </Group>
+  );
+}
+
 function FooterColumn({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <Stack gap="xs">
-      <Text fw={500} size="lg" c="navy.7">
-        {title}
+      <Text fz={12} fw={700} c="navy.9" style={{ letterSpacing: '0.1em' }}>
+        {title.toUpperCase()}
       </Text>
       <Stack gap={6}>{children}</Stack>
     </Stack>

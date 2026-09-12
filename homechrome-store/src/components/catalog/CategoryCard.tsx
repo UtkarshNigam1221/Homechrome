@@ -1,11 +1,15 @@
 'use client';
 
-import { PhotoIcon } from '@heroicons/react/24/outline';
-import { AspectRatio, Card, Center, Stack, Text } from '@mantine/core';
+import { ArrowUpRightIcon, PhotoIcon } from '@heroicons/react/24/outline';
+import { AspectRatio, Box, Card, Center, Group, Stack, Text } from '@mantine/core';
 import { AssetImage } from '@/components/ui/asset-image';
 import Link from 'next/link';
 
 import { Category } from '@/types';
+
+import { stripMarkdown } from '@/lib/utils';
+
+import { displayFont } from '@/app/fonts';
 
 interface CategoryCardProps {
   category: Category;
@@ -23,7 +27,7 @@ export default function CategoryCard({ category }: CategoryCardProps) {
       style={{ textDecoration: 'none', overflow: 'hidden' }}
     >
       <Card.Section pos="relative">
-        <AspectRatio ratio={4 / 3} bg="gray.1">
+        <AspectRatio ratio={4 / 5} bg="navy.1">
           {category.image_url ? (
             <AssetImage
               src={category.image_url}
@@ -39,16 +43,56 @@ export default function CategoryCard({ category }: CategoryCardProps) {
             </Center>
           )}
         </AspectRatio>
+
+        {category.product_count > 0 && (
+          <Box
+            pos="absolute"
+            top={12}
+            right={12}
+            px={10}
+            py={5}
+            bg="rgba(252,249,244,0.92)"
+            style={{ borderRadius: 999, backdropFilter: 'blur(4px)' }}
+          >
+            <Text fz={11} fw={700} c="navy.8">
+              {category.product_count} {category.product_count === 1 ? 'Design' : 'Designs'}
+            </Text>
+          </Box>
+        )}
       </Card.Section>
 
-      <Stack p="md" gap={4}>
-        <Text fw={600} c="navy.7" lineClamp={2} style={{ minHeight: '2lh' }}>
-          {category.name}
-        </Text>
-        <Text size="sm" c="dimmed">
-          {category.product_count} {category.product_count === 1 ? 'product' : 'products'}
-        </Text>
-      </Stack>
+      <Group p="md" gap="sm" wrap="nowrap" justify="space-between" align="center">
+        <Stack gap={2} style={{ minWidth: 0 }}>
+          <Text
+            fz="xl"
+            fw={600}
+            c="navy.9"
+            lineClamp={1}
+            style={{ fontFamily: displayFont.style.fontFamily }}
+          >
+            {category.name}
+          </Text>
+          <Text size="sm" c="dimmed" lineClamp={1}>
+            {category.description
+              ? stripMarkdown(category.description)
+              : `${category.product_count} handcrafted pieces`}
+          </Text>
+        </Stack>
+        <Box
+          w={34}
+          h={34}
+          c="navy.8"
+          style={{
+            border: '1px solid var(--mantine-color-navy-3)',
+            borderRadius: 999,
+            display: 'grid',
+            placeItems: 'center',
+            flexShrink: 0,
+          }}
+        >
+          <ArrowUpRightIcon width={16} height={16} />
+        </Box>
+      </Group>
     </Card>
   );
 }

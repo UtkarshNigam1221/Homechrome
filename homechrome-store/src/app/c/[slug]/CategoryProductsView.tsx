@@ -24,12 +24,14 @@ interface CategoryProductsViewProps {
   category: Category;
   products: Product[];
   initialCursor?: string;
+  categories?: Category[];
 }
 
 export default function CategoryProductsView({
   category,
   products: initialProducts,
   initialCursor,
+  categories,
 }: CategoryProductsViewProps) {
   const searchParams = useSearchParams();
   const [filterOptions, setFilterOptions] = useState<Record<string, string[]>>({});
@@ -128,6 +130,8 @@ export default function CategoryProductsView({
             onFiltersChange={handleFiltersChange}
             filterOptions={filterOptions}
             categoryAttributes={categoryAttributes}
+            categories={categories}
+            activeCategorySlug={category.slug}
           />
         }
       />

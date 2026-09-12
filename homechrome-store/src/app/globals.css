@@ -1,25 +1,24 @@
 html {
-  /* Scale all rem-based sizes site-wide. Default browser is 16px; 17px bumps
-     all font/spacing rem values ~6%. Affects Mantine + Tailwind uniformly. */
-  font-size: 17px;
+  /* The design is drawn on a 16px root; a bump here rescales every rem token
+     and pushes the whole type ramp off the mockup. */
+  font-size: 16px;
 }
 
 :root {
   /* Single source of truth for the sticky header's height. Header enforces it
-     via min-height; sticky columns offset against it (+ a gap). rem so it
-     scales with the font-size bump above. */
+     via min-height; sticky columns offset against it (+ a gap). */
   --app-header-h: 3.5rem;
 }
 
 body {
-  background: #F5F0EB;
+  background: var(--mantine-color-body);
   color: var(--mantine-color-text);
 }
 
 /* iOS Safari auto-zooms (and stays zoomed) when a focused input's font-size is
    < 16px, which left the page zoomed/misaligned after the OTP step and across
-   subsequent navigations. Mantine's default input size is ~14.9px at our 17px
-   root, so force >=16px on small screens — focusing any field (phone, OTP,
+   subsequent navigations. Mantine's default input size is still under 16px at
+   our root, so force >=16px on small screens — focusing any field (phone, OTP,
    checkout, search) then never triggers the zoom. */
 @media (max-width: 768px) {
   input,
@@ -50,14 +49,31 @@ img {
   transition: opacity 0.3s ease;
 }
 
-/* Mantine draws focus rings in the primary shade: brand.5 is 2.23:1 on white, under the
-   3:1 WCAG asks. Only outline-color — the variable also paints primary buttons. */
-:root .mantine-focus-auto:focus-visible,
-:root .mantine-focus-always:focus {
-  outline-color: var(--mantine-color-navy-7);
-}
-
 /* Coupon offer rows: hover only where there is something to click. */
 [data-usable]:hover {
   background: var(--mantine-color-brand-1);
+}
+
+/* Alternate category rows mirror themselves, but only once they sit side by
+   side: stacked, every row must still lead with its image. */
+@media (min-width: 62em) {
+  [data-feature-flip] > *:first-child {
+    order: 2;
+  }
+  [data-feature-flip] > *:last-child {
+    order: 1;
+  }
+}
+
+/* Clear the fixed phone tab bar so it never covers the end of the page. */
+@media (max-width: 61.99em) {
+  body {
+    padding-bottom: 64px;
+  }
+}
+
+/* Anchored targets land under the sticky header otherwise — following
+   /contact#grievance hid the card's heading behind it. */
+:target {
+  scroll-margin-top: calc(var(--app-header-h) + 1rem);
 }

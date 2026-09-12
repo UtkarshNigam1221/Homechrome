@@ -1,6 +1,9 @@
 'use client';
 
 import {
+  MagnifyingGlassIcon,
+} from '@heroicons/react/24/outline';
+import {
   Anchor,
   Box,
   Button,
@@ -15,10 +18,16 @@ import {
 } from '@mantine/core';
 import { useState } from 'react';
 
-import { PageHeader } from '@/components/ui/page-header';
+import { AssuranceRow } from '@/components/ui/assurance-row';
+import { Breadcrumb } from '@/components/ui/breadcrumb';
+import { WhatsAppButton } from '@/components/ui/whatsapp-button';
 import api from '@/lib/api';
+import { SUPPORT_PHONE } from '@/lib/constants';
 import { ROUTES } from '@/lib/routes';
 import { formatDateTime as formatDate } from '@/lib/utils';
+
+import { displayFont } from '../fonts';
+
 
 interface StatusHistoryEntry {
   status: string;
@@ -67,43 +76,96 @@ export default function TrackOrderPage() {
   };
 
   return (
-    <Container size="md" py="xl">
-      <PageHeader
-        title="Track Your Order"
-        description="Enter your order number to check the delivery status."
-      />
+    <Container size="lg" py="xl">
+      <Breadcrumb items={[{ label: 'Home', href: '/' }, { label: 'Track Order' }]} />
 
-      <form onSubmit={handleSubmit}>
-        <Group gap="sm" mb="xl" align="flex-start">
-          <TextInput
-            flex={1}
-            value={orderNumber}
-            onChange={(e) => setOrderNumber(e.target.value)}
-            placeholder="Enter your order number (e.g., HC-20260220-XXXX)"
-            error={error}
-          />
-          <Button type="submit" loading={loading} color="brand">
-            Track
-          </Button>
+      <Stack gap="md" mb="xl" maw={640}>
+        <Group gap={8} w="fit-content" px={12} py={6} bg="navy.2" style={{ borderRadius: 999 }}>
+          <Box w={7} h={7} bg="var(--mantine-color-leaf-5)" style={{ borderRadius: 999 }} />
+          <Text fz={11} fw={700} c="navy.7" style={{ letterSpacing: '0.12em' }}>
+            DISPATCH TO DOORSTEP
+          </Text>
         </Group>
-      </form>
+
+        <Title
+          order={1}
+          fz={{ base: '2rem', sm: '2.75rem' }}
+          fw={600}
+          lh={1.12}
+          c="navy.9"
+        >
+          Track Your{' '}
+          <Text span inherit c="brand.5" fs="italic">
+            Order
+          </Text>
+        </Title>
+
+        <Text c="navy.6" lh={1.65}>
+          Enter the order number from your confirmation and we will show you where the parcel has
+          reached.
+        </Text>
+      </Stack>
+
+      <Card shadow="sm" radius="lg" padding="lg" withBorder={false} mb="lg">
+        <form onSubmit={handleSubmit}>
+          <Stack gap="sm">
+            <Text fz={11} fw={700} c="navy.5" style={{ letterSpacing: '0.1em' }}>
+              ORDER NUMBER
+            </Text>
+            <Group gap="sm" align="flex-start" wrap="nowrap">
+              <TextInput
+                flex={1}
+                size="md"
+                value={orderNumber}
+                onChange={(e) => setOrderNumber(e.target.value)}
+                placeholder="e.g. HC-20260220-XXXX"
+                error={error}
+              />
+              <Button
+                type="submit"
+                loading={loading}
+                color="brand"
+                size="md"
+                radius="sm"
+                leftSection={<MagnifyingGlassIcon width={17} height={17} />}
+              >
+                Track
+              </Button>
+            </Group>
+            <Text fz="xs" c="navy.6">
+              Your order number is in the confirmation message we sent when the order was placed.
+            </Text>
+          </Stack>
+        </form>
+      </Card>
 
       {tracking && (
         <Stack gap="lg">
-          <Card shadow="sm" radius="lg" padding="md">
+          <Card shadow="sm" radius="lg" padding="lg">
             <Stack gap="md">
-              <Title order={2} size="md">Order #{tracking.order_number}</Title>
-              <Text size="sm" c="dimmed">
-                Current Status:{' '}
-                <Text span fw={500} c="navy.7">{tracking.status}</Text>
-              </Text>
+              <Group justify="space-between" align="center" wrap="wrap" gap="sm">
+                <Title
+                  order={2}
+                  fz={{ base: '1.25rem', sm: '1.5rem' }}
+                  fw={600}
+                  c="navy.9"
+                >
+                  Order #{tracking.order_number}
+                </Title>
+                <Group gap={7} px={11} py={5} bg="leaf.1" style={{ borderRadius: 999 }}>
+                  <Box w={7} h={7} bg="var(--mantine-color-leaf-6)" style={{ borderRadius: 999 }} />
+                  <Text fz={11} fw={700} c="leaf.6" tt="uppercase" style={{ letterSpacing: '0.06em' }}>
+                    {tracking.status}
+                  </Text>
+                </Group>
+              </Group>
 
               {/* The handler returns a non-nil shipment for legacy rows even
                   when every displayable field is blank, so gate on content. */}
               {(tracking.shipment?.courier_name ||
                 tracking.shipment?.awb_number ||
                 tracking.shipment?.tracking_url) && (
-                <Card bg="gray.0" radius="md" padding="md" withBorder={false}>
+                <Card bg="navy.1" radius="md" padding="md" withBorder={false}>
                   <Stack gap="xs">
                     <Title order={3} size="sm">Shipment Details</Title>
                     <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="md">
@@ -148,7 +210,14 @@ export default function TrackOrderPage() {
           {tracking.status_history && tracking.status_history.length > 0 && (
             <Card shadow="sm" radius="lg" padding="md">
               <Stack gap="md">
-                <Title order={3} size="sm">Order Timeline</Title>
+                <Title
+                  order={3}
+                  fz="1.125rem"
+                  fw={600}
+                  c="navy.9"
+                >
+                  Dispatch log
+                </Title>
                 <Box pos="relative" pl={40}>
                   <Box
                     pos="absolute"
@@ -187,8 +256,35 @@ export default function TrackOrderPage() {
               </Stack>
             </Card>
           )}
+
+          <Card shadow="sm" radius="lg" padding="lg" withBorder={false} bg="navy.1">
+            <Group justify="space-between" align="center" gap="md" wrap="wrap">
+              <Stack gap={2}>
+                <Text
+                  fz="1.125rem"
+                  fw={600}
+                  c="navy.9"
+                  style={{ fontFamily: displayFont.style.fontFamily }}
+                >
+                  Something not right with this parcel?
+                </Text>
+                <Text fz="sm" c="navy.6">
+                  Message us with your order number and we will pick it up from there.
+                </Text>
+              </Stack>
+              <WhatsAppButton
+                message={`Hi, I need help with order ${tracking.order_number}`}
+                label={`WhatsApp ${SUPPORT_PHONE}`}
+                fullWidth={false}
+              />
+            </Group>
+          </Card>
         </Stack>
       )}
+
+      <Box mt="xl">
+        <AssuranceRow variant="cards" copy="short" />
+      </Box>
     </Container>
   );
 }

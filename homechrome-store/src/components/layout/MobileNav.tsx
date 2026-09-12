@@ -3,33 +3,32 @@
 import {
   ChatBubbleLeftRightIcon,
   ChevronRightIcon,
-  ShoppingBagIcon,
+  RectangleGroupIcon,
   Squares2X2Icon,
+  TruckIcon,
   UserIcon,
 } from '@heroicons/react/24/outline';
 import {
   Anchor,
-  AspectRatio,
   Box,
   Button,
-  Center,
   Divider,
   Drawer,
   Group,
   NavLink,
   ScrollArea,
-  SimpleGrid,
   Stack,
   Text,
-  Title,
 } from '@mantine/core';
 import Image from 'next/image';
 import Link from 'next/link';
 
-import { AssetImage } from '@/components/ui/asset-image';
 import logo80 from '@/assets/logo-80.webp';
+import { WhatsAppButton } from '@/components/ui/whatsapp-button';
 import { useAuthStore } from '@/stores/auth';
 import { Category } from '@/types';
+
+import { displayFont } from '@/app/fonts';
 
 interface MobileNavProps {
   isOpen: boolean;
@@ -45,87 +44,108 @@ export default function MobileNav({ isOpen, onClose, categories }: MobileNavProp
       opened={isOpen}
       onClose={onClose}
       position="left"
-      size="xs"
+      size="80%"
       closeButtonProps={{ 'aria-label': 'Close menu' }}
       padding={0}
       title={
         <Anchor component={Link} href="/" onClick={onClose} underline="never">
-          <Group gap="xs" align="center">
-            <Image src={logo80} alt="Homechrome" style={{ height: 28, width: 'auto' }} unoptimized />
-            <Text fw={700} size="lg" c="navy.7" style={{ letterSpacing: '-0.01em' }}>
-              HOME<Text span c="brand">CHROME</Text>
-            </Text>
+          <Group gap={8} align="center" wrap="nowrap">
+            <Image src={logo80} alt="Homechrome" style={{ height: 30, width: 'auto' }} unoptimized />
+            <Stack gap={0}>
+              <Text
+                fz={18}
+                fw={600}
+                c="navy.9"
+                lh={1.1}
+                style={{ fontFamily: displayFont.style.fontFamily }}
+              >
+                Homechrome
+              </Text>
+              <Text fz={9} fw={600} c="navy.5" style={{ letterSpacing: '0.12em' }}>
+                ARTISANAL HANDLOOM
+              </Text>
+            </Stack>
           </Group>
         </Anchor>
       }
       styles={{
         header: {
-          borderBottom: '1px solid var(--mantine-color-default-border)',
+          borderBottom: '1px solid var(--mantine-color-navy-2)',
           padding: 'var(--mantine-spacing-md)',
         },
         title: { flex: 1 },
-        content: { display: 'flex', flexDirection: 'column' },
+        content: { display: 'flex', flexDirection: 'column', maxWidth: 320 },
         body: { flex: 1, display: 'flex', flexDirection: 'column', padding: 0 },
       }}
     >
       <ScrollArea style={{ flex: 1 }}>
-        <Box p="md">
-          <Eyebrow>Categories</Eyebrow>
-          <SimpleGrid cols={3} spacing="xs" px="xs">
-            {categories.map((category) => (
-              <CategoryTile key={category.id} category={category} onClose={onClose} />
-            ))}
-          </SimpleGrid>
-
-          <Box mt="xs">
+        <Box px="sm" py="md">
+          <Eyebrow>Collections &amp; Shop</Eyebrow>
+          <DrawerRow
+            href="/products"
+            label="All Products"
+            icon={<Squares2X2Icon width={20} height={20} aria-hidden="true" />}
+            onClose={onClose}
+          />
+          {categories.map((category) => (
             <DrawerRow
-              href="/products"
-              label="All products"
-              icon={<Squares2X2Icon width={20} height={20} aria-hidden="true" />}
+              key={category.id}
+              href={`/c/${category.slug}`}
+              label={category.name}
+              icon={<RectangleGroupIcon width={20} height={20} aria-hidden="true" />}
               onClose={onClose}
             />
-          </Box>
+          ))}
+          <DrawerRow
+            href="/categories"
+            label="Categories"
+            icon={<Squares2X2Icon width={20} height={20} aria-hidden="true" />}
+            onClose={onClose}
+          />
         </Box>
-      </ScrollArea>
 
-      <Divider />
+        <Divider mx="sm" />
 
-      <Box p="sm">
-        {isAuthenticated ? (
-          <>
-            <Eyebrow>Account</Eyebrow>
+        <Box px="sm" py="md">
+          <Eyebrow>Your Orders</Eyebrow>
+          <DrawerRow
+            href="/track"
+            label="Track Order"
+            icon={<TruckIcon width={20} height={20} aria-hidden="true" />}
+            onClose={onClose}
+          />
+          {isAuthenticated && (
             <DrawerRow
               href="/account"
-              label="Account"
+              label="My Account"
               icon={<UserIcon width={20} height={20} aria-hidden="true" />}
               onClose={onClose}
             />
-            <DrawerRow
-              href="/account/orders"
-              label="Orders"
-              icon={<ShoppingBagIcon width={20} height={20} aria-hidden="true" />}
-              onClose={onClose}
-            />
-            <DrawerRow
-              href="/contact"
-              label="Contact us"
-              icon={<ChatBubbleLeftRightIcon width={20} height={20} aria-hidden="true" />}
-              onClose={onClose}
-            />
-          </>
-        ) : (
-          <Stack gap="xs">
-            <Button component={Link} href="/login" onClick={onClose} fullWidth color="brand">
+          )}
+          <DrawerRow
+            href="/contact"
+            label="Contact Us"
+            icon={<ChatBubbleLeftRightIcon width={20} height={20} aria-hidden="true" />}
+            onClose={onClose}
+          />
+          {/* Sits after the links, not between them. */}
+          {!isAuthenticated && (
+            <Button component={Link} href="/login" onClick={onClose} fullWidth color="brand" mt="sm">
               Sign In
             </Button>
-            <DrawerRow
-              href="/contact"
-              label="Contact us"
-              icon={<ChatBubbleLeftRightIcon width={20} height={20} aria-hidden="true" />}
-              onClose={onClose}
-            />
-          </Stack>
-        )}
+          )}
+        </Box>
+      </ScrollArea>
+
+      <Box p="md" bg="navy.1" style={{ borderTop: '1px solid var(--mantine-color-navy-2)' }}>
+        <WhatsAppButton
+          message="Hi, I need help with my order"
+          label="WhatsApp Concierge"
+          onClick={onClose}
+        />
+        <Text ta="center" fz="xs" c="navy.5" mt={8}>
+          Free shipping on every order
+        </Text>
       </Box>
     </Drawer>
   );
@@ -133,18 +153,9 @@ export default function MobileNav({ isOpen, onClose, categories }: MobileNavProp
 
 function Eyebrow({ children }: { children: React.ReactNode }) {
   return (
-    <Title
-      order={3}
-      size="xs"
-      tt="uppercase"
-      fw={600}
-      c="dimmed"
-      mb="xs"
-      px="xs"
-      style={{ letterSpacing: '0.05em' }}
-    >
-      {children}
-    </Title>
+    <Text fz={11} fw={700} c="navy.5" mb={6} px={10} style={{ letterSpacing: '0.12em' }}>
+      {children?.toString().toUpperCase()}
+    </Text>
   );
 }
 
@@ -167,51 +178,8 @@ function DrawerRow({ href, label, icon, onClose }: DrawerRowProps) {
         <ChevronRightIcon width={16} height={16} aria-hidden="true" style={{ opacity: 0.4 }} />
       }
       color="brand"
-      c="navy.7"
+      c="navy.8"
       style={{ borderRadius: 'var(--mantine-radius-md)' }}
     />
-  );
-}
-
-interface CategoryTileProps {
-  category: Category;
-  onClose: () => void;
-}
-
-function CategoryTile({ category, onClose }: CategoryTileProps) {
-  return (
-    <Anchor
-      component={Link}
-      href={`/c/${category.slug}`}
-      onClick={onClose}
-      underline="never"
-      c="navy.7"
-    >
-      <AspectRatio
-        ratio={1}
-        bg="gray.1"
-        style={{ borderRadius: 'var(--mantine-radius-md)', overflow: 'hidden' }}
-      >
-        {category.image_url ? (
-          <AssetImage
-            src={category.image_url}
-            alt={category.name}
-            sizes="120px"
-            width={120}
-            height={120}
-            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-          />
-        ) : (
-          <Center bg="brand.1" h="100%">
-            <Text fw={600} fz={22} c="brand.5">
-              {category.name.charAt(0).toUpperCase()}
-            </Text>
-          </Center>
-        )}
-      </AspectRatio>
-      <Text size="xs" fw={500} mt={4} lineClamp={2} style={{ lineHeight: 1.2 }}>
-        {category.name}
-      </Text>
-    </Anchor>
   );
 }

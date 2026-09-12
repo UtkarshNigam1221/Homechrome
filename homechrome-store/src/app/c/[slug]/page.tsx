@@ -44,6 +44,19 @@ const getCategoryProducts = cache(async function getCategoryProducts(
   }
 });
 
+const getAllCategories = cache(async (): Promise<Category[]> => {
+  try {
+    const res = await fetch(`${API_BASE}${ROUTES.CATALOG.CATEGORIES}`, {
+      next: { revalidate: 3600 },
+    });
+    if (!res.ok) return [];
+    const json = await res.json();
+    return json.data || [];
+  } catch {
+    return [];
+  }
+});
+
 export async function generateStaticParams() {
   try {
     const res = await fetch(`${API_BASE}${ROUTES.CATALOG.CATEGORIES}`, {
@@ -128,7 +141,10 @@ export default async function CategoryPage({ params }: PageProps) {
     );
   }
 
-  const { products, nextCursor } = await getCategoryProducts(category.id);
+  const [{ products, nextCursor }, allCategories] = await Promise.all([
+    getCategoryProducts(category.id),
+    getAllCategories(),
+  ]);
 
   return (
     <>
@@ -138,6 +154,7 @@ export default async function CategoryPage({ params }: PageProps) {
           category={category}
           products={products}
           initialCursor={nextCursor}
+          categories={allCategories}
         />
       </Suspense>
     </>

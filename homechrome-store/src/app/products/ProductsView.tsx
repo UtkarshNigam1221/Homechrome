@@ -3,6 +3,7 @@
 import { useSearchParams } from 'next/navigation';
 import { useCallback, useEffect } from 'react';
 
+import { CategoryChips } from '@/components/catalog/CategoryChips';
 import FilterSidebar, { FilterValues } from '@/components/catalog/FilterSidebar';
 import { ProductsBrowser } from '@/components/catalog/ProductsBrowser';
 import { Breadcrumb } from '@/components/ui/breadcrumb';
@@ -16,18 +17,24 @@ import {
 import { useScrollDepth } from '@/hooks/useScrollDepth';
 import { track } from '@/lib/analytics';
 import { ROUTES } from '@/lib/routes';
-import { Product } from '@/types';
+import { Category, CategoryAttribute, Product } from '@/types';
 
 interface ProductsViewProps {
   products: Product[];
   initialCursor?: string;
   initialSearch: string;
+  categories?: Category[];
+  filterOptions?: Record<string, string[]>;
+  categoryAttributes?: CategoryAttribute[];
 }
 
 export default function ProductsView({
   products: initialProducts,
   initialCursor,
   initialSearch,
+  categories,
+  filterOptions,
+  categoryAttributes,
 }: ProductsViewProps) {
   const searchParams = useSearchParams();
   const currentSearch = searchParams.get('search') ?? initialSearch;
@@ -79,8 +86,9 @@ export default function ProductsView({
       />
 
       <PageHeader
-        title={currentSearch ? `Results for "${currentSearch}"` : 'All Products'}
-        description={`${products.length}${hasMore ? '+' : ''} ${products.length === 1 && !hasMore ? 'product' : 'products'}${currentSearch ? ' found' : ''}`}
+        eyebrow={currentSearch ? undefined : 'The full catalogue'}
+        title={currentSearch ? `Results for "${currentSearch}"` : 'All Handcrafted Collections'}
+        description={`${products.length}${hasMore ? '+' : ''} ${products.length === 1 && !hasMore ? 'piece' : 'pieces'}${currentSearch ? ' found' : ' — bedsheets, dohars and cushions woven and printed across India.'}`}
       />
 
       <ProductsBrowser
@@ -88,7 +96,20 @@ export default function ProductsView({
         loading={loading}
         hasMore={hasMore}
         onLoadMore={loadMore}
-        filtersSidebar={<FilterSidebar filters={filters} onFiltersChange={handleFiltersChange} />}
+        mobileLead={
+          categories && categories.length > 0 ? (
+            <CategoryChips categories={categories} scrollable />
+          ) : undefined
+        }
+        filtersSidebar={
+          <FilterSidebar
+            filters={filters}
+            onFiltersChange={handleFiltersChange}
+            filterOptions={filterOptions}
+            categoryAttributes={categoryAttributes}
+            categories={categories}
+          />
+        }
       />
     </Container>
   );
