@@ -47,7 +47,7 @@ export default function MobileNav({ isOpen, onClose, categories }: MobileNavProp
       opened={isOpen}
       onClose={onClose}
       position="left"
-      size="xs"
+      size="80%"
       closeButtonProps={{ 'aria-label': 'Close menu' }}
       padding={0}
       title={
@@ -77,7 +77,7 @@ export default function MobileNav({ isOpen, onClose, categories }: MobileNavProp
           padding: 'var(--mantine-spacing-md)',
         },
         title: { flex: 1 },
-        content: { display: 'flex', flexDirection: 'column' },
+        content: { display: 'flex', flexDirection: 'column', maxWidth: 320 },
         body: { flex: 1, display: 'flex', flexDirection: 'column', padding: 0 },
       }}
     >

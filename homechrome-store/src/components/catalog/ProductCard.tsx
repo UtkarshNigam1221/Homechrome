@@ -115,7 +115,13 @@ export default function ProductCard({ product }: ProductCardProps) {
           <Stack pos="absolute" top={8} left={8} gap={6} align="flex-start">
             {hasDiscount && <DiscountBadge percent={discountPercent} variant="solid" />}
             {provenance && (
-              <Box px={8} py={3} bg="rgba(252,249,244,0.93)" style={{ borderRadius: 4 }}>
+              <Box
+                px={8}
+                py={3}
+                bg="rgba(252,249,244,0.93)"
+                visibleFrom="sm"
+                style={{ borderRadius: 4 }}
+              >
                 <Text fz={10} fw={700} c="navy.8" tt="capitalize" lineClamp={1}>
                   {provenance.toLowerCase()}
                 </Text>
@@ -133,6 +139,20 @@ export default function ProductCard({ product }: ProductCardProps) {
       </Card.Section>
 
       <Stack p="md" gap="xs">
+        {provenance && (
+          <Text
+            fz={10}
+            fw={700}
+            c="brand.5"
+            tt="uppercase"
+            lineClamp={1}
+            hiddenFrom="sm"
+            style={{ letterSpacing: '0.1em' }}
+          >
+            {provenance}
+          </Text>
+        )}
+
         <Link href={`/p/${product.slug}`} style={{ textDecoration: 'none' }}>
           <Text
             fz="md"
@@ -146,13 +166,13 @@ export default function ProductCard({ product }: ProductCardProps) {
         </Link>
 
         {product.description && (
-          <Text fz="xs" c="navy.6" lineClamp={1} mt={-4}>
+          <Text fz="xs" c="navy.6" lineClamp={1} mt={-4} visibleFrom="sm">
             {product.description.replace(/[*_`#]/g, '').trim()}
           </Text>
         )}
 
-        <Group align="baseline" gap="xs" wrap="nowrap">
-          <Text fz="xl" fw={700} c="navy.9">
+        <Group align="baseline" gap={6} wrap="wrap">
+          <Text fz={{ base: 'lg', sm: 'xl' }} fw={700} c="navy.9">
             {formatPrice(product.selling_price)}
           </Text>
           {hasDiscount && (
@@ -160,7 +180,13 @@ export default function ProductCard({ product }: ProductCardProps) {
               <Text size="sm" c="dimmed" td="line-through">
                 {formatPrice(product.base_price)}
               </Text>
-              <Text size="xs" fw={600} c="brand.6" style={{ whiteSpace: 'nowrap' }}>
+              <Text
+                size="xs"
+                fw={600}
+                c="brand.6"
+                visibleFrom="sm"
+                style={{ whiteSpace: 'nowrap' }}
+              >
                 Save {formatPrice(product.base_price - product.selling_price)}
               </Text>
             </>
@@ -192,8 +218,7 @@ export default function ProductCard({ product }: ProductCardProps) {
             )
           ) : (
             <Button
-              variant="filled"
-              color="brand"
+              variant="default"
               size="sm"
               radius="sm"
               fullWidth

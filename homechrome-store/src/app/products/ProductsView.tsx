@@ -3,6 +3,7 @@
 import { useSearchParams } from 'next/navigation';
 import { useCallback, useEffect } from 'react';
 
+import { CategoryChips } from '@/components/catalog/CategoryChips';
 import FilterSidebar, { FilterValues } from '@/components/catalog/FilterSidebar';
 import { ProductsBrowser } from '@/components/catalog/ProductsBrowser';
 import { Breadcrumb } from '@/components/ui/breadcrumb';
@@ -91,6 +92,11 @@ export default function ProductsView({
         loading={loading}
         hasMore={hasMore}
         onLoadMore={loadMore}
+        mobileLead={
+          categories && categories.length > 0 ? (
+            <CategoryChips categories={categories} scrollable />
+          ) : undefined
+        }
         filtersSidebar={
           <FilterSidebar
             filters={filters}

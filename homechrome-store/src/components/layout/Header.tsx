@@ -89,7 +89,7 @@ export default function Header({ categories }: HeaderProps) {
                     style={{ height: 36, width: 'auto' }}
                     unoptimized
                   />
-                  <Stack gap={0} visibleFrom="md">
+                  <Stack gap={0}>
                     <Text
                       fz={20}
                       fw={600}
@@ -99,8 +99,18 @@ export default function Header({ categories }: HeaderProps) {
                     >
                       HOME<Text span c="brand.5" inherit>CHROME</Text>
                     </Text>
-                    <Text fz={9} fw={600} c="navy.5" style={{ letterSpacing: '0.12em' }}>
-                      HANDWOVEN COMFORT &amp; LIVING
+                    <Text
+                      fz={9}
+                      fw={600}
+                      c="navy.5"
+                      style={{ letterSpacing: '0.12em', whiteSpace: 'nowrap' }}
+                    >
+                      <Box component="span" hiddenFrom="md">
+                        ARTISANAL HANDLOOM
+                      </Box>
+                      <Box component="span" visibleFrom="md">
+                        HANDWOVEN COMFORT &amp; LIVING
+                      </Box>
                     </Text>
                   </Stack>
                 </Group>
@@ -127,9 +137,20 @@ export default function Header({ categories }: HeaderProps) {
             </Group>
 
             <Group gap="sm" align="center" wrap="nowrap">
-              <Box flex={1} miw={{ base: 0, lg: 200 }} maw={{ base: '100%', lg: 240 }}>
+              <Box flex={1} miw={200} maw={240} visibleFrom="md">
                 <SpotlightTrigger />
               </Box>
+
+              <ActionIcon
+                variant="subtle"
+                color="navy"
+                size="lg"
+                hiddenFrom="md"
+                onClick={() => spotlight.open()}
+                aria-label="Search"
+              >
+                <MagnifyingGlassIcon width={22} height={22} />
+              </ActionIcon>
 
               <Tooltip label={cartCount > 0 ? `Cart (${cartCount})` : 'Cart'} withArrow>
                 <Indicator
@@ -168,6 +189,7 @@ export default function Header({ categories }: HeaderProps) {
                   color="brand"
                   radius="xl"
                   size="lg"
+                  visibleFrom="md"
                   aria-label={isAuthenticated ? 'My account' : 'Login'}
                 >
                   <UserIcon width={20} height={20} />

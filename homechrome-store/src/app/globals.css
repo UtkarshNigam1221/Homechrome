@@ -65,3 +65,10 @@ img {
     order: 1;
   }
 }
+
+/* Clear the fixed phone tab bar so it never covers the end of the page. */
+@media (max-width: 61.99em) {
+  body {
+    padding-bottom: 64px;
+  }
+}

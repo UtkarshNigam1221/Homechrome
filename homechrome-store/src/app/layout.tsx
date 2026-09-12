@@ -4,7 +4,7 @@ import type { Metadata } from 'next';
 import { MiniCartDrawer } from '@/components/cart/MiniCartDrawer';
 import OffersBanner from '@/components/catalog/OffersBanner';
 import EmbedderWarmer from '@/components/EmbedderWarmer';
-import { FloatingActions } from '@/components/layout/FloatingActions';
+import { MobileTabBar } from '@/components/layout/MobileTabBar';
 import Footer from '@/components/layout/Footer';
 import Header from '@/components/layout/Header';
 import { SpotlightSearchLoader } from '@/components/search/SpotlightSearchLoader';
@@ -71,7 +71,7 @@ export default async function RootLayout({
           <Header categories={categories} />
           <SpotlightSearchLoader categories={categories} />
           <MiniCartDrawer />
-          <FloatingActions />
+          <MobileTabBar />
           <main style={{ minHeight: '100vh' }}>{children}</main>
           <Footer categories={categories} />
         </Providers>

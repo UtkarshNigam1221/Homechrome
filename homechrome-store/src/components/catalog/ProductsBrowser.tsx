@@ -26,6 +26,8 @@ interface ProductsBrowserProps {
   /** Infinite scroll — omit both for a static list. */
   hasMore?: boolean;
   onLoadMore?: () => void;
+  /** Sits under the filter control on phones — the collection strip. */
+  mobileLead?: ReactNode;
 }
 
 export function ProductsBrowser({
@@ -36,6 +38,7 @@ export function ProductsBrowser({
   skeletonCount = 8,
   hasMore = false,
   onLoadMore,
+  mobileLead,
 }: ProductsBrowserProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
   // State, not a ref, so the observer effect re-runs when the sentinel mounts
@@ -102,6 +105,8 @@ export function ProductsBrowser({
           </Group>
         </Button>
       </Box>
+
+      {mobileLead && <Box hiddenFrom="lg">{mobileLead}</Box>}
 
       <Flex gap="xl">
         <Box w={256} flex="none" visibleFrom="lg">
