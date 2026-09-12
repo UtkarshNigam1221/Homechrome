@@ -6,6 +6,7 @@
 	build-lambda-store-auth build-lambda-store-catalog build-lambda-store-cart \
 	build-lambda-store-checkout build-lambda-store-orders build-lambda-store-tracking \
 	build-lambda-store-profile build-lambda-store-events build-lambda-store-webhooks \
+	build-lambda-push vapid-keys \
 	build-lambda-worker-metrics-consumer \
 	build-lambda-backfill \
 	cdk-synth cdk-deploy-dev cdk-deploy-prod cdk-destroy \
@@ -35,11 +36,12 @@ LAMBDA_BUILD_FLAGS=CGO_ENABLED=0 GOOS=linux GOARCH=arm64
 LAMBDA_OUT_DIR=./bin/lambda
 LAMBDA_SERVICES=auth user catalog order utm pricing inventory analytics notification coupon asset report audit \
 	store-auth store-catalog store-cart store-checkout store-orders store-tracking store-profile store-events store-webhooks \
+	push \
 	worker-metrics-consumer \
 	migrator
 
 # Active services for deployment
-LAMBDA_SERVICES_ACTIVE=auth user catalog asset order utm coupon store-auth store-catalog store-cart store-checkout store-orders store-tracking store-profile store-events store-webhooks migrator worker-metrics-consumer worker-embedding-backfill
+LAMBDA_SERVICES_ACTIVE=auth user catalog asset order utm coupon store-auth store-catalog store-cart store-checkout store-orders store-tracking store-profile store-events store-webhooks push migrator worker-metrics-consumer worker-embedding-backfill
 
 # Main package path
 MAIN_PKG=./cmd/api
@@ -132,6 +134,7 @@ generate-mocks:
 	mockgen -source=internal/domain/audit_repository.go -destination=internal/mocks/audit_repository_mock.go -package=mocks
 	mockgen -source=internal/domain/coupon.go -destination=internal/mocks/coupon_mock.go -package=mocks
 	mockgen -source=internal/domain/notification.go -destination=internal/mocks/notification_mock.go -package=mocks
+	mockgen -source=internal/domain/push_subscription.go -destination=internal/mocks/push_subscription_mock.go -package=mocks
 	mockgen -source=internal/domain/order_repository.go -destination=internal/mocks/order_repository_mock.go -package=mocks
 	mockgen -source=internal/domain/token_store.go -destination=internal/mocks/token_store_mock.go -package=mocks
 	mockgen -source=internal/domain/store_service.go -destination=internal/mocks/store_service_mock.go -package=mocks
@@ -448,6 +451,15 @@ build-lambda-store-profile:
 	@echo "Building store-profile Lambda..."
 	@mkdir -p $(LAMBDA_OUT_DIR)/store-profile
 	$(LAMBDA_BUILD_FLAGS) $(GOBUILD) -ldflags="-s -w" -o $(LAMBDA_OUT_DIR)/store-profile/bootstrap ./cmd/lambda/store-profile
+
+## Generate a VAPID keypair for Web Push (run once per environment)
+vapid-keys:
+	@$(GOCMD) run ./cmd/vapid-keys
+
+build-lambda-push:
+	@echo "Building push Lambda..."
+	@mkdir -p $(LAMBDA_OUT_DIR)/push
+	$(LAMBDA_BUILD_FLAGS) $(GOBUILD) -ldflags="-s -w" -o $(LAMBDA_OUT_DIR)/push/bootstrap ./cmd/lambda/push
 
 build-lambda-store-events:
 	@echo "Building store-events Lambda..."

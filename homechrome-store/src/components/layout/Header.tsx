@@ -1,6 +1,6 @@
 'use client';
 
-import { Bars3Icon, MagnifyingGlassIcon, ShoppingBagIcon, UserIcon } from '@heroicons/react/24/outline';
+import { Bars3Icon, BellIcon, MagnifyingGlassIcon, ShoppingBagIcon, UserIcon } from '@heroicons/react/24/outline';
 import {
   ActionIcon,
   Anchor,
@@ -30,6 +30,9 @@ import { useUIStore } from '@/stores/uiStore';
 import { Category } from '@/types';
 
 const MobileNav = dynamic(() => import('./MobileNav'), { ssr: false });
+const NotificationModal = dynamic(() => import('@/components/notifications/NotificationModal'), {
+  ssr: false,
+});
 
 interface HeaderProps {
   categories: Category[];
@@ -50,6 +53,7 @@ export default function Header({ categories }: HeaderProps) {
   const cartCount = useCartStore((s) => s.itemCount);
   const openMiniCart = useUIStore((s) => s.openMiniCart);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [notificationModalOpen, setNotificationModalOpen] = useState(false);
   const pathname = usePathname();
 
   return (
@@ -152,6 +156,18 @@ export default function Header({ categories }: HeaderProps) {
                 <MagnifyingGlassIcon width={22} height={22} />
               </ActionIcon>
 
+              <Tooltip label="Notifications" withArrow>
+                <ActionIcon
+                  variant="subtle"
+                  color="navy"
+                  size="lg"
+                  aria-label="Notification settings"
+                  onClick={() => setNotificationModalOpen(true)}
+                >
+                  <BellIcon width={22} height={22} />
+                </ActionIcon>
+              </Tooltip>
+
               <Tooltip label={cartCount > 0 ? `Cart (${cartCount})` : 'Cart'} withArrow>
                 <Indicator
                   label={cartCount > 0 ? cartCount : undefined}
@@ -199,6 +215,11 @@ export default function Header({ categories }: HeaderProps) {
           </Group>
         </Container>
       </Box>
+
+      <NotificationModal
+        opened={notificationModalOpen}
+        onClose={() => setNotificationModalOpen(false)}
+      />
 
       <MobileNav
         isOpen={mobileMenuOpen}
