@@ -16,7 +16,7 @@ import {
 } from '@mantine/core';
 import { useState } from 'react';
 
-import { SUPPORT_WHATSAPP } from '@/lib/constants';
+import { whatsappHref } from '@/lib/whatsapp';
 
 import { displayFont } from '../fonts';
 
@@ -61,7 +61,7 @@ export function ContactForm() {
     ].filter(Boolean);
 
     window.open(
-      `https://wa.me/${SUPPORT_WHATSAPP}?text=${encodeURIComponent(lines.join('\n'))}`,
+      whatsappHref(lines.join('\n')),
       '_blank',
       'noopener,noreferrer',
     );

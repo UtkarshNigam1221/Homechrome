@@ -33,12 +33,40 @@ const navy: MantineColorsTuple = [
   '#1C1C19',
 ];
 
+// The design system's tertiary (green) and secondary (blue-grey) families.
+// Named steps come from its own tokens; the gaps interpolate.
+const leaf: MantineColorsTuple = [
+  '#EDF7EF',
+  '#C7ECCE',
+  '#ABCFB2',
+  '#8DB697',
+  '#5B7C63',
+  '#42634C',
+  '#2E4E37',
+  '#1F3B27',
+  '#132C19',
+  '#01210F',
+];
+
+const mist: MantineColorsTuple = [
+  '#F2F5FB',
+  '#DBE3F3',
+  '#BFC7D7',
+  '#9BA6BC',
+  '#75819A',
+  '#575F6D',
+  '#3F4754',
+  '#2D3441',
+  '#1F2531',
+  '#141C28',
+];
+
 export const theme = createTheme({
   primaryColor: 'brand',
   primaryShade: 5,
   black: '#1C1C19',
   white: '#FFFFFF',
-  colors: { brand, navy },
+  colors: { brand, navy, leaf, mist },
   fontFamily: siteFont.style.fontFamily,
   fontFamilyMonospace: 'ui-monospace, SFMono-Regular, monospace',
   headings: {

@@ -7,10 +7,9 @@ import Link from 'next/link';
 import { AssetImage } from '@/components/ui/asset-image';
 import { Category } from '@/types';
 
-import { displayFont } from '@/app/fonts';
+import { stripMarkdown } from '@/lib/utils';
 
-// Admin descriptions carry markdown; this row shows prose, so drop the markers.
-const stripMarkdown = (text: string) => text.replace(/[*_`#]/g, '').trim();
+import { displayFont } from '@/app/fonts';
 
 interface CategoryFeatureRowProps {
   category: Category;

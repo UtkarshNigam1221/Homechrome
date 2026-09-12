@@ -71,7 +71,7 @@ export function DeskCard({
               px={12}
               c={action.tone === 'leaf' ? 'white' : 'navy.8'}
               style={{
-                background: action.tone === 'leaf' ? '#42634C' : 'var(--mantine-color-navy-1)',
+                background: action.tone === 'leaf' ? 'var(--mantine-color-leaf-5)' : 'var(--mantine-color-navy-1)',
                 borderRadius: 'var(--mantine-radius-md)',
               }}
             >

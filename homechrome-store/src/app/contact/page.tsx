@@ -33,8 +33,8 @@ import {
   SUPPORT_EMAIL,
   SUPPORT_PHONE,
   SUPPORT_PHONE_TEL,
-  SUPPORT_WHATSAPP,
 } from '@/lib/constants';
+import { whatsappHref } from '@/lib/whatsapp';
 
 import { ContactForm } from './ContactForm';
 import { ContactFaq } from './ContactFaq';
@@ -47,12 +47,10 @@ export const metadata: Metadata = {
   description: 'Reach Homechrome support by WhatsApp, phone or email.',
 };
 
-const LEAF = { bg: '#C7ECCE', fg: '#2E4E37' };
-const CLAY = { bg: '#FFDBD0', fg: '#7E2C10' };
-const MIST = { bg: '#DBE3F3', fg: '#3F4754' };
-const SAND = { bg: '#E5E2DD', fg: '#56423D' };
-
-const whatsappHref = `https://wa.me/${SUPPORT_WHATSAPP}?text=${encodeURIComponent('Hi, I need help with my order')}`;
+const LEAF = { bg: 'var(--mantine-color-leaf-1)', fg: 'var(--mantine-color-leaf-6)' };
+const CLAY = { bg: 'var(--mantine-color-brand-1)', fg: 'var(--mantine-color-brand-6)' };
+const MIST = { bg: 'var(--mantine-color-mist-1)', fg: 'var(--mantine-color-mist-6)' };
+const SAND = { bg: 'var(--mantine-color-navy-3)', fg: 'var(--mantine-color-navy-6)' };
 
 // Every promise below is one a policy page already makes.
 const PROMISES = [
@@ -141,7 +139,12 @@ export default function ContactPage() {
             title="WhatsApp Support"
             body="Ask about a fabric, a size, or an order in transit and get a reply in the same thread."
             detail={SUPPORT_PHONE}
-            action={{ label: 'Start WhatsApp chat', href: whatsappHref, external: true, tone: 'leaf' }}
+            action={{
+              label: 'Start WhatsApp chat',
+              href: whatsappHref('Hi, I need help with my order'),
+              external: true,
+              tone: 'leaf',
+            }}
           />
           <DeskCard
             tile={CLAY}
@@ -307,7 +310,7 @@ export default function ContactPage() {
               {SUPPORT_PHONE}
             </Anchor>
             , message us on{' '}
-            <Anchor href={whatsappHref} target="_blank" rel="noopener noreferrer" c="brand.5" fw={600}>
+            <Anchor href={whatsappHref('Hi, I need help with my order')} target="_blank" rel="noopener noreferrer" c="brand.5" fw={600}>
               WhatsApp
             </Anchor>
             , or find us on{' '}

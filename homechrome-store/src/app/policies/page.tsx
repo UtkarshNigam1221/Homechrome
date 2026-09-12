@@ -257,15 +257,15 @@ export default function PoliciesPage() {
                     wrap="nowrap"
                     align="flex-start"
                     p="sm"
-                    style={{ background: '#C7ECCE', borderRadius: 'var(--mantine-radius-md)' }}
+                    style={{ background: 'var(--mantine-color-leaf-1)', borderRadius: 'var(--mantine-radius-md)' }}
                   >
                     <InformationCircleIcon
                       width={17}
                       height={17}
-                      color="#2E4E37"
+                      color="var(--mantine-color-leaf-6)"
                       style={{ flexShrink: 0, marginTop: 2 }}
                     />
-                    <Text fz="xs" c="#2E4E37" lh={1.6}>
+                    <Text fz="xs" c="leaf.6" lh={1.6}>
                       Genuinely damaged or defective pieces are always eligible — this section is
                       about natural character, not faults.
                     </Text>

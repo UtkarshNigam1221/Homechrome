@@ -25,13 +25,11 @@ import Link from 'next/link';
 
 import logo80 from '@/assets/logo-80.webp';
 import { WhatsAppIcon } from '@/components/ui/whatsapp-icon';
-import { SUPPORT_WHATSAPP } from '@/lib/constants';
+import { whatsappHref } from '@/lib/whatsapp';
 import { useAuthStore } from '@/stores/auth';
 import { Category } from '@/types';
 
 import { displayFont } from '@/app/fonts';
-
-const LEAF = '#42634C';
 
 interface MobileNavProps {
   isOpen: boolean;
@@ -142,7 +140,7 @@ export default function MobileNav({ isOpen, onClose, categories }: MobileNavProp
 
       <Box p="md" bg="navy.1" style={{ borderTop: '1px solid var(--mantine-color-navy-2)' }}>
         <Anchor
-          href={`https://wa.me/${SUPPORT_WHATSAPP}?text=${encodeURIComponent('Hi, I need help with my order')}`}
+          href={whatsappHref('Hi, I need help with my order')}
           target="_blank"
           rel="noopener noreferrer"
           underline="never"
@@ -154,7 +152,7 @@ export default function MobileNav({ isOpen, onClose, categories }: MobileNavProp
             align="center"
             c="white"
             py={11}
-            style={{ background: LEAF, borderRadius: 'var(--mantine-radius-lg)' }}
+            style={{ background: 'var(--mantine-color-leaf-5)', borderRadius: 'var(--mantine-radius-lg)' }}
           >
             <WhatsAppIcon size={18} />
             <Text fz="sm" fw={600} c="white">

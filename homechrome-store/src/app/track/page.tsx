@@ -29,8 +29,8 @@ import {
   DELIVERY_DAYS,
   DISPATCH_DAYS,
   SUPPORT_PHONE,
-  SUPPORT_WHATSAPP,
 } from '@/lib/constants';
+import { whatsappHref } from '@/lib/whatsapp';
 import { ROUTES } from '@/lib/routes';
 import { formatDateTime as formatDate } from '@/lib/utils';
 
@@ -98,7 +98,7 @@ export default function TrackOrderPage() {
 
       <Stack gap="md" mb="xl" maw={640}>
         <Group gap={8} w="fit-content" px={12} py={6} bg="navy.2" style={{ borderRadius: 999 }}>
-          <Box w={7} h={7} bg="#42634C" style={{ borderRadius: 999 }} />
+          <Box w={7} h={7} bg="var(--mantine-color-leaf-5)" style={{ borderRadius: 999 }} />
           <Text fz={11} fw={700} c="navy.7" style={{ letterSpacing: '0.12em' }}>
             DISPATCH TO DOORSTEP
           </Text>
@@ -171,9 +171,9 @@ export default function TrackOrderPage() {
                 >
                   Order #{tracking.order_number}
                 </Title>
-                <Group gap={7} px={11} py={5} bg="#C7ECCE" style={{ borderRadius: 999 }}>
-                  <Box w={7} h={7} bg="#2E4E37" style={{ borderRadius: 999 }} />
-                  <Text fz={11} fw={700} c="#2E4E37" tt="uppercase" style={{ letterSpacing: '0.06em' }}>
+                <Group gap={7} px={11} py={5} bg="leaf.1" style={{ borderRadius: 999 }}>
+                  <Box w={7} h={7} bg="var(--mantine-color-leaf-6)" style={{ borderRadius: 999 }} />
+                  <Text fz={11} fw={700} c="leaf.6" tt="uppercase" style={{ letterSpacing: '0.06em' }}>
                     {tracking.status}
                   </Text>
                 </Group>
@@ -293,12 +293,12 @@ export default function TrackOrderPage() {
                 </Text>
               </Stack>
               <Anchor
-                href={`https://wa.me/${SUPPORT_WHATSAPP}?text=${encodeURIComponent(`Hi, I need help with order ${tracking.order_number}`)}`}
+                href={whatsappHref(`Hi, I need help with order ${tracking.order_number}`)}
                 target="_blank"
                 rel="noopener noreferrer"
                 underline="never"
               >
-                <Group gap={8} c="white" px={18} py={10} style={{ background: '#42634C', borderRadius: 'var(--mantine-radius-md)' }}>
+                <Group gap={8} c="white" px={18} py={10} style={{ background: 'var(--mantine-color-leaf-5)', borderRadius: 'var(--mantine-radius-md)' }}>
                   <WhatsAppIcon size={17} />
                   <Text fz="sm" fw={600} c="white">
                     WhatsApp {SUPPORT_PHONE}

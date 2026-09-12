@@ -7,11 +7,9 @@ import Link from 'next/link';
 
 import { Category } from '@/types';
 
-import { displayFont } from '@/app/fonts';
+import { stripMarkdown } from '@/lib/utils';
 
-// Some catalogue descriptions carry markdown from the admin editor; the card
-// shows one plain line, so strip the markers rather than print them.
-const stripMarkdown = (text: string) => text.replace(/[*_`#]/g, '').trim();
+import { displayFont } from '@/app/fonts';
 
 interface CategoryCardProps {
   category: Category;

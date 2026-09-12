@@ -5,7 +5,8 @@ import { CategoryChips } from '@/components/catalog/CategoryChips';
 import { CategoryFeatureRow } from '@/components/catalog/CategoryFeatureRow';
 import { Breadcrumb } from '@/components/ui/breadcrumb';
 import { PageHeader } from '@/components/ui/page-header';
-import { API_BASE, SUPPORT_WHATSAPP } from '@/lib/constants';
+import { API_BASE } from '@/lib/constants';
+import { whatsappHref } from '@/lib/whatsapp';
 import { ROUTES } from '@/lib/routes';
 import { Category } from '@/types';
 
@@ -60,12 +61,12 @@ export default async function CategoriesPage() {
                 weave.
               </Text>
               <Anchor
-                href={`https://wa.me/${SUPPORT_WHATSAPP}?text=${encodeURIComponent('Hi, I need help choosing a size')}`}
+                href={whatsappHref('Hi, I need help choosing a size')}
                 target="_blank"
                 rel="noopener noreferrer"
                 underline="never"
               >
-                <Box px={20} py={11} bg="#42634C" style={{ borderRadius: 'var(--mantine-radius-md)' }}>
+                <Box px={20} py={11} bg="var(--mantine-color-leaf-5)" style={{ borderRadius: 'var(--mantine-radius-md)' }}>
                   <Text fz="sm" fw={600} c="white">
                     Ask us on WhatsApp
                   </Text>

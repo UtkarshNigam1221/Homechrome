@@ -13,7 +13,11 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
 import { WhatsAppIcon } from '@/components/ui/whatsapp-icon';
-import { SUPPORT_EMAIL, SUPPORT_PHONE, SUPPORT_WHATSAPP } from '@/lib/constants';
+import {
+  SUPPORT_EMAIL,
+  SUPPORT_PHONE,
+} from '@/lib/constants';
+import { whatsappHref } from '@/lib/whatsapp';
 
 import { displayFont } from '@/app/fonts';
 
@@ -96,12 +100,12 @@ export function PolicyNav() {
           </Text>
 
           <Anchor
-            href={`https://wa.me/${SUPPORT_WHATSAPP}?text=${encodeURIComponent('Hi, I have a question about a policy')}`}
+            href={whatsappHref('Hi, I have a question about a policy')}
             target="_blank"
             rel="noopener noreferrer"
             underline="never"
           >
-            <Group gap={8} justify="center" c="white" py={9} style={{ background: '#42634C', borderRadius: 'var(--mantine-radius-md)' }}>
+            <Group gap={8} justify="center" c="white" py={9} style={{ background: 'var(--mantine-color-leaf-5)', borderRadius: 'var(--mantine-radius-md)' }}>
               <WhatsAppIcon size={16} />
               <Text fz="xs" fw={600} c="white">
                 WhatsApp {SUPPORT_PHONE}

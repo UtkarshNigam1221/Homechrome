@@ -12,8 +12,8 @@ const STANDOUT_PERCENT = 50;
 
 // Design tokens: primary-fixed / on-primary-fixed, tertiary-fixed /
 // on-tertiary-fixed-variant. Neither has a Mantine scale slot.
-const EVERYDAY = { bg: '#FFDBD0', fg: '#3A0B00' };
-const STANDOUT = { bg: '#C7ECCE', fg: '#2E4E37' };
+const EVERYDAY = { bg: 'var(--mantine-color-brand-1)', fg: '#3A0B00' };
+const STANDOUT = { bg: 'var(--mantine-color-leaf-1)', fg: 'var(--mantine-color-leaf-6)' };
 
 export function DiscountBadge({ percent, ...rest }: DiscountBadgeProps) {
   if (percent <= 0) return null;

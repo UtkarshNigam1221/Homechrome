@@ -20,7 +20,7 @@ import { DiscountBadge } from '@/components/ui/discount-badge';
 import { QuantityStepper } from '@/components/ui/quantity-stepper';
 import { displayFont } from '@/app/fonts';
 import { useCart } from '@/hooks/useCart';
-import { calculateDiscountPercent, formatPrice } from '@/lib/utils';
+import { calculateDiscountPercent, formatPrice, stripMarkdown } from '@/lib/utils';
 import { useCartStore } from '@/stores/cart';
 import { Product } from '@/types';
 
@@ -167,7 +167,7 @@ export default function ProductCard({ product }: ProductCardProps) {
 
         {product.description && (
           <Text fz="xs" c="navy.6" lineClamp={1} mt={-4} visibleFrom="sm">
-            {product.description.replace(/[*_`#]/g, '').trim()}
+            {stripMarkdown(product.description)}
           </Text>
         )}
 

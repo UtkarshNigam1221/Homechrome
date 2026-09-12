@@ -32,10 +32,8 @@ import {
   SUPPORT_EMAIL,
   SUPPORT_PHONE,
   SUPPORT_PHONE_TEL,
-  SUPPORT_WHATSAPP,
 } from '@/lib/constants';
-
-const LEAF = '#42634C';
+import { whatsappHref } from '@/lib/whatsapp';
 
 export default function Footer({ categories = [] }: { categories?: Category[] }) {
   return (
@@ -120,7 +118,7 @@ export default function Footer({ categories = [] }: { categories?: Category[] })
 
             <FooterColumn title="Need Help?">
               <Anchor
-                href={`https://wa.me/${SUPPORT_WHATSAPP}?text=${encodeURIComponent('Hi, I need help with my order')}`}
+                href={whatsappHref('Hi, I need help with my order')}
                 target="_blank"
                 rel="noopener noreferrer"
                 underline="never"
@@ -133,7 +131,7 @@ export default function Footer({ categories = [] }: { categories?: Category[] })
                   c="white"
                   px="md"
                   py={9}
-                  style={{ background: LEAF, borderRadius: 'var(--mantine-radius-md)' }}
+                  style={{ background: 'var(--mantine-color-leaf-5)', borderRadius: 'var(--mantine-radius-md)' }}
                 >
                   <WhatsAppIcon size={16} />
                   <Text size="sm" fw={600} c="white">

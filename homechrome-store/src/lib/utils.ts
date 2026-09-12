@@ -57,3 +57,11 @@ export const statusBadgeColor: Record<OrderStatus, string> = {
   RETURNED: 'orange',
   REFUNDED: 'gray',
 };
+
+/**
+ * Catalogue copy is entered through an admin editor that leaves markdown
+ * markers behind. Anywhere it renders as plain prose, strip them.
+ */
+export function stripMarkdown(text: string): string {
+  return text.replace(/[*_`#]/g, '').trim();
+}

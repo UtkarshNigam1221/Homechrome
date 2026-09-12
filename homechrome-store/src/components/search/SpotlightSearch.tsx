@@ -1,7 +1,7 @@
 'use client';
 
 import { ArrowRightIcon, ClockIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline';
-import { Box, Divider, Flex, Group, Stack, Text } from '@mantine/core';
+import { Anchor, Box, Divider, Flex, Group, Stack, Text, UnstyledButton } from '@mantine/core';
 import { useDebouncedValue } from '@mantine/hooks';
 import { Spotlight, spotlight } from '@mantine/spotlight';
 import { useQuery } from '@tanstack/react-query';
@@ -13,7 +13,7 @@ import { DiscountBadge } from '@/components/ui/discount-badge';
 import HCLoader from '@/components/ui/HCLoader';
 import { WhatsAppIcon } from '@/components/ui/whatsapp-icon';
 import { buildSearchURL, fetchProductsPage } from '@/lib/api';
-import { SUPPORT_WHATSAPP } from '@/lib/constants';
+import { whatsappHref } from '@/lib/whatsapp';
 import { calculateDiscountPercent, formatPrice } from '@/lib/utils';
 import { Category, Product } from '@/types';
 
@@ -175,7 +175,7 @@ export function SpotlightSearch({ categories }: SpotlightSearchProps) {
                               />
                             </>
                           )}
-                          <Text fz={10} fw={600} c={p.in_stock ? '#2E4E37' : 'dimmed'}>
+                          <Text fz={10} fw={600} c={p.in_stock ? 'var(--mantine-color-leaf-6)' : 'dimmed'}>
                             {p.in_stock ? 'In stock' : 'Out of stock'}
                           </Text>
                         </Group>
@@ -238,18 +238,14 @@ export function SpotlightSearch({ categories }: SpotlightSearchProps) {
                   RECENT SEARCHES
                 </Text>
                 {recent.map((r) => (
-                  <Group
-                    key={r}
-                    gap={7}
-                    wrap="nowrap"
-                    style={{ cursor: 'pointer' }}
-                    onClick={() => setQuery(r)}
-                  >
-                    <ClockIcon width={13} height={13} color="var(--mantine-color-navy-5)" />
-                    <Text fz="xs" c="navy.7" lineClamp={1}>
-                      {r}
-                    </Text>
-                  </Group>
+                  <UnstyledButton key={r} onClick={() => setQuery(r)}>
+                    <Group gap={7} wrap="nowrap">
+                      <ClockIcon width={13} height={13} color="var(--mantine-color-navy-5)" />
+                      <Text fz="xs" c="navy.7" lineClamp={1}>
+                        {r}
+                      </Text>
+                    </Group>
+                  </UnstyledButton>
                 ))}
                 <Divider mt={4} />
               </Stack>
@@ -260,13 +256,8 @@ export function SpotlightSearch({ categories }: SpotlightSearchProps) {
                 POPULAR COLLECTIONS
               </Text>
               {categories.slice(0, 3).map((c) => (
-                <Group
-                  key={c.id}
-                  gap="sm"
-                  wrap="nowrap"
-                  style={{ cursor: 'pointer' }}
-                  onClick={() => go(`/c/${c.slug}`)}
-                >
+                <UnstyledButton key={c.id} onClick={() => go(`/c/${c.slug}`)}>
+                  <Group gap="sm" wrap="nowrap">
                   <Box
                     w={30}
                     h={30}
@@ -277,15 +268,16 @@ export function SpotlightSearch({ categories }: SpotlightSearchProps) {
                       {c.name.charAt(0)}
                     </Text>
                   </Box>
-                  <Stack gap={0} miw={0}>
-                    <Text fz="xs" fw={600} c="navy.9" lineClamp={1}>
-                      {c.name}
-                    </Text>
-                    <Text fz={10} c="navy.6">
-                      {c.product_count} designs
-                    </Text>
-                  </Stack>
-                </Group>
+                    <Stack gap={0} miw={0}>
+                      <Text fz="xs" fw={600} c="navy.9" lineClamp={1}>
+                        {c.name}
+                      </Text>
+                      <Text fz={10} c="navy.6">
+                        {c.product_count} designs
+                      </Text>
+                    </Stack>
+                  </Group>
+                </UnstyledButton>
               ))}
             </Stack>
 
@@ -302,29 +294,28 @@ export function SpotlightSearch({ categories }: SpotlightSearchProps) {
               <Text fz={10} c="navy.6" lh={1.55} mb="xs">
                 Tell us the size or weave you are after and we will point you to it.
               </Text>
-              <Group
-                gap={6}
-                justify="center"
-                c="white"
-                py={7}
-                style={{
-                  background: '#42634C',
-                  borderRadius: 'var(--mantine-radius-sm)',
-                  cursor: 'pointer',
-                }}
-                onClick={() =>
-                  window.open(
-                    `https://wa.me/${SUPPORT_WHATSAPP}?text=${encodeURIComponent('Hi, I am looking for something specific')}`,
-                    '_blank',
-                    'noopener,noreferrer',
-                  )
-                }
+              <Anchor
+                href={whatsappHref('Hi, I am looking for something specific')}
+                target="_blank"
+                rel="noopener noreferrer"
+                underline="never"
               >
-                <WhatsAppIcon size={14} />
-                <Text fz={11} fw={600} c="white">
-                  Ask on WhatsApp
-                </Text>
-              </Group>
+                <Group
+                  gap={6}
+                  justify="center"
+                  c="white"
+                  py={7}
+                  style={{
+                    background: 'var(--mantine-color-leaf-5)',
+                    borderRadius: 'var(--mantine-radius-sm)',
+                  }}
+                >
+                  <WhatsAppIcon size={14} />
+                  <Text fz={11} fw={600} c="white">
+                    Ask on WhatsApp
+                  </Text>
+                </Group>
+              </Anchor>
             </Box>
           </Stack>
         </Box>
