@@ -97,6 +97,9 @@ const Reports = withSuspense(
 const Notifications = withSuspense(
   lazy(() => import('@/features/notifications').then((m) => ({ default: m.NotificationsPage })))
 );
+const PushBroadcast = withSuspense(
+  lazy(() => import('@/features/push').then((m) => ({ default: m.PushBroadcastPage })))
+);
 const Users = withSuspense(
   lazy(() => import('@/features/settings').then((m) => ({ default: m.UsersPage })))
 );
@@ -191,6 +194,7 @@ export function AppRoutes() {
 
           {/* Operations */}
           <Route path="/notifications" element={<Notifications />} />
+          <Route path="/push" element={<PushBroadcast />} />
 
           {/* Admin Only Routes */}
           <Route element={<AdminRoute />}>

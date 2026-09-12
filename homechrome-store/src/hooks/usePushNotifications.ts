@@ -1,0 +1,256 @@
+'use client';
+
+import { useCallback, useEffect, useState } from 'react';
+
+import apiClient from '@/lib/api';
+import { ROUTES } from '@/lib/routes';
+
+export interface PushStatus {
+  isSupported: boolean;
+  permission: NotificationPermission | 'unsupported';
+  isSubscribed: boolean;
+  /** The backend has no VAPID key configured, so nothing can be subscribed. */
+  isConfigured: boolean;
+  loading: boolean;
+  error: string | null;
+}
+
+const UNSUPPORTED: PushStatus = {
+  isSupported: false,
+  permission: 'unsupported',
+  isSubscribed: false,
+  isConfigured: false,
+  loading: false,
+  error: null,
+};
+
+/** PushManager wants the VAPID key as raw bytes, not the base64url string. */
+function urlBase64ToUint8Array(base64String: string): Uint8Array {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+}
+
+/** Coarse browser/OS label, so the admin console can tell devices apart. */
+function detectDeviceInfo() {
+  if (typeof window === 'undefined') return undefined;
+  const ua = navigator.userAgent;
+
+  // Order matters: Edge and Opera both carry "Chrome", Chrome carries "Safari".
+  let browser = 'Unknown';
+  if (ua.includes('Firefox')) browser = 'Firefox';
+  else if (ua.includes('SamsungBrowser')) browser = 'Samsung Internet';
+  else if (ua.includes('OPR') || ua.includes('Opera')) browser = 'Opera';
+  else if (ua.includes('Edg')) browser = 'Edge';
+  else if (ua.includes('Chrome')) browser = 'Chrome';
+  else if (ua.includes('Safari')) browser = 'Safari';
+
+  let os = 'Unknown';
+  if (/iPad|iPhone|iPod/.test(ua)) os = 'iOS';
+  else if (/Android/.test(ua)) os = 'Android';
+  else if (/Macintosh|Mac OS X/.test(ua)) os = 'macOS';
+  else if (/Windows/.test(ua)) os = 'Windows';
+  else if (/Linux/.test(ua)) os = 'Linux';
+
+  return { browser, os, is_mobile: /Mobi|Android|iPhone|iPad|iPod/i.test(ua) };
+}
+
+/**
+ * The VAPID key is a per-deployment constant, but both the opt-in banner and
+ * the settings modal mount on every page. Without this, each page view costs
+ * two identical round trips. One in-flight promise is shared by all callers;
+ * a failure clears it so the next caller retries.
+ */
+let vapidKeyPromise: Promise<string> | null = null;
+
+function fetchVapidKey(): Promise<string> {
+  vapidKeyPromise ??= apiClient
+    .get<{ public_key: string }>(ROUTES.PUSH.VAPID_KEY)
+    .then(({ data }) => data?.public_key ?? '')
+    .catch((err: unknown) => {
+      vapidKeyPromise = null;
+      throw err;
+    });
+  return vapidKeyPromise;
+}
+
+function pushSupported(): boolean {
+  return (
+    typeof window !== 'undefined' &&
+    'serviceWorker' in navigator &&
+    'PushManager' in window &&
+    'Notification' in window
+  );
+}
+
+function errorMessage(err: unknown, fallback: string): string {
+  return err instanceof Error ? err.message : fallback;
+}
+
+export function usePushNotifications() {
+  const [status, setStatus] = useState<PushStatus>({ ...UNSUPPORTED, loading: true });
+
+  const refresh = useCallback(async () => {
+    if (!pushSupported()) {
+      setStatus(UNSUPPORTED);
+      return;
+    }
+
+    try {
+      const registration = await navigator.serviceWorker.getRegistration();
+      const subscription = registration ? await registration.pushManager.getSubscription() : null;
+
+      // An unconfigured backend returns an empty key. Treating that as
+      // "configured" would show an opt-in that can only ever fail.
+      const publicKey = await fetchVapidKey();
+
+      setStatus({
+        isSupported: true,
+        permission: Notification.permission,
+        isSubscribed: !!subscription,
+        isConfigured: !!publicKey,
+        loading: false,
+        error: null,
+      });
+    } catch (err) {
+      setStatus((prev) => ({
+        ...prev,
+        isSupported: true,
+        loading: false,
+        error: errorMessage(err, 'Could not check notification status'),
+      }));
+    }
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  const subscribe = useCallback(async (): Promise<boolean> => {
+    if (!pushSupported()) {
+      setStatus((prev) => ({
+        ...prev,
+        error: 'This browser does not support push notifications.',
+      }));
+      return false;
+    }
+
+    setStatus((prev) => ({ ...prev, loading: true, error: null }));
+
+    try {
+      const permission = await Notification.requestPermission();
+      if (permission !== 'granted') {
+        setStatus((prev) => ({
+          ...prev,
+          permission,
+          isSubscribed: false,
+          loading: false,
+          error:
+            permission === 'denied'
+              ? 'Notifications are blocked in your browser settings.'
+              : null,
+        }));
+        return false;
+      }
+
+      const registration =
+        (await navigator.serviceWorker.getRegistration()) ??
+        (await navigator.serviceWorker.register('/sw.js', { scope: '/' }));
+      await navigator.serviceWorker.ready;
+
+      const publicKey = await fetchVapidKey();
+      if (!publicKey) {
+        throw new Error('Push notifications are not available right now.');
+      }
+
+      // Reuse the existing registration when present: subscribing twice with
+      // the same key returns the same endpoint, but calling subscribe() with a
+      // *different* key throws instead of replacing it.
+      const existing = await registration.pushManager.getSubscription();
+      const subscription =
+        existing ??
+        (await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(publicKey) as BufferSource,
+        }));
+
+      const { endpoint, keys } = subscription.toJSON() as {
+        endpoint: string;
+        keys: { p256dh: string; auth: string };
+      };
+
+      await apiClient.post(ROUTES.PUSH.SUBSCRIBE, {
+        endpoint,
+        keys,
+        device: detectDeviceInfo(),
+      });
+
+      setStatus({
+        isSupported: true,
+        permission: 'granted',
+        isSubscribed: true,
+        isConfigured: true,
+        loading: false,
+        error: null,
+      });
+      return true;
+    } catch (err) {
+      setStatus((prev) => ({
+        ...prev,
+        loading: false,
+        error: errorMessage(err, 'Could not enable notifications'),
+      }));
+      return false;
+    }
+  }, []);
+
+  const unsubscribe = useCallback(async (): Promise<boolean> => {
+    setStatus((prev) => ({ ...prev, loading: true, error: null }));
+
+    try {
+      const registration = await navigator.serviceWorker.getRegistration();
+      const subscription = registration ? await registration.pushManager.getSubscription() : null;
+
+      if (subscription) {
+        const { endpoint } = subscription;
+        await subscription.unsubscribe();
+        // Tell the backend after the browser has let go, so a failed request
+        // leaves a stale row rather than a live endpoint we no longer track.
+        await apiClient.post(ROUTES.PUSH.UNSUBSCRIBE, { endpoint });
+      }
+
+      setStatus((prev) => ({ ...prev, isSubscribed: false, loading: false }));
+      return true;
+    } catch (err) {
+      setStatus((prev) => ({
+        ...prev,
+        loading: false,
+        error: errorMessage(err, 'Could not turn off notifications'),
+      }));
+      return false;
+    }
+  }, []);
+
+  /**
+   * Sends a notification to THIS device only. The backend route is scoped to
+   * the endpoint in the body, so this can never reach another visitor.
+   */
+  const sendTest = useCallback(async (): Promise<boolean> => {
+    const registration = await navigator.serviceWorker.getRegistration();
+    const subscription = registration ? await registration.pushManager.getSubscription() : null;
+    if (!subscription) {
+      setStatus((prev) => ({ ...prev, error: 'This device is not subscribed.' }));
+      return false;
+    }
+
+    await apiClient.post(ROUTES.PUSH.TEST, { endpoint: subscription.endpoint });
+    return true;
+  }, []);
+
+  return { ...status, subscribe, unsubscribe, sendTest, refresh };
+}

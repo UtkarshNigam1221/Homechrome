@@ -187,6 +187,10 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 		"PHONEPE_CLIENT_ID", "PHONEPE_CLIENT_SECRET",
 		"PHONEPE_WEBHOOK_USERNAME", "PHONEPE_WEBHOOK_PASSWORD",
 		"MSG91_AUTH_KEY",
+		// VAPID keypair for Web Push. Generate once per environment with
+		// `make vapid-keys`; rotating it invalidates every live browser
+		// subscription, so it is set and then left alone.
+		"VAPID_PUBLIC_KEY", "VAPID_PRIVATE_KEY", "VAPID_SUBJECT",
 	}
 	for _, key := range gatewaySecretKeys {
 		if v := os.Getenv(key); v != "" {
@@ -242,6 +246,7 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 		"store-profile",
 		"store-events",
 		"store-webhooks",
+		"push",
 		"order",
 		"utm",
 		// "pricing",
@@ -681,6 +686,7 @@ func setupAPIRoutes(api awsapigateway.RestApi, lambdas map[string]*ServiceLambda
 		"track":    "store-tracking",
 		"events":   "store-events",
 		"webhooks": "store-webhooks",
+		"push":     "push",
 	}
 
 	// Sort to make CloudFormation output deterministic — Go map iteration is
@@ -773,6 +779,16 @@ func setupAPIRoutes(api awsapigateway.RestApi, lambdas map[string]*ServiceLambda
 	coupons.AddResource(jsii.String("code"), nil).
 		AddResource(jsii.String("{code}"), nil).
 		AddMethod(jsii.String("ANY"), couponIntegration, nil)
+
+	// Admin Web Push console. ANY per resource for the same CORS reason as the
+	// coupon routes above: preflight is answered by each Lambda's chi middleware,
+	// so OPTIONS has to reach the Lambda. No {id} here, so a proxy is unnecessary —
+	// the three leaves are the whole surface.
+	pushIntegration := awsapigateway.NewLambdaIntegration(lambdas["push"].Function, nil)
+	adminPush := admin.AddResource(jsii.String("push"), nil)
+	adminPush.AddResource(jsii.String("subscribers"), nil).AddMethod(jsii.String("ANY"), pushIntegration, nil)
+	adminPush.AddResource(jsii.String("broadcasts"), nil).AddMethod(jsii.String("ANY"), pushIntegration, nil)
+	adminPush.AddResource(jsii.String("broadcast"), nil).AddMethod(jsii.String("ANY"), pushIntegration, nil)
 
 	// TODO: Uncomment routes as services are implemented
 	/*

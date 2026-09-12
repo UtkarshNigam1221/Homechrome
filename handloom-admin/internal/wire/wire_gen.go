@@ -649,6 +649,34 @@ func InitializeStoreEventsDeps(ctx context.Context, cfg *config.Config) (*StoreE
 	return storeEventsDeps, nil
 }
 
+// InitializePushDeps creates Push Lambda dependencies.
+// DynamoDB only — push state lives in the notifications table and neither
+// surface touches the catalog, so it skips the Postgres pool.
+func InitializePushDeps(ctx context.Context, cfg *config.Config) (*PushDeps, error) {
+	client, err := ProvideDynamoDBClient(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+	pushSubscriptionRepository := ProvidePushSubscriptionRepository(client)
+	gateway := ProvideWebPushGateway(cfg)
+	pushService := ProvidePushService(pushSubscriptionRepository, gateway)
+	service := ProvideValidator()
+	validation := ProvideValidation(service)
+	pushHandler := ProvideStorePushHandler(pushService, validation)
+	handlerPushHandler := ProvidePushHandler(pushService, validation)
+	userRepository := ProvideUserRepository(client)
+	tokenStore := ProvideTokenStore(client)
+	authService := ProvideAuthService(userRepository, tokenStore, cfg)
+	auth := ProvideAuthMiddleware(authService)
+	pushDeps := &PushDeps{
+		Config:         cfg,
+		StoreHandler:   pushHandler,
+		AdminHandler:   handlerPushHandler,
+		AuthMiddleware: auth,
+	}
+	return pushDeps, nil
+}
+
 // InitializeMonolithDeps wires the full monolith dependency graph.
 func InitializeMonolithDeps(ctx context.Context, cfg *config.Config) (*MonolithDeps, error) {
 	pool, err := ProvidePostgresPool(ctx, cfg)
@@ -714,6 +742,10 @@ func InitializeMonolithDeps(ctx context.Context, cfg *config.Config) (*MonolithD
 	customerHandler := ProvideCustomerHandler(customerService, validation)
 	auditHandler := ProvideAuditHandler(auditService)
 	notificationHandler := ProvideNotificationHandler(notificationService, validation)
+	pushSubscriptionRepository := ProvidePushSubscriptionRepository(client)
+	webpushGateway := ProvideWebPushGateway(cfg)
+	pushService := ProvidePushService(pushSubscriptionRepository, webpushGateway)
+	pushHandler := ProvidePushHandler(pushService, validation)
 	couponHandler := ProvideCouponHandler(couponService, validation)
 	utmLinkRepository := ProvideUTMLinkRepository(client)
 	utmLinkService := ProvideUTMLinkService(utmLinkRepository)
@@ -737,6 +769,7 @@ func InitializeMonolithDeps(ctx context.Context, cfg *config.Config) (*MonolithD
 	webhookHandler := ProvideStoreWebhookHandler(paymentService, refundService, gateway, cfg)
 	centroidsRepository := ProvideCentroidsRepository(pool)
 	eventsHandler := ProvideStoreEventsHandler(validation, centroidsRepository)
+	storePushHandler := ProvideStorePushHandler(pushService, validation)
 	auth := ProvideAuthMiddleware(authService)
 	customerAuth := ProvideCustomerAuthMiddleware(customerAuthService)
 	optionalCartAuth := ProvideOptionalCartAuth(customerAuthService)
@@ -752,6 +785,7 @@ func InitializeMonolithDeps(ctx context.Context, cfg *config.Config) (*MonolithD
 		CustomerHandler:        customerHandler,
 		AuditHandler:           auditHandler,
 		NotificationHandler:    notificationHandler,
+		PushHandler:            pushHandler,
 		CouponHandler:          couponHandler,
 		UTMLinkHandler:         utmLinkHandler,
 		AssetHandler:           assetHandler,
@@ -765,6 +799,7 @@ func InitializeMonolithDeps(ctx context.Context, cfg *config.Config) (*MonolithD
 		StoreProfileHandler:    profileHandler,
 		StoreWebhookHandler:    webhookHandler,
 		StoreEventsHandler:     eventsHandler,
+		StorePushHandler:       storePushHandler,
 		AuthMiddleware:         auth,
 		CustomerAuthMiddleware: customerAuth,
 		OptionalCartAuth:       optionalCartAuth,
@@ -953,6 +988,17 @@ type StoreEventsDeps struct {
 	Handler *store.EventsHandler
 }
 
+// PushDeps holds dependencies for the Push Lambda, which serves both push
+// surfaces: the public storefront routes and the authenticated admin console.
+// One Lambda because they share a repository, a gateway and a table — the auth
+// boundary between them is the router group, not the deployment unit.
+type PushDeps struct {
+	Config         *config.Config
+	StoreHandler   *store.PushHandler
+	AdminHandler   *handler.PushHandler
+	AuthMiddleware *middleware.Auth
+}
+
 // MonolithDeps contains every dependency the monolith API server needs.
 type MonolithDeps struct {
 	// PostgresPool retained for graceful shutdown — DynamoDB SDK v2 needs none.
@@ -969,6 +1015,7 @@ type MonolithDeps struct {
 	CustomerHandler     *handler.CustomerHandler
 	AuditHandler        *handler.AuditHandler
 	NotificationHandler *handler.NotificationHandler
+	PushHandler         *handler.PushHandler
 	CouponHandler       *handler.CouponHandler
 	UTMLinkHandler      *handler.UTMLinkHandler
 
@@ -985,6 +1032,7 @@ type MonolithDeps struct {
 	StoreProfileHandler  *store.ProfileHandler
 	StoreWebhookHandler  *store.WebhookHandler
 	StoreEventsHandler   *store.EventsHandler
+	StorePushHandler     *store.PushHandler
 
 	// Middleware
 	AuthMiddleware         *middleware.Auth

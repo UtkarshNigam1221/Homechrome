@@ -54,6 +54,15 @@ type StoreConfig struct {
 	MSG91OTPTemplateID string
 	MSG91BaseURL       string
 
+	// Web Push (VAPID). Keys are base64url-encoded and must stay stable for the
+	// life of a subscription — regenerating them silently invalidates every
+	// browser that has already subscribed. Generate once with `make vapid-keys`
+	// and store the private key in SSM. Empty keys select the dev gateway, which
+	// logs instead of delivering.
+	VAPIDPublicKey  string
+	VAPIDPrivateKey string
+	VAPIDSubject    string
+
 	// Customer Auth
 	CustomerJWTSecret       string
 	CustomerAccessTokenTTL  time.Duration
@@ -190,6 +199,10 @@ func Load() *Config {
 			MSG91AuthKey:       getEnv("MSG91_AUTH_KEY", ""),
 			MSG91OTPTemplateID: getEnv("MSG91_OTP_TEMPLATE_ID", ""),
 			MSG91BaseURL:       getEnv("MSG91_BASE_URL", "https://control.msg91.com"),
+
+			VAPIDPublicKey:  getEnv("VAPID_PUBLIC_KEY", ""),
+			VAPIDPrivateKey: getEnv("VAPID_PRIVATE_KEY", ""),
+			VAPIDSubject:    getEnv("VAPID_SUBJECT", "mailto:info@homechrome.in"),
 
 			CustomerJWTSecret:       getEnv("CUSTOMER_JWT_SECRET", "customer-secret-change-in-production"),
 			CustomerAccessTokenTTL:  getDurationEnv("CUSTOMER_ACCESS_TOKEN_TTL", 15*time.Minute),

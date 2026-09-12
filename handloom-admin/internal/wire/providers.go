@@ -20,6 +20,7 @@ import (
 	"github.com/handloom/admin/internal/embedder"
 	"github.com/handloom/admin/internal/gateway/phonepe"
 	"github.com/handloom/admin/internal/gateway/sms"
+	"github.com/handloom/admin/internal/gateway/webpush"
 	"github.com/handloom/admin/internal/handler"
 	"github.com/handloom/admin/internal/handler/store"
 	"github.com/handloom/admin/internal/lambdaclient"
@@ -153,6 +154,11 @@ func ProvideNotificationRepository(client *dynamodb.Client) domain.NotificationR
 	return dynamodb.NewNotificationRepository(client)
 }
 
+// ProvidePushSubscriptionRepository creates a new PushSubscriptionRepository
+func ProvidePushSubscriptionRepository(client *dynamodb.Client) domain.PushSubscriptionRepository {
+	return dynamodb.NewPushSubscriptionRepository(client)
+}
+
 // ProvideCouponRepository creates a new CouponRepository
 func ProvideCouponRepository(client *dynamodb.Client) domain.CouponRepository {
 	return dynamodb.NewCouponRepository(client)
@@ -188,6 +194,7 @@ var RepositorySet = wire.NewSet(
 	ProvidePricingRuleRepository,
 	ProvidePriceQuoteRepository,
 	ProvideNotificationRepository,
+	ProvidePushSubscriptionRepository,
 	ProvideCouponRepository,
 	ProvideUTMLinkRepository,
 	ProvideReportRepository,
@@ -305,6 +312,29 @@ func ProvideNotificationService(
 	return service.NewNotificationService(notificationRepo, userRepo)
 }
 
+// ProvideWebPushGateway creates the Web Push gateway (real or dev client).
+// Dev client when VAPID keys are unconfigured, matching every other gateway:
+// local development works without credentials, and an unconfigured deploy logs
+// pushes instead of silently minting throwaway keys.
+func ProvideWebPushGateway(cfg *config.Config) webpush.Gateway {
+	if cfg.Store.VAPIDPublicKey == "" || cfg.Store.VAPIDPrivateKey == "" {
+		return webpush.NewDevClient()
+	}
+	return webpush.NewClient(webpush.Config{
+		PublicKey:  cfg.Store.VAPIDPublicKey,
+		PrivateKey: cfg.Store.VAPIDPrivateKey,
+		Subject:    cfg.Store.VAPIDSubject,
+	})
+}
+
+// ProvidePushService creates a new PushService
+func ProvidePushService(
+	pushRepo domain.PushSubscriptionRepository,
+	gateway webpush.Gateway,
+) *service.PushService {
+	return service.NewPushService(pushRepo, gateway)
+}
+
 // ProvideCouponService creates a new CouponService
 func ProvideCouponService(
 	couponRepo domain.CouponRepository,
@@ -365,6 +395,8 @@ var ServiceSet = wire.NewSet(
 	ProvideCustomerService,
 	ProvidePricingService,
 	ProvideNotificationService,
+	ProvideWebPushGateway,
+	ProvidePushService,
 	ProvideCouponService,
 	ProvideUTMLinkService,
 	ProvideAssetService,
@@ -456,6 +488,14 @@ func ProvideNotificationHandler(
 	return handler.NewNotificationHandler(notificationService, validation)
 }
 
+// ProvidePushHandler creates a new admin PushHandler
+func ProvidePushHandler(
+	pushService *service.PushService,
+	validation *middleware.Validation,
+) *handler.PushHandler {
+	return handler.NewPushHandler(pushService, validation)
+}
+
 // ProvideCouponHandler creates a new CouponHandler
 func ProvideCouponHandler(
 	couponService *service.CouponService,
@@ -507,6 +547,7 @@ var HandlerSet = wire.NewSet(
 	ProvidePricingHandler,
 
 	ProvideNotificationHandler,
+	ProvidePushHandler,
 	ProvideCouponHandler,
 	ProvideUTMLinkHandler,
 	ProvideAssetHandler,
@@ -778,6 +819,14 @@ func ProvideStoreEventsHandler(
 	return store.NewEventsHandler(validation, service.NewStoreEventService(centroids))
 }
 
+// ProvideStorePushHandler creates a new storefront PushHandler
+func ProvideStorePushHandler(
+	pushService *service.PushService,
+	validation *middleware.Validation,
+) *store.PushHandler {
+	return store.NewPushHandler(pushService, validation)
+}
+
 // ============================================================================
 // B2C STORE MIDDLEWARE PROVIDERS
 // ============================================================================
@@ -820,6 +869,7 @@ var StoreHandlerSet = wire.NewSet(
 	ProvideStoreProfileHandler,
 	ProvideStoreWebhookHandler,
 	ProvideStoreEventsHandler,
+	ProvideStorePushHandler,
 	ProvideCentroidsRepository,
 )
 
