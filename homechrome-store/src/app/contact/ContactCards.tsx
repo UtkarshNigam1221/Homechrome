@@ -88,7 +88,7 @@ export function DeskCard({
 }
 
 /** Internal routes go through Link; wa.me and tel: need a plain anchor. */
-export function ActionLink({
+function ActionLink({
   href,
   external,
   children,
