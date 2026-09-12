@@ -1,5 +1,6 @@
 'use client';
 
+import { SparklesIcon } from '@heroicons/react/24/solid';
 import { Box, Container, Group, Text, UnstyledButton } from '@mantine/core';
 import { useClipboard } from '@mantine/hooks';
 import { useMemo } from 'react';
@@ -10,7 +11,7 @@ import { displayFont } from '@/app/fonts';
 import { formatPrice } from '@/lib/utils';
 
 const INDIGO = 'var(--mantine-color-navy-7)';
-const COTTON = 'var(--mantine-color-brand-1)';
+const BAND = 'var(--mantine-color-navy-1)';
 const CHALK = 'var(--mantine-color-brand-0)';
 // Chalk on this red is 4.53:1 — over AA, but only just: do not lighten either side.
 const RED = '#D92D20';
@@ -140,11 +141,12 @@ export default function OffersBanner({ coupons }: OffersBannerProps) {
     <Box
       component="section"
       aria-label="Current offers"
-      py="0.375rem"
-      style={{ background: COTTON, borderBottom: '2px solid var(--mantine-color-brand-5)' }}
+      py="0.3125rem"
+      style={{ background: BAND, borderBottom: '1px solid var(--mantine-color-navy-2)' }}
     >
       <Container size="xl">
-        <Group justify="center" gap="xl" wrap="wrap">
+        <Group justify="center" gap="lg" wrap="wrap">
+          <SparklesIcon width={15} height={15} color="var(--mantine-color-brand-5)" />
           {shown.map((coupon, i) => {
             const { magnitude, terms } = offerParts(coupon);
             return (
@@ -172,6 +174,10 @@ export default function OffersBanner({ coupons }: OffersBannerProps) {
               </Group>
             );
           })}
+          {/* Matches the shipping policy's own wording: free on all orders, no threshold. */}
+          <Text component="span" c={INDIGO} fz="0.8125rem" fw={500} visibleFrom="md">
+            Free Shipping Across India
+          </Text>
         </Group>
       </Container>
     </Box>

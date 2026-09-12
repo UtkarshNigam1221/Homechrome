@@ -16,9 +16,8 @@ import { Carousel } from '@mantine/carousel';
 import Link from 'next/link';
 
 import CategoryCard from '@/components/catalog/CategoryCard';
-import OffersBanner from '@/components/catalog/OffersBanner';
 import ProductCard from '@/components/catalog/ProductCard';
-import { Category, Product, PublicCoupon } from '@/types';
+import { Category, Product } from '@/types';
 
 import { displayFont } from './fonts';
 import HomePageTracker from './HomePageTracker';
@@ -26,15 +25,12 @@ import HomePageTracker from './HomePageTracker';
 interface HomeViewProps {
   categories: Category[];
   products: Product[];
-  coupons: PublicCoupon[];
 }
 
-export default function HomeView({ categories, products, coupons }: HomeViewProps) {
+export default function HomeView({ categories, products }: HomeViewProps) {
   return (
     <>
       <HomePageTracker />
-
-      <OffersBanner coupons={coupons} />
 
       <Box component="section" bg="navy.7">
         <Container size="xl" py={{ base: 96, sm: 128 }}>
