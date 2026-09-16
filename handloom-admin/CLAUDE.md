@@ -152,6 +152,7 @@ Mounted at `/api/v1/store/*` in the monolith (`cmd/api/main.go`):
 Browser notifications for the storefront. Subscriptions and broadcast history live in the `handloom-notifications` DynamoDB table (`PUSH_SUB#<sha256(endpoint)>` / `PUSH_BROADCAST#<id>`); GSI1 is partitioned by subscription status so a broadcast queries only live endpoints.
 
 - **VAPID keys**: `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT`. Generate once per environment with `make vapid-keys` and store the private key in SSM. **Rotating the keypair invalidates every existing subscription** — browsers bind their subscription to the public key they subscribed with. Empty keys select the dev gateway, which logs payloads instead of delivering them.
+- **Endpoint allowlist**: `/push/subscribe` is public and the stored endpoint is a URL the backend later makes VAPID-signed requests to, so it must be HTTPS on a known push service (`pushEndpointHosts` in `internal/service/push_service.go`). Add a host there when a new browser ships a new push service.
 - **Dead endpoints**: a push service answering 404/410 means the endpoint is permanently gone; the service marks it INACTIVE so later broadcasts skip it.
 - **Fan-out**: bounded to 32 concurrent sends (`broadcastConcurrency`), since each send is one HTTPS round trip.
 

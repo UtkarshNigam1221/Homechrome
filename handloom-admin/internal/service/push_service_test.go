@@ -87,14 +87,14 @@ func TestPushService_Subscribe(t *testing.T) {
 			})
 
 		sub, err := svc.Subscribe(ctx, domain.SubscribePushRequest{
-			Endpoint: "https://push.example.com/a",
+			Endpoint: "https://fcm.googleapis.com/fcm/send/a",
 			Keys:     domain.PushSubscriptionKeys{P256dh: "p", Auth: "a"},
 		}, "Mozilla/5.0")
 
 		require.NoError(t, err)
 		assert.Equal(t, domain.PushSubscriptionActive, sub.Status)
 
-		payload, ok := gw.sentTo("https://push.example.com/a")
+		payload, ok := gw.sentTo("https://fcm.googleapis.com/fcm/send/a")
 		require.True(t, ok, "a first-time subscriber should receive the welcome push")
 
 		var decoded domain.PushPayload
@@ -114,7 +114,7 @@ func TestPushService_Subscribe(t *testing.T) {
 		repo.EXPECT().Save(ctx, gomock.Any()).Return(false, nil)
 
 		_, err := svc.Subscribe(ctx, domain.SubscribePushRequest{
-			Endpoint: "https://push.example.com/a",
+			Endpoint: "https://fcm.googleapis.com/fcm/send/a",
 			Keys:     domain.PushSubscriptionKeys{P256dh: "p", Auth: "a"},
 		}, "")
 
@@ -128,19 +128,83 @@ func TestPushService_Subscribe(t *testing.T) {
 
 		repo := mocks.NewMockPushSubscriptionRepository(ctrl)
 		gw := newFakeGateway()
-		gw.failWith["https://push.example.com/a"] = errors.New("push service unreachable")
+		gw.failWith["https://fcm.googleapis.com/fcm/send/a"] = errors.New("push service unreachable")
 		svc := NewPushService(repo, gw)
 
 		repo.EXPECT().Save(ctx, gomock.Any()).Return(true, nil)
 
 		sub, err := svc.Subscribe(ctx, domain.SubscribePushRequest{
-			Endpoint: "https://push.example.com/a",
+			Endpoint: "https://fcm.googleapis.com/fcm/send/a",
 			Keys:     domain.PushSubscriptionKeys{P256dh: "p", Auth: "a"},
 		}, "")
 
 		require.NoError(t, err)
 		assert.NotNil(t, sub)
 	})
+}
+
+func TestPushService_SubscribeEndpointAllowlist(t *testing.T) {
+	ctx := context.Background()
+
+	accepted := []string{
+		"https://fcm.googleapis.com/fcm/send/abc",
+		"https://android.googleapis.com/gcm/send/abc",
+		"https://updates.push.services.mozilla.com/wpush/v2/abc",
+		"https://wns2-par02p.notify.windows.com/w/?token=abc",
+		"https://web.push.apple.com/abc",
+		"https://FCM.googleapis.com/fcm/send/abc",
+	}
+
+	// Each of these would otherwise have the backend open a VAPID-signed
+	// connection to a host the anonymous caller picked.
+	rejected := []string{
+		"http://fcm.googleapis.com/fcm/send/abc", // downgraded to plaintext
+		"https://127.0.0.1:8080/admin",
+		"https://169.254.169.254/latest/meta-data/",
+		"https://internal-svc.local/",
+		"https://evil.example.com/fcm.googleapis.com",
+		"https://fcm.googleapis.com.evil.example.com/abc", // suffix must be on a label boundary
+		"ftp://fcm.googleapis.com/abc",
+		"",
+	}
+
+	req := func(endpoint string) domain.SubscribePushRequest {
+		return domain.SubscribePushRequest{
+			Endpoint: endpoint,
+			Keys:     domain.PushSubscriptionKeys{P256dh: "p", Auth: "a"},
+		}
+	}
+
+	for _, endpoint := range accepted {
+		t.Run("accepts "+endpoint, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			repo := mocks.NewMockPushSubscriptionRepository(ctrl)
+			repo.EXPECT().Save(ctx, gomock.Any()).Return(false, nil)
+
+			_, err := NewPushService(repo, newFakeGateway()).Subscribe(ctx, req(endpoint), "")
+			require.NoError(t, err)
+		})
+	}
+
+	for _, endpoint := range rejected {
+		t.Run("rejects "+endpoint, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			// No Save, no Send: a rejected endpoint must not be stored or reached.
+			repo := mocks.NewMockPushSubscriptionRepository(ctrl)
+			gw := newFakeGateway()
+
+			_, err := NewPushService(repo, gw).Subscribe(ctx, req(endpoint), "")
+
+			var appErr *apperrors.AppError
+			require.ErrorAs(t, err, &appErr)
+			assert.Equal(t, apperrors.ErrCodeValidation, appErr.Code)
+			assert.Zero(t, gw.sentCount())
+		})
+	}
 }
 
 func TestPushService_SendTest(t *testing.T) {

@@ -12,8 +12,10 @@ self.addEventListener('push', (event) => {
   let data = {
     title: 'Homechrome Handloom',
     body: 'New handloom collections & updates are live!',
-    icon: '/icon.svg',
-    badge: '/icon.svg',
+    icon: '/icon.png',
+    // Android draws the badge from alpha only, so it needs the mono glyph
+    // rather than the full-colour icon, which would flatten to a filled square.
+    badge: '/badge.png',
     url: '/',
     tag: 'homechrome-push',
   };
@@ -33,8 +35,8 @@ self.addEventListener('push', (event) => {
 
   const options = {
     body: data.body,
-    icon: data.icon || '/icon.svg',
-    badge: data.badge || '/icon.svg',
+    icon: data.icon || '/icon.png',
+    badge: data.badge || '/badge.png',
     data: {
       url: data.url || '/',
     },

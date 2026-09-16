@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	stderrors "errors"
 	"log/slog"
+	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -25,7 +27,17 @@ const broadcastConcurrency = 32
 const defaultBroadcastHistory int32 = 20
 
 // defaultPushIcon is the storefront asset shown when a payload names no icon.
-const defaultPushIcon = "/icon.svg"
+const defaultPushIcon = "/icon.png"
+
+// pushEndpointHosts are the push services we accept subscriptions for, matched
+// on the host or any subdomain of it.
+var pushEndpointHosts = []string{
+	"fcm.googleapis.com",        // Chrome, Edge, Brave, Opera
+	"android.googleapis.com",    // legacy GCM endpoints still issued by old Chrome
+	"push.services.mozilla.com", // Firefox
+	"notify.windows.com",        // Edge / WNS
+	"web.push.apple.com",        // Safari
+}
 
 // PushService implements Web Push subscription and delivery operations.
 type PushService struct {
@@ -50,6 +62,10 @@ func (s *PushService) Subscribe(
 	req domain.SubscribePushRequest,
 	userAgent string,
 ) (*domain.PushSubscription, error) {
+	if err := validatePushEndpoint(req.Endpoint); err != nil {
+		return nil, err
+	}
+
 	now := time.Now().UTC()
 	sub := &domain.PushSubscription{
 		Endpoint:   req.Endpoint,
@@ -255,6 +271,23 @@ func (s *PushService) ListBroadcasts(ctx context.Context, limit int32) ([]*domai
 		limit = defaultBroadcastHistory
 	}
 	return s.repo.ListBroadcasts(ctx, limit)
+}
+
+// validatePushEndpoint keeps the public subscribe route from pointing the
+// backend's VAPID-signed sends at an arbitrary host of the caller's choosing.
+func validatePushEndpoint(endpoint string) error {
+	u, err := url.Parse(endpoint)
+	if err != nil || u.Scheme != "https" {
+		return errors.Validation("Unsupported push endpoint")
+	}
+
+	host := strings.ToLower(u.Hostname())
+	for _, allowed := range pushEndpointHosts {
+		if host == allowed || strings.HasSuffix(host, "."+allowed) {
+			return nil
+		}
+	}
+	return errors.Validation("Unsupported push endpoint")
 }
 
 // payloadURL normalizes an empty click-through target to the storefront root.
