@@ -71,7 +71,16 @@ export default function NotificationModal({ opened, onClose }: NotificationModal
   const handleSendTest = async () => {
     setTestSending(true);
     try {
-      await sendTest();
+      // sendTest reports a missing local subscription by returning false rather
+      // than throwing, so the catch below would not see it.
+      if (!(await sendTest())) {
+        notifications.show({
+          title: 'Could not send test',
+          message: 'This device is no longer subscribed. Turn notifications off and on again.',
+          color: 'red',
+        });
+        return;
+      }
       notifications.show({
         title: 'Test notification sent',
         message: 'Check your notification drawer for the alert.',

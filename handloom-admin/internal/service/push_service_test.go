@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"sync"
 	"testing"
 
@@ -166,6 +167,12 @@ func TestPushService_SubscribeEndpointAllowlist(t *testing.T) {
 		"https://fcm.googleapis.com.evil.example.com/abc", // suffix must be on a label boundary
 		"ftp://fcm.googleapis.com/abc",
 		"",
+		// Userinfo is dropped when Go dials, so these would all reach one real
+		// device under distinct row keys — unbounded duplicates of one victim.
+		"https://anything@fcm.googleapis.com/fcm/send/abc",
+		"https://a:b@fcm.googleapis.com/fcm/send/abc",
+		"https://fcm.googleapis.com:8443/fcm/send/abc",
+		"https://fcm.googleapis.com/fcm/send/" + strings.Repeat("a", 512),
 	}
 
 	req := func(endpoint string) domain.SubscribePushRequest {

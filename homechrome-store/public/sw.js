@@ -48,6 +48,15 @@ self.addEventListener('push', (event) => {
   event.waitUntil(self.registration.showNotification(data.title, options));
 });
 
+/** Exact origin match — a substring test would accept evil-homechrome.in. */
+function sameOrigin(url) {
+  try {
+    return new URL(url).origin === self.location.origin;
+  } catch {
+    return false;
+  }
+}
+
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   const targetUrl = (event.notification.data && event.notification.data.url) || '/';
@@ -56,11 +65,16 @@ self.addEventListener('notificationclick', (event) => {
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
       // Focus open Homechrome window if present
       for (const client of clientList) {
-        if (client.url.includes(self.location.origin) && 'focus' in client) {
-          if ('navigate' in client) {
-            client.navigate(targetUrl);
-          }
-          return client.focus();
+        if (sameOrigin(client.url) && 'focus' in client) {
+          // Focus first: Chrome only allows navigate() inside the activation
+          // window. navigate() rejects for uncontrolled clients, which
+          // includeUncontrolled guarantees we can be handed.
+          return client
+            .focus()
+            .then((focused) =>
+              'navigate' in focused ? focused.navigate(targetUrl) : focused
+            )
+            .catch(() => self.clients.openWindow && self.clients.openWindow(targetUrl));
         }
       }
       // Otherwise open a new window
