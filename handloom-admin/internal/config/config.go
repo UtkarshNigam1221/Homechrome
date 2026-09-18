@@ -60,9 +60,8 @@ type StoreConfig struct {
 
 	// Web Push (VAPID). Keys are base64url-encoded and must stay stable for the
 	// life of a subscription — regenerating them silently invalidates every
-	// browser that has already subscribed. Generate once with `make vapid-keys`
-	// and store the private key in SSM. Empty keys select the dev gateway, which
-	// logs instead of delivering.
+	// browser that has already subscribed. Provisioned by scripts/put-vapid-key.
+	// Empty keys select the dev gateway, which logs instead of delivering.
 	VAPIDPublicKey  string
 	VAPIDPrivateKey string
 	VAPIDSubject    string
