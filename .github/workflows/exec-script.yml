@@ -1,0 +1,111 @@
+name: Exec Script
+
+# Runs one of a curated set of operational scripts against an environment.
+#
+# The script is a dropdown, not free text, and `args` is passed to it as
+# arguments rather than evaluated by a shell — so this workflow can only ever do
+# what the scripts in that list already do. Adding a new entry is a reviewed
+# change to this file, which is the point: the job assumes an AWS role, and a
+# free-form "run this command" input would hand that role to anyone who can
+# click Run workflow.
+#
+# Secrets are never workflow inputs: inputs are recorded in the run's metadata
+# in plain text. A script that needs one reads it from a repository secret
+# wired in below, or mints it itself and writes it straight to its destination
+# (put-vapid-key does the latter).
+
+on:
+  workflow_dispatch:
+    inputs:
+      script:
+        description: Script to run
+        type: choice
+        required: true
+        options:
+          - put-vapid-key
+          - health-check
+          - reconcile-inventory
+          - reset-transactional-data
+      environment:
+        description: Target environment
+        type: choice
+        required: true
+        default: dev
+        options: [dev, prod]
+      args:
+        description: Extra arguments, space separated (e.g. --rotate)
+        type: string
+        required: false
+        default: ''
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  # One run per script+environment: these mutate shared state.
+  group: exec-${{ inputs.script }}-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  exec:
+    name: ${{ inputs.script }} → ${{ inputs.environment }}
+    runs-on: ubuntu-latest
+    # Prod runs go through the protected environment, so they inherit whatever
+    # reviewers/branch rules are configured there.
+    environment: ${{ inputs.environment }}
+    defaults:
+      run:
+        working-directory: handloom-admin
+    steps:
+      - name: Guard prod from non-main branches
+        if: inputs.environment == 'prod' && github.ref_name != 'main'
+        run: |
+          echo "::error::Prod runs must target main. Selected ref: ${{ github.ref_name }}"
+          exit 1
+
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.25'
+          cache-dependency-path: handloom-admin/go.sum
+
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Run ${{ inputs.script }}
+        env:
+          ENVIRONMENT: ${{ inputs.environment }}
+          ARGS: ${{ inputs.args }}
+        run: |
+          set -euo pipefail
+
+          # Map the dropdown to a command here rather than interpolating the
+          # input into the shell, so the set of reachable scripts is fixed at
+          # review time and nothing from the dispatch form is executed as code.
+          case "${{ inputs.script }}" in
+            put-vapid-key)            cmd=(go run ./scripts/put-vapid-key) ;;
+            reconcile-inventory)      cmd=(go run ./scripts/reconcile-inventory) ;;
+            health-check)             cmd=(./scripts/health-check.sh) ;;
+            reset-transactional-data) cmd=(./scripts/reset-transactional-data.sh) ;;
+            *) echo "::error::Unmapped script: ${{ inputs.script }}"; exit 1 ;;
+          esac
+
+          # Shell entries need the exec bit; Go entries are run by the toolchain.
+          if [ "${cmd[0]}" != "go" ]; then
+            if [ ! -f "${cmd[0]}" ]; then
+              echo "::error::${cmd[0]} not found in this ref."
+              exit 1
+            fi
+            chmod +x "${cmd[0]}"
+          fi
+
+          # Word-split ARGS deliberately: these are separate arguments, not one
+          # string. Quoting is not available through a dispatch form, so an
+          # argument containing spaces is not supported.
+          # shellcheck disable=SC2086
+          echo "Running ${cmd[*]} $ENVIRONMENT $ARGS"
+          "${cmd[@]}" "$ENVIRONMENT" $ARGS
