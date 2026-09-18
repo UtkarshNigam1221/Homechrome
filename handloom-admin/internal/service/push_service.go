@@ -148,6 +148,12 @@ func (s *PushService) Broadcast(
 
 	broadcastID := "bcast_" + uuid.New().String()
 
+	// Chrome silently drops everything past the second action; trim rather than
+	// let a sender believe a third button shipped.
+	if len(payload.Actions) > domain.MaxPushActions {
+		payload.Actions = payload.Actions[:domain.MaxPushActions]
+	}
+
 	// A shared tag makes each notification replace the last one on the device,
 	// so an unread broadcast disappears when the next goes out. Default to one
 	// tag per broadcast; an explicit tag opts back in to replacing.
@@ -165,6 +171,7 @@ func (s *PushService) Broadcast(
 		URL:           payloadURL(req.URL),
 		Tag:           req.Tag,
 		Image:         req.Image,
+		Actions:       req.Actions,
 		TotalTargeted: len(subs),
 		SuccessCount:  successCount,
 		FailureCount:  failureCount,

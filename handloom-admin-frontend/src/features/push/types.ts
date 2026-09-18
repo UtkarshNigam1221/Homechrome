@@ -21,6 +21,14 @@ export interface PushSubscriber {
   last_seen_at: string;
 }
 
+/** One of the buttons Android shows on an expanded notification. Max two. */
+export interface PushAction {
+  action: string;
+  title: string;
+  /** Overrides the notification's click-through for this button. */
+  url?: string;
+}
+
 export type PushBroadcastStatus = 'SUCCESS' | 'PARTIAL' | 'FAILED';
 
 export interface PushBroadcast {
@@ -30,6 +38,8 @@ export interface PushBroadcast {
   url: string;
   tag?: string;
   image?: string;
+  icon?: string;
+  actions?: PushAction[];
   total_targeted: number;
   success_count: number;
   failure_count: number;
@@ -53,4 +63,7 @@ export interface BroadcastRequest {
   tag?: string;
   /** Wide banner shown when the notification is expanded. */
   image?: string;
+  /** Overrides the brand mark with a product thumbnail. */
+  icon?: string;
+  actions?: PushAction[];
 }
