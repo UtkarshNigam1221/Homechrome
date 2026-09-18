@@ -87,7 +87,7 @@ func (s *PushService) Subscribe(
 		// subscription that already succeeded.
 		s.sendOne(ctx, sub, domain.PushPayload{
 			Title: "Welcome to Homechrome",
-			Body:  "Notifications are on. You'll be first to know about new handloom arrivals and offers.",
+			Body:  "First look at new weaver collections and private offers.",
 			URL:   "/",
 			Tag:   "homechrome-welcome",
 		})
@@ -115,8 +115,8 @@ func (s *PushService) SendTest(ctx context.Context, endpoint string) error {
 	}
 
 	if err := s.deliver(ctx, sub, domain.PushPayload{
-		Title: "Homechrome Handloom",
-		Body:  "Test alert: this device is ready to receive handloom updates.",
+		Title: "Notifications are working",
+		Body:  "This is exactly how a Homechrome alert will look.",
 		URL:   "/",
 		Tag:   "homechrome-test",
 	}); err != nil {

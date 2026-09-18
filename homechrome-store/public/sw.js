@@ -10,8 +10,8 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('push', (event) => {
   let data = {
-    title: 'Homechrome Handloom',
-    body: 'New handloom collections & updates are live!',
+    title: 'Homechrome',
+    body: 'Something new on the loom. Tap to take a look.',
     icon: '/icon.png',
     // Android draws the badge from alpha only, so it needs the mono glyph
     // rather than the full-colour icon, which would flatten to a filled square.
