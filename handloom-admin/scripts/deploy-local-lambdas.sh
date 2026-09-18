@@ -9,7 +9,15 @@ set -e
 ENDPOINT="${AWS_ENDPOINT:-http://localhost:4566}"
 REGION="${AWS_REGION:-ap-south-1}"
 LAMBDA_DIR="./bin/lambda"
-ACTIVE_SERVICES="auth user catalog asset store-auth store-catalog store-cart store-checkout store-orders store-tracking store-profile store-events store-webhooks"
+
+# Local VAPID keypair lives in .env (make ensure-vapid). Unset keys make the
+# push Lambda fall through to the dev gateway, which logs instead of sending.
+if [ -f .env ]; then
+    set -a
+    . ./.env
+    set +a
+fi
+ACTIVE_SERVICES="auth user catalog asset push store-auth store-catalog store-cart store-checkout store-orders store-tracking store-profile store-events store-webhooks"
 
 # Env vars injected into each Lambda
 LAMBDA_ENV='{
@@ -29,7 +37,10 @@ LAMBDA_ENV='{
     "CUSTOMER_JWT_SECRET": "customer-secret-change-in-production",
     "JWT_SECRET_KEY": "dev-secret-key-change-in-production",
     "S3_ASSETS_BUCKET": "handloom-assets",
-    "QUOTE_VALIDITY_HRS": "24"
+    "QUOTE_VALIDITY_HRS": "24",
+    "VAPID_PUBLIC_KEY": "'"${VAPID_PUBLIC_KEY:-}"'",
+    "VAPID_PRIVATE_KEY": "'"${VAPID_PRIVATE_KEY:-}"'",
+    "VAPID_SUBJECT": "'"${VAPID_SUBJECT:-mailto:dev@homechrome.in}"'"
   }
 }'
 
@@ -239,6 +250,7 @@ create_proxy_route "/admin/users" "handloom-user"
 create_proxy_route "/admin/categories" "handloom-catalog"
 create_proxy_route "/admin/products" "handloom-catalog"
 create_proxy_route "/admin/assets" "handloom-asset"
+create_proxy_route "/admin/push" "handloom-push"
 
 # Store routes (B2C storefront)
 create_proxy_route "/api/v1/store/auth"     "handloom-store-auth"
@@ -250,6 +262,7 @@ create_proxy_route "/api/v1/store/me"       "handloom-store-profile"
 create_proxy_route "/api/v1/store/track"    "handloom-store-tracking"
 create_proxy_route "/api/v1/store/events"   "handloom-store-events"
 create_proxy_route "/api/v1/store/webhooks" "handloom-store-webhooks"
+create_proxy_route "/api/v1/store/push"     "handloom-push"
 
 # Add health check on root
 aws apigateway put-method \
