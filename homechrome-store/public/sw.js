@@ -38,10 +38,15 @@ self.addEventListener('push', (event) => {
     body: data.body,
     icon: data.icon || '/icon.png',
     badge: data.badge || '/badge.png',
+    // Wide banner shown when the notification is expanded. Omitted, not empty:
+    // an empty string renders a broken-image slot on some Android builds.
+    ...(data.image ? { image: data.image } : {}),
     data: {
       url: data.url || '/',
     },
-    tag: data.tag || 'homechrome-push',
+    // A shared tag replaces the previous notification instead of stacking, so
+    // fall back to a unique one rather than collapsing unrelated broadcasts.
+    tag: data.tag || `homechrome-${Date.now()}`,
     renotify: true,
     vibrate: [150, 75, 150],
   };
