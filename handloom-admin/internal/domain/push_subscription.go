@@ -169,14 +169,14 @@ type ListPushSubscriptionsResponse struct {
 // SubscribePushRequest is the storefront's registration payload. It mirrors the
 // browser's PushSubscription.toJSON() shape plus a device label.
 type SubscribePushRequest struct {
-	Endpoint string               `json:"endpoint" validate:"required,url"`
+	Endpoint string               `json:"endpoint" validate:"required,url,max=512"`
 	Keys     PushSubscriptionKeys `json:"keys" validate:"required"`
 	Device   *PushDeviceInfo      `json:"device,omitempty"`
 }
 
 // UnsubscribePushRequest identifies the endpoint to retire.
 type UnsubscribePushRequest struct {
-	Endpoint string `json:"endpoint" validate:"required,url"`
+	Endpoint string `json:"endpoint" validate:"required,url,max=512"`
 }
 
 // PushPayload is the notification the service worker renders.
@@ -192,7 +192,7 @@ type PushPayload struct {
 // Endpoint-scoped on purpose: a storefront visitor testing their own
 // notifications must never be able to reach anyone else's device.
 type TestPushRequest struct {
-	Endpoint string `json:"endpoint" validate:"required,url"`
+	Endpoint string `json:"endpoint" validate:"required,url,max=512"`
 }
 
 // BroadcastPushRequest is the admin fan-out payload.

@@ -29,6 +29,9 @@ const defaultBroadcastHistory int32 = 20
 // defaultPushIcon is the storefront asset shown when a payload names no icon.
 const defaultPushIcon = "/icon.png"
 
+// maxPushEndpointLen caps the stored endpoint. Real ones run to ~500 chars.
+const maxPushEndpointLen = 512
+
 // pushEndpointHosts are the push services we accept subscriptions for, matched
 // on the host or any subdomain of it.
 var pushEndpointHosts = []string{
@@ -276,8 +279,11 @@ func (s *PushService) ListBroadcasts(ctx context.Context, limit int32) ([]*domai
 // validatePushEndpoint keeps the public subscribe route from pointing the
 // backend's VAPID-signed sends at an arbitrary host of the caller's choosing.
 func validatePushEndpoint(endpoint string) error {
+	// Userinfo and port are rejected, not ignored: Go drops userinfo when
+	// dialing, so a@host and b@host reach one device under two row keys.
 	u, err := url.Parse(endpoint)
-	if err != nil || u.Scheme != "https" {
+	if err != nil || u.Scheme != "https" || u.User != nil || u.Port() != "" ||
+		len(endpoint) > maxPushEndpointLen {
 		return errors.Validation("Unsupported push endpoint")
 	}
 

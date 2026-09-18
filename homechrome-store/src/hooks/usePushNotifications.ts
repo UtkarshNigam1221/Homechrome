@@ -36,6 +36,14 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
   return outputArray;
 }
 
+/** Whether a subscription was issued for this VAPID key. */
+function usesKey(subscription: PushSubscription, key: Uint8Array): boolean {
+  const current = subscription.options.applicationServerKey;
+  if (!current) return false;
+  const bytes = new Uint8Array(current);
+  return bytes.length === key.length && bytes.every((b, i) => b === key[i]);
+}
+
 /** Coarse browser/OS label, so the admin console can tell devices apart. */
 function detectDeviceInfo() {
   if (typeof window === 'undefined') return undefined;
@@ -168,15 +176,21 @@ export function usePushNotifications() {
         throw new Error('Push notifications are not available right now.');
       }
 
-      // Reuse the existing registration when present: subscribing twice with
-      // the same key returns the same endpoint, but calling subscribe() with a
-      // *different* key throws instead of replacing it.
-      const existing = await registration.pushManager.getSubscription();
+      // Reuse an existing subscription only when it was issued for the current
+      // key. One bound to a rotated key can never be delivered to, and the push
+      // service answers 403 rather than 410, so it is never pruned either.
+      const applicationServerKey = urlBase64ToUint8Array(publicKey);
+      let existing = await registration.pushManager.getSubscription();
+      if (existing && !usesKey(existing, applicationServerKey)) {
+        await existing.unsubscribe();
+        existing = null;
+      }
+
       const subscription =
         existing ??
         (await registration.pushManager.subscribe({
           userVisibleOnly: true,
-          applicationServerKey: urlBase64ToUint8Array(publicKey) as BufferSource,
+          applicationServerKey: applicationServerKey as BufferSource,
         }));
 
       const { endpoint, keys } = subscription.toJSON() as {
