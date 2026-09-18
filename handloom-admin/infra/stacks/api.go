@@ -105,6 +105,10 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 	jwtSecretParamName := fmt.Sprintf("/handloom/%s/jwt-secret", props.Environment)
 	customerJwtSecretParamName := fmt.Sprintf("/handloom/%s/customer-jwt-secret", props.Environment)
 
+	// Read at runtime by the push Lambda, not resolved here: a deploy-time
+	// reference would bake the signing key into the CloudFormation template.
+	vapidPrivateKeyParamName := fmt.Sprintf("/handloom/%s/vapid-private-key", props.Environment)
+
 	// S3 buckets from StorageStack
 	assetsBucket := props.StorageStack.AssetsBucket
 
@@ -187,10 +191,11 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 		"PHONEPE_CLIENT_ID", "PHONEPE_CLIENT_SECRET",
 		"PHONEPE_WEBHOOK_USERNAME", "PHONEPE_WEBHOOK_PASSWORD",
 		"MSG91_AUTH_KEY",
-		// VAPID keypair for Web Push. Generate once per environment with
-		// `make vapid-keys`; rotating it invalidates every live browser
-		// subscription, so it is set and then left alone.
-		"VAPID_PUBLIC_KEY", "VAPID_PRIVATE_KEY", "VAPID_SUBJECT",
+		// Web Push. The public key and subject are not secret; the private key
+		// is read from SSM at runtime by the push Lambda alone, so it never
+		// enters this template. Generate once per environment with
+		// `make vapid-keys`; rotating it invalidates every live subscription.
+		"VAPID_PUBLIC_KEY", "VAPID_SUBJECT",
 	}
 	for _, key := range gatewaySecretKeys {
 		if v := os.Getenv(key); v != "" {
@@ -295,6 +300,20 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 		// Consumer Lambda lives in MetricsStack and owns ConsumeMessages there.
 		if props.MetricsQueue != nil {
 			props.MetricsQueue.GrantSendMessages(lambdaFn)
+		}
+
+		// The VAPID private key is the one secret read at runtime rather than
+		// resolved at deploy time, so it stays out of the template. Only the
+		// push Lambda signs pushes, so only it gets the parameter and the read.
+		if svc == "push" {
+			lambdaFn.AddEnvironment(jsii.String("VAPID_PRIVATE_KEY_PARAM"),
+				jsii.String(vapidPrivateKeyParamName), nil)
+			lambdaFn.AddToRolePolicy(awsiam.NewPolicyStatement(&awsiam.PolicyStatementProps{
+				Actions: jsii.Strings("ssm:GetParameter"),
+				Resources: jsii.Strings(fmt.Sprintf(
+					"arn:aws:ssm:*:*:parameter%s", vapidPrivateKeyParamName,
+				)),
+			}))
 		}
 	}
 
