@@ -107,6 +107,7 @@ type PushBroadcast struct {
 	Body  string `json:"body" dynamodbav:"body"`
 	URL   string `json:"url" dynamodbav:"url"`
 	Tag   string `json:"tag,omitempty" dynamodbav:"tag,omitempty"`
+	Image string `json:"image,omitempty" dynamodbav:"image,omitempty"`
 
 	TotalTargeted int                 `json:"total_targeted" dynamodbav:"total_targeted"`
 	SuccessCount  int                 `json:"success_count" dynamodbav:"success_count"`
@@ -186,6 +187,8 @@ type PushPayload struct {
 	URL   string `json:"url,omitempty"`
 	Tag   string `json:"tag,omitempty"`
 	Icon  string `json:"icon,omitempty"`
+	// Image is the wide banner Android shows when the notification is expanded.
+	Image string `json:"image,omitempty"`
 }
 
 // TestPushRequest asks for a delivery to one endpoint the caller already owns.
@@ -202,6 +205,7 @@ type BroadcastPushRequest struct {
 	URL   string `json:"url,omitempty" validate:"omitempty,max=512,startswith=/"`
 	Tag   string `json:"tag,omitempty" validate:"omitempty,max=64"`
 	Icon  string `json:"icon,omitempty" validate:"omitempty,max=512"`
+	Image string `json:"image,omitempty" validate:"omitempty,url,max=512"`
 }
 
 // BroadcastPushResponse reports the fan-out result to the admin console.

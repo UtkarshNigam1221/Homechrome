@@ -5,6 +5,7 @@ import { useState } from 'react';
 import toast from 'react-hot-toast';
 
 import { pushApi } from '@/features/push/api';
+import { NotificationPreview } from '@/features/push/components/NotificationPreview';
 import { getErrorMessage } from '@/shared/api/client';
 import { PageLoading } from '@/shared/components/loading';
 import { Badge, Button, Card, Input, PageHeader } from '@/shared/components/ui';
@@ -33,6 +34,7 @@ export function PushBroadcastPage() {
   const [body, setBody] = useState('');
   const [url, setUrl] = useState('/products');
   const [tag, setTag] = useState('');
+  const [image, setImage] = useState('');
 
   const { data: subscribersData, isLoading: subscribersLoading } = useQuery({
     queryKey: ['push-subscribers'],
@@ -57,6 +59,7 @@ export function PushBroadcastPage() {
       setTitle('');
       setBody('');
       setTag('');
+      setImage('');
     },
     onError: (error) => {
       toast.error(getErrorMessage(error));
@@ -79,6 +82,7 @@ export function PushBroadcastPage() {
       body: body.trim(),
       url: url.trim() || '/',
       tag: tag.trim() || undefined,
+      image: image.trim() || undefined,
     });
   };
 
@@ -138,13 +142,21 @@ export function PushBroadcastPage() {
                 hint="Storefront path opened when tapped"
               />
               <Input
-                label="Tag (optional)"
+                label="Replaces tag (optional)"
                 value={tag}
                 onChange={(e) => setTag(e.target.value)}
                 placeholder="festive-drop"
-                hint="Same tag replaces an earlier unread alert"
+                hint="Reusing a tag replaces that unread alert. Leave empty to stack."
               />
             </div>
+
+            <Input
+              label="Banner image (optional)"
+              value={image}
+              onChange={(e) => setImage(e.target.value)}
+              placeholder="https://dev-store.homechrome.in/banners/festive.jpg"
+              hint="Full URL to a wide image, shown when the notification is expanded. Around 2:1 works best."
+            />
 
             <div className="flex items-center justify-between border-t border-gray-200 pt-4">
               <p className="text-sm text-gray-500">
@@ -163,36 +175,42 @@ export function PushBroadcastPage() {
           </form>
         </Card>
 
-        <Card>
-          <div className="flex items-center gap-2 text-gray-900 mb-4">
-            <Users className="w-5 h-5 text-primary-600" />
-            <h2 className="font-semibold">Subscribers</h2>
-          </div>
+        <div className="space-y-6">
+          <Card>
+            <NotificationPreview title={title} body={body} image={image.trim() || undefined} />
+          </Card>
 
-          {subscribers.length === 0 ? (
-            <p className="text-sm text-gray-500">
-              No active subscribers yet. Visitors opt in from the storefront.
-            </p>
-          ) : (
-            <ul className="divide-y divide-gray-200">
-              {subscribers.map((subscriber) => (
-                <li key={subscriber.id} className="flex items-center gap-3 py-3">
-                  {subscriber.device?.is_mobile ? (
-                    <Smartphone className="w-4 h-4 shrink-0 text-gray-400" />
-                  ) : (
-                    <Monitor className="w-4 h-4 shrink-0 text-gray-400" />
-                  )}
-                  <div className="min-w-0">
-                    <p className="truncate text-sm text-gray-900">{deviceLabel(subscriber)}</p>
-                    <p className="text-xs text-gray-500">
-                      Joined {format(new Date(subscriber.created_at), 'dd MMM yyyy')}
-                    </p>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
+          <Card>
+            <div className="flex items-center gap-2 text-gray-900 mb-4">
+              <Users className="w-5 h-5 text-primary-600" />
+              <h2 className="font-semibold">Subscribers</h2>
+            </div>
+
+            {subscribers.length === 0 ? (
+              <p className="text-sm text-gray-500">
+                No active subscribers yet. Visitors opt in from the storefront.
+              </p>
+            ) : (
+              <ul className="divide-y divide-gray-200">
+                {subscribers.map((subscriber) => (
+                  <li key={subscriber.id} className="flex items-center gap-3 py-3">
+                    {subscriber.device?.is_mobile ? (
+                      <Smartphone className="w-4 h-4 shrink-0 text-gray-400" />
+                    ) : (
+                      <Monitor className="w-4 h-4 shrink-0 text-gray-400" />
+                    )}
+                    <div className="min-w-0">
+                      <p className="truncate text-sm text-gray-900">{deviceLabel(subscriber)}</p>
+                      <p className="text-xs text-gray-500">
+                        Joined {format(new Date(subscriber.created_at), 'dd MMM yyyy')}
+                      </p>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
+        </div>
       </div>
 
       <Card padding="none">

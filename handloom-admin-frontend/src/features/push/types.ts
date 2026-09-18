@@ -29,6 +29,7 @@ export interface PushBroadcast {
   body: string;
   url: string;
   tag?: string;
+  image?: string;
   total_targeted: number;
   success_count: number;
   failure_count: number;
@@ -50,4 +51,6 @@ export interface BroadcastRequest {
   body: string;
   url?: string;
   tag?: string;
+  /** Wide banner shown when the notification is expanded. */
+  image?: string;
 }

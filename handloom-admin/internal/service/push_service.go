@@ -146,15 +146,25 @@ func (s *PushService) Broadcast(
 	// dropping it from the payload.
 	payload := domain.PushPayload(req)
 
+	broadcastID := "bcast_" + uuid.New().String()
+
+	// A shared tag makes each notification replace the last one on the device,
+	// so an unread broadcast disappears when the next goes out. Default to one
+	// tag per broadcast; an explicit tag opts back in to replacing.
+	if payload.Tag == "" {
+		payload.Tag = broadcastID
+	}
+
 	successCount := s.fanOut(ctx, subs, payload)
 	failureCount := len(subs) - successCount
 
 	broadcast := &domain.PushBroadcast{
-		ID:            "bcast_" + uuid.New().String(),
+		ID:            broadcastID,
 		Title:         req.Title,
 		Body:          req.Body,
 		URL:           payloadURL(req.URL),
 		Tag:           req.Tag,
+		Image:         req.Image,
 		TotalTargeted: len(subs),
 		SuccessCount:  successCount,
 		FailureCount:  failureCount,
