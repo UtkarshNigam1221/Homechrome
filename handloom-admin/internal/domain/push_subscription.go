@@ -103,11 +103,12 @@ type PushBroadcast struct {
 	GSI1SK     string `json:"-" dynamodbav:"GSI1SK"`
 	EntityType string `json:"-" dynamodbav:"entity_type"`
 
-	Title string `json:"title" dynamodbav:"title"`
-	Body  string `json:"body" dynamodbav:"body"`
-	URL   string `json:"url" dynamodbav:"url"`
-	Tag   string `json:"tag,omitempty" dynamodbav:"tag,omitempty"`
-	Image string `json:"image,omitempty" dynamodbav:"image,omitempty"`
+	Title   string       `json:"title" dynamodbav:"title"`
+	Body    string       `json:"body" dynamodbav:"body"`
+	URL     string       `json:"url" dynamodbav:"url"`
+	Tag     string       `json:"tag,omitempty" dynamodbav:"tag,omitempty"`
+	Image   string       `json:"image,omitempty" dynamodbav:"image,omitempty"`
+	Actions []PushAction `json:"actions,omitempty" dynamodbav:"actions,omitempty"`
 
 	TotalTargeted int                 `json:"total_targeted" dynamodbav:"total_targeted"`
 	SuccessCount  int                 `json:"success_count" dynamodbav:"success_count"`
@@ -180,6 +181,19 @@ type UnsubscribePushRequest struct {
 	Endpoint string `json:"endpoint" validate:"required,url,max=512"`
 }
 
+// PushAction is one of the buttons Android shows on an expanded notification.
+// Chrome on Android renders at most two, label only — action icons are ignored.
+type PushAction struct {
+	// Action is the id the service worker matches on click.
+	Action string `json:"action" dynamodbav:"action" validate:"required,max=32"`
+	Title  string `json:"title" dynamodbav:"title" validate:"required,max=24"`
+	// URL overrides the notification's click-through for this button.
+	URL string `json:"url,omitempty" dynamodbav:"url,omitempty" validate:"omitempty,startswith=/,max=512"`
+}
+
+// MaxPushActions is the ceiling Chrome on Android enforces.
+const MaxPushActions = 2
+
 // PushPayload is the notification the service worker renders.
 type PushPayload struct {
 	Title string `json:"title"`
@@ -188,7 +202,8 @@ type PushPayload struct {
 	Tag   string `json:"tag,omitempty"`
 	Icon  string `json:"icon,omitempty"`
 	// Image is the wide banner Android shows when the notification is expanded.
-	Image string `json:"image,omitempty"`
+	Image   string       `json:"image,omitempty"`
+	Actions []PushAction `json:"actions,omitempty"`
 }
 
 // TestPushRequest asks for a delivery to one endpoint the caller already owns.
@@ -200,12 +215,13 @@ type TestPushRequest struct {
 
 // BroadcastPushRequest is the admin fan-out payload.
 type BroadcastPushRequest struct {
-	Title string `json:"title" validate:"required,max=120"`
-	Body  string `json:"body" validate:"required,max=300"`
-	URL   string `json:"url,omitempty" validate:"omitempty,max=512,startswith=/"`
-	Tag   string `json:"tag,omitempty" validate:"omitempty,max=64"`
-	Icon  string `json:"icon,omitempty" validate:"omitempty,max=512"`
-	Image string `json:"image,omitempty" validate:"omitempty,url,max=512"`
+	Title   string       `json:"title" validate:"required,max=120"`
+	Body    string       `json:"body" validate:"required,max=300"`
+	URL     string       `json:"url,omitempty" validate:"omitempty,max=512,startswith=/"`
+	Tag     string       `json:"tag,omitempty" validate:"omitempty,max=64"`
+	Icon    string       `json:"icon,omitempty" validate:"omitempty,max=512"`
+	Image   string       `json:"image,omitempty" validate:"omitempty,url,max=512"`
+	Actions []PushAction `json:"actions,omitempty" validate:"omitempty,max=2,dive"`
 }
 
 // BroadcastPushResponse reports the fan-out result to the admin console.

@@ -41,8 +41,17 @@ self.addEventListener('push', (event) => {
     // Wide banner shown when the notification is expanded. Omitted, not empty:
     // an empty string renders a broken-image slot on some Android builds.
     ...(data.image ? { image: data.image } : {}),
+    // Chrome on Android renders at most two, and label only — action icons are
+    // ignored, so anything drawn as an icon-button arrives as plain text.
+    ...(Array.isArray(data.actions) && data.actions.length
+      ? { actions: data.actions.slice(0, 2).map((a) => ({ action: a.action, title: a.title })) }
+      : {}),
     data: {
       url: data.url || '/',
+      // Per-button destinations, resolved on click by action id.
+      actionUrls: Object.fromEntries(
+        (data.actions || []).filter((a) => a.url).map((a) => [a.action, a.url])
+      ),
     },
     // A shared tag replaces the previous notification instead of stacking, so
     // fall back to a unique one rather than collapsing unrelated broadcasts.
@@ -65,7 +74,13 @@ function sameOrigin(url) {
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const targetUrl = (event.notification.data && event.notification.data.url) || '/';
+  // A button click carries its own action id; the body of the notification
+  // carries none, so it falls through to the notification-wide URL.
+  const notificationData = event.notification.data || {};
+  const targetUrl =
+    (event.action && notificationData.actionUrls && notificationData.actionUrls[event.action]) ||
+    notificationData.url ||
+    '/';
 
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {

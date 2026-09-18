@@ -6,14 +6,21 @@ import toast from 'react-hot-toast';
 
 import { pushApi } from '@/features/push/api';
 import { NotificationPreview } from '@/features/push/components/NotificationPreview';
+import { PUSH_TEMPLATES } from '@/features/push/templates';
 import { getErrorMessage } from '@/shared/api/client';
 import { PageLoading } from '@/shared/components/loading';
 import { Badge, Button, Card, Input, PageHeader } from '@/shared/components/ui';
 
-import type { PushBroadcastStatus, PushSubscriber } from '../types';
+import type { PushAction, PushBroadcastStatus, PushSubscriber } from '../types';
 
 const TITLE_MAX = 120;
 const BODY_MAX = 300;
+// Android truncates past these; the hard caps above are the backend's.
+const TITLE_COMFORTABLE = 40;
+const BODY_COMFORTABLE = 100;
+const ACTION_TITLE_MAX = 24;
+
+const EMPTY_ACTION: PushAction = { action: '', title: '', url: '' };
 
 const statusVariant: Record<PushBroadcastStatus, 'success' | 'warning' | 'danger'> = {
   SUCCESS: 'success',
@@ -35,6 +42,27 @@ export function PushBroadcastPage() {
   const [url, setUrl] = useState('/products');
   const [tag, setTag] = useState('');
   const [image, setImage] = useState('');
+  const [icon, setIcon] = useState('');
+  const [actions, setActions] = useState<PushAction[]>([{ ...EMPTY_ACTION }]);
+
+  const applyTemplate = (id: string) => {
+    const template = PUSH_TEMPLATES.find((t) => t.id === id);
+    if (!template) return;
+    setTitle(template.values.title);
+    setBody(template.values.body);
+    setUrl(template.values.url);
+    setImage(template.values.image ?? '');
+    setIcon(template.values.icon ?? '');
+    setActions(
+      template.values.actions?.length
+        ? template.values.actions.map((a) => ({ ...a }))
+        : [{ ...EMPTY_ACTION }]
+    );
+  };
+
+  const updateAction = (index: number, patch: Partial<PushAction>) => {
+    setActions((prev) => prev.map((a, i) => (i === index ? { ...a, ...patch } : a)));
+  };
 
   const { data: subscribersData, isLoading: subscribersLoading } = useQuery({
     queryKey: ['push-subscribers'],
@@ -60,6 +88,8 @@ export function PushBroadcastPage() {
       setBody('');
       setTag('');
       setImage('');
+      setIcon('');
+      setActions([{ ...EMPTY_ACTION }]);
     },
     onError: (error) => {
       toast.error(getErrorMessage(error));
@@ -74,6 +104,16 @@ export function PushBroadcastPage() {
   const broadcasts = broadcastsData?.broadcasts ?? [];
   const canSend = title.trim().length > 0 && body.trim().length > 0;
 
+  // A button needs a label; the id is derived so operators never type one.
+  const preparedActions: PushAction[] = actions
+    .filter((a) => a.title.trim())
+    .slice(0, 2)
+    .map((a, i) => ({
+      action: a.action.trim() || `action_${i + 1}`,
+      title: a.title.trim(),
+      url: a.url?.trim() || undefined,
+    }));
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!canSend) return;
@@ -83,6 +123,8 @@ export function PushBroadcastPage() {
       url: url.trim() || '/',
       tag: tag.trim() || undefined,
       image: image.trim() || undefined,
+      icon: icon.trim() || undefined,
+      actions: preparedActions.length ? preparedActions : undefined,
     });
   };
 
@@ -101,13 +143,34 @@ export function PushBroadcastPage() {
               <h2 className="font-semibold">Compose</h2>
             </div>
 
+            <div>
+              <p className="mb-2 text-sm font-medium text-gray-700">Start from</p>
+              <div className="flex flex-wrap gap-2">
+                {PUSH_TEMPLATES.map((template) => (
+                  <button
+                    key={template.id}
+                    type="button"
+                    onClick={() => applyTemplate(template.id)}
+                    title={template.purpose}
+                    className="rounded-full border border-gray-300 px-3 py-1.5 text-sm text-gray-700 transition-colors hover:border-primary-400 hover:bg-primary-50 hover:text-primary-800 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  >
+                    {template.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <Input
               label="Title"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               maxLength={TITLE_MAX}
               placeholder="Festive Handloom Drop — 20% off"
-              hint={`${title.length}/${TITLE_MAX}`}
+              hint={
+                title.length > TITLE_COMFORTABLE
+                  ? `${title.length}/${TITLE_MAX} — over ${TITLE_COMFORTABLE}, Android truncates on most phones`
+                  : `${title.length}/${TITLE_MAX}`
+              }
               required
             />
 
@@ -130,6 +193,8 @@ export function PushBroadcastPage() {
               />
               <p className="mt-1 text-xs text-gray-500">
                 {body.length}/{BODY_MAX}
+                {body.length > BODY_COMFORTABLE &&
+                  ` — past ${BODY_COMFORTABLE} only shows when expanded`}
               </p>
             </div>
 
@@ -158,6 +223,58 @@ export function PushBroadcastPage() {
               hint="Full URL to a wide image, shown when the notification is expanded. Around 2:1 works best."
             />
 
+            <Input
+              label="Icon override (optional)"
+              value={icon}
+              onChange={(e) => setIcon(e.target.value)}
+              placeholder="https://dev-store.homechrome.in/products/dohar.png"
+              hint="Square product thumbnail shown instead of the brand mark. 192×192."
+            />
+
+            <div className="border-t border-gray-200 pt-4">
+              <div className="mb-1 flex items-baseline justify-between">
+                <p className="text-sm font-medium text-gray-700">Buttons</p>
+                <p className="text-xs text-gray-500">Android shows at most two</p>
+              </div>
+              <p className="mb-3 text-xs text-gray-500">
+                Only visible when the notification is expanded. Leave the label empty to omit.
+              </p>
+
+              <div className="space-y-3">
+                {[0, 1].map((index) => (
+                  <div key={index} className="grid gap-3 sm:grid-cols-2">
+                    <Input
+                      label={`Button ${index + 1} label`}
+                      value={actions[index]?.title ?? ''}
+                      maxLength={ACTION_TITLE_MAX}
+                      onChange={(e) => {
+                        if (!actions[index]) {
+                          setActions((prev) => [
+                            ...prev,
+                            { ...EMPTY_ACTION, title: e.target.value },
+                          ]);
+                          return;
+                        }
+                        updateAction(index, { title: e.target.value });
+                      }}
+                      placeholder={index === 0 ? 'Shop the loom' : 'Remind me'}
+                    />
+                    <Input
+                      label={`Button ${index + 1} link`}
+                      value={actions[index]?.url ?? ''}
+                      onChange={(e) => {
+                        if (!actions[index]) return;
+                        updateAction(index, { url: e.target.value });
+                      }}
+                      disabled={!actions[index]?.title}
+                      placeholder="/products"
+                      hint={index === 0 ? 'Defaults to the click-through URL' : undefined}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+
             <div className="flex items-center justify-between border-t border-gray-200 pt-4">
               <p className="text-sm text-gray-500">
                 Sends to all {subscribers.length} active device
@@ -177,7 +294,13 @@ export function PushBroadcastPage() {
 
         <div className="space-y-6">
           <Card>
-            <NotificationPreview title={title} body={body} image={image.trim() || undefined} />
+            <NotificationPreview
+              title={title}
+              body={body}
+              image={image.trim() || undefined}
+              icon={icon.trim() || undefined}
+              actions={preparedActions}
+            />
           </Card>
 
           <Card>
