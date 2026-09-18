@@ -12,10 +12,13 @@ LAMBDA_DIR="./bin/lambda"
 
 # Local VAPID keypair lives in .env (make ensure-vapid). Unset keys make the
 # push Lambda fall through to the dev gateway, which logs instead of sending.
+# Only these three are read: sourcing the whole file would pull real gateway
+# credentials and AWS settings into a script that targets LocalStack.
 if [ -f .env ]; then
-    set -a
-    . ./.env
-    set +a
+    for key in VAPID_PUBLIC_KEY VAPID_PRIVATE_KEY VAPID_SUBJECT; do
+        value=$(grep -E "^${key}=" .env | tail -1 | cut -d= -f2-)
+        [ -n "$value" ] && export "$key=$value"
+    done
 fi
 ACTIVE_SERVICES="auth user catalog asset push store-auth store-catalog store-cart store-checkout store-orders store-tracking store-profile store-events store-webhooks"
 

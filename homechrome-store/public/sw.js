@@ -1,4 +1,5 @@
-// Homechrome Service Worker — Web Push Notifications & Offline Handling
+// Homechrome Service Worker — Web Push notifications. No fetch handler: this
+// worker does not cache or serve anything offline.
 
 self.addEventListener('install', () => {
   self.skipWaiting();
@@ -82,5 +83,37 @@ self.addEventListener('notificationclick', (event) => {
         return self.clients.openWindow(targetUrl);
       }
     })
+  );
+});
+
+// Browsers occasionally reissue a subscription on their own — key refresh,
+// storage pressure, a push-service migration. Without this the old endpoint
+// dies, the backend never hears about the new one, and the shopper silently
+// stops receiving notifications. Re-register with the key we were given.
+self.addEventListener('pushsubscriptionchange', (event) => {
+  event.waitUntil(
+    (async () => {
+      const applicationServerKey =
+        (event.oldSubscription && event.oldSubscription.options.applicationServerKey) ||
+        (await fetch('/api/v1/store/push/vapid-key')
+          .then((r) => r.json())
+          .then((d) => d.public_key)
+          .catch(() => null));
+      if (!applicationServerKey) return;
+
+      const subscription =
+        event.newSubscription ||
+        (await self.registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey,
+        }));
+
+      const { endpoint, keys } = subscription.toJSON();
+      await fetch('/api/v1/store/push/subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ endpoint, keys }),
+      });
+    })()
   );
 });

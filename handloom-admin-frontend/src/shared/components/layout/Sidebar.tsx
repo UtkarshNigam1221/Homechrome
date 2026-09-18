@@ -35,11 +35,13 @@ const navigation = [
   { name: 'Dashboards', href: '/dashboards', icon: Gauge },
   { name: 'Reports', href: '/reports', icon: FileText },
   { name: 'Notifications', href: '/notifications', icon: Bell },
-  { name: 'Push Broadcast', href: '/push', icon: Megaphone },
   { name: 'Settings', href: '/settings', icon: Settings },
 ];
 
-const adminNavigation = [{ name: 'Users', href: '/users', icon: Users }];
+const adminNavigation = [
+  { name: 'Users', href: '/users', icon: Users },
+  { name: 'Push Broadcast', href: '/push', icon: Megaphone },
+];
 
 function SidebarContent({
   collapsed,

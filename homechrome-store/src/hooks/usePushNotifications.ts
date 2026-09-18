@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useSyncExternalStore } from 'react';
 
 import apiClient from '@/lib/api';
 import { ROUTES } from '@/lib/routes';
@@ -100,8 +100,29 @@ function errorMessage(err: unknown, fallback: string): string {
   return err instanceof Error ? err.message : fallback;
 }
 
+// Shared across every mounted instance. The opt-in banner and the header modal
+// each call this hook, and with per-instance state, subscribing in one left the
+// other still advertising the opt-in until it remounted.
+let sharedStatus: PushStatus = { ...UNSUPPORTED, loading: true };
+const statusListeners = new Set<() => void>();
+
+function setSharedStatus(next: PushStatus | ((prev: PushStatus) => PushStatus)) {
+  sharedStatus = typeof next === 'function' ? next(sharedStatus) : next;
+  statusListeners.forEach((notify) => notify());
+}
+
+function subscribeToStatus(listener: () => void) {
+  statusListeners.add(listener);
+  return () => {
+    statusListeners.delete(listener);
+  };
+}
+
+const readStatus = () => sharedStatus;
+
 export function usePushNotifications() {
-  const [status, setStatus] = useState<PushStatus>({ ...UNSUPPORTED, loading: true });
+  const status = useSyncExternalStore(subscribeToStatus, readStatus, readStatus);
+  const setStatus = setSharedStatus;
 
   const refresh = useCallback(async () => {
     if (!pushSupported()) {
@@ -137,6 +158,23 @@ export function usePushNotifications() {
 
   useEffect(() => {
     void refresh();
+
+    // Permission can change from browser UI with no event on our side, which
+    // otherwise leaves the opt-in offering something the browser will refuse.
+    let permissionStatus: PermissionStatus | null = null;
+    const onChange = () => void refresh();
+
+    void navigator.permissions
+      ?.query({ name: 'notifications' as PermissionName })
+      .then((result) => {
+        permissionStatus = result;
+        result.addEventListener('change', onChange);
+      })
+      .catch(() => {
+        // Safari historically rejects this query; the initial refresh stands.
+      });
+
+    return () => permissionStatus?.removeEventListener('change', onChange);
   }, [refresh]);
 
   const subscribe = useCallback(async (): Promise<boolean> => {

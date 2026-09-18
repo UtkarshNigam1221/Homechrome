@@ -34,10 +34,12 @@ func NewClient(config Config) *Client {
 	if config.TTLSeconds <= 0 {
 		config.TTLSeconds = defaultTTL
 	}
-	return &Client{
-		config:     config,
-		httpClient: metricsmw.NewInstrumentedClient(10*time.Second, "webpush"),
+	httpClient := metricsmw.NewInstrumentedClient(10*time.Second, "webpush")
+	// A signed push is for one endpoint; never replay it at a redirect target.
+	httpClient.CheckRedirect = func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
 	}
+	return &Client{config: config, httpClient: httpClient}
 }
 
 // PublicKey returns the VAPID application server key.

@@ -69,7 +69,7 @@ run: ensure-vapid
 	@echo "  Default Admin:  admin@handloom.com / Admin@123!"
 	@echo ""
 	@echo "=============================================="
-	set -a; if [ -f .env ]; then . ./.env; fi; set +a; \
+	$(VAPID_LOCAL_ENV) \
 	APP_ENV=development \
 	APP_DEBUG=true \
 	SERVER_PORT=8081 \
@@ -85,7 +85,7 @@ run: ensure-vapid
 run-watch: ensure-vapid
 	@echo "Starting with hot reload (air)..."
 	@which air > /dev/null 2>&1 || (echo "Installing air..." && $(GOCMD) install github.com/cosmtrek/air@latest)
-	set -a; if [ -f .env ]; then . ./.env; fi; set +a; \
+	$(VAPID_LOCAL_ENV) \
 	APP_ENV=development \
 	APP_DEBUG=true \
 	SERVER_PORT=8081 \
@@ -244,13 +244,13 @@ setup-local: docker-up create-tables init-s3 seed-data ensure-vapid
 	@echo "Run 'make deploy-local' to deploy Lambda functions"
 
 ## Deploy Lambda functions to LocalStack
-deploy-local: build-lambdas-active
+deploy-local: build-lambdas-active ensure-vapid
 	@echo "Deploying Lambda functions to LocalStack..."
 	chmod +x scripts/deploy-local-lambdas.sh
 	./scripts/deploy-local-lambdas.sh
 
 ## Redeploy Lambda code only (skip API Gateway recreation)
-redeploy-local: build-lambdas-active
+redeploy-local: build-lambdas-active ensure-vapid
 	@echo "Redeploying Lambda code to LocalStack..."
 	REDEPLOY_ONLY=true ./scripts/deploy-local-lambdas.sh
 
@@ -457,6 +457,11 @@ build-lambda-store-profile:
 ## Generate a VAPID keypair for Web Push (run once per environment)
 vapid-keys:
 	@$(GOCMD) run ./cmd/vapid-keys
+
+# Only the VAPID keys are lifted out of .env. Sourcing the whole file would
+# make `make run` non-hermetic: a real MSG91 or PhonePe secret sitting there
+# would send live SMS and hit live payments from local dev.
+VAPID_LOCAL_ENV = $(shell [ -f .env ] && grep -E '^VAPID_(PUBLIC_KEY|PRIVATE_KEY|SUBJECT)=' .env | tr '\n' ' ')
 
 ## Generate a local VAPID keypair into .env once, so push actually delivers
 ## locally instead of falling through to the logging dev gateway.

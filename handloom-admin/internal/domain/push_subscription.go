@@ -199,7 +199,7 @@ type TestPushRequest struct {
 type BroadcastPushRequest struct {
 	Title string `json:"title" validate:"required,max=120"`
 	Body  string `json:"body" validate:"required,max=300"`
-	URL   string `json:"url,omitempty" validate:"omitempty,max=512"`
+	URL   string `json:"url,omitempty" validate:"omitempty,max=512,startswith=/"`
 	Tag   string `json:"tag,omitempty" validate:"omitempty,max=64"`
 	Icon  string `json:"icon,omitempty" validate:"omitempty,max=512"`
 }
