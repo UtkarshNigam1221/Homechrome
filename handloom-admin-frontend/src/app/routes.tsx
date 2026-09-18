@@ -194,11 +194,13 @@ export function AppRoutes() {
 
           {/* Operations */}
           <Route path="/notifications" element={<Notifications />} />
-          <Route path="/push" element={<PushBroadcast />} />
 
           {/* Admin Only Routes */}
           <Route element={<AdminRoute />}>
             <Route path="/users" element={<Users />} />
+            {/* A broadcast reaches every customer's lock screen and cannot be
+                recalled — wider blast radius than the rest of the console. */}
+            <Route path="/push" element={<PushBroadcast />} />
           </Route>
 
           {/* Settings */}

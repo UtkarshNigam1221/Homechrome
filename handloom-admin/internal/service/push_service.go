@@ -150,7 +150,7 @@ func (s *PushService) Broadcast(
 	failureCount := len(subs) - successCount
 
 	broadcast := &domain.PushBroadcast{
-		ID:            "bcast_" + uuid.New().String()[:8],
+		ID:            "bcast_" + uuid.New().String(),
 		Title:         req.Title,
 		Body:          req.Body,
 		URL:           payloadURL(req.URL),

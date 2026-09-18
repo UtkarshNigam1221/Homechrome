@@ -16,6 +16,9 @@ import (
 	"github.com/handloom/admin/pkg/metrics/awsmiddleware"
 )
 
+// ssmFetchTimeout bounds a runtime SSM read during Lambda init.
+const ssmFetchTimeout = 5 * time.Second
+
 // defaultJWTSecret is the fallback JWT secret used for local development.
 const defaultJWTSecret = "your-super-secret-key-change-in-production"
 
@@ -372,7 +375,11 @@ func getVAPIDPrivateKey() string {
 		return ""
 	}
 
-	ctx := context.Background()
+	// Bounded: this runs in Lambda init, where a hung SSM call stalls the
+	// whole cold start rather than just this one value.
+	ctx, cancel := context.WithTimeout(context.Background(), ssmFetchTimeout)
+	defer cancel()
+
 	cfg, err := config.LoadDefaultConfig(ctx)
 	if err != nil {
 		slog.Error("Web Push disabled: cannot load AWS config to read the VAPID key", "error", err)

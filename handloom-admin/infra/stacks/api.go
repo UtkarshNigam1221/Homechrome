@@ -191,11 +191,6 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 		"PHONEPE_CLIENT_ID", "PHONEPE_CLIENT_SECRET",
 		"PHONEPE_WEBHOOK_USERNAME", "PHONEPE_WEBHOOK_PASSWORD",
 		"MSG91_AUTH_KEY",
-		// Web Push. The public key and subject are not secret; the private key
-		// is read from SSM at runtime by the push Lambda alone, so it never
-		// enters this template. Generate once per environment with
-		// `make vapid-keys`; rotating it invalidates every live subscription.
-		"VAPID_PUBLIC_KEY", "VAPID_SUBJECT",
 	}
 	for _, key := range gatewaySecretKeys {
 		if v := os.Getenv(key); v != "" {
@@ -305,7 +300,15 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 		// The VAPID private key is the one secret read at runtime rather than
 		// resolved at deploy time, so it stays out of the template. Only the
 		// push Lambda signs pushes, so only it gets the parameter and the read.
+		// Web Push config reaches only the Lambda that sends pushes. The public
+		// key and subject are not secret; the private key is read from SSM at
+		// runtime so it never enters this template.
 		if svc == "push" {
+			for _, key := range []string{"VAPID_PUBLIC_KEY", "VAPID_SUBJECT"} {
+				if v := os.Getenv(key); v != "" {
+					lambdaFn.AddEnvironment(jsii.String(key), jsii.String(v), nil)
+				}
+			}
 			lambdaFn.AddEnvironment(jsii.String("VAPID_PRIVATE_KEY_PARAM"),
 				jsii.String(vapidPrivateKeyParamName), nil)
 			lambdaFn.AddToRolePolicy(awsiam.NewPolicyStatement(&awsiam.PolicyStatementProps{
