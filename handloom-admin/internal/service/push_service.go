@@ -44,13 +44,18 @@ var pushEndpointHosts = []string{
 
 // PushService implements Web Push subscription and delivery operations.
 type PushService struct {
-	repo    domain.PushSubscriptionRepository
-	gateway webpush.Gateway
+	repo           domain.PushSubscriptionRepository
+	gateway        webpush.Gateway
+	assetFinalizer domain.AssetFinalizer
 }
 
 // NewPushService creates a new PushService
-func NewPushService(repo domain.PushSubscriptionRepository, gateway webpush.Gateway) *PushService {
-	return &PushService{repo: repo, gateway: gateway}
+func NewPushService(
+	repo domain.PushSubscriptionRepository,
+	gateway webpush.Gateway,
+	assetFinalizer domain.AssetFinalizer,
+) *PushService {
+	return &PushService{repo: repo, gateway: gateway, assetFinalizer: assetFinalizer}
 }
 
 // PublicKey returns the VAPID application server key for the storefront.
@@ -146,6 +151,15 @@ func (s *PushService) Broadcast(
 	// dropping it from the payload.
 	payload := domain.PushPayload(req)
 
+	// tmp/ is deleted after a day, so an unfinalized banner would break in
+	// history and on any notification still sitting on a device.
+	if payload.Image, err = s.assetFinalizer.FinalizeIfTemp(ctx, payload.Image); err != nil {
+		return nil, errors.Wrap(err, "Failed to store the broadcast image")
+	}
+	if payload.Icon, err = s.assetFinalizer.FinalizeIfTemp(ctx, payload.Icon); err != nil {
+		return nil, errors.Wrap(err, "Failed to store the broadcast icon")
+	}
+
 	broadcastID := "bcast_" + uuid.New().String()
 
 	// Chrome silently drops everything past the second action; trim rather than
@@ -170,7 +184,7 @@ func (s *PushService) Broadcast(
 		Body:          req.Body,
 		URL:           payloadURL(req.URL),
 		Tag:           req.Tag,
-		Image:         req.Image,
+		Image:         payload.Image,
 		Actions:       req.Actions,
 		TotalTargeted: len(subs),
 		SuccessCount:  successCount,

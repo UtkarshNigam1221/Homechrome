@@ -650,8 +650,8 @@ func InitializeStoreEventsDeps(ctx context.Context, cfg *config.Config) (*StoreE
 }
 
 // InitializePushDeps creates Push Lambda dependencies.
-// DynamoDB only — push state lives in the notifications table and neither
-// surface touches the catalog, so it skips the Postgres pool.
+// No Postgres pool — push state lives in the notifications table — but it
+// does need S3 to finalize an uploaded broadcast banner out of tmp/.
 func InitializePushDeps(ctx context.Context, cfg *config.Config) (*PushDeps, error) {
 	client, err := ProvideDynamoDBClient(ctx, cfg)
 	if err != nil {
@@ -659,7 +659,16 @@ func InitializePushDeps(ctx context.Context, cfg *config.Config) (*PushDeps, err
 	}
 	pushSubscriptionRepository := ProvidePushSubscriptionRepository(client)
 	gateway := ProvideWebPushGateway(cfg)
-	pushService := ProvidePushService(pushSubscriptionRepository, gateway)
+	s3Client, err := ProvideS3Client(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+	lambdaClient, err := ProvideLambdaClient(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+	assetService := ProvideAssetService(s3Client, lambdaClient, cfg)
+	pushService := ProvidePushService(pushSubscriptionRepository, gateway, assetService)
 	service := ProvideValidator()
 	validation := ProvideValidation(service)
 	pushHandler := ProvideStorePushHandler(pushService, validation)
@@ -744,7 +753,7 @@ func InitializeMonolithDeps(ctx context.Context, cfg *config.Config) (*MonolithD
 	notificationHandler := ProvideNotificationHandler(notificationService, validation)
 	pushSubscriptionRepository := ProvidePushSubscriptionRepository(client)
 	webpushGateway := ProvideWebPushGateway(cfg)
-	pushService := ProvidePushService(pushSubscriptionRepository, webpushGateway)
+	pushService := ProvidePushService(pushSubscriptionRepository, webpushGateway, assetService)
 	pushHandler := ProvidePushHandler(pushService, validation)
 	couponHandler := ProvideCouponHandler(couponService, validation)
 	utmLinkRepository := ProvideUTMLinkRepository(client)

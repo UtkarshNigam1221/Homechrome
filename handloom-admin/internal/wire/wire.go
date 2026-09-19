@@ -642,8 +642,8 @@ func InitializeStoreEventsDeps(ctx context.Context, cfg *config.Config) (*StoreE
 }
 
 // InitializePushDeps creates Push Lambda dependencies.
-// DynamoDB only — push state lives in the notifications table and neither
-// surface touches the catalog, so it skips the Postgres pool.
+// No Postgres pool — push state lives in the notifications table — but it
+// does need S3 to finalize an uploaded broadcast banner out of tmp/.
 func InitializePushDeps(ctx context.Context, cfg *config.Config) (*PushDeps, error) {
 	wire.Build(
 		ProvideDynamoDBClient,
@@ -655,6 +655,9 @@ func InitializePushDeps(ctx context.Context, cfg *config.Config) (*PushDeps, err
 		ProvideAuthMiddleware,
 		ProvidePushSubscriptionRepository,
 		ProvideWebPushGateway,
+		ProvideS3Client,
+		ProvideLambdaClient,
+		ProvideAssetService,
 		ProvidePushService,
 		ProvideStorePushHandler,
 		ProvidePushHandler,
