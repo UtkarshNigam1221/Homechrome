@@ -124,8 +124,10 @@ export default function NotificationModal({
     >
       <Stack gap="md">
         <Paper withBorder p="md" radius="md" bg="gray.0">
-          <Group justify="space-between" align="center" wrap="nowrap">
-            <Box style={{ maxWidth: "78%" }}>
+          <Group justify="space-between" align="center" wrap="nowrap" gap="sm">
+            {/* The copy carries the slack, the control keeps its size. A width
+                percentage would have to be retuned every time this text edits. */}
+            <Box style={{ minWidth: 0 }}>
               <Text fw={600} size="sm" c="navy.7">
                 Browser notifications
               </Text>
@@ -146,6 +148,7 @@ export default function NotificationModal({
               size="md"
               color="teal"
               aria-label="Toggle push notifications"
+              style={{ flexShrink: 0 }}
             />
           </Group>
         </Paper>
