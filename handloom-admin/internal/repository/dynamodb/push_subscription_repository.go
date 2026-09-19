@@ -35,6 +35,15 @@ func subKey(endpoint string) map[string]types.AttributeValue {
 	}
 }
 
+// custPointerKey addresses the row that lets a customer's devices be found
+// without a second GSI on a table whose GSI1 is already spent on status.
+func custPointerKey(customerID, subID string) map[string]types.AttributeValue {
+	return map[string]types.AttributeValue{
+		"PK": &types.AttributeValueMemberS{Value: "PUSH_CUST#" + customerID},
+		"SK": &types.AttributeValueMemberS{Value: "PUSH_SUB#" + subID},
+	}
+}
+
 // Save upserts a subscription keyed by its endpoint hash. Re-subscribing the
 // same browser refreshes the keys and reactivates the row rather than adding a
 // duplicate, so CreatedAt carries over from the existing item.
@@ -67,6 +76,18 @@ func (r *PushSubscriptionRepository) Save(ctx context.Context, sub *domain.PushS
 	})
 	if err != nil {
 		return false, errors.Wrap(err, "Failed to save push subscription")
+	}
+
+	if sub.CustomerID != "" {
+		item := custPointerKey(sub.CustomerID, sub.ID)
+		item["endpoint"] = &types.AttributeValueMemberS{Value: sub.Endpoint}
+		item["entity_type"] = &types.AttributeValueMemberS{Value: "PUSH_SUB_CUSTOMER"}
+		if _, err := r.client.db.PutItem(ctx, &dynamodb.PutItemInput{
+			TableName: aws.String(r.client.notificationsTable),
+			Item:      item,
+		}); err != nil {
+			return isNew, errors.Wrap(err, "Failed to link push subscription to customer")
+		}
 	}
 
 	return isNew, nil
@@ -140,6 +161,42 @@ func (r *PushSubscriptionRepository) ListActive(ctx context.Context) ([]*domain.
 		r.statusQuery(domain.PushSubscriptionActive),
 		"Failed to list active push subscriptions",
 	)
+}
+
+// ListByCustomer queries the pointer rows, then reads each subscription. A
+// customer has a handful of devices, so the extra round trips are cheaper than
+// a GSI that would have to be written on every subscribe.
+func (r *PushSubscriptionRepository) ListByCustomer(
+	ctx context.Context, customerID string,
+) ([]*domain.PushSubscription, error) {
+	result, err := r.client.db.Query(ctx, &dynamodb.QueryInput{
+		TableName:              aws.String(r.client.notificationsTable),
+		KeyConditionExpression: aws.String("PK = :pk"),
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":pk": &types.AttributeValueMemberS{Value: "PUSH_CUST#" + customerID},
+		},
+	})
+	if err != nil {
+		return nil, errors.Wrap(err, "Failed to list a customer's push subscriptions")
+	}
+
+	subs := make([]*domain.PushSubscription, 0, len(result.Items))
+	for _, item := range result.Items {
+		endpoint, ok := item["endpoint"].(*types.AttributeValueMemberS)
+		if !ok {
+			continue
+		}
+		sub, err := r.GetByEndpoint(ctx, endpoint.Value)
+		if err != nil {
+			// A pointer outliving its subscription is not this caller's problem:
+			// the device simply cannot be reached.
+			continue
+		}
+		if sub.Status == domain.PushSubscriptionActive {
+			subs = append(subs, sub)
+		}
+	}
+	return subs, nil
 }
 
 // List retrieves subscriptions of one status, newest first.

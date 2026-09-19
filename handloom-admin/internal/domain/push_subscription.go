@@ -155,6 +155,10 @@ type PushSubscriptionRepository interface {
 	// ListActive retrieves every ACTIVE subscription, for broadcast fan-out.
 	ListActive(ctx context.Context) ([]*PushSubscription, error)
 
+	// ListByCustomer retrieves a customer's ACTIVE subscriptions. A customer
+	// with no devices yields an empty slice, not an error.
+	ListByCustomer(ctx context.Context, customerID string) ([]*PushSubscription, error)
+
 	// List retrieves subscriptions of one status, newest first, for the admin console.
 	List(ctx context.Context, status PushSubscriptionStatus, pagination PaginationRequest) (*ListPushSubscriptionsResponse, error)
 
