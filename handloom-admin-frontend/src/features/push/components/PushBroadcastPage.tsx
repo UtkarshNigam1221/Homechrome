@@ -5,6 +5,7 @@ import { useState } from 'react';
 import toast from 'react-hot-toast';
 
 import { pushApi } from '@/features/push/api';
+import { BannerImageField } from '@/features/push/components/BannerImageField';
 import { NotificationPreview } from '@/features/push/components/NotificationPreview';
 import { PUSH_TEMPLATES } from '@/features/push/templates';
 import { getErrorMessage } from '@/shared/api/client';
@@ -215,20 +216,18 @@ export function PushBroadcastPage() {
               />
             </div>
 
-            <Input
+            <BannerImageField
               label="Banner image (optional)"
               value={image}
-              onChange={(e) => setImage(e.target.value)}
-              placeholder="https://dev-store.homechrome.in/banners/festive.jpg"
-              hint="Full URL to a wide image, shown when the notification is expanded. Around 2:1 works best."
+              onChange={setImage}
+              hint="Shown when the notification is expanded. Around 2:1 works best."
             />
 
-            <Input
+            <BannerImageField
               label="Icon override (optional)"
               value={icon}
-              onChange={(e) => setIcon(e.target.value)}
-              placeholder="https://dev-store.homechrome.in/products/dohar.png"
-              hint="Square product thumbnail shown instead of the brand mark. 192×192."
+              onChange={setIcon}
+              hint="Square product thumbnail shown instead of the brand mark."
             />
 
             <div className="border-t border-gray-200 pt-4">
