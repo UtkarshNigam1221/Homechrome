@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { clsx } from 'clsx';
 import { format } from 'date-fns';
 import { Megaphone, Monitor, Send, Smartphone, Users } from 'lucide-react';
 import { useState } from 'react';
@@ -6,13 +7,15 @@ import toast from 'react-hot-toast';
 
 import { pushApi } from '@/features/push/api';
 import { BannerImageField } from '@/features/push/components/BannerImageField';
+import { BroadcastDetailModal } from '@/features/push/components/BroadcastDetailModal';
 import { NotificationPreview } from '@/features/push/components/NotificationPreview';
+import { broadcastStatusVariant } from '@/features/push/lib/statusVariant';
 import { PUSH_TEMPLATES } from '@/features/push/templates';
 import { getErrorMessage } from '@/shared/api/client';
 import { PageLoading } from '@/shared/components/loading';
 import { Badge, Button, Card, Input, PageHeader } from '@/shared/components/ui';
 
-import type { PushAction, PushBroadcastStatus, PushSubscriber } from '../types';
+import type { PushAction, PushBroadcast, PushSubscriber, PushSubscriptionStatus } from '../types';
 
 const TITLE_MAX = 120;
 const BODY_MAX = 300;
@@ -26,12 +29,6 @@ const EMPTY_ACTION: PushAction = { action: '', title: '', url: '' };
 // An upload commits a tmp/ key; FinalizeUpload deletes that object before the
 // request can fail, so a retry with the same key can only fail again.
 const isExpiredUpload = (value: string) => value.startsWith('tmp/');
-
-const statusVariant: Record<PushBroadcastStatus, 'success' | 'warning' | 'danger'> = {
-  SUCCESS: 'success',
-  PARTIAL: 'warning',
-  FAILED: 'danger',
-};
 
 function deviceLabel(subscriber: PushSubscriber): string {
   const { browser, os } = subscriber.device ?? {};
@@ -51,6 +48,8 @@ export function PushBroadcastPage() {
   const [icon, setIcon] = useState('');
   const [iconSrc, setIconSrc] = useState('');
   const [actions, setActions] = useState<PushAction[]>([{ ...EMPTY_ACTION }]);
+  const [subscriberStatus, setSubscriberStatus] = useState<PushSubscriptionStatus>('ACTIVE');
+  const [openBroadcast, setOpenBroadcast] = useState<PushBroadcast | null>(null);
 
   const applyTemplate = (id: string) => {
     const template = PUSH_TEMPLATES.find((t) => t.id === id);
@@ -74,8 +73,11 @@ export function PushBroadcastPage() {
   };
 
   const { data: subscribersData, isLoading: subscribersLoading } = useQuery({
-    queryKey: ['push-subscribers'],
-    queryFn: () => pushApi.listSubscribers({ status: 'ACTIVE', limit: 50 }),
+    queryKey: ['push-subscribers', subscriberStatus],
+    queryFn: () => pushApi.listSubscribers({ status: subscriberStatus, limit: 50 }),
+    // Without this, switching the filter unmounts the whole page behind
+    // PageLoading rather than swapping one list.
+    placeholderData: (previous) => previous,
   });
 
   const { data: broadcastsData } = useQuery({
@@ -336,14 +338,36 @@ export function PushBroadcastPage() {
           </Card>
 
           <Card>
-            <div className="flex items-center gap-2 text-gray-900 mb-4">
-              <Users className="w-5 h-5 text-primary-600" />
-              <h2 className="font-semibold">Subscribers</h2>
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-2 text-gray-900">
+              <div className="flex items-center gap-2">
+                <Users className="w-5 h-5 text-primary-600" />
+                <h2 className="font-semibold">Subscribers</h2>
+              </div>
+              <div className="flex rounded-md border border-gray-200 p-0.5">
+                {(['ACTIVE', 'INACTIVE'] as const).map((status) => (
+                  <button
+                    key={status}
+                    type="button"
+                    onClick={() => setSubscriberStatus(status)}
+                    aria-pressed={subscriberStatus === status}
+                    className={clsx(
+                      'rounded px-2.5 py-1 text-xs font-medium capitalize transition-colors',
+                      subscriberStatus === status
+                        ? 'bg-primary-50 text-primary-700'
+                        : 'text-gray-500 hover:text-gray-700'
+                    )}
+                  >
+                    {status.toLowerCase()}
+                  </button>
+                ))}
+              </div>
             </div>
 
             {subscribers.length === 0 ? (
               <p className="text-sm text-gray-500">
-                No active subscribers yet. Visitors opt in from the storefront.
+                {subscriberStatus === 'ACTIVE'
+                  ? 'No active subscribers yet. Visitors opt in from the storefront.'
+                  : 'No dropped subscribers. A device lands here once its push service reports the endpoint is gone.'}
               </p>
             ) : (
               <ul className="divide-y divide-gray-200">
@@ -378,7 +402,12 @@ export function PushBroadcastPage() {
         ) : (
           <div className="divide-y divide-gray-200">
             {broadcasts.map((broadcast) => (
-              <div key={broadcast.id} className="px-6 py-4">
+              <button
+                key={broadcast.id}
+                type="button"
+                onClick={() => setOpenBroadcast(broadcast)}
+                className="w-full px-6 py-4 text-left transition-colors hover:bg-gray-50 focus:outline-none focus-visible:bg-gray-50"
+              >
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0">
                     <p className="font-medium text-gray-900">{broadcast.title}</p>
@@ -388,13 +417,17 @@ export function PushBroadcastPage() {
                       {broadcast.success_count}/{broadcast.total_targeted} delivered
                     </p>
                   </div>
-                  <Badge variant={statusVariant[broadcast.status]}>{broadcast.status}</Badge>
+                  <Badge variant={broadcastStatusVariant[broadcast.status]}>
+                    {broadcast.status}
+                  </Badge>
                 </div>
-              </div>
+              </button>
             ))}
           </div>
         )}
       </Card>
+
+      <BroadcastDetailModal broadcast={openBroadcast} onClose={() => setOpenBroadcast(null)} />
     </div>
   );
 }

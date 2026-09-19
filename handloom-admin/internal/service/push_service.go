@@ -234,6 +234,10 @@ func (s *PushService) fanOut(ctx context.Context, subs []*domain.PushSubscriptio
 			defer func() { <-sem }()
 
 			if err := s.deliver(ctx, sub, payload); err != nil {
+				// Without this a PARTIAL broadcast is a bare count with no way
+				// to learn which endpoint rejected it, or why.
+				slog.WarnContext(ctx, "Push broadcast delivery failed",
+					"error", err, "subscription_id", sub.ID, "endpoint", sub.Endpoint)
 				return
 			}
 			mu.Lock()
