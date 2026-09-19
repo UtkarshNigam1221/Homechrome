@@ -1084,19 +1084,39 @@ The body is unchanged — it already adds `VAPID_PUBLIC_KEY`, `VAPID_SUBJECT`, `
 
 - [ ] **Step 8: Prove the key still never enters the template**
 
-```bash
-cd handloom-admin/infra && cdk synth --all -c environment=dev > /tmp/synth-dev.yaml 2>/dev/null
-grep -c "vapid-private-key" /tmp/synth-dev.yaml   # expect 2+ (the parameter NAME and the IAM resource)
-```
-
-Then confirm the secret **value** is absent. Take the first 12 characters of the dev private key and check they do not appear:
+The only route by which the private key could reach CloudFormation is a Lambda
+environment variable, and nothing in `infra/` ever reads `VAPID_PRIVATE_KEY` —
+the push and order Lambdas read it from SSM at runtime. So the check is that
+the synthesized template names the parameter but never carries a value.
 
 ```bash
-aws ssm get-parameter --name /handloom/dev/vapid-private-key --with-decryption \
-  --region ap-south-1 --query 'Parameter.Value' --output text \
-  | cut -c1-12 | xargs -I{} grep -c {} /tmp/synth-dev.yaml
+cd handloom-admin/infra && cdk synth --all -c environment=dev > /tmp/synth-dev.yaml
 ```
-Expected: `0`. Anything else means the private key is being baked into CloudFormation — stop and report it.
+
+`cdk synth` needs no AWS credentials here (the account comes from
+`CDK_DEFAULT_ACCOUNT`, and no stack uses a `fromLookup`). Then:
+
+```bash
+# The parameter NAME and the IAM resource may appear; both are public.
+grep -c "vapid-private-key" /tmp/synth-dev.yaml          # expect 2 or more
+
+# A VAPID_PRIVATE_KEY environment variable must NOT exist on any function.
+grep -c "VAPID_PRIVATE_KEY\"" /tmp/synth-dev.yaml        # expect 0
+grep -c "VAPID_PRIVATE_KEY:" /tmp/synth-dev.yaml          # expect 0
+
+# VAPID_PRIVATE_KEY_PARAM (the pointer, not the secret) SHOULD be present,
+# and on exactly the two functions that sign pushes.
+grep -c "VAPID_PRIVATE_KEY_PARAM" /tmp/synth-dev.yaml     # expect 2
+```
+
+If the third command returns anything but 0, stop and report it: the private
+key is being baked into CloudFormation. If the last returns a number other
+than 2, report which functions carry it — only the push and order Lambdas
+should.
+
+**Do not** try to fetch the real key from SSM to grep for its value. The
+shell's AWS SSO session is expired, and that check is unavailable in this
+environment; the assertions above are what you run instead.
 
 - [ ] **Step 9: Full verification**
 
