@@ -569,3 +569,46 @@ func TestSubscribeWithoutASignedInCustomerStaysAnonymous(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, saved.CustomerID)
 }
+
+func TestLinkCustomerRequiresASignedInCustomer(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	repo := mocks.NewMockPushSubscriptionRepository(ctrl)
+	gw := newFakeGateway()
+	svc := NewPushService(repo, gw, mocks.NewMockAssetFinalizer(ctrl))
+
+	// No customer in context: nothing may be written, or an anonymous caller
+	// could claim another shopper's device.
+	err := svc.LinkCustomer(context.Background(), "https://fcm.googleapis.com/fcm/send/abc")
+	require.Error(t, err)
+}
+
+func TestLinkCustomerAttachesTheDevice(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	repo := mocks.NewMockPushSubscriptionRepository(ctrl)
+	gw := newFakeGateway()
+	svc := NewPushService(repo, gw, mocks.NewMockAssetFinalizer(ctrl))
+
+	repo.EXPECT().
+		LinkCustomer(gomock.Any(), "https://fcm.googleapis.com/fcm/send/abc", "cust_42").
+		Return(nil)
+
+	ctx := context.WithValue(context.Background(), middleware.CustomerIDKey, "cust_42")
+	require.NoError(t, svc.LinkCustomer(ctx, "https://fcm.googleapis.com/fcm/send/abc"))
+}
+
+func TestLinkCustomerRejectsAnUnknownPushService(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	repo := mocks.NewMockPushSubscriptionRepository(ctrl)
+	gw := newFakeGateway()
+	svc := NewPushService(repo, gw, mocks.NewMockAssetFinalizer(ctrl))
+
+	ctx := context.WithValue(context.Background(), middleware.CustomerIDKey, "cust_42")
+	err := svc.LinkCustomer(ctx, "https://evil.example.com/hook")
+	require.Error(t, err)
+}

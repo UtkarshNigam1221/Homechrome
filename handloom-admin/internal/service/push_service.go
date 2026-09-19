@@ -107,6 +107,20 @@ func (s *PushService) Subscribe(
 	return sub, nil
 }
 
+// LinkCustomer attaches a device that opted in before sign-in. Most shoppers
+// grant permission first and sign in later, so without this their devices stay
+// anonymous and never receive an order update.
+func (s *PushService) LinkCustomer(ctx context.Context, endpoint string) error {
+	customerID := middleware.GetCustomerIDFromContext(ctx)
+	if customerID == "" {
+		return errors.Unauthorized("Sign in to link this device")
+	}
+	if err := validatePushEndpoint(endpoint); err != nil {
+		return err
+	}
+	return s.repo.LinkCustomer(ctx, endpoint, customerID)
+}
+
 // Unsubscribe retires an endpoint.
 func (s *PushService) Unsubscribe(ctx context.Context, endpoint string) error {
 	return s.repo.Deactivate(ctx, endpoint)

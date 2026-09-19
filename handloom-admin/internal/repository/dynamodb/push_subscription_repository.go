@@ -222,6 +222,27 @@ func (r *PushSubscriptionRepository) ListByCustomer(
 	return subs, nil
 }
 
+// LinkCustomer sets customer_id on the subscription and writes the pointer row
+// that ListByCustomer reads. A device that has gone away links to nothing,
+// which is the same outcome the caller wanted.
+func (r *PushSubscriptionRepository) LinkCustomer(
+	ctx context.Context, endpoint, customerID string,
+) error {
+	sub, err := r.GetByEndpoint(ctx, endpoint)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+
+	sub.CustomerID = customerID
+	if _, err := r.Save(ctx, sub); err != nil {
+		return err
+	}
+	return nil
+}
+
 // List retrieves subscriptions of one status, newest first.
 func (r *PushSubscriptionRepository) List(
 	ctx context.Context,

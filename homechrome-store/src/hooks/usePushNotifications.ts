@@ -120,6 +120,24 @@ function subscribeToStatus(listener: () => void) {
 
 const readStatus = () => sharedStatus;
 
+/**
+ * Attach this browser's existing subscription to the shopper who just signed
+ * in. Most people allow notifications before logging in, so without this their
+ * device is never linked to their orders.
+ */
+export async function linkPushSubscription(): Promise<void> {
+  if (!pushSupported()) return;
+  try {
+    const registration = await navigator.serviceWorker.getRegistration();
+    const subscription = registration ? await registration.pushManager.getSubscription() : null;
+    if (!subscription) return;
+    await apiClient.post(ROUTES.PUSH.LINK, { endpoint: subscription.endpoint });
+  } catch {
+    // Linking is an optimisation: a shopper who misses it simply gets no order
+    // pushes on this device until they next re-subscribe.
+  }
+}
+
 export function usePushNotifications() {
   const status = useSyncExternalStore(subscribeToStatus, readStatus, readStatus);
   const setStatus = setSharedStatus;

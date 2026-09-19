@@ -159,6 +159,10 @@ type PushSubscriptionRepository interface {
 	// with no devices yields an empty slice, not an error.
 	ListByCustomer(ctx context.Context, customerID string) ([]*PushSubscription, error)
 
+	// LinkCustomer attaches an existing subscription to a customer. Linking an
+	// endpoint that is not stored is a no-op, not an error.
+	LinkCustomer(ctx context.Context, endpoint, customerID string) error
+
 	// List retrieves subscriptions of one status, newest first, for the admin console.
 	List(ctx context.Context, status PushSubscriptionStatus, pagination PaginationRequest) (*ListPushSubscriptionsResponse, error)
 
@@ -187,6 +191,12 @@ type SubscribePushRequest struct {
 
 // UnsubscribePushRequest identifies the endpoint to retire.
 type UnsubscribePushRequest struct {
+	Endpoint string `json:"endpoint" validate:"required,url,max=512"`
+}
+
+// LinkPushRequest attaches an already-registered device to the signed-in
+// shopper. The customer comes from the session, never from the body.
+type LinkPushRequest struct {
 	Endpoint string `json:"endpoint" validate:"required,url,max=512"`
 }
 

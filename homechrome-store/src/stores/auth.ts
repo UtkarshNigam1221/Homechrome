@@ -3,6 +3,7 @@
 import { isAxiosError } from 'axios';
 import { create } from 'zustand';
 
+import { linkPushSubscription } from '@/hooks/usePushNotifications';
 import api from '@/lib/api';
 import { ROUTES } from '@/lib/routes';
 import { Customer } from '@/types';
@@ -40,6 +41,8 @@ export const useAuthStore = create<AuthState>((set) => ({
     set({ customer: data.customer, isAuthenticated: true });
     const secure = window.location.protocol === 'https:' ? '; secure' : '';
     document.cookie = `hc_session=1; path=/; max-age=604800; samesite=lax${secure}`;
+    // Fire-and-forget: login must not wait on linking a pre-existing device.
+    void linkPushSubscription();
     return data;
   },
 
