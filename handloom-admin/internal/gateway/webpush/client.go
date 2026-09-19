@@ -28,6 +28,15 @@ const defaultTTL = 24 * 60 * 60
 // a short reason ({"reason":"BadJwtToken"}); anything longer is not for us.
 const maxErrorBody = 256
 
+// vapidSubscriber adapts a VAPID subject to what webpush-go wants. The library
+// prefixes "mailto:" to anything that is not an https: URL, so a subject that
+// already carries the scheme is signed as "mailto:mailto:…". Apple validates
+// the claim and answers 403 BadJwtToken; FCM ignores it, so the fault shows up
+// only on Apple devices.
+func vapidSubscriber(subject string) string {
+	return strings.TrimPrefix(subject, "mailto:")
+}
+
 // Client sends Web Push messages using VAPID-signed requests.
 type Client struct {
 	config     Config
@@ -39,6 +48,7 @@ func NewClient(config Config) *Client {
 	if config.TTLSeconds <= 0 {
 		config.TTLSeconds = defaultTTL
 	}
+	config.Subject = vapidSubscriber(config.Subject)
 	httpClient := metricsmw.NewInstrumentedClient(10*time.Second, "webpush")
 	// A signed push is for one endpoint; never replay it at a redirect target.
 	httpClient.CheckRedirect = func(*http.Request, []*http.Request) error {
