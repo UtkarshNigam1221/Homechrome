@@ -403,6 +403,65 @@ func TestAssetService_FinalizeIfTemp_URLAllowlist(t *testing.T) {
 		s3Mock.AssertNotCalled(t, "CopyObject")
 	})
 
+	t.Run("trusted CDN URL pointing at tmp/ is finalized", func(t *testing.T) {
+		s3Mock := new(mockS3Client)
+		svc := &AssetService{
+			s3Client: s3Mock,
+			bucket:   testBucket,
+			region:   testRegion,
+			cdnHost:  "cdn.example.com",
+		}
+		ctx := context.Background()
+
+		tmpKey := "tmp/IMAGE/abc-123.jpg"
+
+		s3Mock.On("CopyObject",
+			mock.Anything, testBucket, tmpKey, mock.AnythingOfType("string"),
+		).Return(nil)
+		s3Mock.On("DeleteObject",
+			mock.Anything, testBucket, tmpKey,
+		).Return(nil)
+
+		result, err := svc.FinalizeIfTemp(ctx, "https://cdn.example.com/"+tmpKey)
+
+		require.NoError(t, err)
+		assert.True(t, strings.HasPrefix(result, "https://cdn.example.com/"+assetsPrefix))
+		s3Mock.AssertExpectations(t)
+	})
+
+	t.Run("trusted S3 URL pointing at tmp/ is finalized", func(t *testing.T) {
+		s3Mock := new(mockS3Client)
+		svc := newTestAssetService(s3Mock, nil)
+		ctx := context.Background()
+
+		tmpKey := "tmp/VIDEO/x.mp4"
+
+		s3Mock.On("CopyObject",
+			mock.Anything, testBucket, tmpKey, mock.AnythingOfType("string"),
+		).Return(nil)
+		s3Mock.On("DeleteObject",
+			mock.Anything, testBucket, tmpKey,
+		).Return(nil)
+
+		result, err := svc.FinalizeIfTemp(ctx, s3URL(tmpKey))
+
+		require.NoError(t, err)
+		assert.True(t, strings.HasPrefix(result, s3URL(assetsPrefix)))
+		s3Mock.AssertExpectations(t)
+	})
+
+	t.Run("untrusted external URL pointing at tmp/ still passes through", func(t *testing.T) {
+		s3Mock := new(mockS3Client)
+		svc := newTestAssetService(s3Mock, nil)
+
+		value := "https://evil.com/tmp/IMAGE/abc.jpg"
+		result, err := svc.FinalizeIfTemp(context.Background(), value)
+
+		require.NoError(t, err)
+		assert.Equal(t, value, result)
+		s3Mock.AssertNotCalled(t, "CopyObject")
+	})
+
 	t.Run("untrusted external URL passes through with warning (legacy CDN compat)", func(t *testing.T) {
 		// FinalizeIfTemp no longer hard-rejects non-tmp untrusted URLs.
 		// It logs a warning and returns the URL as-is so that existing products

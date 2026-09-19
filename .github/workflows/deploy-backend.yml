@@ -95,8 +95,11 @@ jobs:
           required="POSTGRES_DSN"
 
           # Required in prod: PhonePe + OTP must be real, never DevClient.
+          # VAPID_PUBLIC_KEY likewise — without it the push gateway logs instead
+          # of delivering, and the storefront just hides the opt-in, so a broken
+          # deploy looks identical to a healthy one.
           if [ "${{ inputs.environment }}" = "prod" ]; then
-            required="$required PHONEPE_CLIENT_ID PHONEPE_CLIENT_SECRET PHONEPE_WEBHOOK_USERNAME PHONEPE_WEBHOOK_PASSWORD"
+            required="$required PHONEPE_CLIENT_ID PHONEPE_CLIENT_SECRET PHONEPE_WEBHOOK_USERNAME PHONEPE_WEBHOOK_PASSWORD VAPID_PUBLIC_KEY"
           fi
 
           missing=""

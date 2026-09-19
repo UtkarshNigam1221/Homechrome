@@ -6,6 +6,7 @@
 	build-lambda-store-auth build-lambda-store-catalog build-lambda-store-cart \
 	build-lambda-store-checkout build-lambda-store-orders build-lambda-store-tracking \
 	build-lambda-store-profile build-lambda-store-events build-lambda-store-webhooks \
+	build-lambda-push ensure-vapid \
 	build-lambda-worker-metrics-consumer \
 	build-lambda-backfill \
 	cdk-synth cdk-deploy-dev cdk-deploy-prod cdk-destroy \
@@ -35,14 +36,20 @@ LAMBDA_BUILD_FLAGS=CGO_ENABLED=0 GOOS=linux GOARCH=arm64
 LAMBDA_OUT_DIR=./bin/lambda
 LAMBDA_SERVICES=auth user catalog order utm pricing inventory analytics notification coupon asset report audit \
 	store-auth store-catalog store-cart store-checkout store-orders store-tracking store-profile store-events store-webhooks \
+	push \
 	worker-metrics-consumer \
 	migrator
 
 # Active services for deployment
-LAMBDA_SERVICES_ACTIVE=auth user catalog asset order utm coupon store-auth store-catalog store-cart store-checkout store-orders store-tracking store-profile store-events store-webhooks migrator worker-metrics-consumer worker-embedding-backfill
+LAMBDA_SERVICES_ACTIVE=auth user catalog asset order utm coupon store-auth store-catalog store-cart store-checkout store-orders store-tracking store-profile store-events store-webhooks push migrator worker-metrics-consumer worker-embedding-backfill
 
 # Main package path
 MAIN_PKG=./cmd/api
+
+# Only the VAPID keys are lifted out of .env. Sourcing the whole file would
+# make `make run` non-hermetic: a real MSG91 or PhonePe secret sitting there
+# would send live SMS and hit live payments from a local server.
+VAPID_LOCAL_ENV = $(shell [ -f .env ] && grep -E '^VAPID_(PUBLIC_KEY|PRIVATE_KEY|SUBJECT)=' .env | tr '\n' ' ')
 
 all: build
 
@@ -52,7 +59,7 @@ build:
 	$(GOBUILD) -o $(BINARY_PATH) $(MAIN_PKG)
 
 ## Run the application (requires DynamoDB local)
-run:
+run: ensure-vapid
 	@echo "=============================================="
 	@echo "  Starting Handloom Admin API"
 	@echo "=============================================="
@@ -67,6 +74,7 @@ run:
 	@echo "  Default Admin:  admin@handloom.com / Admin@123!"
 	@echo ""
 	@echo "=============================================="
+	$(VAPID_LOCAL_ENV) \
 	APP_ENV=development \
 	APP_DEBUG=true \
 	SERVER_PORT=8081 \
@@ -79,9 +87,10 @@ run:
 	$(GOCMD) run $(MAIN_PKG)
 
 ## Run with hot reload using air (requires: go install github.com/cosmtrek/air@latest)
-run-watch:
+run-watch: ensure-vapid
 	@echo "Starting with hot reload (air)..."
 	@which air > /dev/null 2>&1 || (echo "Installing air..." && $(GOCMD) install github.com/cosmtrek/air@latest)
+	$(VAPID_LOCAL_ENV) \
 	APP_ENV=development \
 	APP_DEBUG=true \
 	SERVER_PORT=8081 \
@@ -132,6 +141,7 @@ generate-mocks:
 	mockgen -source=internal/domain/audit_repository.go -destination=internal/mocks/audit_repository_mock.go -package=mocks
 	mockgen -source=internal/domain/coupon.go -destination=internal/mocks/coupon_mock.go -package=mocks
 	mockgen -source=internal/domain/notification.go -destination=internal/mocks/notification_mock.go -package=mocks
+	mockgen -source=internal/domain/push_subscription.go -destination=internal/mocks/push_subscription_mock.go -package=mocks
 	mockgen -source=internal/domain/order_repository.go -destination=internal/mocks/order_repository_mock.go -package=mocks
 	mockgen -source=internal/domain/token_store.go -destination=internal/mocks/token_store_mock.go -package=mocks
 	mockgen -source=internal/domain/store_service.go -destination=internal/mocks/store_service_mock.go -package=mocks
@@ -226,7 +236,7 @@ seed-data:
 	./scripts/seed-data.sh
 
 ## Setup local development (start services, create tables, init S3, seed data)
-setup-local: docker-up create-tables init-s3 seed-data
+setup-local: docker-up create-tables init-s3 seed-data ensure-vapid
 	@echo "Local development environment ready!"
 	@echo ""
 	@echo "Services:"
@@ -239,13 +249,13 @@ setup-local: docker-up create-tables init-s3 seed-data
 	@echo "Run 'make deploy-local' to deploy Lambda functions"
 
 ## Deploy Lambda functions to LocalStack
-deploy-local: build-lambdas-active
+deploy-local: build-lambdas-active ensure-vapid
 	@echo "Deploying Lambda functions to LocalStack..."
 	chmod +x scripts/deploy-local-lambdas.sh
 	./scripts/deploy-local-lambdas.sh
 
 ## Redeploy Lambda code only (skip API Gateway recreation)
-redeploy-local: build-lambdas-active
+redeploy-local: build-lambdas-active ensure-vapid
 	@echo "Redeploying Lambda code to LocalStack..."
 	REDEPLOY_ONLY=true ./scripts/deploy-local-lambdas.sh
 
@@ -448,6 +458,17 @@ build-lambda-store-profile:
 	@echo "Building store-profile Lambda..."
 	@mkdir -p $(LAMBDA_OUT_DIR)/store-profile
 	$(LAMBDA_BUILD_FLAGS) $(GOBUILD) -ldflags="-s -w" -o $(LAMBDA_OUT_DIR)/store-profile/bootstrap ./cmd/lambda/store-profile
+
+## Generate a local VAPID keypair into .env once, so push actually delivers
+## locally instead of falling through to the logging dev gateway. Idempotent:
+## an existing keypair is left alone.
+ensure-vapid:
+	@$(GOCMD) run ./scripts/put-vapid-key local
+
+build-lambda-push:
+	@echo "Building push Lambda..."
+	@mkdir -p $(LAMBDA_OUT_DIR)/push
+	$(LAMBDA_BUILD_FLAGS) $(GOBUILD) -ldflags="-s -w" -o $(LAMBDA_OUT_DIR)/push/bootstrap ./cmd/lambda/push
 
 build-lambda-store-events:
 	@echo "Building store-events Lambda..."

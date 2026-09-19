@@ -1,20 +1,22 @@
-import { ColorSchemeScript, mantineHtmlProps } from '@mantine/core';
-import type { Metadata } from 'next';
+import { ColorSchemeScript, mantineHtmlProps } from "@mantine/core";
+import type { Metadata } from "next";
 
-import { MiniCartDrawer } from '@/components/cart/MiniCartDrawer';
-import OffersBanner from '@/components/catalog/OffersBanner';
-import EmbedderWarmer from '@/components/EmbedderWarmer';
-import { MobileTabBar } from '@/components/layout/MobileTabBar';
-import Footer from '@/components/layout/Footer';
-import Header from '@/components/layout/Header';
-import { SpotlightSearchLoader } from '@/components/search/SpotlightSearchLoader';
-import { API_BASE, IS_INDEXABLE, SITE_URL } from '@/lib/constants';
-import { ROUTES } from '@/lib/routes';
-import { Category, PublicCoupon } from '@/types';
+import { MiniCartDrawer } from "@/components/cart/MiniCartDrawer";
+import OffersBanner from "@/components/catalog/OffersBanner";
+import EmbedderWarmer from "@/components/EmbedderWarmer";
+import Footer from "@/components/layout/Footer";
+import Header from "@/components/layout/Header";
+import { MobileTabBar } from "@/components/layout/MobileTabBar";
+import IosInstallHint from "@/components/notifications/IosInstallHint";
+import PushOptInBanner from "@/components/notifications/PushOptInBanner";
+import { SpotlightSearchLoader } from "@/components/search/SpotlightSearchLoader";
+import { API_BASE, IS_INDEXABLE, SITE_URL } from "@/lib/constants";
+import { ROUTES } from "@/lib/routes";
+import { Category, PublicCoupon } from "@/types";
 
-import { siteFont } from './fonts';
-import './globals.css';
-import { Providers } from './providers';
+import { siteFont } from "./fonts";
+import "./globals.css";
+import { Providers } from "./providers";
 
 async function getCategories(): Promise<Category[]> {
   try {
@@ -48,9 +50,9 @@ export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   // Non-prod hosts (dev, local) get noindex so they can't surface in search.
   ...(IS_INDEXABLE ? {} : { robots: { index: false, follow: false } }),
-  title: 'Homechrome | Handloom Textiles',
+  title: "Homechrome | Handloom Textiles",
   description:
-    'Premium handloom textiles from across India. Sarees, dupattas, fabrics, and more.',
+    "Premium handloom textiles from across India. Sarees, dupattas, fabrics, and more.",
 };
 
 export default async function RootLayout({
@@ -58,13 +60,16 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const [categories, coupons] = await Promise.all([getCategories(), getPublicCoupons()]);
+  const [categories, coupons] = await Promise.all([
+    getCategories(),
+    getPublicCoupons(),
+  ]);
   return (
     <html lang="en" {...mantineHtmlProps}>
       <head>
         <ColorSchemeScript defaultColorScheme="light" />
       </head>
-      <body className={siteFont.className} style={{ minHeight: '100vh' }}>
+      <body className={siteFont.className} style={{ minHeight: "100vh" }}>
         <Providers>
           <EmbedderWarmer />
           <OffersBanner coupons={coupons} />
@@ -72,7 +77,9 @@ export default async function RootLayout({
           <SpotlightSearchLoader categories={categories} />
           <MiniCartDrawer />
           <MobileTabBar />
-          <main style={{ minHeight: '100vh' }}>{children}</main>
+          <PushOptInBanner />
+          <IosInstallHint />
+          <main style={{ minHeight: "100vh" }}>{children}</main>
           <Footer categories={categories} />
         </Providers>
       </body>
