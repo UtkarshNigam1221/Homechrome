@@ -7,6 +7,7 @@ import EmbedderWarmer from '@/components/EmbedderWarmer';
 import Footer from '@/components/layout/Footer';
 import Header from '@/components/layout/Header';
 import { MobileTabBar } from '@/components/layout/MobileTabBar';
+import IosInstallHint from '@/components/notifications/IosInstallHint';
 import PushOptInBanner from '@/components/notifications/PushOptInBanner';
 import { SpotlightSearchLoader } from '@/components/search/SpotlightSearchLoader';
 import { API_BASE, IS_INDEXABLE, SITE_URL } from '@/lib/constants';
@@ -74,6 +75,7 @@ export default async function RootLayout({
           <MiniCartDrawer />
           <MobileTabBar />
           <PushOptInBanner />
+          <IosInstallHint />
           <main style={{ minHeight: '100vh' }}>{children}</main>
           <Footer categories={categories} />
         </Providers>
