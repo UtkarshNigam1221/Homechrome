@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	wp "github.com/SherClockHolmes/webpush-go"
@@ -22,6 +23,10 @@ var ErrSubscriptionGone = errors.New("push subscription is gone")
 // long enough for a laptop to be reopened, short enough that a "new arrivals"
 // alert is not stale when it lands.
 const defaultTTL = 24 * 60 * 60
+
+// maxErrorBody caps how much of a rejection we quote. Push services answer with
+// a short reason ({"reason":"BadJwtToken"}); anything longer is not for us.
+const maxErrorBody = 256
 
 // Client sends Web Push messages using VAPID-signed requests.
 type Client struct {
@@ -74,7 +79,14 @@ func (c *Client) Send(ctx context.Context, sub Subscription, payload []byte) err
 		return ErrSubscriptionGone
 	}
 	if resp.StatusCode >= 300 {
-		return fmt.Errorf("web push rejected with status %d", resp.StatusCode)
+		// The status alone cannot separate a malformed VAPID subject from a key
+		// the endpoint was not subscribed with — both are 403. The body names it.
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBody))
+		reason := strings.TrimSpace(string(body))
+		if reason == "" {
+			return fmt.Errorf("web push rejected with status %d", resp.StatusCode)
+		}
+		return fmt.Errorf("web push rejected with status %d: %s", resp.StatusCode, reason)
 	}
 	return nil
 }
