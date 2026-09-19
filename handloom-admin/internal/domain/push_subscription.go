@@ -108,6 +108,7 @@ type PushBroadcast struct {
 	URL     string       `json:"url" dynamodbav:"url"`
 	Tag     string       `json:"tag,omitempty" dynamodbav:"tag,omitempty"`
 	Image   string       `json:"image,omitempty" dynamodbav:"image,omitempty"`
+	Icon    string       `json:"icon,omitempty" dynamodbav:"icon,omitempty"`
 	Actions []PushAction `json:"actions,omitempty" dynamodbav:"actions,omitempty"`
 
 	TotalTargeted int                 `json:"total_targeted" dynamodbav:"total_targeted"`

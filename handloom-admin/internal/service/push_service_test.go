@@ -463,8 +463,9 @@ func TestPushService_BroadcastFinalizesImages(t *testing.T) {
 		"a device cannot fetch a tmp/ key")
 	assert.Equal(t, "https://cdn.homechrome.in/assets/image/thumb.jpg", decoded.Icon)
 
-	// History must record the permanent URL too, or the audit row rots in a day.
+	// History must record the permanent URLs too, or the audit row rots in a day.
 	assert.Equal(t, "https://cdn.homechrome.in/assets/image/banner.jpg", result.Broadcast.Image)
+	assert.Equal(t, "https://cdn.homechrome.in/assets/image/thumb.jpg", result.Broadcast.Icon)
 }
 
 func TestPushService_BroadcastFailsWhenFinalizeFails(t *testing.T) {

@@ -28,7 +28,7 @@ export function ProductImagePicker({ opened, onClose, onSelect }: ProductImagePi
     (product.images ?? [])
       .slice()
       .sort((a, b) => Number(b.is_primary ?? false) - Number(a.is_primary ?? false))
-      .map((image) => ({ url: image.url, name: product.name }))
+      .map((image) => ({ url: image.url, name: product.name, productId: product.id }))
   );
 
   return (
@@ -49,7 +49,7 @@ export function ProductImagePicker({ opened, onClose, onSelect }: ProductImagePi
         <div className="mt-4 grid max-h-96 grid-cols-3 gap-3 overflow-y-auto">
           {images.map((image) => (
             <button
-              key={image.url}
+              key={`${image.productId}-${image.url}`}
               type="button"
               onClick={() => {
                 onSelect(image.url);
@@ -57,7 +57,7 @@ export function ProductImagePicker({ opened, onClose, onSelect }: ProductImagePi
               }}
               className="group overflow-hidden rounded-lg border border-gray-200 hover:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-500"
             >
-              <img src={image.url} alt="" className="h-24 w-full object-cover" />
+              <img src={image.url} alt="" loading="lazy" className="h-24 w-full object-cover" />
               <span className="block truncate px-2 py-1 text-left text-xs text-gray-600">
                 {image.name}
               </span>
