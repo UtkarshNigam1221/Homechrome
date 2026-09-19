@@ -10,8 +10,12 @@ interface NotificationPreviewProps {
   title: string;
   body: string;
   image?: string;
+  /** Renderable URL for `image` — the value itself may be an unresolvable tmp/ key. */
+  imageSrc?: string;
   /** Product thumbnail in place of the brand mark. */
   icon?: string;
+  /** Renderable URL for `icon`, same reason as `imageSrc`. */
+  iconSrc?: string;
   actions?: PushAction[];
   origin?: string;
 }
@@ -45,14 +49,25 @@ export function NotificationPreview({
   title,
   body,
   image,
+  imageSrc,
   icon,
+  iconSrc,
   actions = [],
   origin = 'homechrome.in',
 }: NotificationPreviewProps) {
   const [mode, setMode] = useState<PreviewMode>('expanded');
-  const [imageBroken, setImageBroken] = useState(false);
-  const [iconBroken, setIconBroken] = useState(false);
-  const [cropWarning, setCropWarning] = useState<string | null>(null);
+  // Verdicts are stored against the src that produced them: a broken <img>
+  // unmounts, so a plain flag would outlive the banner that earned it.
+  const [failedBanner, setFailedBanner] = useState<string | null>(null);
+  const [failedIcon, setFailedIcon] = useState<string | null>(null);
+  const [crop, setCrop] = useState<{ src: string; warning: string | null } | null>(null);
+
+  const bannerSrc = imageSrc?.trim() || image?.trim() || '';
+  const iconDisplaySrc = iconSrc?.trim() || icon?.trim() || '/icon-preview.png';
+
+  const imageBroken = failedBanner === bannerSrc;
+  const iconBroken = failedIcon === iconDisplaySrc;
+  const cropWarning = crop?.src === bannerSrc ? crop.warning : null;
 
   const shownTitle = title.trim() || 'Your title appears here';
   const shownBody = body.trim() || 'Your message appears here.';
@@ -132,26 +147,30 @@ export function NotificationPreview({
               {/* Android pins the icon to the right. Not positionable. */}
               {!iconBroken && (
                 <img
-                  src={icon?.trim() || '/icon-preview.png'}
+                  src={iconDisplaySrc}
                   alt=""
                   aria-hidden
                   className="mt-0.5 h-10 w-10 shrink-0 rounded-full object-cover"
-                  onError={() => setIconBroken(true)}
+                  onError={() => setFailedIcon(iconDisplaySrc)}
                 />
               )}
             </div>
           </div>
 
-          {expanded && image && !imageBroken && (
+          {expanded && bannerSrc && !imageBroken && (
             <img
-              src={image}
+              src={bannerSrc}
               alt=""
               className="h-36 w-full object-cover"
-              onError={() => setImageBroken(true)}
+              onError={() => setFailedBanner(bannerSrc)}
               onLoad={(e) =>
-                setCropWarning(
-                  bannerCropWarning(e.currentTarget.naturalWidth, e.currentTarget.naturalHeight)
-                )
+                setCrop({
+                  src: bannerSrc,
+                  warning: bannerCropWarning(
+                    e.currentTarget.naturalWidth,
+                    e.currentTarget.naturalHeight
+                  ),
+                })
               }
             />
           )}
@@ -171,12 +190,12 @@ export function NotificationPreview({
         </div>
       </div>
 
-      {expanded && image && imageBroken && (
+      {expanded && bannerSrc && imageBroken && (
         <p className="mt-2 text-sm text-amber-700">
           That banner URL did not load. Devices will show the notification without it.
         </p>
       )}
-      {expanded && image && !imageBroken && cropWarning && (
+      {expanded && bannerSrc && !imageBroken && cropWarning && (
         <p className="mt-2 text-sm text-amber-700">{cropWarning}</p>
       )}
 
