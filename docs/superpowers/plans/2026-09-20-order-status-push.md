@@ -710,9 +710,8 @@ Expected: FAIL — `svc.NotifyCustomer` undefined.
 In `internal/service/push_service.go`, after `Broadcast`:
 
 ```go
-// NotifyCustomer delivers one notification to every device a customer has
-// opted in on. It reuses the broadcast fan-out, so a dead endpoint is pruned
-// and a rejection is logged the same way it is for a broadcast.
+// NotifyCustomer notifies every device a customer opted in on. It reuses the
+// broadcast fan-out, so dead endpoints are pruned and rejections logged.
 func (s *PushService) NotifyCustomer(
 	ctx context.Context, customerID string, payload domain.PushPayload,
 ) (int, error) {
@@ -833,9 +832,8 @@ import (
 	"github.com/handloom/admin/internal/domain"
 )
 
-// orderStatusPush is the notification for an order reaching a status, or nil
-// when the status is one a shopper is not waiting on. Kept apart from the order
-// service so wording changes never touch fulfilment logic.
+// orderStatusPush is the notification for a status, or nil for one no shopper
+// waits on. Apart from the order service so copy edits miss fulfilment logic.
 func orderStatusPush(order *domain.Order) *domain.PushPayload {
 	var title, body string
 
@@ -878,9 +876,8 @@ package domain
 
 import "context"
 
-// OrderNotifier is the single push capability the order service depends on.
-// Declared here, and narrow, so the order service never imports the push
-// service and can be handed a no-op in a Lambda that must not sign pushes.
+// OrderNotifier is the only push capability the order service depends on, kept
+// narrow so that service never imports the push service.
 type OrderNotifier interface {
 	NotifyCustomer(ctx context.Context, customerID string, payload PushPayload) (int, error)
 }
@@ -1031,9 +1028,8 @@ In `UpdateStatus`, immediately after `s.applyInventoryEffect(ctx, order, status,
 Then add, below `UpdateStatus`:
 
 ```go
-// notifyStatusChange pushes the new status to the shopper's devices. Every
-// failure is swallowed: the order has already moved, and a notification that
-// did not arrive must not roll that back or surface as an admin error.
+// notifyStatusChange pushes the new status to the shopper's devices. Failures
+// are swallowed: the order already moved, and must not roll back or error.
 func (s *OrderService) notifyStatusChange(ctx context.Context, order *domain.Order) {
 	if s.notifier == nil || order.CustomerID == "" {
 		return
