@@ -1,7 +1,7 @@
 'use client';
 
-import { BellAlertIcon, XMarkIcon } from '@heroicons/react/24/outline';
-import { ActionIcon, Box, Button, Group, Paper, Text, ThemeIcon, Transition } from '@mantine/core';
+import { BellAlertIcon } from '@heroicons/react/24/outline';
+import { Button, Group, Modal, Stack, Text, ThemeIcon } from '@mantine/core';
 import { useEffect, useState } from 'react';
 
 import { usePushNotifications } from '@/hooks/usePushNotifications';
@@ -9,6 +9,41 @@ import { usePushNotifications } from '@/hooks/usePushNotifications';
 const STORAGE_KEY = 'hc_push_prompt_dismissed_at';
 const DISMISS_DAYS = 7;
 const APPEAR_DELAY_MS = 2500;
+
+/**
+ * The bell is the attention beat: it rings once with a halo behind it, then
+ * everything goes still. Looping would nag, and a prompt that nags is the
+ * fastest way to get an origin demoted to Chrome's quiet notification UI.
+ */
+const ATTENTION_CSS = `
+@keyframes hcPushRing {
+  0%, 60%, 100% { transform: rotate(0deg); }
+  8%  { transform: rotate(-16deg); }
+  18% { transform: rotate(13deg); }
+  28% { transform: rotate(-9deg); }
+  38% { transform: rotate(6deg); }
+  48% { transform: rotate(-3deg); }
+}
+@keyframes hcPushHalo {
+  from { opacity: 0.45; transform: scale(1); }
+  to   { opacity: 0;   transform: scale(2.4); }
+}
+.hc-push-bell { position: relative; display: inline-flex; }
+.hc-push-bell > * { animation: hcPushRing 1100ms ease-in-out 420ms 1 both; }
+.hc-push-bell::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: var(--mantine-radius-xl);
+  border: 2px solid var(--mantine-color-brand-4);
+  animation: hcPushHalo 1300ms ease-out 420ms 2 both;
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .hc-push-bell > * { animation: none; }
+  .hc-push-bell::after { display: none; }
+}
+`;
 
 export default function PushOptInBanner() {
   const { isSupported, isConfigured, permission, isSubscribed, loading, subscribe } =
@@ -48,74 +83,53 @@ export default function PushOptInBanner() {
   if (!isSupported || !isConfigured || isSubscribed || permission !== 'default') return null;
 
   return (
-    <Transition mounted={shown && !dismissed} transition="slide-up" duration={350} timingFunction="ease">
-      {(styles) => (
-        <Box
-          style={{
-            ...styles,
-            position: 'fixed',
-            bottom: 24,
-            right: 24,
-            zIndex: 999,
-            maxWidth: 420,
-            width: 'calc(100vw - 48px)',
-          }}
-        >
-          <Paper
-            withBorder
-            p="md"
-            radius="lg"
-            bg="white"
-            shadow="xl"
-            style={{ borderColor: 'var(--mantine-color-brand-3)' }}
+    <Modal
+      opened={shown && !dismissed}
+      onClose={handleDismiss}
+      centered
+      withCloseButton={false}
+      radius="lg"
+      size={380}
+      padding="xl"
+      aria-label="Turn on handloom drop alerts"
+      // Dimmed and blurred, so the panel is the only thing in focus. Mantine
+      // traps focus and closes on Escape or a click outside, which a hand-rolled
+      // overlay would have to reimplement.
+      overlayProps={{ backgroundOpacity: 0.6, blur: 4 }}
+      transitionProps={{ transition: 'pop', duration: 260, timingFunction: 'ease-out' }}
+    >
+      <style>{ATTENTION_CSS}</style>
+
+      <Stack align="center" gap="sm">
+        <span className="hc-push-bell">
+          <ThemeIcon size={60} radius="xl" color="brand">
+            <BellAlertIcon width={30} height={30} />
+          </ThemeIcon>
+        </span>
+
+        <Text fw={700} size="lg" c="navy.8" ta="center">
+          Handloom drop alerts
+        </Text>
+
+        <Text size="sm" c="gray.7" ta="center" lh={1.55}>
+          Never miss a genuine handloom release. Turn on notifications for new weaver collections,
+          festive drops, and private offers.
+        </Text>
+
+        <Group gap="sm" justify="center" mt="xs" w="100%">
+          <Button variant="subtle" color="gray" onClick={handleDismiss}>
+            Not now
+          </Button>
+          <Button
+            color="brand"
+            loading={loading}
+            onClick={handleSubscribe}
+            leftSection={<BellAlertIcon width={16} height={16} />}
           >
-            <Group align="flex-start" justify="space-between" wrap="nowrap" mb="xs">
-              <Group gap="xs" wrap="nowrap" align="center">
-                <ThemeIcon size="lg" radius="md" color="brand">
-                  <BellAlertIcon width={20} height={20} />
-                </ThemeIcon>
-                <Box>
-                  <Text fw={700} size="sm" c="navy.8">
-                    Handloom Drop Alerts
-                  </Text>
-                  <Text size="11px" c="dimmed">
-                    Browser notifications
-                  </Text>
-                </Box>
-              </Group>
-              <ActionIcon
-                variant="subtle"
-                color="gray"
-                size="sm"
-                onClick={handleDismiss}
-                aria-label="Dismiss notification prompt"
-              >
-                <XMarkIcon width={16} height={16} />
-              </ActionIcon>
-            </Group>
-
-            <Text size="xs" c="gray.7" mb="md" lh={1.5}>
-              Never miss a genuine handloom release. Turn on notifications for new weaver
-              collections, festive drops, and private offers.
-            </Text>
-
-            <Group gap="xs" justify="flex-end">
-              <Button variant="subtle" color="gray" size="xs" onClick={handleDismiss}>
-                Not Now
-              </Button>
-              <Button
-                color="brand"
-                size="xs"
-                loading={loading}
-                onClick={handleSubscribe}
-                leftSection={<BellAlertIcon width={14} height={14} />}
-              >
-                Notify Me
-              </Button>
-            </Group>
-          </Paper>
-        </Box>
-      )}
-    </Transition>
+            Notify me
+          </Button>
+        </Group>
+      </Stack>
+    </Modal>
   );
 }
