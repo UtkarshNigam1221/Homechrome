@@ -1,9 +1,11 @@
-import { ImageIcon, LinkIcon } from 'lucide-react';
+import { ImageIcon, LayoutGrid, LinkIcon } from 'lucide-react';
 import { useState } from 'react';
 
-import { ImageUpload, Input } from '@/shared/components/ui';
+import { Button, ImageUpload, Input } from '@/shared/components/ui';
 
-type Mode = 'upload' | 'url';
+import { ProductImagePicker } from './ProductImagePicker';
+
+type Mode = 'upload' | 'url' | 'products';
 
 interface BannerImageFieldProps {
   value: string;
@@ -18,6 +20,7 @@ interface BannerImageFieldProps {
  */
 export function BannerImageField({ value, onChange, label, hint }: BannerImageFieldProps) {
   const [mode, setMode] = useState<Mode>('upload');
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   return (
     <div>
@@ -28,6 +31,7 @@ export function BannerImageField({ value, onChange, label, hint }: BannerImageFi
             [
               ['upload', 'Upload', ImageIcon],
               ['url', 'Paste URL', LinkIcon],
+              ['products', 'From products', LayoutGrid],
             ] as const
           ).map(([id, text, Icon]) => (
             <button
@@ -57,13 +61,32 @@ export function BannerImageField({ value, onChange, label, hint }: BannerImageFi
           accept="image/*"
           maxSizeMB={1}
         />
-      ) : (
+      ) : mode === 'url' ? (
         <Input
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder="https://cdn.homechrome.in/assets/image/banner.jpg"
           hint={hint}
         />
+      ) : (
+        <div>
+          {value && (
+            <img
+              src={value}
+              alt=""
+              className="mb-2 h-24 w-24 rounded-lg border border-gray-200 object-cover"
+            />
+          )}
+          <Button type="button" variant="secondary" size="sm" onClick={() => setPickerOpen(true)}>
+            Browse product images
+          </Button>
+          {hint && <p className="mt-1 text-sm text-gray-500">{hint}</p>}
+          <ProductImagePicker
+            opened={pickerOpen}
+            onClose={() => setPickerOpen(false)}
+            onSelect={onChange}
+          />
+        </div>
       )}
     </div>
   );
