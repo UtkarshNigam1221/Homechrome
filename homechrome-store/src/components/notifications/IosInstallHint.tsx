@@ -1,10 +1,6 @@
 "use client";
 
-import {
-  ArrowUpOnSquareIcon,
-  BellAlertIcon,
-  XMarkIcon,
-} from "@heroicons/react/24/outline";
+import { BellAlertIcon, XMarkIcon } from "@heroicons/react/24/outline";
 import {
   ActionIcon,
   Box,
@@ -143,16 +139,10 @@ export default function IosInstallHint() {
             </Group>
 
             <Text size="xs" c="gray.7" lh={1.5}>
-              Apple only sends notifications to apps on your Home Screen. Tap{" "}
-              <ArrowUpOnSquareIcon
-                width={13}
-                height={13}
-                style={{ display: "inline", verticalAlign: "-2px" }}
-                aria-label="Share"
-              />{" "}
-              in the toolbar below, then <strong>Add to Home Screen</strong>.
-              Open Homechrome from the icon and we&apos;ll ask about alerts
-              there.
+              Apple only sends notifications to apps on your Home Screen. Open
+              your browser&apos;s share menu, choose{" "}
+              <strong>Add to Home Screen</strong>, then open Homechrome from the
+              icon — we&apos;ll ask about alerts there.
             </Text>
           </Paper>
         </Box>
