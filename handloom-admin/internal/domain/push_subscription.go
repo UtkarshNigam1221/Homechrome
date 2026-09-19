@@ -215,12 +215,14 @@ type TestPushRequest struct {
 
 // BroadcastPushRequest is the admin fan-out payload.
 type BroadcastPushRequest struct {
-	Title   string       `json:"title" validate:"required,max=120"`
-	Body    string       `json:"body" validate:"required,max=300"`
-	URL     string       `json:"url,omitempty" validate:"omitempty,max=512,startswith=/"`
-	Tag     string       `json:"tag,omitempty" validate:"omitempty,max=64"`
+	Title string `json:"title" validate:"required,max=120"`
+	Body  string `json:"body" validate:"required,max=300"`
+	URL   string `json:"url,omitempty" validate:"omitempty,max=512,startswith=/"`
+	Tag   string `json:"tag,omitempty" validate:"omitempty,max=64"`
+	// Either an absolute URL or a tmp/ upload key; the service resolves the
+	// latter into a permanent URL before sending.
 	Icon    string       `json:"icon,omitempty" validate:"omitempty,max=512"`
-	Image   string       `json:"image,omitempty" validate:"omitempty,url,max=512"`
+	Image   string       `json:"image,omitempty" validate:"omitempty,max=512"`
 	Actions []PushAction `json:"actions,omitempty" validate:"omitempty,max=2,dive"`
 }
 

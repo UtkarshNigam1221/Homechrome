@@ -77,7 +77,7 @@ func TestPushService_Subscribe(t *testing.T) {
 
 		repo := mocks.NewMockPushSubscriptionRepository(ctrl)
 		gw := newFakeGateway()
-		svc := NewPushService(repo, gw)
+		svc := NewPushService(repo, gw, mocks.NewMockAssetFinalizer(ctrl))
 
 		repo.EXPECT().
 			Save(ctx, gomock.Any()).
@@ -110,7 +110,7 @@ func TestPushService_Subscribe(t *testing.T) {
 
 		repo := mocks.NewMockPushSubscriptionRepository(ctrl)
 		gw := newFakeGateway()
-		svc := NewPushService(repo, gw)
+		svc := NewPushService(repo, gw, mocks.NewMockAssetFinalizer(ctrl))
 
 		repo.EXPECT().Save(ctx, gomock.Any()).Return(false, nil)
 
@@ -130,7 +130,7 @@ func TestPushService_Subscribe(t *testing.T) {
 		repo := mocks.NewMockPushSubscriptionRepository(ctrl)
 		gw := newFakeGateway()
 		gw.failWith["https://fcm.googleapis.com/fcm/send/a"] = errors.New("push service unreachable")
-		svc := NewPushService(repo, gw)
+		svc := NewPushService(repo, gw, mocks.NewMockAssetFinalizer(ctrl))
 
 		repo.EXPECT().Save(ctx, gomock.Any()).Return(true, nil)
 
@@ -190,7 +190,7 @@ func TestPushService_SubscribeEndpointAllowlist(t *testing.T) {
 			repo := mocks.NewMockPushSubscriptionRepository(ctrl)
 			repo.EXPECT().Save(ctx, gomock.Any()).Return(false, nil)
 
-			_, err := NewPushService(repo, newFakeGateway()).Subscribe(ctx, req(endpoint), "")
+			_, err := NewPushService(repo, newFakeGateway(), mocks.NewMockAssetFinalizer(ctrl)).Subscribe(ctx, req(endpoint), "")
 			require.NoError(t, err)
 		})
 	}
@@ -204,7 +204,7 @@ func TestPushService_SubscribeEndpointAllowlist(t *testing.T) {
 			repo := mocks.NewMockPushSubscriptionRepository(ctrl)
 			gw := newFakeGateway()
 
-			_, err := NewPushService(repo, gw).Subscribe(ctx, req(endpoint), "")
+			_, err := NewPushService(repo, gw, mocks.NewMockAssetFinalizer(ctrl)).Subscribe(ctx, req(endpoint), "")
 
 			var appErr *apperrors.AppError
 			require.ErrorAs(t, err, &appErr)
@@ -223,7 +223,7 @@ func TestPushService_SendTest(t *testing.T) {
 
 		repo := mocks.NewMockPushSubscriptionRepository(ctrl)
 		gw := newFakeGateway()
-		svc := NewPushService(repo, gw)
+		svc := NewPushService(repo, gw, mocks.NewMockAssetFinalizer(ctrl))
 
 		repo.EXPECT().
 			GetByEndpoint(ctx, "https://push.example.com/mine").
@@ -244,7 +244,7 @@ func TestPushService_SendTest(t *testing.T) {
 
 		repo := mocks.NewMockPushSubscriptionRepository(ctrl)
 		gw := newFakeGateway()
-		svc := NewPushService(repo, gw)
+		svc := NewPushService(repo, gw, mocks.NewMockAssetFinalizer(ctrl))
 
 		inactive := activeSub("https://push.example.com/dead")
 		inactive.Status = domain.PushSubscriptionInactive
@@ -261,7 +261,7 @@ func TestPushService_SendTest(t *testing.T) {
 		defer ctrl.Finish()
 
 		repo := mocks.NewMockPushSubscriptionRepository(ctrl)
-		svc := NewPushService(repo, newFakeGateway())
+		svc := NewPushService(repo, newFakeGateway(), mocks.NewMockAssetFinalizer(ctrl))
 
 		repo.EXPECT().
 			GetByEndpoint(ctx, "https://push.example.com/gone").
@@ -284,7 +284,9 @@ func TestPushService_Broadcast(t *testing.T) {
 		repo := mocks.NewMockPushSubscriptionRepository(ctrl)
 		gw := newFakeGateway()
 		gw.failWith["https://push.example.com/b"] = errors.New("transient failure")
-		svc := NewPushService(repo, gw)
+		finalizer := mocks.NewMockAssetFinalizer(ctrl)
+		finalizer.EXPECT().FinalizeIfTemp(gomock.Any(), "").Return("", nil).AnyTimes()
+		svc := NewPushService(repo, gw, finalizer)
 
 		repo.EXPECT().ListActive(ctx).Return([]*domain.PushSubscription{
 			activeSub("https://push.example.com/a"),
@@ -323,7 +325,9 @@ func TestPushService_Broadcast(t *testing.T) {
 		repo := mocks.NewMockPushSubscriptionRepository(ctrl)
 		gw := newFakeGateway()
 		gw.failWith["https://push.example.com/dead"] = webpush.ErrSubscriptionGone
-		svc := NewPushService(repo, gw)
+		finalizer := mocks.NewMockAssetFinalizer(ctrl)
+		finalizer.EXPECT().FinalizeIfTemp(gomock.Any(), "").Return("", nil).AnyTimes()
+		svc := NewPushService(repo, gw, finalizer)
 
 		repo.EXPECT().ListActive(ctx).Return([]*domain.PushSubscription{
 			activeSub("https://push.example.com/live"),
@@ -348,7 +352,9 @@ func TestPushService_Broadcast(t *testing.T) {
 		defer ctrl.Finish()
 
 		repo := mocks.NewMockPushSubscriptionRepository(ctrl)
-		svc := NewPushService(repo, newFakeGateway())
+		finalizer := mocks.NewMockAssetFinalizer(ctrl)
+		finalizer.EXPECT().FinalizeIfTemp(gomock.Any(), "").Return("", nil).AnyTimes()
+		svc := NewPushService(repo, newFakeGateway(), finalizer)
 
 		repo.EXPECT().ListActive(ctx).Return([]*domain.PushSubscription{}, nil)
 		repo.EXPECT().SaveBroadcast(ctx, gomock.Any()).Return(nil)
@@ -367,7 +373,9 @@ func TestPushService_Broadcast(t *testing.T) {
 		defer ctrl.Finish()
 
 		repo := mocks.NewMockPushSubscriptionRepository(ctrl)
-		svc := NewPushService(repo, newFakeGateway())
+		finalizer := mocks.NewMockAssetFinalizer(ctrl)
+		finalizer.EXPECT().FinalizeIfTemp(gomock.Any(), "").Return("", nil).AnyTimes()
+		svc := NewPushService(repo, newFakeGateway(), finalizer)
 
 		repo.EXPECT().ListActive(ctx).Return([]*domain.PushSubscription{
 			activeSub("https://push.example.com/a"),
@@ -390,7 +398,9 @@ func TestPushService_Broadcast(t *testing.T) {
 
 		repo := mocks.NewMockPushSubscriptionRepository(ctrl)
 		gw := newFakeGateway()
-		svc := NewPushService(repo, gw)
+		finalizer := mocks.NewMockAssetFinalizer(ctrl)
+		finalizer.EXPECT().FinalizeIfTemp(gomock.Any(), "").Return("", nil).AnyTimes()
+		svc := NewPushService(repo, gw, finalizer)
 
 		total := broadcastConcurrency*2 + 5
 		subs := make([]*domain.PushSubscription, 0, total)
@@ -410,6 +420,74 @@ func TestPushService_Broadcast(t *testing.T) {
 		assert.Equal(t, total, result.SuccessCount)
 		assert.Equal(t, domain.PushBroadcastSuccess, result.Status)
 	})
+}
+
+func TestPushService_BroadcastFinalizesImages(t *testing.T) {
+	ctx := context.Background()
+	ctrl := gomock.NewController(t)
+
+	repo := mocks.NewMockPushSubscriptionRepository(ctrl)
+	gw := newFakeGateway()
+	finalizer := mocks.NewMockAssetFinalizer(ctrl)
+
+	repo.EXPECT().ListActive(ctx).Return([]*domain.PushSubscription{
+		activeSub("https://fcm.googleapis.com/fcm/send/a"),
+	}, nil)
+	repo.EXPECT().SaveBroadcast(ctx, gomock.Any()).Return(nil)
+
+	// A tmp key must become a permanent URL before it reaches a device: tmp/
+	// is deleted after a day, and the notification outlives that.
+	finalizer.EXPECT().
+		FinalizeIfTemp(ctx, "tmp/image/banner.jpg").
+		Return("https://cdn.homechrome.in/assets/image/banner.jpg", nil)
+	finalizer.EXPECT().
+		FinalizeIfTemp(ctx, "tmp/image/thumb.jpg").
+		Return("https://cdn.homechrome.in/assets/image/thumb.jpg", nil)
+
+	svc := NewPushService(repo, gw, finalizer)
+
+	result, err := svc.Broadcast(ctx, domain.BroadcastPushRequest{
+		Title: "Festive drop",
+		Body:  "Now live.",
+		Image: "tmp/image/banner.jpg",
+		Icon:  "tmp/image/thumb.jpg",
+	}, "usr_1")
+	require.NoError(t, err)
+
+	payload, ok := gw.sentTo("https://fcm.googleapis.com/fcm/send/a")
+	require.True(t, ok)
+
+	var decoded domain.PushPayload
+	require.NoError(t, json.Unmarshal(payload, &decoded))
+	assert.Equal(t, "https://cdn.homechrome.in/assets/image/banner.jpg", decoded.Image,
+		"a device cannot fetch a tmp/ key")
+	assert.Equal(t, "https://cdn.homechrome.in/assets/image/thumb.jpg", decoded.Icon)
+
+	// History must record the permanent URL too, or the audit row rots in a day.
+	assert.Equal(t, "https://cdn.homechrome.in/assets/image/banner.jpg", result.Broadcast.Image)
+}
+
+func TestPushService_BroadcastFailsWhenFinalizeFails(t *testing.T) {
+	ctx := context.Background()
+	ctrl := gomock.NewController(t)
+
+	repo := mocks.NewMockPushSubscriptionRepository(ctrl)
+	finalizer := mocks.NewMockAssetFinalizer(ctrl)
+
+	repo.EXPECT().ListActive(ctx).Return([]*domain.PushSubscription{
+		activeSub("https://fcm.googleapis.com/fcm/send/a"),
+	}, nil)
+	finalizer.EXPECT().
+		FinalizeIfTemp(ctx, "tmp/image/banner.jpg").
+		Return("", errors.New("s3 copy failed"))
+
+	svc := NewPushService(repo, newFakeGateway(), finalizer)
+
+	// Better to refuse than to fan out to every device with a dead image.
+	_, err := svc.Broadcast(ctx, domain.BroadcastPushRequest{
+		Title: "Festive drop", Body: "Now live.", Image: "tmp/image/banner.jpg",
+	}, "usr_1")
+	require.Error(t, err)
 }
 
 func TestPushEndpointID(t *testing.T) {

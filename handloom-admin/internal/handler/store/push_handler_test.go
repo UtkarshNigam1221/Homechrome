@@ -24,7 +24,9 @@ import (
 func newPushTestServer(t *testing.T, repo domain.PushSubscriptionRepository) *httptest.Server {
 	t.Helper()
 	validation := middleware.NewValidation(validator.New(), middleware.ValidationConfig{})
-	svc := service.NewPushService(repo, webpush.NewDevClient())
+	// These routes never broadcast, so the finalizer is wired but never called.
+	finalizer := mocks.NewMockAssetFinalizer(gomock.NewController(t))
+	svc := service.NewPushService(repo, webpush.NewDevClient(), finalizer)
 	srv := httptest.NewServer(NewPushHandler(svc, validation).Routes())
 	t.Cleanup(srv.Close)
 	return srv

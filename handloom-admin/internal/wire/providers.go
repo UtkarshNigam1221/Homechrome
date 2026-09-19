@@ -331,8 +331,9 @@ func ProvideWebPushGateway(cfg *config.Config) webpush.Gateway {
 func ProvidePushService(
 	pushRepo domain.PushSubscriptionRepository,
 	gateway webpush.Gateway,
+	assetService *service.AssetService,
 ) *service.PushService {
-	return service.NewPushService(pushRepo, gateway)
+	return service.NewPushService(pushRepo, gateway, assetService)
 }
 
 // ProvideCouponService creates a new CouponService
