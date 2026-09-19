@@ -1,6 +1,7 @@
 import { ChevronDown, Globe } from 'lucide-react';
 import { useState } from 'react';
 
+import { bannerCropWarning } from '../lib/aspectRatio';
 import type { PushAction } from '../types';
 
 type PreviewMode = 'collapsed' | 'expanded' | 'lock';
@@ -51,6 +52,7 @@ export function NotificationPreview({
   const [mode, setMode] = useState<PreviewMode>('expanded');
   const [imageBroken, setImageBroken] = useState(false);
   const [iconBroken, setIconBroken] = useState(false);
+  const [cropWarning, setCropWarning] = useState<string | null>(null);
 
   const shownTitle = title.trim() || 'Your title appears here';
   const shownBody = body.trim() || 'Your message appears here.';
@@ -146,6 +148,11 @@ export function NotificationPreview({
               alt=""
               className="h-36 w-full object-cover"
               onError={() => setImageBroken(true)}
+              onLoad={(e) =>
+                setCropWarning(
+                  bannerCropWarning(e.currentTarget.naturalWidth, e.currentTarget.naturalHeight)
+                )
+              }
             />
           )}
 
@@ -168,6 +175,9 @@ export function NotificationPreview({
         <p className="mt-2 text-sm text-amber-700">
           That banner URL did not load. Devices will show the notification without it.
         </p>
+      )}
+      {expanded && image && !imageBroken && cropWarning && (
+        <p className="mt-2 text-sm text-amber-700">{cropWarning}</p>
       )}
 
       <p className="mt-3 text-sm text-gray-500">{caption}</p>
