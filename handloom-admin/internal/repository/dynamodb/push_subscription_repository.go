@@ -70,29 +70,23 @@ func (r *PushSubscriptionRepository) Save(ctx context.Context, sub *domain.PushS
 		return false, errors.Internal("Failed to marshal push subscription")
 	}
 
-	if sub.CustomerID == "" {
-		if _, err := r.client.db.PutItem(ctx, &dynamodb.PutItemInput{
-			TableName: aws.String(r.client.notificationsTable),
-			Item:      av,
-		}); err != nil {
-			return false, errors.Wrap(err, "Failed to save push subscription")
-		}
-		return isNew, nil
+	writes := []types.TransactWriteItem{
+		{Put: &types.Put{TableName: aws.String(r.client.notificationsTable), Item: av}},
 	}
-
-	pointer := custPointerKey(sub.CustomerID, sub.ID)
-	pointer["endpoint"] = &types.AttributeValueMemberS{Value: sub.Endpoint}
-	pointer["entity_type"] = &types.AttributeValueMemberS{Value: "PUSH_SUB_CUSTOMER"}
 
 	// The subscription and its pointer must land together, or ListByCustomer
 	// permanently misses a device the caller believes is linked.
-	writes := []types.TransactWriteItem{
-		{Put: &types.Put{TableName: aws.String(r.client.notificationsTable), Item: av}},
-		{Put: &types.Put{TableName: aws.String(r.client.notificationsTable), Item: pointer}},
+	if sub.CustomerID != "" {
+		pointer := custPointerKey(sub.CustomerID, sub.ID)
+		pointer["endpoint"] = &types.AttributeValueMemberS{Value: sub.Endpoint}
+		pointer["entity_type"] = &types.AttributeValueMemberS{Value: "PUSH_SUB_CUSTOMER"}
+		writes = append(writes, types.TransactWriteItem{
+			Put: &types.Put{TableName: aws.String(r.client.notificationsTable), Item: pointer},
+		})
 	}
 
-	// A device re-linked to a different customer (a shared browser, signed out
-	// then in as someone else) must stop notifying whoever held it before.
+	// Whoever held this device before must stop being notified for it — signing
+	// out (sub.CustomerID == "") is exactly as much a hand-off as re-linking.
 	if existing != nil && existing.CustomerID != "" && existing.CustomerID != sub.CustomerID {
 		writes = append(writes, types.TransactWriteItem{
 			Delete: &types.Delete{
@@ -100,6 +94,16 @@ func (r *PushSubscriptionRepository) Save(ctx context.Context, sub *domain.PushS
 				Key:       custPointerKey(existing.CustomerID, sub.ID),
 			},
 		})
+	}
+
+	if len(writes) == 1 {
+		if _, err := r.client.db.PutItem(ctx, &dynamodb.PutItemInput{
+			TableName: aws.String(r.client.notificationsTable),
+			Item:      av,
+		}); err != nil {
+			return false, errors.Wrap(err, "Failed to save push subscription")
+		}
+		return isNew, nil
 	}
 
 	if _, err := r.client.db.TransactWriteItems(ctx, &dynamodb.TransactWriteItemsInput{

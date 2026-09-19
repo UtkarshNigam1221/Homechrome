@@ -96,4 +96,35 @@ func TestListByCustomer(t *testing.T) {
 		require.NoError(t, err)
 		require.Empty(t, gotA)
 	})
+
+	t.Run("a sign-out in between must not let the old owner survive the hand-off", func(t *testing.T) {
+		// Shopper A links, signs out (anonymous re-subscribe), then Shopper B
+		// links the same device — A's pointer must not outlive either step.
+		handoff := &domain.PushSubscription{
+			Endpoint:   "https://fcm.googleapis.com/fcm/send/handoff",
+			Keys:       domain.PushSubscriptionKeys{P256dh: "p", Auth: "a"},
+			CustomerID: "cust_handoff_a",
+			Status:     domain.PushSubscriptionActive,
+			CreatedAt:  time.Now(),
+		}
+		_, err := repo.Save(ctx, handoff)
+		require.NoError(t, err)
+
+		handoff.CustomerID = ""
+		_, err = repo.Save(ctx, handoff)
+		require.NoError(t, err)
+
+		handoff.CustomerID = "cust_handoff_b"
+		_, err = repo.Save(ctx, handoff)
+		require.NoError(t, err)
+
+		gotB, err := repo.ListByCustomer(ctx, "cust_handoff_b")
+		require.NoError(t, err)
+		require.Len(t, gotB, 1)
+		require.Equal(t, handoff.Endpoint, gotB[0].Endpoint)
+
+		gotA, err := repo.ListByCustomer(ctx, "cust_handoff_a")
+		require.NoError(t, err)
+		require.Empty(t, gotA)
+	})
 }
