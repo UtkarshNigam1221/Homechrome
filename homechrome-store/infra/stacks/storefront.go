@@ -281,6 +281,23 @@ func NewStorefrontStack(scope constructs.Construct, id string, props *Storefront
 		CookieBehavior:      awscloudfront.OriginRequestCookieBehavior_All(),
 	})
 
+	// ─── Service Worker Headers ───
+	// DeployAssets stamps everything under _assets with a one-year immutable
+	// Cache-Control, which would pin sw.js at the edge and in every browser.
+	swHeadersPolicy := awscloudfront.NewResponseHeadersPolicy(stack, jsii.String("ServiceWorkerHeadersPolicy"), &awscloudfront.ResponseHeadersPolicyProps{
+		ResponseHeadersPolicyName: jsii.String(fmt.Sprintf("homechrome-store-sw-%s", env)),
+		Comment:                   jsii.String("No-cache for the service worker script"),
+		CustomHeadersBehavior: &awscloudfront.ResponseCustomHeadersBehavior{
+			CustomHeaders: &[]*awscloudfront.ResponseCustomHeader{
+				{
+					Header:   jsii.String("Cache-Control"),
+					Value:    jsii.String("no-cache, max-age=0, must-revalidate"),
+					Override: jsii.Bool(true),
+				},
+			},
+		},
+	})
+
 	// ─── CloudFront Distribution ───
 	distributionProps := &awscloudfront.DistributionProps{
 		DefaultBehavior: &awscloudfront.BehaviorOptions{
@@ -296,6 +313,24 @@ func NewStorefrontStack(scope constructs.Construct, id string, props *Storefront
 		},
 		AdditionalBehaviors: &map[string]*awscloudfront.BehaviorOptions{
 			"_next/static/*": {
+				Origin:               s3Origin,
+				ViewerProtocolPolicy: awscloudfront.ViewerProtocolPolicy_REDIRECT_TO_HTTPS,
+				AllowedMethods:       awscloudfront.AllowedMethods_ALLOW_GET_HEAD(),
+				CachePolicy:          awscloudfront.CachePolicy_CACHING_OPTIMIZED(),
+				Compress:             jsii.Bool(true),
+			},
+			// public/ is copied to _assets by OpenNext but never bundled into the
+			// server Lambda, so these 404 unless routed to S3 explicitly. The
+			// app-dir icons need no behavior — they are Next metadata routes.
+			"sw.js": {
+				Origin:                s3Origin,
+				ViewerProtocolPolicy:  awscloudfront.ViewerProtocolPolicy_REDIRECT_TO_HTTPS,
+				AllowedMethods:        awscloudfront.AllowedMethods_ALLOW_GET_HEAD(),
+				CachePolicy:           awscloudfront.CachePolicy_CACHING_DISABLED(),
+				ResponseHeadersPolicy: swHeadersPolicy,
+				Compress:              jsii.Bool(true),
+			},
+			"badge.png": {
 				Origin:               s3Origin,
 				ViewerProtocolPolicy: awscloudfront.ViewerProtocolPolicy_REDIRECT_TO_HTTPS,
 				AllowedMethods:       awscloudfront.AllowedMethods_ALLOW_GET_HEAD(),

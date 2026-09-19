@@ -105,6 +105,10 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 	jwtSecretParamName := fmt.Sprintf("/handloom/%s/jwt-secret", props.Environment)
 	customerJwtSecretParamName := fmt.Sprintf("/handloom/%s/customer-jwt-secret", props.Environment)
 
+	// Read at runtime by the push Lambda, not resolved here: a deploy-time
+	// reference would bake the signing key into the CloudFormation template.
+	vapidPrivateKeyParamName := fmt.Sprintf("/handloom/%s/vapid-private-key", props.Environment)
+
 	// S3 buckets from StorageStack
 	assetsBucket := props.StorageStack.AssetsBucket
 
@@ -242,6 +246,7 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 		"store-profile",
 		"store-events",
 		"store-webhooks",
+		"push",
 		"order",
 		"utm",
 		// "pricing",
@@ -290,6 +295,28 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 		// Consumer Lambda lives in MetricsStack and owns ConsumeMessages there.
 		if props.MetricsQueue != nil {
 			props.MetricsQueue.GrantSendMessages(lambdaFn)
+		}
+
+		// The VAPID private key is the one secret read at runtime rather than
+		// resolved at deploy time, so it stays out of the template. Only the
+		// push Lambda signs pushes, so only it gets the parameter and the read.
+		// Web Push config reaches only the Lambda that sends pushes. The public
+		// key and subject are not secret; the private key is read from SSM at
+		// runtime so it never enters this template.
+		if svc == "push" {
+			for _, key := range []string{"VAPID_PUBLIC_KEY", "VAPID_SUBJECT"} {
+				if v := os.Getenv(key); v != "" {
+					lambdaFn.AddEnvironment(jsii.String(key), jsii.String(v), nil)
+				}
+			}
+			lambdaFn.AddEnvironment(jsii.String("VAPID_PRIVATE_KEY_PARAM"),
+				jsii.String(vapidPrivateKeyParamName), nil)
+			lambdaFn.AddToRolePolicy(awsiam.NewPolicyStatement(&awsiam.PolicyStatementProps{
+				Actions: jsii.Strings("ssm:GetParameter"),
+				Resources: jsii.Strings(fmt.Sprintf(
+					"arn:aws:ssm:*:*:parameter%s", vapidPrivateKeyParamName,
+				)),
+			}))
 		}
 	}
 
@@ -681,6 +708,7 @@ func setupAPIRoutes(api awsapigateway.RestApi, lambdas map[string]*ServiceLambda
 		"track":    "store-tracking",
 		"events":   "store-events",
 		"webhooks": "store-webhooks",
+		"push":     "push",
 	}
 
 	// Sort to make CloudFormation output deterministic — Go map iteration is
@@ -773,6 +801,16 @@ func setupAPIRoutes(api awsapigateway.RestApi, lambdas map[string]*ServiceLambda
 	coupons.AddResource(jsii.String("code"), nil).
 		AddResource(jsii.String("{code}"), nil).
 		AddMethod(jsii.String("ANY"), couponIntegration, nil)
+
+	// Admin Web Push console. ANY per resource for the same CORS reason as the
+	// coupon routes above: preflight is answered by each Lambda's chi middleware,
+	// so OPTIONS has to reach the Lambda. No {id} here, so a proxy is unnecessary —
+	// the three leaves are the whole surface.
+	pushIntegration := awsapigateway.NewLambdaIntegration(lambdas["push"].Function, nil)
+	adminPush := admin.AddResource(jsii.String("push"), nil)
+	adminPush.AddResource(jsii.String("subscribers"), nil).AddMethod(jsii.String("ANY"), pushIntegration, nil)
+	adminPush.AddResource(jsii.String("broadcasts"), nil).AddMethod(jsii.String("ANY"), pushIntegration, nil)
+	adminPush.AddResource(jsii.String("broadcast"), nil).AddMethod(jsii.String("ANY"), pushIntegration, nil)
 
 	// TODO: Uncomment routes as services are implemented
 	/*

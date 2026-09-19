@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Handloom Admin is a Go serverless backend for the Homechrome handloom e-commerce platform. It powers both the admin dashboard and the B2C customer storefront. It runs as 23 Lambda services in dev (13 admin + 9 store + 1 migrator), and a single monolithic server locally (port 8081). Go module: `github.com/handloom/admin`, Go 1.25.
+Handloom Admin is a Go serverless backend for the Homechrome handloom e-commerce platform. It powers both the admin dashboard and the B2C customer storefront. It runs as 24 Lambda services in dev (13 admin + 9 store + 1 push + 1 migrator), and a single monolithic server locally (port 8081). Go module: `github.com/handloom/admin`, Go 1.25.
 
 ## Common Commands
 
@@ -146,6 +146,16 @@ Mounted at `/api/v1/store/*` in the monolith (`cmd/api/main.go`):
 - `/track/*` — Public order tracking
 - `/events/*` — Storefront analytics event ingestion (rate-limited)
 - `/webhooks/*` — Payment callbacks (signature-verified)
+- `/push/*` — Web Push opt-in (public, rate-limited: 20/min). Every route is scoped to the endpoint in the request body, so a caller can only touch their own device. Fan-out lives on `/admin/push/*` behind admin JWT.
+
+### Web Push
+Browser notifications for the storefront. Subscriptions and broadcast history live in the `handloom-notifications` DynamoDB table (`PUSH_SUB#<sha256(endpoint)>` / `PUSH_BROADCAST#<id>`); GSI1 is partitioned by subscription status so a broadcast queries only live endpoints.
+
+- **VAPID keys**: one command provisions every environment — `go run ./scripts/put-vapid-key <local|dev|prod>`. `local` writes a keypair into `.env` and is idempotent, so `make ensure-vapid` (a prerequisite of `setup-local`, `run` and `deploy-local`) just calls it and push delivers from a fresh clone. `dev`/`prod` generate a pair, store the private half as an SSM SecureString at `/handloom/{env}/vapid-private-key`, and print the public half for the `BACKEND_ENV_{ENV}` blob; **each run replaces the key**, so re-running against a live environment stops delivery to every existing subscriber.
+- **Why the private key is read at runtime**: CDK gives the push Lambda `VAPID_PRIVATE_KEY_PARAM` plus `ssm:GetParameter` on that one path, and no other Lambda gets either, so the signing key never enters the CloudFormation template. `VAPID_PRIVATE_KEY` still wins when set, for local and for a break-glass override. An unreadable or empty key selects the dev gateway, which logs payloads instead of delivering them, and logs at ERROR when an SSM read is what failed.
+- **Endpoint allowlist**: `/push/subscribe` is public and the stored endpoint is a URL the backend later makes VAPID-signed requests to, so it must be HTTPS on a known push service (`pushEndpointHosts` in `internal/service/push_service.go`). Add a host there when a new browser ships a new push service.
+- **Dead endpoints**: a push service answering 404/410 means the endpoint is permanently gone; the service marks it INACTIVE so later broadcasts skip it.
+- **Fan-out**: bounded to 32 concurrent sends (`broadcastConcurrency`), since each send is one HTTPS round trip.
 
 ### Schema Migrations
 - SQL files in `migrations/` are embedded via `go:embed` (`migrations/embed.go`) into the migrator Lambda
@@ -156,7 +166,7 @@ Mounted at `/api/v1/store/*` in the monolith (`cmd/api/main.go`):
 - To add a migration: create `migrations/NNN_description.sql`, then `make cdk-deploy-dev`
 
 ### Infrastructure (infra/)
-AWS CDK in Go. Stacks per environment: LogsStack, DatabaseStack, StorageStack, EmbedderStack, MetricsStack, APIStack. All Lambdas use ARM64/128MB(dev)/256MB(prod)/provided.al2023. Lambda count: 23 in dev (13 admin + 9 store + 1 migrator).
+AWS CDK in Go. Stacks per environment: LogsStack, DatabaseStack, StorageStack, EmbedderStack, MetricsStack, APIStack. All Lambdas use ARM64/128MB(dev)/256MB(prod)/provided.al2023. Lambda count: 24 in dev (13 admin + 9 store + 1 push + 1 migrator).
 
 Gateway credentials are propagated from the deploy-time shell environment to every Lambda's `Environment.Variables` via `gatewayEnvKeys` in `infra/stacks/api.go` (PhonePe + MSG91 + Shiprocket keys). Empty values fall through to each gateway's DevClient. `make cdk-deploy-{dev,prod}` sources `.env.{dev,prod}` first; the GitHub workflow injects `MSG91_AUTH_KEY` (secret) + `MSG91_OTP_TEMPLATE_ID` (variable) at the step level.
 

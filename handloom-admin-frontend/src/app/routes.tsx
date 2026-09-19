@@ -97,6 +97,9 @@ const Reports = withSuspense(
 const Notifications = withSuspense(
   lazy(() => import('@/features/notifications').then((m) => ({ default: m.NotificationsPage })))
 );
+const PushBroadcast = withSuspense(
+  lazy(() => import('@/features/push').then((m) => ({ default: m.PushBroadcastPage })))
+);
 const Users = withSuspense(
   lazy(() => import('@/features/settings').then((m) => ({ default: m.UsersPage })))
 );
@@ -195,6 +198,9 @@ export function AppRoutes() {
           {/* Admin Only Routes */}
           <Route element={<AdminRoute />}>
             <Route path="/users" element={<Users />} />
+            {/* A broadcast reaches every customer's lock screen and cannot be
+                recalled — wider blast radius than the rest of the console. */}
+            <Route path="/push" element={<PushBroadcast />} />
           </Route>
 
           {/* Settings */}

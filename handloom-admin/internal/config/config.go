@@ -4,6 +4,7 @@ package config
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"strconv"
 	"strings"
@@ -14,6 +15,9 @@ import (
 
 	"github.com/handloom/admin/pkg/metrics/awsmiddleware"
 )
+
+// ssmFetchTimeout bounds a runtime SSM read during Lambda init.
+const ssmFetchTimeout = 5 * time.Second
 
 // defaultJWTSecret is the fallback JWT secret used for local development.
 const defaultJWTSecret = "your-super-secret-key-change-in-production"
@@ -53,6 +57,14 @@ type StoreConfig struct {
 	MSG91AuthKey       string
 	MSG91OTPTemplateID string
 	MSG91BaseURL       string
+
+	// Web Push (VAPID). Keys are base64url-encoded and must stay stable for the
+	// life of a subscription — regenerating them silently invalidates every
+	// browser that has already subscribed. Provisioned by scripts/put-vapid-key.
+	// Empty keys select the dev gateway, which logs instead of delivering.
+	VAPIDPublicKey  string
+	VAPIDPrivateKey string
+	VAPIDSubject    string
 
 	// Customer Auth
 	CustomerJWTSecret       string
@@ -190,6 +202,10 @@ func Load() *Config {
 			MSG91AuthKey:       getEnv("MSG91_AUTH_KEY", ""),
 			MSG91OTPTemplateID: getEnv("MSG91_OTP_TEMPLATE_ID", ""),
 			MSG91BaseURL:       getEnv("MSG91_BASE_URL", "https://control.msg91.com"),
+
+			VAPIDPublicKey:  getEnv("VAPID_PUBLIC_KEY", ""),
+			VAPIDPrivateKey: getVAPIDPrivateKey(),
+			VAPIDSubject:    getEnv("VAPID_SUBJECT", "mailto:info@homechrome.in"),
 
 			CustomerJWTSecret:       getEnv("CUSTOMER_JWT_SECRET", "customer-secret-change-in-production"),
 			CustomerAccessTokenTTL:  getDurationEnv("CUSTOMER_ACCESS_TOKEN_TTL", 15*time.Minute),
@@ -339,6 +355,53 @@ func getJWTSecret() string {
 	}
 
 	return defaultJWTSecret
+}
+
+// getVAPIDPrivateKey resolves the Web Push signing key: the env var first (local
+// dev), then the SSM SecureString named by VAPID_PRIVATE_KEY_PARAM.
+//
+// Unlike the JWT secret there is no usable default — an empty key selects the
+// gateway that logs instead of delivering. A fetch that fails therefore logs at
+// ERROR rather than degrading quietly, since the symptom is push appearing to
+// succeed while nothing is sent.
+func getVAPIDPrivateKey() string {
+	if key := os.Getenv("VAPID_PRIVATE_KEY"); key != "" {
+		return key
+	}
+
+	paramName := os.Getenv("VAPID_PRIVATE_KEY_PARAM")
+	if paramName == "" {
+		return ""
+	}
+
+	// Bounded: this runs in Lambda init, where a hung SSM call stalls the
+	// whole cold start rather than just this one value.
+	ctx, cancel := context.WithTimeout(context.Background(), ssmFetchTimeout)
+	defer cancel()
+
+	cfg, err := config.LoadDefaultConfig(ctx)
+	if err != nil {
+		slog.Error("Web Push disabled: cannot load AWS config to read the VAPID key", "error", err)
+		return ""
+	}
+
+	awsmiddleware.Instrument(&cfg)
+
+	result, err := ssm.NewFromConfig(cfg).GetParameter(ctx, &ssm.GetParameterInput{
+		Name:           &paramName,
+		WithDecryption: boolPtr(true),
+	})
+	if err != nil {
+		// The SSM error names the parameter; logging it here trips gosec G706.
+		slog.Error("Web Push disabled: failed to read the VAPID private key from SSM", "error", err)
+		return ""
+	}
+
+	if result.Parameter == nil || result.Parameter.Value == nil {
+		slog.Error("Web Push disabled: VAPID private key parameter is empty")
+		return ""
+	}
+	return *result.Parameter.Value
 }
 
 func boolPtr(b bool) *bool {
