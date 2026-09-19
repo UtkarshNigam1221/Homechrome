@@ -46,6 +46,11 @@ LAMBDA_SERVICES_ACTIVE=auth user catalog asset order utm coupon store-auth store
 # Main package path
 MAIN_PKG=./cmd/api
 
+# Only the VAPID keys are lifted out of .env. Sourcing the whole file would
+# make `make run` non-hermetic: a real MSG91 or PhonePe secret sitting there
+# would send live SMS and hit live payments from a local server.
+VAPID_LOCAL_ENV = $(shell [ -f .env ] && grep -E '^VAPID_(PUBLIC_KEY|PRIVATE_KEY|SUBJECT)=' .env | tr '\n' ' ')
+
 all: build
 
 ## Build the application
@@ -454,7 +459,6 @@ build-lambda-store-profile:
 	@mkdir -p $(LAMBDA_OUT_DIR)/store-profile
 	$(LAMBDA_BUILD_FLAGS) $(GOBUILD) -ldflags="-s -w" -o $(LAMBDA_OUT_DIR)/store-profile/bootstrap ./cmd/lambda/store-profile
 
-## Generate a VAPID keypair for Web Push (run once per environment)
 ## Generate a local VAPID keypair into .env once, so push actually delivers
 ## locally instead of falling through to the logging dev gateway. Idempotent:
 ## an existing keypair is left alone.
