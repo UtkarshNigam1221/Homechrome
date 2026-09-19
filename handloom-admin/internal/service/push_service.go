@@ -185,6 +185,7 @@ func (s *PushService) Broadcast(
 		URL:           payloadURL(req.URL),
 		Tag:           req.Tag,
 		Image:         payload.Image,
+		Icon:          payload.Icon,
 		Actions:       req.Actions,
 		TotalTargeted: len(subs),
 		SuccessCount:  successCount,

@@ -77,7 +77,7 @@ export function BannerImageField({
           }}
           hint={hint}
           accept="image/*"
-          maxSizeMB={1}
+          maxSizeMB={2}
         />
       ) : mode === 'url' ? (
         <Input
