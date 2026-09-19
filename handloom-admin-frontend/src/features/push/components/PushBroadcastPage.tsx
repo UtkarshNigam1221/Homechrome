@@ -23,6 +23,10 @@ const ACTION_TITLE_MAX = 24;
 
 const EMPTY_ACTION: PushAction = { action: '', title: '', url: '' };
 
+// An upload commits a tmp/ key; FinalizeUpload deletes that object before the
+// request can fail, so a retry with the same key can only fail again.
+const isExpiredUpload = (value: string) => value.startsWith('tmp/');
+
 const statusVariant: Record<PushBroadcastStatus, 'success' | 'warning' | 'danger'> = {
   SUCCESS: 'success',
   PARTIAL: 'warning',
@@ -43,7 +47,9 @@ export function PushBroadcastPage() {
   const [url, setUrl] = useState('/products');
   const [tag, setTag] = useState('');
   const [image, setImage] = useState('');
+  const [imageSrc, setImageSrc] = useState('');
   const [icon, setIcon] = useState('');
+  const [iconSrc, setIconSrc] = useState('');
   const [actions, setActions] = useState<PushAction[]>([{ ...EMPTY_ACTION }]);
 
   const applyTemplate = (id: string) => {
@@ -53,7 +59,9 @@ export function PushBroadcastPage() {
     setBody(template.values.body);
     setUrl(template.values.url);
     setImage(template.values.image ?? '');
+    setImageSrc(template.values.image ?? '');
     setIcon(template.values.icon ?? '');
+    setIconSrc(template.values.icon ?? '');
     setActions(
       template.values.actions?.length
         ? template.values.actions.map((a) => ({ ...a }))
@@ -89,11 +97,26 @@ export function PushBroadcastPage() {
       setBody('');
       setTag('');
       setImage('');
+      setImageSrc('');
       setIcon('');
+      setIconSrc('');
       setActions([{ ...EMPTY_ACTION }]);
     },
     onError: (error) => {
-      toast.error(getErrorMessage(error));
+      const expired = isExpiredUpload(image) || isExpiredUpload(icon);
+      if (isExpiredUpload(image)) {
+        setImage('');
+        setImageSrc('');
+      }
+      if (isExpiredUpload(icon)) {
+        setIcon('');
+        setIconSrc('');
+      }
+      toast.error(
+        expired
+          ? `${getErrorMessage(error)} The upload expired, please re-attach the banner.`
+          : getErrorMessage(error)
+      );
     },
   });
 
@@ -219,14 +242,22 @@ export function PushBroadcastPage() {
             <BannerImageField
               label="Banner image (optional)"
               value={image}
-              onChange={setImage}
+              previewSrc={imageSrc}
+              onChange={(value, previewSrc) => {
+                setImage(value);
+                setImageSrc(previewSrc);
+              }}
               hint="Shown when the notification is expanded. Around 2:1 works best."
             />
 
             <BannerImageField
               label="Icon override (optional)"
               value={icon}
-              onChange={setIcon}
+              previewSrc={iconSrc}
+              onChange={(value, previewSrc) => {
+                setIcon(value);
+                setIconSrc(previewSrc);
+              }}
               hint="Square product thumbnail shown instead of the brand mark."
             />
 
@@ -297,7 +328,9 @@ export function PushBroadcastPage() {
               title={title}
               body={body}
               image={image.trim() || undefined}
+              imageSrc={imageSrc.trim() || undefined}
               icon={icon.trim() || undefined}
+              iconSrc={iconSrc.trim() || undefined}
               actions={preparedActions}
             />
           </Card>
