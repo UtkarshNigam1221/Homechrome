@@ -3,6 +3,7 @@ import { useState } from 'react';
 
 import { productsApi } from '@/features/products/api';
 import { Input, Modal } from '@/shared/components/ui';
+import { useDebounce } from '@/shared/hooks';
 
 interface ProductImagePickerProps {
   opened: boolean;
@@ -13,10 +14,13 @@ interface ProductImagePickerProps {
 /** Every image already on a product, flattened — the primary one first. */
 export function ProductImagePicker({ opened, onClose, onSelect }: ProductImagePickerProps) {
   const [search, setSearch] = useState('');
+  // Without this the catalogue is queried on every keystroke, the same reason
+  // ProductsPage debounces its own search.
+  const debouncedSearch = useDebounce(search, 300);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['push-product-images', search],
-    queryFn: () => productsApi.list({ search: search || undefined, limit: 40 }),
+    queryKey: ['push-product-images', debouncedSearch],
+    queryFn: () => productsApi.list({ search: debouncedSearch || undefined, limit: 40 }),
     enabled: opened,
   });
 
