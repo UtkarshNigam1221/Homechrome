@@ -35,7 +35,7 @@ func main() {
 		Debug:          bc.Cfg.App.Debug,
 	}, true)
 
-	router.NewStorePushRouter(r, deps.StoreHandler)
+	router.NewStorePushRouter(r, deps.StoreHandler, deps.CustomerAuthMiddleware)
 	router.NewPushRouter(r, deps.AdminHandler, deps.AuthMiddleware)
 
 	router.NewLambdaAdapter(r).Start()

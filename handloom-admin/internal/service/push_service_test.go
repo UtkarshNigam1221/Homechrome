@@ -14,6 +14,7 @@ import (
 
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/internal/gateway/webpush"
+	"github.com/handloom/admin/internal/middleware"
 	"github.com/handloom/admin/internal/mocks"
 	apperrors "github.com/handloom/admin/pkg/errors"
 )
@@ -518,4 +519,53 @@ func TestBroadcastStatus(t *testing.T) {
 			assert.Equal(t, tt.want, broadcastStatus(tt.targeted, tt.success, tt.failure))
 		})
 	}
+}
+
+func TestSubscribeRecordsTheSignedInCustomer(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	repo := mocks.NewMockPushSubscriptionRepository(ctrl)
+	gw := newFakeGateway()
+	svc := NewPushService(repo, gw, mocks.NewMockAssetFinalizer(ctrl))
+
+	var saved *domain.PushSubscription
+	repo.EXPECT().Save(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, sub *domain.PushSubscription) (bool, error) {
+			saved = sub
+			return true, nil
+		})
+
+	ctx := context.WithValue(context.Background(), middleware.CustomerIDKey, "cust_42")
+	_, err := svc.Subscribe(ctx, domain.SubscribePushRequest{
+		Endpoint: "https://fcm.googleapis.com/fcm/send/abc",
+		Keys:     domain.PushSubscriptionKeys{P256dh: "p", Auth: "a"},
+	}, "Mozilla/5.0")
+
+	require.NoError(t, err)
+	require.Equal(t, "cust_42", saved.CustomerID)
+}
+
+func TestSubscribeWithoutASignedInCustomerStaysAnonymous(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	repo := mocks.NewMockPushSubscriptionRepository(ctrl)
+	gw := newFakeGateway()
+	svc := NewPushService(repo, gw, mocks.NewMockAssetFinalizer(ctrl))
+
+	var saved *domain.PushSubscription
+	repo.EXPECT().Save(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, sub *domain.PushSubscription) (bool, error) {
+			saved = sub
+			return true, nil
+		})
+
+	_, err := svc.Subscribe(context.Background(), domain.SubscribePushRequest{
+		Endpoint: "https://fcm.googleapis.com/fcm/send/abc",
+		Keys:     domain.PushSubscriptionKeys{P256dh: "p", Auth: "a"},
+	}, "Mozilla/5.0")
+
+	require.NoError(t, err)
+	require.Empty(t, saved.CustomerID)
 }

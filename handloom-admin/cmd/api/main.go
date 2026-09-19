@@ -142,6 +142,9 @@ func createRouter(d *wire.MonolithDeps) *chi.Mux {
 		// only touch their own device. Fan-out lives under /admin/push.
 		r.Group(func(r chi.Router) {
 			r.Use(httprate.LimitByIP(20, time.Minute))
+			// Optional, not required: a signed-in shopper's devices get linked
+			// to their orders, but a guest must still be able to opt in.
+			r.Use(d.CustomerAuthMiddleware.OptionalCustomer)
 			r.Mount("/push", d.StorePushHandler.Routes())
 		})
 

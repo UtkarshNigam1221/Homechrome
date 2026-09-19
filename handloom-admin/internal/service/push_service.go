@@ -14,6 +14,7 @@ import (
 
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/internal/gateway/webpush"
+	"github.com/handloom/admin/internal/middleware"
 	"github.com/handloom/admin/pkg/errors"
 )
 
@@ -80,6 +81,7 @@ func (s *PushService) Subscribe(
 		Keys:       req.Keys,
 		UserAgent:  userAgent,
 		Device:     req.Device,
+		CustomerID: middleware.GetCustomerIDFromContext(ctx),
 		Status:     domain.PushSubscriptionActive,
 		CreatedAt:  now,
 		LastSeenAt: now,

@@ -51,6 +51,10 @@ type PushSubscription struct {
 	UserAgent string          `json:"user_agent,omitempty" dynamodbav:"user_agent,omitempty"`
 	Device    *PushDeviceInfo `json:"device,omitempty" dynamodbav:"device,omitempty"`
 
+	// CustomerID links this device to a signed-in shopper, so an order update
+	// can reach their devices and no one else's. Empty for anonymous opt-ins.
+	CustomerID string `json:"customer_id,omitempty" dynamodbav:"customer_id,omitempty"`
+
 	Status PushSubscriptionStatus `json:"status" dynamodbav:"status"`
 
 	CreatedAt  time.Time `json:"created_at" dynamodbav:"created_at"`

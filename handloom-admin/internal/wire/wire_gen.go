@@ -677,11 +677,17 @@ func InitializePushDeps(ctx context.Context, cfg *config.Config) (*PushDeps, err
 	tokenStore := ProvideTokenStore(client)
 	authService := ProvideAuthService(userRepository, tokenStore, cfg)
 	auth := ProvideAuthMiddleware(authService)
+	otpRepository := ProvideOTPRepository(client)
+	customerRepository := ProvideCustomerRepository(client)
+	customerTokenStore := ProvideCustomerTokenStore(client)
+	customerAuthService := ProvideCustomerAuthService(otpRepository, customerRepository, customerTokenStore, cfg)
+	customerAuth := ProvideCustomerAuthMiddleware(customerAuthService)
 	pushDeps := &PushDeps{
-		Config:         cfg,
-		StoreHandler:   pushHandler,
-		AdminHandler:   handlerPushHandler,
-		AuthMiddleware: auth,
+		Config:                 cfg,
+		StoreHandler:           pushHandler,
+		AdminHandler:           handlerPushHandler,
+		AuthMiddleware:         auth,
+		CustomerAuthMiddleware: customerAuth,
 	}
 	return pushDeps, nil
 }
@@ -1002,10 +1008,11 @@ type StoreEventsDeps struct {
 // One Lambda because they share a repository, a gateway and a table — the auth
 // boundary between them is the router group, not the deployment unit.
 type PushDeps struct {
-	Config         *config.Config
-	StoreHandler   *store.PushHandler
-	AdminHandler   *handler.PushHandler
-	AuthMiddleware *middleware.Auth
+	Config                 *config.Config
+	StoreHandler           *store.PushHandler
+	AdminHandler           *handler.PushHandler
+	AuthMiddleware         *middleware.Auth
+	CustomerAuthMiddleware *middleware.CustomerAuth
 }
 
 // MonolithDeps contains every dependency the monolith API server needs.

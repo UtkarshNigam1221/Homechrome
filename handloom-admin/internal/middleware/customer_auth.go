@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"context"
+	"errors"
 	"net/http"
 
 	"github.com/handloom/admin/internal/domain"
@@ -26,26 +27,45 @@ func NewCustomerAuth(
 // Authenticate validates customer JWT token and sets customer in context
 func (a *CustomerAuth) Authenticate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		token, err := extractBearerToken(r, "store_token")
+		ctx, err := a.authenticate(r)
 		if err != nil {
 			response.Unauthorized(w, err.Error())
 			return
 		}
 
-		// Validate customer token
-		claims, err := a.customerAuthService.ValidateCustomerToken(r.Context(), token)
-		if err != nil {
-			response.Unauthorized(w, "Invalid or expired token")
-			return
-		}
-
-		if claims.CustomerID == "" {
-			response.Unauthorized(w, "Invalid token claims")
-			return
-		}
-
-		next.ServeHTTP(w, r.WithContext(setCustomerContext(r.Context(), claims)))
+		next.ServeHTTP(w, r.WithContext(ctx))
 	})
+}
+
+// OptionalCustomer sets the customer context when a valid token is present
+// and no-ops otherwise, so a public route still serves anonymous visitors.
+func (m *CustomerAuth) OptionalCustomer(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if ctx, err := m.authenticate(r); err == nil {
+			r = r.WithContext(ctx)
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// authenticate parses and validates the store_token. Shared by Authenticate
+// (required) and OptionalCustomer (best-effort) so parsing lives in one place.
+func (a *CustomerAuth) authenticate(r *http.Request) (context.Context, error) {
+	token, err := extractBearerToken(r, "store_token")
+	if err != nil {
+		return nil, err
+	}
+
+	claims, err := a.customerAuthService.ValidateCustomerToken(r.Context(), token)
+	if err != nil {
+		return nil, errors.New("invalid or expired token")
+	}
+
+	if claims.CustomerID == "" {
+		return nil, errors.New("invalid token claims")
+	}
+
+	return setCustomerContext(r.Context(), claims), nil
 }
 
 // setCustomerContext sets the customer ID, slog correlation ID, and a minimal

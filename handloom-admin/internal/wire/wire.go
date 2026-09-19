@@ -443,10 +443,11 @@ type StoreEventsDeps struct {
 // One Lambda because they share a repository, a gateway and a table — the auth
 // boundary between them is the router group, not the deployment unit.
 type PushDeps struct {
-	Config         *config.Config
-	StoreHandler   *store.PushHandler
-	AdminHandler   *handler.PushHandler
-	AuthMiddleware *middleware.Auth
+	Config                 *config.Config
+	StoreHandler           *store.PushHandler
+	AdminHandler           *handler.PushHandler
+	AuthMiddleware         *middleware.Auth
+	CustomerAuthMiddleware *middleware.CustomerAuth
 }
 
 // ============================================================================
@@ -661,6 +662,11 @@ func InitializePushDeps(ctx context.Context, cfg *config.Config) (*PushDeps, err
 		ProvidePushService,
 		ProvideStorePushHandler,
 		ProvidePushHandler,
+		ProvideOTPRepository,
+		ProvideCustomerRepository,
+		ProvideCustomerTokenStore,
+		ProvideCustomerAuthService,
+		ProvideCustomerAuthMiddleware,
 		wire.Struct(new(PushDeps), "*"),
 	)
 	return nil, nil
