@@ -138,10 +138,18 @@ export function usePushNotifications() {
       // "configured" would show an opt-in that can only ever fail.
       const publicKey = await fetchVapidKey();
 
+      // A subscription bound to a superseded key is reported as no
+      // subscription at all: the push service answers 403 for it rather than
+      // 410, so it is never pruned, and calling it subscribed would leave the
+      // device silently undeliverable with no opt-in to repair it.
+      const usable =
+        !!subscription &&
+        (!publicKey || usesKey(subscription, urlBase64ToUint8Array(publicKey)));
+
       setStatus({
         isSupported: true,
         permission: Notification.permission,
-        isSubscribed: !!subscription,
+        isSubscribed: usable,
         isConfigured: !!publicKey,
         loading: false,
         error: null,
