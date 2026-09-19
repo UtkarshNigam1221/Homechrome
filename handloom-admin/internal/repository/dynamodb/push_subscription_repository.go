@@ -70,24 +70,42 @@ func (r *PushSubscriptionRepository) Save(ctx context.Context, sub *domain.PushS
 		return false, errors.Internal("Failed to marshal push subscription")
 	}
 
-	_, err = r.client.db.PutItem(ctx, &dynamodb.PutItemInput{
-		TableName: aws.String(r.client.notificationsTable),
-		Item:      av,
-	})
-	if err != nil {
-		return false, errors.Wrap(err, "Failed to save push subscription")
-	}
-
-	if sub.CustomerID != "" {
-		item := custPointerKey(sub.CustomerID, sub.ID)
-		item["endpoint"] = &types.AttributeValueMemberS{Value: sub.Endpoint}
-		item["entity_type"] = &types.AttributeValueMemberS{Value: "PUSH_SUB_CUSTOMER"}
+	if sub.CustomerID == "" {
 		if _, err := r.client.db.PutItem(ctx, &dynamodb.PutItemInput{
 			TableName: aws.String(r.client.notificationsTable),
-			Item:      item,
+			Item:      av,
 		}); err != nil {
-			return isNew, errors.Wrap(err, "Failed to link push subscription to customer")
+			return false, errors.Wrap(err, "Failed to save push subscription")
 		}
+		return isNew, nil
+	}
+
+	pointer := custPointerKey(sub.CustomerID, sub.ID)
+	pointer["endpoint"] = &types.AttributeValueMemberS{Value: sub.Endpoint}
+	pointer["entity_type"] = &types.AttributeValueMemberS{Value: "PUSH_SUB_CUSTOMER"}
+
+	// The subscription and its pointer must land together, or ListByCustomer
+	// permanently misses a device the caller believes is linked.
+	writes := []types.TransactWriteItem{
+		{Put: &types.Put{TableName: aws.String(r.client.notificationsTable), Item: av}},
+		{Put: &types.Put{TableName: aws.String(r.client.notificationsTable), Item: pointer}},
+	}
+
+	// A device re-linked to a different customer (a shared browser, signed out
+	// then in as someone else) must stop notifying whoever held it before.
+	if existing != nil && existing.CustomerID != "" && existing.CustomerID != sub.CustomerID {
+		writes = append(writes, types.TransactWriteItem{
+			Delete: &types.Delete{
+				TableName: aws.String(r.client.notificationsTable),
+				Key:       custPointerKey(existing.CustomerID, sub.ID),
+			},
+		})
+	}
+
+	if _, err := r.client.db.TransactWriteItems(ctx, &dynamodb.TransactWriteItemsInput{
+		TransactItems: writes,
+	}); err != nil {
+		return false, errors.Wrap(err, "Failed to save push subscription")
 	}
 
 	return isNew, nil
@@ -163,9 +181,8 @@ func (r *PushSubscriptionRepository) ListActive(ctx context.Context) ([]*domain.
 	)
 }
 
-// ListByCustomer queries the pointer rows, then reads each subscription. A
-// customer has a handful of devices, so the extra round trips are cheaper than
-// a GSI that would have to be written on every subscribe.
+// ListByCustomer queries the pointer rows, then reads each subscription — a
+// customer has few enough devices that the round trips beat a write-heavy GSI.
 func (r *PushSubscriptionRepository) ListByCustomer(
 	ctx context.Context, customerID string,
 ) ([]*domain.PushSubscription, error) {
@@ -188,9 +205,11 @@ func (r *PushSubscriptionRepository) ListByCustomer(
 		}
 		sub, err := r.GetByEndpoint(ctx, endpoint.Value)
 		if err != nil {
-			// A pointer outliving its subscription is not this caller's problem:
-			// the device simply cannot be reached.
-			continue
+			if errors.IsNotFound(err) {
+				// The pointer outlived its subscription; the device is just gone.
+				continue
+			}
+			return nil, err
 		}
 		if sub.Status == domain.PushSubscriptionActive {
 			subs = append(subs, sub)

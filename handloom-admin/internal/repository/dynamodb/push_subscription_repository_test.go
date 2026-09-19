@@ -69,4 +69,31 @@ func TestListByCustomer(t *testing.T) {
 		require.NoError(t, err)
 		require.Empty(t, got)
 	})
+
+	t.Run("re-linking a device to another customer moves it, not copies it", func(t *testing.T) {
+		// A shared device: the first customer must stop receiving notifications
+		// for it the moment the second signs in.
+		shared := &domain.PushSubscription{
+			Endpoint:   "https://fcm.googleapis.com/fcm/send/shared",
+			Keys:       domain.PushSubscriptionKeys{P256dh: "p", Auth: "a"},
+			CustomerID: "cust_a",
+			Status:     domain.PushSubscriptionActive,
+			CreatedAt:  time.Now(),
+		}
+		_, err := repo.Save(ctx, shared)
+		require.NoError(t, err)
+
+		shared.CustomerID = "cust_b"
+		_, err = repo.Save(ctx, shared)
+		require.NoError(t, err)
+
+		gotB, err := repo.ListByCustomer(ctx, "cust_b")
+		require.NoError(t, err)
+		require.Len(t, gotB, 1)
+		require.Equal(t, shared.Endpoint, gotB[0].Endpoint)
+
+		gotA, err := repo.ListByCustomer(ctx, "cust_a")
+		require.NoError(t, err)
+		require.Empty(t, gotA)
+	})
 }
