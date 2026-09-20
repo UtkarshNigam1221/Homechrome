@@ -2,10 +2,13 @@ package dynamodb
 
 import (
 	"context"
+	"fmt"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/stretchr/testify/require"
 
@@ -33,18 +36,87 @@ func pointerExists(t *testing.T, raw *dynamodb.Client, customerID, endpoint stri
 	return out.Item != nil
 }
 
+func pushSub(endpoint, customerID string) *domain.PushSubscription {
+	return &domain.PushSubscription{
+		Endpoint:   endpoint,
+		Keys:       domain.PushSubscriptionKeys{P256dh: "p", Auth: "a"},
+		CustomerID: customerID,
+		Status:     domain.PushSubscriptionActive,
+		CreatedAt:  time.Now(),
+	}
+}
+
+// Without the condition, a caller whose read is superseded overwrites the newer
+// owner and leaves two live PUSH_CUST# pointers to one endpoint.
+func TestSaveRejectsAWriteAgainstASupersededOwner(t *testing.T) {
+	repo, raw := newPushRepo(t)
+	ctx := context.Background()
+	endpoint := "https://fcm.googleapis.com/fcm/send/raced"
+
+	stale := pushSub(endpoint, "cust_a")
+	_, err := repo.Save(ctx, stale)
+	require.NoError(t, err)
+
+	// Another caller takes the device over while our snapshot still says cust_a.
+	_, err = repo.Save(ctx, pushSub(endpoint, "cust_b"))
+	require.NoError(t, err)
+
+	condition, values := ownerUnchanged(stale)
+	item, marshalErr := attributevalue.MarshalMap(stale)
+	require.NoError(t, marshalErr)
+
+	_, err = raw.PutItem(ctx, &dynamodb.PutItemInput{
+		TableName:                 aws.String(testNotificationsTable),
+		Item:                      item,
+		ConditionExpression:       aws.String(condition),
+		ExpressionAttributeValues: values,
+	})
+	require.Error(t, err)
+	require.True(t, isOwnerRace(err), "a superseded owner must be rejected, not overwritten")
+}
+
+// Concurrent sign-ins on one device must leave exactly one owner reachable:
+// two live pointers would notify a shopper who no longer holds the browser.
+func TestSaveLeavesOneOwnerUnderConcurrentHandoffs(t *testing.T) {
+	repo, raw := newPushRepo(t)
+	ctx := context.Background()
+	endpoint := "https://fcm.googleapis.com/fcm/send/contended"
+
+	_, err := repo.Save(ctx, pushSub(endpoint, "cust_0"))
+	require.NoError(t, err)
+
+	customers := []string{"cust_1", "cust_2", "cust_3"}
+	var wg sync.WaitGroup
+	for _, customerID := range customers {
+		wg.Add(1)
+		go func(customerID string) {
+			defer wg.Done()
+			// A losing writer may still return a conditional error after its one
+			// retry; what must never happen is two owners both believing they won.
+			_, _ = repo.Save(ctx, pushSub(endpoint, customerID))
+		}(customerID)
+	}
+	wg.Wait()
+
+	sub, err := repo.GetByEndpoint(ctx, endpoint)
+	require.NoError(t, err)
+
+	var owners []string
+	for _, customerID := range append([]string{"cust_0"}, customers...) {
+		if pointerExists(t, raw, customerID, endpoint) {
+			owners = append(owners, customerID)
+		}
+	}
+	require.Len(t, owners, 1, fmt.Sprintf("exactly one pointer must survive, found %v", owners))
+	require.Equal(t, sub.CustomerID, owners[0], "the surviving pointer must match customer_id")
+}
+
 func TestUnlinkCustomer(t *testing.T) {
 	repo, raw := newPushRepo(t)
 	ctx := context.Background()
 	endpoint := "https://fcm.googleapis.com/fcm/send/shared-tablet"
 
-	_, err := repo.Save(ctx, &domain.PushSubscription{
-		Endpoint:   endpoint,
-		Keys:       domain.PushSubscriptionKeys{P256dh: "p", Auth: "a"},
-		CustomerID: "cust_a",
-		Status:     domain.PushSubscriptionActive,
-		CreatedAt:  time.Now(),
-	})
+	_, err := repo.Save(ctx, pushSub(endpoint, "cust_a"))
 	require.NoError(t, err)
 	require.True(t, pointerExists(t, raw, "cust_a", endpoint))
 

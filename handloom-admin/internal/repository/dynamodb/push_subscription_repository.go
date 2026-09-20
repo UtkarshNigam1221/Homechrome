@@ -2,6 +2,7 @@ package dynamodb
 
 import (
 	"context"
+	stderrors "errors"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -48,10 +49,19 @@ func custPointerKey(customerID, subID string) map[string]types.AttributeValue {
 // same browser refreshes the keys and reactivates the row rather than adding a
 // duplicate, so CreatedAt carries over from the existing item.
 //
-// The read-then-write is deliberately not atomic: the only thing racing
-// callers can disagree on is isNew, and a duplicate welcome push collapses in
-// the browser anyway because both carry the same notification tag.
+// Racing callers can disagree on who owns the device, which would leave two
+// live pointers to one endpoint, so the write below is conditional on the
+// owner it read; one retry re-reads and decides the hand-off again.
 func (r *PushSubscriptionRepository) Save(ctx context.Context, sub *domain.PushSubscription) (bool, error) {
+	isNew, err := r.save(ctx, sub)
+	if err != nil && isOwnerRace(err) {
+		isNew, err = r.save(ctx, sub)
+	}
+	return isNew, err
+}
+
+// save is one read-then-conditional-write attempt of Save.
+func (r *PushSubscriptionRepository) save(ctx context.Context, sub *domain.PushSubscription) (bool, error) {
 	existing, err := r.GetByEndpoint(ctx, sub.Endpoint)
 	if err != nil && !errors.IsNotFound(err) {
 		return false, err
@@ -70,8 +80,15 @@ func (r *PushSubscriptionRepository) Save(ctx context.Context, sub *domain.PushS
 		return false, errors.Internal("Failed to marshal push subscription")
 	}
 
+	condition, conditionValues := ownerUnchanged(existing)
+
 	writes := []types.TransactWriteItem{
-		{Put: &types.Put{TableName: aws.String(r.client.notificationsTable), Item: av}},
+		{Put: &types.Put{
+			TableName:                 aws.String(r.client.notificationsTable),
+			Item:                      av,
+			ConditionExpression:       aws.String(condition),
+			ExpressionAttributeValues: conditionValues,
+		}},
 	}
 
 	// The subscription and its pointer must land together, or ListByCustomer
@@ -98,8 +115,10 @@ func (r *PushSubscriptionRepository) Save(ctx context.Context, sub *domain.PushS
 
 	if len(writes) == 1 {
 		if _, err := r.client.db.PutItem(ctx, &dynamodb.PutItemInput{
-			TableName: aws.String(r.client.notificationsTable),
-			Item:      av,
+			TableName:                 aws.String(r.client.notificationsTable),
+			Item:                      av,
+			ConditionExpression:       aws.String(condition),
+			ExpressionAttributeValues: conditionValues,
 		}); err != nil {
 			return false, errors.Wrap(err, "Failed to save push subscription")
 		}
@@ -113,6 +132,37 @@ func (r *PushSubscriptionRepository) Save(ctx context.Context, sub *domain.PushS
 	}
 
 	return isNew, nil
+}
+
+// ownerUnchanged builds the condition pinning the subscription write to the
+// customer_id that was read, so a concurrent hand-off is rejected, not lost.
+func ownerUnchanged(existing *domain.PushSubscription) (string, map[string]types.AttributeValue) {
+	if existing == nil || existing.CustomerID == "" {
+		// customer_id is omitempty, so an unowned device carries no attribute.
+		return "attribute_not_exists(PK) OR attribute_not_exists(customer_id)", nil
+	}
+	return "attribute_not_exists(PK) OR customer_id = :prev", map[string]types.AttributeValue{
+		":prev": &types.AttributeValueMemberS{Value: existing.CustomerID},
+	}
+}
+
+// isOwnerRace reports a rejected ownership condition. A transaction reports it
+// as a cancellation reason rather than as ConditionalCheckFailedException.
+func isOwnerRace(err error) bool {
+	if isConditionalCheckFailed(err) {
+		return true
+	}
+
+	var canceled *types.TransactionCanceledException
+	if !stderrors.As(err, &canceled) {
+		return false
+	}
+	for _, reason := range canceled.CancellationReasons {
+		if aws.ToString(reason.Code) == "ConditionalCheckFailed" {
+			return true
+		}
+	}
+	return false
 }
 
 // GetByEndpoint retrieves a subscription by endpoint URL.
