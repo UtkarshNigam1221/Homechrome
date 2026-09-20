@@ -17,6 +17,11 @@ import { useNavigate, useParams } from 'react-router-dom';
 
 import { addressFullName } from '@/features/customers/lib/displayName';
 import { ordersApi } from '@/features/orders/api';
+import {
+  CARRIER_OPTIONS,
+  CARRIER_TRACKING_URLS,
+  carrierOptions,
+} from '@/features/orders/lib/carriers';
 import { claimedByLiveRefunds } from '@/features/orders/lib/refundClaims';
 import { getErrorMessage } from '@/shared/api/client';
 import { Badge, Button, Card, Input, Modal, Select } from '@/shared/components/ui';
@@ -45,7 +50,6 @@ export function OrderDetailPage() {
   const [newStatus, setNewStatus] = useState<OrderStatus | ''>('');
   const [trackingNumber, setTrackingNumber] = useState('');
   const [carrier, setCarrier] = useState('');
-  const [trackingUrl, setTrackingUrl] = useState('');
   const [noteText, setNoteText] = useState('');
   const [cancelReason, setCancelReason] = useState('');
   const [noteIsInternal, setNoteIsInternal] = useState(true);
@@ -190,13 +194,10 @@ export function OrderDetailPage() {
       (item) => item.quantity > Math.max(item.refunded_quantity ?? 0, refundClaims[item.id] ?? 0)
     );
 
-  // Mirrors the backend's `http_url` validation so a bad paste is caught before
-  // the request. The scheme check matters: this URL becomes a customer-facing
-  // link, and a javascript: URL would otherwise sail through.
-  const trackingUrlError =
-    trackingUrl.trim() && !/^https?:\/\/\S+$/i.test(trackingUrl.trim())
-      ? 'Enter a URL starting with http:// or https://'
-      : undefined;
+  // Derived, never typed: the customer-facing link is whatever the chosen
+  // courier tracks on, so there is no paste to validate and no way to save a
+  // URL that points at the wrong carrier.
+  const trackingUrl = CARRIER_TRACKING_URLS[carrier] ?? '';
 
   return (
     <div className="space-y-6">
@@ -245,8 +246,7 @@ export function OrderDetailPage() {
           leftIcon={<Truck className="w-4 h-4" />}
           onClick={() => {
             setTrackingNumber(order.tracking_number || '');
-            setCarrier(order.shipping_carrier || '');
-            setTrackingUrl(order.tracking_url || '');
+            setCarrier(order.shipping_carrier || CARRIER_OPTIONS[0].value);
             setShowTrackingModal(true);
           }}
         >
@@ -523,9 +523,9 @@ export function OrderDetailPage() {
         size="sm"
       >
         <div className="space-y-4">
-          <Input
+          <Select
             label="Carrier"
-            placeholder="e.g., FedEx, DHL, Blue Dart"
+            options={carrierOptions(order.shipping_carrier)}
             value={carrier}
             onChange={(e) => setCarrier(e.target.value)}
           />
@@ -536,12 +536,11 @@ export function OrderDetailPage() {
             onChange={(e) => setTrackingNumber(e.target.value)}
           />
           <Input
-            label="Tracking URL (optional)"
-            placeholder="https://carrier.example/track/123"
+            label="Tracking URL"
             value={trackingUrl}
-            onChange={(e) => setTrackingUrl(e.target.value)}
-            error={trackingUrlError}
-            hint="Shown to the customer as a “Track on courier website” link."
+            readOnly
+            disabled
+            hint="Set by the carrier. Shown to the customer as a “Track on courier website” link."
           />
           <div className="flex justify-end gap-3 pt-4">
             <Button variant="secondary" onClick={() => setShowTrackingModal(false)}>
@@ -553,11 +552,11 @@ export function OrderDetailPage() {
                   id: order.id,
                   tracking_number: trackingNumber,
                   carrier,
-                  tracking_url: trackingUrl.trim(),
+                  tracking_url: trackingUrl,
                 })
               }
               loading={updateTrackingMutation.isPending}
-              disabled={!trackingNumber || !!trackingUrlError}
+              disabled={!trackingNumber || !carrier}
             >
               Update Tracking
             </Button>

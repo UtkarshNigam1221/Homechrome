@@ -193,6 +193,9 @@ func InitializeOrderDeps(ctx context.Context, cfg *config.Config) (*OrderDeps, e
 		ProvideCategoryRepository,
 		ProvideAuthService,
 		ProvidePricingService,
+		ProvidePushSubscriptionRepository,
+		ProvideWebPushGateway,
+		ProvideOrderNotifier,
 		ProvideOrderService,
 		ProvideCustomerService,
 		ProvideCartService,
@@ -347,6 +350,7 @@ func InitializeReportDeps(ctx context.Context, cfg *config.Config) (*ReportDeps,
 		ProvideAssetService,
 		ProvidePricingService,
 		ProvidePaymentRepository,
+		ProvideNoOrderNotifier,
 		ProvideOrderService,
 		ProvideProductService,
 		ProvideCustomerService,
@@ -443,10 +447,11 @@ type StoreEventsDeps struct {
 // One Lambda because they share a repository, a gateway and a table — the auth
 // boundary between them is the router group, not the deployment unit.
 type PushDeps struct {
-	Config         *config.Config
-	StoreHandler   *store.PushHandler
-	AdminHandler   *handler.PushHandler
-	AuthMiddleware *middleware.Auth
+	Config                 *config.Config
+	StoreHandler           *store.PushHandler
+	AdminHandler           *handler.PushHandler
+	AuthMiddleware         *middleware.Auth
+	CustomerAuthMiddleware *middleware.CustomerAuth
 }
 
 // ============================================================================
@@ -562,6 +567,7 @@ func InitializeStoreOrdersDeps(ctx context.Context, cfg *config.Config) (*StoreO
 		ProvideCustomerAuthService,
 		ProvidePricingService,
 		ProvidePaymentRepository,
+		ProvideNoOrderNotifier,
 		ProvideOrderService,
 		ProvideStoreOrderHandler,
 		ProvideCustomerAuthMiddleware,
@@ -661,6 +667,11 @@ func InitializePushDeps(ctx context.Context, cfg *config.Config) (*PushDeps, err
 		ProvidePushService,
 		ProvideStorePushHandler,
 		ProvidePushHandler,
+		ProvideOTPRepository,
+		ProvideCustomerRepository,
+		ProvideCustomerTokenStore,
+		ProvideCustomerAuthService,
+		ProvideCustomerAuthMiddleware,
 		wire.Struct(new(PushDeps), "*"),
 	)
 	return nil, nil

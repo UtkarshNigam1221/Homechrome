@@ -14,6 +14,7 @@ import (
 
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/internal/gateway/webpush"
+	"github.com/handloom/admin/internal/middleware"
 	"github.com/handloom/admin/internal/mocks"
 	apperrors "github.com/handloom/admin/pkg/errors"
 )
@@ -59,6 +60,13 @@ func (f *fakeGateway) sentCount() int {
 	return len(f.sent)
 }
 
+// anonymousLookup stands in for the read that stops an unauthenticated
+// re-subscribe from clearing a link: here the endpoint is not stored yet.
+func anonymousLookup(repo *mocks.MockPushSubscriptionRepository) {
+	repo.EXPECT().GetByEndpoint(gomock.Any(), gomock.Any()).
+		Return(nil, apperrors.NotFound("Push subscription")).AnyTimes()
+}
+
 func activeSub(endpoint string) *domain.PushSubscription {
 	return &domain.PushSubscription{
 		ID:       domain.PushEndpointID(endpoint),
@@ -79,6 +87,7 @@ func TestPushService_Subscribe(t *testing.T) {
 		gw := newFakeGateway()
 		svc := NewPushService(repo, gw, mocks.NewMockAssetFinalizer(ctrl))
 
+		anonymousLookup(repo)
 		repo.EXPECT().
 			Save(ctx, gomock.Any()).
 			DoAndReturn(func(_ context.Context, sub *domain.PushSubscription) (bool, error) {
@@ -112,6 +121,7 @@ func TestPushService_Subscribe(t *testing.T) {
 		gw := newFakeGateway()
 		svc := NewPushService(repo, gw, mocks.NewMockAssetFinalizer(ctrl))
 
+		anonymousLookup(repo)
 		repo.EXPECT().Save(ctx, gomock.Any()).Return(false, nil)
 
 		_, err := svc.Subscribe(ctx, domain.SubscribePushRequest{
@@ -132,6 +142,7 @@ func TestPushService_Subscribe(t *testing.T) {
 		gw.failWith["https://fcm.googleapis.com/fcm/send/a"] = errors.New("push service unreachable")
 		svc := NewPushService(repo, gw, mocks.NewMockAssetFinalizer(ctrl))
 
+		anonymousLookup(repo)
 		repo.EXPECT().Save(ctx, gomock.Any()).Return(true, nil)
 
 		sub, err := svc.Subscribe(ctx, domain.SubscribePushRequest{
@@ -188,6 +199,7 @@ func TestPushService_SubscribeEndpointAllowlist(t *testing.T) {
 			defer ctrl.Finish()
 
 			repo := mocks.NewMockPushSubscriptionRepository(ctrl)
+			anonymousLookup(repo)
 			repo.EXPECT().Save(ctx, gomock.Any()).Return(false, nil)
 
 			_, err := NewPushService(repo, newFakeGateway(), mocks.NewMockAssetFinalizer(ctrl)).Subscribe(ctx, req(endpoint), "")
@@ -518,4 +530,336 @@ func TestBroadcastStatus(t *testing.T) {
 			assert.Equal(t, tt.want, broadcastStatus(tt.targeted, tt.success, tt.failure))
 		})
 	}
+}
+
+func TestSubscribeRecordsTheSignedInCustomer(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	repo := mocks.NewMockPushSubscriptionRepository(ctrl)
+	gw := newFakeGateway()
+	svc := NewPushService(repo, gw, mocks.NewMockAssetFinalizer(ctrl))
+
+	var saved *domain.PushSubscription
+	repo.EXPECT().Save(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, sub *domain.PushSubscription) (bool, error) {
+			saved = sub
+			return true, nil
+		})
+
+	ctx := context.WithValue(context.Background(), middleware.CustomerIDKey, "cust_42")
+	_, err := svc.Subscribe(ctx, domain.SubscribePushRequest{
+		Endpoint: "https://fcm.googleapis.com/fcm/send/abc",
+		Keys:     domain.PushSubscriptionKeys{P256dh: "p", Auth: "a"},
+	}, "Mozilla/5.0")
+
+	require.NoError(t, err)
+	require.Equal(t, "cust_42", saved.CustomerID)
+}
+
+func TestSubscribeWithoutASignedInCustomerStaysAnonymous(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	repo := mocks.NewMockPushSubscriptionRepository(ctrl)
+	gw := newFakeGateway()
+	svc := NewPushService(repo, gw, mocks.NewMockAssetFinalizer(ctrl))
+
+	anonymousLookup(repo)
+	var saved *domain.PushSubscription
+	repo.EXPECT().Save(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, sub *domain.PushSubscription) (bool, error) {
+			saved = sub
+			return true, nil
+		})
+
+	_, err := svc.Subscribe(context.Background(), domain.SubscribePushRequest{
+		Endpoint: "https://fcm.googleapis.com/fcm/send/abc",
+		Keys:     domain.PushSubscriptionKeys{P256dh: "p", Auth: "a"},
+	}, "Mozilla/5.0")
+
+	require.NoError(t, err)
+	require.Empty(t, saved.CustomerID)
+}
+
+// OptionalCustomer swallows an expired token, so clearing the owner on an
+// unauthenticated subscribe anonymised devices behind a 200 nobody could see.
+func TestSubscribeWithoutACustomerKeepsAnExistingLink(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	repo := mocks.NewMockPushSubscriptionRepository(ctrl)
+	gw := newFakeGateway()
+	svc := NewPushService(repo, gw, mocks.NewMockAssetFinalizer(ctrl))
+
+	endpoint := "https://fcm.googleapis.com/fcm/send/abc"
+	linked := activeSub(endpoint)
+	linked.CustomerID = "cust_42"
+	repo.EXPECT().GetByEndpoint(gomock.Any(), endpoint).Return(linked, nil)
+
+	var saved *domain.PushSubscription
+	repo.EXPECT().Save(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, sub *domain.PushSubscription) (bool, error) {
+			saved = sub
+			return false, nil
+		})
+
+	_, err := svc.Subscribe(context.Background(), domain.SubscribePushRequest{
+		Endpoint: endpoint,
+		Keys:     domain.PushSubscriptionKeys{P256dh: "p", Auth: "a"},
+	}, "Mozilla/5.0")
+
+	require.NoError(t, err)
+	require.Equal(t, "cust_42", saved.CustomerID)
+}
+
+// The hand-off is load-bearing: a second shopper signing in on a shared device
+// must take it over, not share it.
+func TestSubscribeAsAnotherCustomerTakesTheDeviceOver(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	repo := mocks.NewMockPushSubscriptionRepository(ctrl)
+	gw := newFakeGateway()
+	svc := NewPushService(repo, gw, mocks.NewMockAssetFinalizer(ctrl))
+
+	endpoint := "https://fcm.googleapis.com/fcm/send/abc"
+	// No GetByEndpoint expectation: a positively identified caller needs no
+	// lookup, and gomock fails the test if one happens.
+	var saved *domain.PushSubscription
+	repo.EXPECT().Save(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, sub *domain.PushSubscription) (bool, error) {
+			saved = sub
+			return false, nil
+		})
+
+	ctx := context.WithValue(context.Background(), middleware.CustomerIDKey, "cust_b")
+	_, err := svc.Subscribe(ctx, domain.SubscribePushRequest{
+		Endpoint: endpoint,
+		Keys:     domain.PushSubscriptionKeys{P256dh: "p", Auth: "a"},
+	}, "Mozilla/5.0")
+
+	require.NoError(t, err)
+	require.Equal(t, "cust_b", saved.CustomerID)
+}
+
+func TestUnlinkCustomerRequiresASignedInCustomer(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	repo := mocks.NewMockPushSubscriptionRepository(ctrl)
+	svc := NewPushService(repo, newFakeGateway(), mocks.NewMockAssetFinalizer(ctrl))
+
+	// No repo expectation: an anonymous caller must not be able to strip
+	// another shopper's device off their account.
+	err := svc.UnlinkCustomer(context.Background(), "https://fcm.googleapis.com/fcm/send/abc")
+	require.Error(t, err)
+}
+
+func TestUnlinkCustomerDetachesTheDevice(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	repo := mocks.NewMockPushSubscriptionRepository(ctrl)
+	svc := NewPushService(repo, newFakeGateway(), mocks.NewMockAssetFinalizer(ctrl))
+
+	repo.EXPECT().
+		UnlinkCustomer(gomock.Any(), "https://fcm.googleapis.com/fcm/send/abc").
+		Return(nil)
+
+	ctx := context.WithValue(context.Background(), middleware.CustomerIDKey, "cust_42")
+	require.NoError(t, svc.UnlinkCustomer(ctx, "https://fcm.googleapis.com/fcm/send/abc"))
+}
+
+func TestUnlinkCustomerRejectsAnUnknownPushService(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	repo := mocks.NewMockPushSubscriptionRepository(ctrl)
+	svc := NewPushService(repo, newFakeGateway(), mocks.NewMockAssetFinalizer(ctrl))
+
+	ctx := context.WithValue(context.Background(), middleware.CustomerIDKey, "cust_42")
+	require.Error(t, svc.UnlinkCustomer(ctx, "https://evil.example.com/hook"))
+}
+
+func TestLinkCustomerRequiresASignedInCustomer(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	repo := mocks.NewMockPushSubscriptionRepository(ctrl)
+	gw := newFakeGateway()
+	svc := NewPushService(repo, gw, mocks.NewMockAssetFinalizer(ctrl))
+
+	// No customer in context: nothing may be written, or an anonymous caller
+	// could claim another shopper's device.
+	err := svc.LinkCustomer(context.Background(), "https://fcm.googleapis.com/fcm/send/abc")
+	require.Error(t, err)
+}
+
+func TestLinkCustomerAttachesTheDevice(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	repo := mocks.NewMockPushSubscriptionRepository(ctrl)
+	gw := newFakeGateway()
+	svc := NewPushService(repo, gw, mocks.NewMockAssetFinalizer(ctrl))
+
+	repo.EXPECT().
+		LinkCustomer(gomock.Any(), "https://fcm.googleapis.com/fcm/send/abc", "cust_42").
+		Return(nil)
+
+	ctx := context.WithValue(context.Background(), middleware.CustomerIDKey, "cust_42")
+	require.NoError(t, svc.LinkCustomer(ctx, "https://fcm.googleapis.com/fcm/send/abc"))
+}
+
+func TestLinkCustomerRejectsAnUnknownPushService(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	repo := mocks.NewMockPushSubscriptionRepository(ctrl)
+	gw := newFakeGateway()
+	svc := NewPushService(repo, gw, mocks.NewMockAssetFinalizer(ctrl))
+
+	ctx := context.WithValue(context.Background(), middleware.CustomerIDKey, "cust_42")
+	err := svc.LinkCustomer(ctx, "https://evil.example.com/hook")
+	require.Error(t, err)
+}
+
+func TestNotifyCustomerReachesEveryDevice(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	repo := mocks.NewMockPushSubscriptionRepository(ctrl)
+	gw := newFakeGateway()
+	svc := NewPushService(repo, gw, mocks.NewMockAssetFinalizer(ctrl))
+
+	repo.EXPECT().ListByCustomer(gomock.Any(), "cust_1").Return([]*domain.PushSubscription{
+		{ID: "a", Endpoint: "https://fcm.googleapis.com/fcm/send/a", Status: domain.PushSubscriptionActive},
+		{ID: "b", Endpoint: "https://fcm.googleapis.com/fcm/send/b", Status: domain.PushSubscriptionActive},
+	}, nil)
+
+	delivered, err := svc.NotifyCustomer(context.Background(), "cust_1", domain.PushPayload{
+		Title: "Your order has shipped",
+		Body:  "HL-1 is on its way.",
+		URL:   "/account/orders/order_1",
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, 2, delivered)
+	require.Equal(t, 2, gw.sentCount())
+}
+
+func TestNotifyCustomerWithNoDevicesIsNotAnError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	repo := mocks.NewMockPushSubscriptionRepository(ctrl)
+	gw := newFakeGateway()
+	svc := NewPushService(repo, gw, mocks.NewMockAssetFinalizer(ctrl))
+
+	repo.EXPECT().ListByCustomer(gomock.Any(), "cust_1").Return(nil, nil)
+
+	delivered, err := svc.NotifyCustomer(context.Background(), "cust_1", domain.PushPayload{
+		Title: "Your order has shipped",
+		Body:  "HL-1 is on its way.",
+	})
+
+	require.NoError(t, err)
+	require.Zero(t, delivered)
+}
+
+func TestNotifyCustomerRequiresACustomer(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	repo := mocks.NewMockPushSubscriptionRepository(ctrl)
+	gw := newFakeGateway()
+	svc := NewPushService(repo, gw, mocks.NewMockAssetFinalizer(ctrl))
+
+	// No ListByCustomer expectation: an empty id must never become a query that
+	// could match the anonymous partition.
+	_, err := svc.NotifyCustomer(context.Background(), "", domain.PushPayload{Title: "x", Body: "y"})
+	require.Error(t, err)
+}
+
+// A missing /handloom/{env}/vapid-private-key must be distinguishable from a
+// successful fan-out, or a new environment silently notifies nobody.
+func TestNotifyCustomerRefusesWhenPushIsUnconfigured(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	repo := mocks.NewMockPushSubscriptionRepository(ctrl)
+	gw := newFakeGateway()
+	gw.publicKey = ""
+	svc := NewPushService(repo, gw, mocks.NewMockAssetFinalizer(ctrl))
+
+	// No ListByCustomer expectation: nothing may be read or sent.
+	delivered, err := svc.NotifyCustomer(context.Background(), "cust_1", domain.PushPayload{
+		Title: "Your order has shipped", Body: "HL-1 is on its way.",
+	})
+
+	require.Error(t, err)
+	require.Zero(t, delivered)
+	require.Zero(t, gw.sentCount())
+
+	var appErr *apperrors.AppError
+	require.ErrorAs(t, err, &appErr)
+}
+
+// A dead pointer is not free: ListByCustomer reads one item per pointer, in
+// sequence, inside the order update's 2s push budget.
+func TestNotifyCustomerDropsTheDeadDevicesPointer(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	repo := mocks.NewMockPushSubscriptionRepository(ctrl)
+	gw := newFakeGateway()
+	gw.failWith["https://fcm.googleapis.com/fcm/send/dead"] = webpush.ErrSubscriptionGone
+	svc := NewPushService(repo, gw, mocks.NewMockAssetFinalizer(ctrl))
+
+	dead := activeSub("https://fcm.googleapis.com/fcm/send/dead")
+	dead.CustomerID = "cust_1"
+	repo.EXPECT().ListByCustomer(gomock.Any(), "cust_1").
+		Return([]*domain.PushSubscription{dead}, nil)
+	repo.EXPECT().Deactivate(gomock.Any(), dead.Endpoint).Return(nil)
+	repo.EXPECT().UnlinkCustomer(gomock.Any(), dead.Endpoint).Return(nil)
+
+	delivered, err := svc.NotifyCustomer(context.Background(), "cust_1", domain.PushPayload{
+		Title: "Your order has shipped", Body: "HL-1 is on its way.",
+	})
+
+	require.NoError(t, err)
+	require.Zero(t, delivered)
+}
+
+// An anonymous dead device has no pointer, so unlinking it would be a wasted
+// read and write on every broadcast that trips over it.
+func TestAGoneAnonymousDeviceIsNotUnlinked(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	repo := mocks.NewMockPushSubscriptionRepository(ctrl)
+	gw := newFakeGateway()
+	gw.failWith["https://fcm.googleapis.com/fcm/send/dead"] = webpush.ErrSubscriptionGone
+	svc := NewPushService(repo, gw, mocks.NewMockAssetFinalizer(ctrl))
+
+	dead := activeSub("https://fcm.googleapis.com/fcm/send/dead")
+	repo.EXPECT().GetByEndpoint(gomock.Any(), dead.Endpoint).Return(dead, nil)
+	repo.EXPECT().Deactivate(gomock.Any(), dead.Endpoint).Return(nil)
+
+	// No UnlinkCustomer expectation: gomock fails the test if it is called.
+	require.Error(t, svc.SendTest(context.Background(), dead.Endpoint))
+}
+
+func TestBroadcastRefusesWithoutAnAssetFinalizer(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	// The order Lambda builds a send-only push service; a Broadcast reaching
+	// it is a wiring mistake and must surface as one, not a nil dereference.
+	svc := NewPushService(mocks.NewMockPushSubscriptionRepository(ctrl), newFakeGateway(), nil)
+	_, err := svc.Broadcast(context.Background(), domain.BroadcastPushRequest{
+		Title: "x", Body: "y",
+	}, "admin_1")
+	require.Error(t, err)
 }

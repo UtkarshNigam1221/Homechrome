@@ -14,6 +14,7 @@ import (
 
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/internal/gateway/webpush"
+	"github.com/handloom/admin/internal/middleware"
 	"github.com/handloom/admin/pkg/errors"
 )
 
@@ -74,12 +75,18 @@ func (s *PushService) Subscribe(
 		return nil, err
 	}
 
+	owner, err := s.subscribeOwner(ctx, req.Endpoint)
+	if err != nil {
+		return nil, err
+	}
+
 	now := time.Now().UTC()
 	sub := &domain.PushSubscription{
 		Endpoint:   req.Endpoint,
 		Keys:       req.Keys,
 		UserAgent:  userAgent,
 		Device:     req.Device,
+		CustomerID: owner,
 		Status:     domain.PushSubscriptionActive,
 		CreatedAt:  now,
 		LastSeenAt: now,
@@ -103,6 +110,49 @@ func (s *PushService) Subscribe(
 
 	slog.InfoContext(ctx, "Saved push subscription", "subscription_id", sub.ID, "is_new", isNew)
 	return sub, nil
+}
+
+// subscribeOwner decides who a re-subscribe leaves the device belonging to. No
+// identity may only mean a lapsed token, so /unlink alone gives a device up.
+func (s *PushService) subscribeOwner(ctx context.Context, endpoint string) (string, error) {
+	if customerID := middleware.GetCustomerIDFromContext(ctx); customerID != "" {
+		return customerID, nil
+	}
+
+	existing, err := s.repo.GetByEndpoint(ctx, endpoint)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			return "", nil
+		}
+		return "", err
+	}
+	return existing.CustomerID, nil
+}
+
+// LinkCustomer attaches a device that opted in before sign-in. Most shoppers
+// grant permission first and sign in later, so without this their devices stay
+// anonymous and never receive an order update.
+func (s *PushService) LinkCustomer(ctx context.Context, endpoint string) error {
+	customerID := middleware.GetCustomerIDFromContext(ctx)
+	if customerID == "" {
+		return errors.Unauthorized("Sign in to link this device")
+	}
+	if err := validatePushEndpoint(endpoint); err != nil {
+		return err
+	}
+	return s.repo.LinkCustomer(ctx, endpoint, customerID)
+}
+
+// UnlinkCustomer detaches a device from whoever owned it, on sign-out. Without
+// it a shared tablet keeps showing one shopper's order numbers to the next.
+func (s *PushService) UnlinkCustomer(ctx context.Context, endpoint string) error {
+	if middleware.GetCustomerIDFromContext(ctx) == "" {
+		return errors.Unauthorized("Sign in to unlink this device")
+	}
+	if err := validatePushEndpoint(endpoint); err != nil {
+		return err
+	}
+	return s.repo.UnlinkCustomer(ctx, endpoint)
 }
 
 // Unsubscribe retires an endpoint.
@@ -141,6 +191,10 @@ func (s *PushService) Broadcast(
 	req domain.BroadcastPushRequest,
 	sentBy string,
 ) (*domain.BroadcastPushResponse, error) {
+	if s.assetFinalizer == nil {
+		return nil, errors.Internal("This service cannot broadcast")
+	}
+
 	subs, err := s.repo.ListActive(ctx)
 	if err != nil {
 		return nil, err
@@ -216,6 +270,37 @@ func (s *PushService) Broadcast(
 	}, nil
 }
 
+// NotifyCustomer notifies every device a customer opted in on. It reuses the
+// broadcast fan-out, so dead endpoints are pruned and rejections logged.
+func (s *PushService) NotifyCustomer(
+	ctx context.Context, customerID string, payload domain.PushPayload,
+) (int, error) {
+	if customerID == "" {
+		return 0, errors.BadRequest("A customer is required to notify")
+	}
+
+	// The dev gateway stands in when VAPID is unconfigured and its Send always
+	// succeeds, so an unset key would otherwise log as delivered=N.
+	if s.gateway.PublicKey() == "" {
+		slog.ErrorContext(ctx, "Cannot notify a customer: no VAPID key is configured",
+			"customer_id", customerID)
+		return 0, errors.Internal("Push notifications are not configured")
+	}
+
+	subs, err := s.repo.ListByCustomer(ctx, customerID)
+	if err != nil {
+		return 0, err
+	}
+	if len(subs) == 0 {
+		return 0, nil
+	}
+
+	delivered := s.fanOut(ctx, subs, payload)
+	slog.InfoContext(ctx, "Notified a customer",
+		"customer_id", customerID, "devices", len(subs), "delivered", delivered)
+	return delivered, nil
+}
+
 // fanOut delivers payload to every subscription, bounded by broadcastConcurrency,
 // and returns how many succeeded.
 func (s *PushService) fanOut(ctx context.Context, subs []*domain.PushSubscription, payload domain.PushPayload) int {
@@ -275,12 +360,25 @@ func (s *PushService) deliver(ctx context.Context, sub *domain.PushSubscription,
 	}
 
 	if stderrors.Is(err, webpush.ErrSubscriptionGone) {
-		if deactivateErr := s.repo.Deactivate(ctx, sub.Endpoint); deactivateErr != nil {
-			slog.WarnContext(ctx, "Failed to deactivate dead push subscription",
-				"error", deactivateErr, "subscription_id", sub.ID)
-		}
+		s.retire(ctx, sub)
 	}
 	return err
+}
+
+// retire takes a permanently gone endpoint out of service. Its pointer goes
+// too, or ListByCustomer pays a GetItem for a dead device on every update.
+func (s *PushService) retire(ctx context.Context, sub *domain.PushSubscription) {
+	if err := s.repo.Deactivate(ctx, sub.Endpoint); err != nil {
+		slog.WarnContext(ctx, "Failed to deactivate dead push subscription",
+			"error", err, "subscription_id", sub.ID)
+	}
+	if sub.CustomerID == "" {
+		return
+	}
+	if err := s.repo.UnlinkCustomer(ctx, sub.Endpoint); err != nil {
+		slog.WarnContext(ctx, "Failed to drop a dead device's customer pointer",
+			"error", err, "subscription_id", sub.ID)
+	}
 }
 
 // sendOne delivers a push and swallows the error, for deliveries whose failure

@@ -19,17 +19,43 @@ import (
 	"github.com/handloom/admin/internal/mocks"
 	"github.com/handloom/admin/internal/service"
 	"github.com/handloom/admin/internal/validator"
+	apperrors "github.com/handloom/admin/pkg/errors"
 )
 
-func newPushTestServer(t *testing.T, repo domain.PushSubscriptionRepository) *httptest.Server {
+// newPushTestServer mounts the storefront push routes. An optional customer id
+// stands in for what OptionalCustomer would have put on the context.
+func newPushTestServer(
+	t *testing.T, repo domain.PushSubscriptionRepository, customerID ...string,
+) *httptest.Server {
 	t.Helper()
 	validation := middleware.NewValidation(validator.New(), middleware.ValidationConfig{})
 	// These routes never broadcast, so the finalizer is wired but never called.
 	finalizer := mocks.NewMockAssetFinalizer(gomock.NewController(t))
 	svc := service.NewPushService(repo, webpush.NewDevClient(), finalizer)
-	srv := httptest.NewServer(NewPushHandler(svc, validation).Routes())
+
+	var routes http.Handler = NewPushHandler(svc, validation).Routes()
+	if len(customerID) == 1 && customerID[0] != "" {
+		routes = withCustomer(routes, customerID[0])
+	}
+
+	srv := httptest.NewServer(routes)
 	t.Cleanup(srv.Close)
 	return srv
+}
+
+// withCustomer injects a signed-in customer the way OptionalCustomer does.
+func withCustomer(next http.Handler, customerID string) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := context.WithValue(r.Context(), middleware.CustomerIDKey, customerID)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+// anonymousLookup stands in for the read that stops an unauthenticated
+// re-subscribe from clearing a link: here the endpoint is not stored yet.
+func anonymousLookup(repo *mocks.MockPushSubscriptionRepository) {
+	repo.EXPECT().GetByEndpoint(gomock.Any(), gomock.Any()).
+		Return(nil, apperrors.NotFound("Push subscription")).AnyTimes()
 }
 
 // do sends req and returns the status and the fully-read body, so callers
@@ -89,6 +115,7 @@ func TestPushSubscribe(t *testing.T) {
 	t.Run("stores a valid subscription", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		repo := mocks.NewMockPushSubscriptionRepository(ctrl)
+		anonymousLookup(repo)
 		repo.EXPECT().
 			Save(gomock.Any(), gomock.Any()).
 			DoAndReturn(func(_ context.Context, sub *domain.PushSubscription) (bool, error) {
@@ -110,6 +137,7 @@ func TestPushSubscribe(t *testing.T) {
 	t.Run("never echoes the subscription keys back", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		repo := mocks.NewMockPushSubscriptionRepository(ctrl)
+		anonymousLookup(repo)
 		repo.EXPECT().Save(gomock.Any(), gomock.Any()).Return(false, nil)
 
 		srv := newPushTestServer(t, repo)
@@ -161,6 +189,34 @@ func TestPushUnsubscribe(t *testing.T) {
 	})
 
 	assert.Equal(t, http.StatusOK, status)
+}
+
+func TestPushUnlink(t *testing.T) {
+	t.Run("an anonymous caller cannot unlink a device", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		repo := mocks.NewMockPushSubscriptionRepository(ctrl)
+		srv := newPushTestServer(t, repo)
+
+		// No repo expectation: without a session this must not reach storage.
+		status, _ := postJSON(t, srv.URL+"/unlink", domain.LinkPushRequest{
+			Endpoint: "https://fcm.googleapis.com/fcm/send/abc",
+		})
+		assert.Equal(t, http.StatusUnauthorized, status)
+	})
+
+	t.Run("a signed-in caller detaches the device", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		repo := mocks.NewMockPushSubscriptionRepository(ctrl)
+		repo.EXPECT().
+			UnlinkCustomer(gomock.Any(), "https://fcm.googleapis.com/fcm/send/abc").
+			Return(nil)
+
+		srv := newPushTestServer(t, repo, "cust_42")
+		status, _ := postJSON(t, srv.URL+"/unlink", domain.LinkPushRequest{
+			Endpoint: "https://fcm.googleapis.com/fcm/send/abc",
+		})
+		assert.Equal(t, http.StatusOK, status)
+	})
 }
 
 func TestPushVapidKey(t *testing.T) {

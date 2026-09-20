@@ -87,6 +87,12 @@ function fetchVapidKey(): Promise<string> {
   return vapidKeyPromise;
 }
 
+/** This browser's live push subscription, or null when there is none. */
+async function currentSubscription(): Promise<PushSubscription | null> {
+  const registration = await navigator.serviceWorker.getRegistration();
+  return registration ? registration.pushManager.getSubscription() : null;
+}
+
 function pushSupported(): boolean {
   return (
     typeof window !== 'undefined' &&
@@ -119,6 +125,46 @@ function subscribeToStatus(listener: () => void) {
 }
 
 const readStatus = () => sharedStatus;
+
+/**
+ * Attach this browser's existing subscription to the shopper who just signed
+ * in. Most people allow notifications before logging in, so without this their
+ * device is never linked to their orders.
+ */
+export async function linkPushSubscription(): Promise<void> {
+  if (!pushSupported()) return;
+  try {
+    const subscription = await currentSubscription();
+    if (!subscription) return;
+
+    // A subscription bound to a superseded key answers 403, not 410, so it is
+    // never pruned — linking one only points the shopper at a dead device.
+    const publicKey = await fetchVapidKey();
+    if (publicKey && !usesKey(subscription, urlBase64ToUint8Array(publicKey))) return;
+
+    await apiClient.post(ROUTES.PUSH.LINK, { endpoint: subscription.endpoint });
+  } catch {
+    // Linking is an optimisation: a shopper who misses it simply gets no order
+    // pushes on this device until they next re-subscribe.
+  }
+}
+
+/**
+ * Detach this browser's subscription from the shopper signing out. Without it
+ * customer_id outlives the session, and their next order update lands on a
+ * lock screen whoever picks the device up next is holding.
+ */
+export async function unlinkPushSubscription(): Promise<void> {
+  if (!pushSupported()) return;
+  try {
+    const subscription = await currentSubscription();
+    if (!subscription) return;
+    await apiClient.post(ROUTES.PUSH.UNLINK, { endpoint: subscription.endpoint });
+  } catch {
+    // Signing out must never be blocked by this; the device keeps its link
+    // until a later sign-in hands it over or it re-subscribes.
+  }
+}
 
 export function usePushNotifications() {
   const status = useSyncExternalStore(subscribeToStatus, readStatus, readStatus);

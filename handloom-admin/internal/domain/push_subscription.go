@@ -51,6 +51,10 @@ type PushSubscription struct {
 	UserAgent string          `json:"user_agent,omitempty" dynamodbav:"user_agent,omitempty"`
 	Device    *PushDeviceInfo `json:"device,omitempty" dynamodbav:"device,omitempty"`
 
+	// CustomerID links this device to a signed-in shopper, so an order update
+	// can reach their devices and no one else's. Empty for anonymous opt-ins.
+	CustomerID string `json:"customer_id,omitempty" dynamodbav:"customer_id,omitempty"`
+
 	Status PushSubscriptionStatus `json:"status" dynamodbav:"status"`
 
 	CreatedAt  time.Time `json:"created_at" dynamodbav:"created_at"`
@@ -151,6 +155,19 @@ type PushSubscriptionRepository interface {
 	// ListActive retrieves every ACTIVE subscription, for broadcast fan-out.
 	ListActive(ctx context.Context) ([]*PushSubscription, error)
 
+	// ListByCustomer retrieves a customer's ACTIVE subscriptions. A customer
+	// with no devices yields an empty slice, not an error.
+	ListByCustomer(ctx context.Context, customerID string) ([]*PushSubscription, error)
+
+	// LinkCustomer attaches an existing subscription to a customer. Linking an
+	// endpoint that is not stored is a no-op, not an error.
+	LinkCustomer(ctx context.Context, endpoint, customerID string) error
+
+	// UnlinkCustomer detaches a subscription from whoever owns it, clearing
+	// both customer_id and the pointer row. Unlinking an endpoint that is not
+	// stored, or already anonymous, is a no-op, not an error.
+	UnlinkCustomer(ctx context.Context, endpoint string) error
+
 	// List retrieves subscriptions of one status, newest first, for the admin console.
 	List(ctx context.Context, status PushSubscriptionStatus, pagination PaginationRequest) (*ListPushSubscriptionsResponse, error)
 
@@ -179,6 +196,12 @@ type SubscribePushRequest struct {
 
 // UnsubscribePushRequest identifies the endpoint to retire.
 type UnsubscribePushRequest struct {
+	Endpoint string `json:"endpoint" validate:"required,url,max=512"`
+}
+
+// LinkPushRequest attaches an already-registered device to the signed-in
+// shopper. The customer comes from the session, never from the body.
+type LinkPushRequest struct {
 	Endpoint string `json:"endpoint" validate:"required,url,max=512"`
 }
 

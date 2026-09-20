@@ -2,6 +2,7 @@ package dynamodb
 
 import (
 	"context"
+	stderrors "errors"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -35,14 +36,31 @@ func subKey(endpoint string) map[string]types.AttributeValue {
 	}
 }
 
+// custPointerKey addresses the row that lets a customer's devices be found
+// without a second GSI on a table whose GSI1 is already spent on status.
+func custPointerKey(customerID, subID string) map[string]types.AttributeValue {
+	return map[string]types.AttributeValue{
+		"PK": &types.AttributeValueMemberS{Value: "PUSH_CUST#" + customerID},
+		"SK": &types.AttributeValueMemberS{Value: "PUSH_SUB#" + subID},
+	}
+}
+
 // Save upserts a subscription keyed by its endpoint hash. Re-subscribing the
 // same browser refreshes the keys and reactivates the row rather than adding a
 // duplicate, so CreatedAt carries over from the existing item.
 //
-// The read-then-write is deliberately not atomic: the only thing racing
-// callers can disagree on is isNew, and a duplicate welcome push collapses in
-// the browser anyway because both carry the same notification tag.
+// Racing callers can disagree on who owns the device, leaving two live pointers
+// to one endpoint, so the write is conditional on the owner read and retried.
 func (r *PushSubscriptionRepository) Save(ctx context.Context, sub *domain.PushSubscription) (bool, error) {
+	isNew, err := r.save(ctx, sub)
+	if err != nil && isOwnerRace(err) {
+		isNew, err = r.save(ctx, sub)
+	}
+	return isNew, err
+}
+
+// save is one read-then-conditional-write attempt of Save.
+func (r *PushSubscriptionRepository) save(ctx context.Context, sub *domain.PushSubscription) (bool, error) {
 	existing, err := r.GetByEndpoint(ctx, sub.Endpoint)
 	if err != nil && !errors.IsNotFound(err) {
 		return false, err
@@ -61,15 +79,89 @@ func (r *PushSubscriptionRepository) Save(ctx context.Context, sub *domain.PushS
 		return false, errors.Internal("Failed to marshal push subscription")
 	}
 
-	_, err = r.client.db.PutItem(ctx, &dynamodb.PutItemInput{
-		TableName: aws.String(r.client.notificationsTable),
-		Item:      av,
-	})
-	if err != nil {
+	condition, conditionValues := ownerUnchanged(existing)
+
+	writes := []types.TransactWriteItem{
+		{Put: &types.Put{
+			TableName:                 aws.String(r.client.notificationsTable),
+			Item:                      av,
+			ConditionExpression:       aws.String(condition),
+			ExpressionAttributeValues: conditionValues,
+		}},
+	}
+
+	// The subscription and its pointer must land together, or ListByCustomer
+	// permanently misses a device the caller believes is linked.
+	if sub.CustomerID != "" {
+		pointer := custPointerKey(sub.CustomerID, sub.ID)
+		pointer["endpoint"] = &types.AttributeValueMemberS{Value: sub.Endpoint}
+		pointer["entity_type"] = &types.AttributeValueMemberS{Value: "PUSH_SUB_CUSTOMER"}
+		writes = append(writes, types.TransactWriteItem{
+			Put: &types.Put{TableName: aws.String(r.client.notificationsTable), Item: pointer},
+		})
+	}
+
+	// Whoever held this device before must stop being notified for it — an
+	// unlink (sub.CustomerID == "") is as much a hand-off as re-linking.
+	if existing != nil && existing.CustomerID != "" && existing.CustomerID != sub.CustomerID {
+		writes = append(writes, types.TransactWriteItem{
+			Delete: &types.Delete{
+				TableName: aws.String(r.client.notificationsTable),
+				Key:       custPointerKey(existing.CustomerID, sub.ID),
+			},
+		})
+	}
+
+	if len(writes) == 1 {
+		if _, err := r.client.db.PutItem(ctx, &dynamodb.PutItemInput{
+			TableName:                 aws.String(r.client.notificationsTable),
+			Item:                      av,
+			ConditionExpression:       aws.String(condition),
+			ExpressionAttributeValues: conditionValues,
+		}); err != nil {
+			return false, errors.Wrap(err, "Failed to save push subscription")
+		}
+		return isNew, nil
+	}
+
+	if _, err := r.client.db.TransactWriteItems(ctx, &dynamodb.TransactWriteItemsInput{
+		TransactItems: writes,
+	}); err != nil {
 		return false, errors.Wrap(err, "Failed to save push subscription")
 	}
 
 	return isNew, nil
+}
+
+// ownerUnchanged builds the condition pinning the subscription write to the
+// customer_id that was read, so a concurrent hand-off is rejected, not lost.
+func ownerUnchanged(existing *domain.PushSubscription) (string, map[string]types.AttributeValue) {
+	if existing == nil || existing.CustomerID == "" {
+		// customer_id is omitempty, so an unowned device carries no attribute.
+		return "attribute_not_exists(PK) OR attribute_not_exists(customer_id)", nil
+	}
+	return "attribute_not_exists(PK) OR customer_id = :prev", map[string]types.AttributeValue{
+		":prev": &types.AttributeValueMemberS{Value: existing.CustomerID},
+	}
+}
+
+// isOwnerRace reports a rejected ownership condition. A transaction reports it
+// as a cancellation reason rather than as ConditionalCheckFailedException.
+func isOwnerRace(err error) bool {
+	if isConditionalCheckFailed(err) {
+		return true
+	}
+
+	var canceled *types.TransactionCanceledException
+	if !stderrors.As(err, &canceled) {
+		return false
+	}
+	for _, reason := range canceled.CancellationReasons {
+		if aws.ToString(reason.Code) == "ConditionalCheckFailed" {
+			return true
+		}
+	}
+	return false
 }
 
 // GetByEndpoint retrieves a subscription by endpoint URL.
@@ -126,7 +218,7 @@ func (r *PushSubscriptionRepository) statusQuery(status domain.PushSubscriptionS
 		IndexName:              aws.String("GSI1"),
 		KeyConditionExpression: aws.String("GSI1PK = :pk"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":pk": &types.AttributeValueMemberS{Value: "PUSH_SUB#" + string(status)},
+			exprPK: &types.AttributeValueMemberS{Value: "PUSH_SUB#" + string(status)},
 		},
 		ScanIndexForward: aws.Bool(false),
 	}
@@ -140,6 +232,83 @@ func (r *PushSubscriptionRepository) ListActive(ctx context.Context) ([]*domain.
 		r.statusQuery(domain.PushSubscriptionActive),
 		"Failed to list active push subscriptions",
 	)
+}
+
+// ListByCustomer queries the pointer rows, then reads each subscription — a
+// customer has few enough devices that the round trips beat a write-heavy GSI.
+func (r *PushSubscriptionRepository) ListByCustomer(
+	ctx context.Context, customerID string,
+) ([]*domain.PushSubscription, error) {
+	result, err := r.client.db.Query(ctx, &dynamodb.QueryInput{
+		TableName:              aws.String(r.client.notificationsTable),
+		KeyConditionExpression: aws.String("PK = :pk"),
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			exprPK: &types.AttributeValueMemberS{Value: "PUSH_CUST#" + customerID},
+		},
+	})
+	if err != nil {
+		return nil, errors.Wrap(err, "Failed to list a customer's push subscriptions")
+	}
+
+	subs := make([]*domain.PushSubscription, 0, len(result.Items))
+	for _, item := range result.Items {
+		endpoint, ok := item["endpoint"].(*types.AttributeValueMemberS)
+		if !ok {
+			continue
+		}
+		sub, err := r.GetByEndpoint(ctx, endpoint.Value)
+		if err != nil {
+			if errors.IsNotFound(err) {
+				// The pointer outlived its subscription; the device is just gone.
+				continue
+			}
+			return nil, err
+		}
+		if sub.Status == domain.PushSubscriptionActive {
+			subs = append(subs, sub)
+		}
+	}
+	return subs, nil
+}
+
+// LinkCustomer sets customer_id on the subscription and writes the pointer row
+// that ListByCustomer reads. A device that has gone away links to nothing,
+// which is the same outcome the caller wanted.
+func (r *PushSubscriptionRepository) LinkCustomer(
+	ctx context.Context, endpoint, customerID string,
+) error {
+	sub, err := r.GetByEndpoint(ctx, endpoint)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+
+	sub.CustomerID = customerID
+	if _, err := r.Save(ctx, sub); err != nil {
+		return err
+	}
+	return nil
+}
+
+// UnlinkCustomer gives a device back to nobody, so a signed-out shopper's next
+// order update cannot reach a browser somebody else is now holding.
+func (r *PushSubscriptionRepository) UnlinkCustomer(ctx context.Context, endpoint string) error {
+	sub, err := r.GetByEndpoint(ctx, endpoint)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+	if sub.CustomerID == "" {
+		return nil
+	}
+
+	sub.CustomerID = ""
+	_, err = r.Save(ctx, sub)
+	return err
 }
 
 // List retrieves subscriptions of one status, newest first.
@@ -198,7 +367,7 @@ func (r *PushSubscriptionRepository) ListBroadcasts(ctx context.Context, limit i
 		IndexName:              aws.String("GSI1"),
 		KeyConditionExpression: aws.String("GSI1PK = :pk"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":pk": &types.AttributeValueMemberS{Value: "PUSH_BROADCAST"},
+			exprPK: &types.AttributeValueMemberS{Value: "PUSH_BROADCAST"},
 		},
 		ScanIndexForward: aws.Bool(false),
 		Limit:            aws.Int32(limit),
