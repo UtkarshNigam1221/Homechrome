@@ -218,7 +218,7 @@ func (r *PushSubscriptionRepository) statusQuery(status domain.PushSubscriptionS
 		IndexName:              aws.String("GSI1"),
 		KeyConditionExpression: aws.String("GSI1PK = :pk"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":pk": &types.AttributeValueMemberS{Value: "PUSH_SUB#" + string(status)},
+			exprPK: &types.AttributeValueMemberS{Value: "PUSH_SUB#" + string(status)},
 		},
 		ScanIndexForward: aws.Bool(false),
 	}
@@ -243,7 +243,7 @@ func (r *PushSubscriptionRepository) ListByCustomer(
 		TableName:              aws.String(r.client.notificationsTable),
 		KeyConditionExpression: aws.String("PK = :pk"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":pk": &types.AttributeValueMemberS{Value: "PUSH_CUST#" + customerID},
+			exprPK: &types.AttributeValueMemberS{Value: "PUSH_CUST#" + customerID},
 		},
 	})
 	if err != nil {
@@ -367,7 +367,7 @@ func (r *PushSubscriptionRepository) ListBroadcasts(ctx context.Context, limit i
 		IndexName:              aws.String("GSI1"),
 		KeyConditionExpression: aws.String("GSI1PK = :pk"),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":pk": &types.AttributeValueMemberS{Value: "PUSH_BROADCAST"},
+			exprPK: &types.AttributeValueMemberS{Value: "PUSH_BROADCAST"},
 		},
 		ScanIndexForward: aws.Bool(false),
 		Limit:            aws.Int32(limit),
