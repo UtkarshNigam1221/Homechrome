@@ -612,3 +612,60 @@ func TestLinkCustomerRejectsAnUnknownPushService(t *testing.T) {
 	err := svc.LinkCustomer(ctx, "https://evil.example.com/hook")
 	require.Error(t, err)
 }
+
+func TestNotifyCustomerReachesEveryDevice(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	repo := mocks.NewMockPushSubscriptionRepository(ctrl)
+	gw := newFakeGateway()
+	svc := NewPushService(repo, gw, mocks.NewMockAssetFinalizer(ctrl))
+
+	repo.EXPECT().ListByCustomer(gomock.Any(), "cust_1").Return([]*domain.PushSubscription{
+		{ID: "a", Endpoint: "https://fcm.googleapis.com/fcm/send/a", Status: domain.PushSubscriptionActive},
+		{ID: "b", Endpoint: "https://fcm.googleapis.com/fcm/send/b", Status: domain.PushSubscriptionActive},
+	}, nil)
+
+	delivered, err := svc.NotifyCustomer(context.Background(), "cust_1", domain.PushPayload{
+		Title: "Your order has shipped",
+		Body:  "HL-1 is on its way.",
+		URL:   "/account/orders/order_1",
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, 2, delivered)
+	require.Equal(t, 2, gw.sentCount())
+}
+
+func TestNotifyCustomerWithNoDevicesIsNotAnError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	repo := mocks.NewMockPushSubscriptionRepository(ctrl)
+	gw := newFakeGateway()
+	svc := NewPushService(repo, gw, mocks.NewMockAssetFinalizer(ctrl))
+
+	repo.EXPECT().ListByCustomer(gomock.Any(), "cust_1").Return(nil, nil)
+
+	delivered, err := svc.NotifyCustomer(context.Background(), "cust_1", domain.PushPayload{
+		Title: "Your order has shipped",
+		Body:  "HL-1 is on its way.",
+	})
+
+	require.NoError(t, err)
+	require.Zero(t, delivered)
+}
+
+func TestNotifyCustomerRequiresACustomer(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	repo := mocks.NewMockPushSubscriptionRepository(ctrl)
+	gw := newFakeGateway()
+	svc := NewPushService(repo, gw, mocks.NewMockAssetFinalizer(ctrl))
+
+	// No ListByCustomer expectation: an empty id must never become a query that
+	// could match the anonymous partition.
+	_, err := svc.NotifyCustomer(context.Background(), "", domain.PushPayload{Title: "x", Body: "y"})
+	require.Error(t, err)
+}

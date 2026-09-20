@@ -232,6 +232,29 @@ func (s *PushService) Broadcast(
 	}, nil
 }
 
+// NotifyCustomer notifies every device a customer opted in on. It reuses the
+// broadcast fan-out, so dead endpoints are pruned and rejections logged.
+func (s *PushService) NotifyCustomer(
+	ctx context.Context, customerID string, payload domain.PushPayload,
+) (int, error) {
+	if customerID == "" {
+		return 0, errors.BadRequest("A customer is required to notify")
+	}
+
+	subs, err := s.repo.ListByCustomer(ctx, customerID)
+	if err != nil {
+		return 0, err
+	}
+	if len(subs) == 0 {
+		return 0, nil
+	}
+
+	delivered := s.fanOut(ctx, subs, payload)
+	slog.InfoContext(ctx, "Notified a customer",
+		"customer_id", customerID, "devices", len(subs), "delivered", delivered)
+	return delivered, nil
+}
+
 // fanOut delivers payload to every subscription, bounded by broadcastConcurrency,
 // and returns how many succeeded.
 func (s *PushService) fanOut(ctx context.Context, subs []*domain.PushSubscription, payload domain.PushPayload) int {
