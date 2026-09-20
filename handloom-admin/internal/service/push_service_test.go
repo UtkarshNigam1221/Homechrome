@@ -807,6 +807,51 @@ func TestNotifyCustomerRefusesWhenPushIsUnconfigured(t *testing.T) {
 	require.ErrorAs(t, err, &appErr)
 }
 
+// A dead pointer is not free: ListByCustomer reads one item per pointer, in
+// sequence, inside the order update's 2s push budget.
+func TestNotifyCustomerDropsTheDeadDevicesPointer(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	repo := mocks.NewMockPushSubscriptionRepository(ctrl)
+	gw := newFakeGateway()
+	gw.failWith["https://fcm.googleapis.com/fcm/send/dead"] = webpush.ErrSubscriptionGone
+	svc := NewPushService(repo, gw, mocks.NewMockAssetFinalizer(ctrl))
+
+	dead := activeSub("https://fcm.googleapis.com/fcm/send/dead")
+	dead.CustomerID = "cust_1"
+	repo.EXPECT().ListByCustomer(gomock.Any(), "cust_1").
+		Return([]*domain.PushSubscription{dead}, nil)
+	repo.EXPECT().Deactivate(gomock.Any(), dead.Endpoint).Return(nil)
+	repo.EXPECT().UnlinkCustomer(gomock.Any(), dead.Endpoint).Return(nil)
+
+	delivered, err := svc.NotifyCustomer(context.Background(), "cust_1", domain.PushPayload{
+		Title: "Your order has shipped", Body: "HL-1 is on its way.",
+	})
+
+	require.NoError(t, err)
+	require.Zero(t, delivered)
+}
+
+// An anonymous dead device has no pointer, so unlinking it would be a wasted
+// read and write on every broadcast that trips over it.
+func TestAGoneAnonymousDeviceIsNotUnlinked(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	repo := mocks.NewMockPushSubscriptionRepository(ctrl)
+	gw := newFakeGateway()
+	gw.failWith["https://fcm.googleapis.com/fcm/send/dead"] = webpush.ErrSubscriptionGone
+	svc := NewPushService(repo, gw, mocks.NewMockAssetFinalizer(ctrl))
+
+	dead := activeSub("https://fcm.googleapis.com/fcm/send/dead")
+	repo.EXPECT().GetByEndpoint(gomock.Any(), dead.Endpoint).Return(dead, nil)
+	repo.EXPECT().Deactivate(gomock.Any(), dead.Endpoint).Return(nil)
+
+	// No UnlinkCustomer expectation: gomock fails the test if it is called.
+	require.Error(t, svc.SendTest(context.Background(), dead.Endpoint))
+}
+
 func TestBroadcastRefusesWithoutAnAssetFinalizer(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()

@@ -362,12 +362,26 @@ func (s *PushService) deliver(ctx context.Context, sub *domain.PushSubscription,
 	}
 
 	if stderrors.Is(err, webpush.ErrSubscriptionGone) {
-		if deactivateErr := s.repo.Deactivate(ctx, sub.Endpoint); deactivateErr != nil {
-			slog.WarnContext(ctx, "Failed to deactivate dead push subscription",
-				"error", deactivateErr, "subscription_id", sub.ID)
-		}
+		s.retire(ctx, sub)
 	}
 	return err
+}
+
+// retire takes a permanently gone endpoint out of service. Its customer
+// pointer goes too, or ListByCustomer keeps paying a GetItem for a dead device
+// on every order update.
+func (s *PushService) retire(ctx context.Context, sub *domain.PushSubscription) {
+	if err := s.repo.Deactivate(ctx, sub.Endpoint); err != nil {
+		slog.WarnContext(ctx, "Failed to deactivate dead push subscription",
+			"error", err, "subscription_id", sub.ID)
+	}
+	if sub.CustomerID == "" {
+		return
+	}
+	if err := s.repo.UnlinkCustomer(ctx, sub.Endpoint); err != nil {
+		slog.WarnContext(ctx, "Failed to drop a dead device's customer pointer",
+			"error", err, "subscription_id", sub.ID)
+	}
 }
 
 // sendOne delivers a push and swallows the error, for deliveries whose failure
