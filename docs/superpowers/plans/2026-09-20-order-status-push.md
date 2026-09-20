@@ -1052,19 +1052,82 @@ Expected: PASS, all three named. Every other test in the package must still pass
 
 - [ ] **Step 6: Wire it up**
 
-In `internal/wire/providers.go`, find the `NewOrderService` provider. Add a provider that exposes the push service as the notifier:
+The plan's original wording here ("add `ProvideOrderNotifier` to the provider
+sets used by the monolith and the order Lambda") is not sufficient, and
+following it literally will fail `make wire`. The controller checked the
+actual wiring; this is what is true:
+
+- `InitializeMonolithDeps` (`internal/wire/wire.go:717`) builds from aggregate
+  sets, and `ServiceSet` (`internal/wire/providers.go:389-411`) already
+  provides `ProvideWebPushGateway`, `ProvidePushService` and
+  `ProvideAssetService`. The monolith therefore needs only the new provider.
+- `InitializeOrderDeps` (`internal/wire/wire.go:178`) lists its providers
+  individually and has **no push providers at all**. Adding only
+  `ProvideOrderNotifier` there fails with "no provider found for
+  *service.PushService".
+
+`ProvidePushService` needs an `*service.AssetService`, which needs an S3 client
+and a Lambda client. Dragging those into the order Lambda would give it an S3
+dependency and IAM it never uses — the asset finaliser is touched only by
+`Broadcast`, and the order path calls `NotifyCustomer`, which never finalises
+anything.
+
+So provide a notification-only push service instead. Add to
+`internal/wire/providers.go`:
 
 ```go
-// ProvideOrderNotifier hands the order service the push capability. *PushService
-// already has the exact NotifyCustomer signature, so no adapter is needed.
-func ProvideOrderNotifier(push *service.PushService) domain.OrderNotifier {
-	return push
+// ProvideOrderNotifier builds a push service for sending only. The asset
+// finaliser is nil because it serves Broadcast alone, which orders never call.
+func ProvideOrderNotifier(
+	pushRepo domain.PushSubscriptionRepository,
+	gateway webpush.Gateway,
+) domain.OrderNotifier {
+	return service.NewPushService(pushRepo, gateway, nil)
 }
 ```
 
-Add `ProvideOrderNotifier` to the provider sets used by the **monolith** and the **order** Lambda. Do not add it to any other Lambda's set — a Lambda that never notifies should not carry the signing key.
+Add `ProvideOrderNotifier` to `ServiceSet` so the monolith picks it up, and add
+these four to `InitializeOrderDeps`' `wire.Build` list:
 
-Then: `make wire && go build ./...`
+```go
+		ProvidePushSubscriptionRepository,
+		ProvideWebPushGateway,
+		ProvideOrderNotifier,
+```
+
+(`ProvidePushSubscriptionRepository` and `ProvideWebPushGateway` are the only
+new dependencies; both already exist in `providers.go`.)
+
+Because that nil finaliser is now reachable in two Lambdas, make `Broadcast`
+refuse it rather than panic. In `internal/service/push_service.go`, at the top
+of `Broadcast`, before any other work:
+
+```go
+	if s.assetFinalizer == nil {
+		return nil, errors.Internal("This service cannot broadcast")
+	}
+```
+
+Add a test for it in `internal/service/push_service_test.go`:
+
+```go
+func TestBroadcastRefusesWithoutAnAssetFinalizer(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	// The order Lambda builds a send-only push service; a Broadcast reaching
+	// it is a wiring mistake and must surface as one, not a nil dereference.
+	svc := NewPushService(mocks.NewMockPushSubscriptionRepository(ctrl), newFakeGateway(), nil)
+	_, err := svc.Broadcast(context.Background(), domain.BroadcastPushRequest{
+		Title: "x", Body: "y",
+	}, "admin_1")
+	require.Error(t, err)
+}
+```
+
+Then run `make wire` and `go build ./...`. Confirm `wire_gen.go` regenerated
+for both the monolith and the order Lambda, and that no other Lambda gained a
+push provider.
 
 - [ ] **Step 7: Give the order Lambda the signing key**
 
