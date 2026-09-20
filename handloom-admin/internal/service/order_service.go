@@ -380,6 +380,10 @@ func (s *OrderService) CancelOrder(ctx context.Context, id string, reason string
 		metrics.LabelGateway: gatewayPhonePe,
 	})
 
+	// The admin UI cannot reach CANCELLED through UpdateStatus, so this is the
+	// only path that tells a shopper their order will not arrive.
+	s.notifyStatusChange(ctx, order)
+
 	slog.InfoContext(ctx, "Canceled order", "order_id", id)
 	span.End()
 	return nil
