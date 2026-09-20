@@ -49,9 +49,8 @@ func custPointerKey(customerID, subID string) map[string]types.AttributeValue {
 // same browser refreshes the keys and reactivates the row rather than adding a
 // duplicate, so CreatedAt carries over from the existing item.
 //
-// Racing callers can disagree on who owns the device, which would leave two
-// live pointers to one endpoint, so the write below is conditional on the
-// owner it read; one retry re-reads and decides the hand-off again.
+// Racing callers can disagree on who owns the device, leaving two live pointers
+// to one endpoint, so the write is conditional on the owner read and retried.
 func (r *PushSubscriptionRepository) Save(ctx context.Context, sub *domain.PushSubscription) (bool, error) {
 	isNew, err := r.save(ctx, sub)
 	if err != nil && isOwnerRace(err) {
@@ -293,9 +292,8 @@ func (r *PushSubscriptionRepository) LinkCustomer(
 	return nil
 }
 
-// UnlinkCustomer gives a device back to nobody, clearing customer_id and the
-// pointer in one write so a signed-out shopper's next order update cannot
-// reach a browser somebody else is now holding.
+// UnlinkCustomer gives a device back to nobody, so a signed-out shopper's next
+// order update cannot reach a browser somebody else is now holding.
 func (r *PushSubscriptionRepository) UnlinkCustomer(ctx context.Context, endpoint string) error {
 	sub, err := r.GetByEndpoint(ctx, endpoint)
 	if err != nil {

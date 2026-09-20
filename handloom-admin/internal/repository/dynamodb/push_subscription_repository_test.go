@@ -164,9 +164,8 @@ func TestUnlinkCustomer(t *testing.T) {
 
 	require.NoError(t, repo.UnlinkCustomer(ctx, endpoint))
 
-	// Both halves, not just one: the field alone leaves ListByCustomer still
-	// reaching the device, and the pointer alone leaves the next re-subscribe
-	// re-creating it.
+	// Both halves: the field alone still leaves ListByCustomer reaching the
+	// device, and the pointer alone leaves the next re-subscribe re-creating it.
 	sub, getErr := repo.GetByEndpoint(ctx, endpoint)
 	require.NoError(t, getErr)
 	require.Empty(t, sub.CustomerID)

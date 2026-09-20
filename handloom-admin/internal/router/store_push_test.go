@@ -87,9 +87,8 @@ func postSubscribe(t *testing.T, srv *httptest.Server, token string) int {
 	return resp.StatusCode
 }
 
-// The handler tests mount h.Routes() directly and inject the context key by
-// hand, so deleting the OptionalCustomer mount here would keep every one of
-// them green while /subscribe silently stopped linking anyone.
+// The handler tests inject the context key by hand, so deleting the
+// OptionalCustomer mount left them green while /subscribe linked nobody.
 func TestNewStorePushRouter_LinksTheSignedInCustomer(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	repo := mocks.NewMockPushSubscriptionRepository(ctrl)

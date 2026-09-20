@@ -112,10 +112,8 @@ func (s *PushService) Subscribe(
 	return sub, nil
 }
 
-// subscribeOwner decides who a re-subscribe leaves the device belonging to.
-// No identity on the request means the token lapsed as often as it means a
-// signed-out visitor, so ownership is preserved rather than silently cleared —
-// /unlink is the only way to give a device up.
+// subscribeOwner decides who a re-subscribe leaves the device belonging to. No
+// identity may only mean a lapsed token, so /unlink alone gives a device up.
 func (s *PushService) subscribeOwner(ctx context.Context, endpoint string) (string, error) {
 	if customerID := middleware.GetCustomerIDFromContext(ctx); customerID != "" {
 		return customerID, nil
@@ -367,9 +365,8 @@ func (s *PushService) deliver(ctx context.Context, sub *domain.PushSubscription,
 	return err
 }
 
-// retire takes a permanently gone endpoint out of service. Its customer
-// pointer goes too, or ListByCustomer keeps paying a GetItem for a dead device
-// on every order update.
+// retire takes a permanently gone endpoint out of service. Its pointer goes
+// too, or ListByCustomer pays a GetItem for a dead device on every update.
 func (s *PushService) retire(ctx context.Context, sub *domain.PushSubscription) {
 	if err := s.repo.Deactivate(ctx, sub.Endpoint); err != nil {
 		slog.WarnContext(ctx, "Failed to deactivate dead push subscription",

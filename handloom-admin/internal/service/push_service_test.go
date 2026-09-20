@@ -582,9 +582,8 @@ func TestSubscribeWithoutASignedInCustomerStaysAnonymous(t *testing.T) {
 	require.Empty(t, saved.CustomerID)
 }
 
-// OptionalCustomer swallows an expired token, so an unauthenticated subscribe
-// is indistinguishable from a lapsed one. Clearing the owner on that path
-// anonymised a device behind a 200 that no refresh interceptor ever saw.
+// OptionalCustomer swallows an expired token, so clearing the owner on an
+// unauthenticated subscribe anonymised devices behind a 200 nobody could see.
 func TestSubscribeWithoutACustomerKeepsAnExistingLink(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
