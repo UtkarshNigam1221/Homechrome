@@ -281,6 +281,14 @@ func (s *PushService) NotifyCustomer(
 		return 0, errors.BadRequest("A customer is required to notify")
 	}
 
+	// The dev gateway stands in when VAPID is unconfigured and its Send always
+	// succeeds, so an unset key would otherwise log as delivered=N.
+	if s.gateway.PublicKey() == "" {
+		slog.ErrorContext(ctx, "Cannot notify a customer: no VAPID key is configured",
+			"customer_id", customerID)
+		return 0, errors.Internal("Push notifications are not configured")
+	}
+
 	subs, err := s.repo.ListByCustomer(ctx, customerID)
 	if err != nil {
 		return 0, err

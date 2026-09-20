@@ -783,6 +783,30 @@ func TestNotifyCustomerRequiresACustomer(t *testing.T) {
 	require.Error(t, err)
 }
 
+// A missing /handloom/{env}/vapid-private-key must be distinguishable from a
+// successful fan-out, or a new environment silently notifies nobody.
+func TestNotifyCustomerRefusesWhenPushIsUnconfigured(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	repo := mocks.NewMockPushSubscriptionRepository(ctrl)
+	gw := newFakeGateway()
+	gw.publicKey = ""
+	svc := NewPushService(repo, gw, mocks.NewMockAssetFinalizer(ctrl))
+
+	// No ListByCustomer expectation: nothing may be read or sent.
+	delivered, err := svc.NotifyCustomer(context.Background(), "cust_1", domain.PushPayload{
+		Title: "Your order has shipped", Body: "HL-1 is on its way.",
+	})
+
+	require.Error(t, err)
+	require.Zero(t, delivered)
+	require.Zero(t, gw.sentCount())
+
+	var appErr *apperrors.AppError
+	require.ErrorAs(t, err, &appErr)
+}
+
 func TestBroadcastRefusesWithoutAnAssetFinalizer(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
