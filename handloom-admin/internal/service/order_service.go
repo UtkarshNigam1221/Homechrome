@@ -171,6 +171,11 @@ func (s *OrderService) UpdateStatus(ctx context.Context, id string, status domai
 // notifyStatusChange pushes the new status to the shopper's devices. Failures
 // are swallowed: the order already moved, and must not roll back or error.
 func (s *OrderService) notifyStatusChange(ctx context.Context, order *domain.Order) {
+	// Bounded well under the Lambda's own timeout, and detached from the
+	// request: a client disconnect must not cancel a push already in flight.
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
+	defer cancel()
+
 	if s.notifier == nil || order.CustomerID == "" {
 		return
 	}

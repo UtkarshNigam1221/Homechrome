@@ -297,8 +297,8 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 			props.MetricsQueue.GrantSendMessages(lambdaFn)
 		}
 
-		// Both the push Lambda (fan-out) and the order Lambda (status updates)
-		// sign pushes, so both need the key. No other Lambda gets it.
+		// Both the push and order Lambdas sign pushes. Read from SSM at runtime,
+		// never ValueForStringParameter: that would bake the key into the template.
 		if svc == "push" || svc == "order" {
 			for _, key := range []string{"VAPID_PUBLIC_KEY", "VAPID_SUBJECT"} {
 				if v := os.Getenv(key); v != "" {

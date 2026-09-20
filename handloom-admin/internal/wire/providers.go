@@ -346,6 +346,10 @@ func ProvideOrderNotifier(
 	return service.NewPushService(pushRepo, gateway, nil)
 }
 
+// report and store-orders never change an order's status, so the notifier
+// they must supply is the absence of one.
+func ProvideNoOrderNotifier() domain.OrderNotifier { return nil }
+
 // ProvideCouponService creates a new CouponService
 func ProvideCouponService(
 	couponRepo domain.CouponRepository,

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -1102,4 +1103,58 @@ func TestUpdateStatusSendsNothingForAnInternalStatus(t *testing.T) {
 	// No NotifyCustomer expectation: PROCESSING must not reach a shopper, and
 	// gomock fails the test if it is called.
 	require.NoError(t, svc.UpdateStatus(context.Background(), "order_1", domain.OrderStatusProcessing, "admin_1"))
+}
+
+func TestUpdateStatusDoesNotWaitOutASlowPush(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockOrderRepo := mocks.NewMockOrderRepository(ctrl)
+	mockCustomerRepo := mocks.NewMockCustomerRepository(ctrl)
+	mockProductRepo := mocks.NewMockProductRepository(ctrl)
+	mockInventoryRepo := mocks.NewMockInventoryRepository(ctrl)
+	mockPriceQuoteRepo := mocks.NewMockPriceQuoteRepository(ctrl)
+	mockPricingService := mocks.NewMockPricingService(ctrl)
+	mockPaymentRepo := mocks.NewMockPaymentRepository(ctrl)
+	notifier := mocks.NewMockOrderNotifier(ctrl)
+
+	svc := NewOrderService(
+		mockOrderRepo,
+		mockCustomerRepo,
+		mockProductRepo,
+		mockInventoryRepo,
+		mockPriceQuoteRepo,
+		mockPaymentRepo,
+		mockPricingService,
+		notifier,
+	)
+
+	existing := &domain.Order{
+		ID: "order_1", OrderNumber: "HL-1042",
+		CustomerID: "cust_1", Status: domain.OrderStatusProcessing,
+	}
+	mockOrderRepo.EXPECT().GetByID(gomock.Any(), "order_1").Return(existing, nil)
+	mockOrderRepo.EXPECT().Update(gomock.Any(), gomock.Any()).Return(nil)
+	mockPaymentRepo.EXPECT().GetByOrderID(gomock.Any(), "order_1").
+		Return(&domain.Payment{Status: domain.PaymentStatusPaid}, nil).AnyTimes()
+	mockInventoryRepo.EXPECT().CommitOrderStock(gomock.Any(), "order_1", gomock.Any()).Return(nil)
+
+	// Stands in for a black-holed push service: a real HTTP call given this
+	// context aborts at the deadline instead of running to completion.
+	notifier.EXPECT().NotifyCustomer(gomock.Any(), "cust_1", gomock.Any()).
+		DoAndReturn(func(ctx context.Context, _ string, _ domain.PushPayload) (int, error) {
+			select {
+			case <-time.After(3 * time.Second):
+				return 1, nil
+			case <-ctx.Done():
+				return 0, ctx.Err()
+			}
+		})
+
+	start := time.Now()
+	require.NoError(t, svc.UpdateStatus(context.Background(), "order_1", domain.OrderStatusShipped, "admin_1"))
+	elapsed := time.Since(start)
+
+	require.Less(t, elapsed, 2500*time.Millisecond,
+		"UpdateStatus must not wait past the notifier's own timeout bound")
 }
