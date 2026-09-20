@@ -111,6 +111,48 @@ func TestSaveLeavesOneOwnerUnderConcurrentHandoffs(t *testing.T) {
 	require.Equal(t, sub.CustomerID, owners[0], "the surviving pointer must match customer_id")
 }
 
+// The /link route is how a shopper who opted in before signing in ever gets
+// order pushes, and this storage path had never executed.
+func TestLinkCustomer(t *testing.T) {
+	repo, raw := newPushRepo(t)
+	ctx := context.Background()
+	endpoint := "https://fcm.googleapis.com/fcm/send/linked"
+
+	_, err := repo.Save(ctx, pushSub(endpoint, ""))
+	require.NoError(t, err)
+	require.False(t, pointerExists(t, raw, "cust_1", endpoint))
+
+	require.NoError(t, repo.LinkCustomer(ctx, endpoint, "cust_1"))
+
+	sub, getErr := repo.GetByEndpoint(ctx, endpoint)
+	require.NoError(t, getErr)
+	require.Equal(t, "cust_1", sub.CustomerID)
+	require.True(t, pointerExists(t, raw, "cust_1", endpoint))
+
+	got, listErr := repo.ListByCustomer(ctx, "cust_1")
+	require.NoError(t, listErr)
+	require.Len(t, got, 1)
+	require.Equal(t, endpoint, got[0].Endpoint)
+
+	t.Run("linking a device that never subscribed is a no-op", func(t *testing.T) {
+		require.NoError(t, repo.LinkCustomer(ctx,
+			"https://fcm.googleapis.com/fcm/send/never-seen", "cust_1"))
+		require.False(t, pointerExists(t, raw,
+			"cust_1", "https://fcm.googleapis.com/fcm/send/never-seen"))
+	})
+
+	t.Run("linking someone else's device moves it, not copies it", func(t *testing.T) {
+		require.NoError(t, repo.LinkCustomer(ctx, endpoint, "cust_2"))
+
+		require.True(t, pointerExists(t, raw, "cust_2", endpoint))
+		require.False(t, pointerExists(t, raw, "cust_1", endpoint))
+
+		orphaned, err := repo.ListByCustomer(ctx, "cust_1")
+		require.NoError(t, err)
+		require.Empty(t, orphaned)
+	})
+}
+
 func TestUnlinkCustomer(t *testing.T) {
 	repo, raw := newPushRepo(t)
 	ctx := context.Background()
