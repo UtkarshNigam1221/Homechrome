@@ -3,7 +3,7 @@
 import { isAxiosError } from 'axios';
 import { create } from 'zustand';
 
-import { linkPushSubscription } from '@/hooks/usePushNotifications';
+import { linkPushSubscription, unlinkPushSubscription } from '@/hooks/usePushNotifications';
 import api from '@/lib/api';
 import { ROUTES } from '@/lib/routes';
 import { Customer } from '@/types';
@@ -47,6 +47,9 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   logout: async () => {
+    // Before the logout request, which clears the cookie that authenticates it.
+    // Fire-and-forget: an unreachable backend must not trap anyone signed in.
+    void unlinkPushSubscription();
     try {
       await api.post(ROUTES.AUTH.LOGOUT);
     } finally {

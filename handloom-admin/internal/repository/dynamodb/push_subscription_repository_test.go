@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/stretchr/testify/require"
 
@@ -18,6 +19,56 @@ func newPushRepo(t *testing.T) (*PushSubscriptionRepository, *dynamodb.Client) {
 	setupTestTable(t, raw, testNotificationsTable)
 	t.Cleanup(func() { cleanupTestTable(t, raw, testNotificationsTable) })
 	return NewPushSubscriptionRepository(wrapped), raw
+}
+
+// pointerExists reports whether the PUSH_CUST# row that makes a device
+// reachable from ListByCustomer is still in the table.
+func pointerExists(t *testing.T, raw *dynamodb.Client, customerID, endpoint string) bool {
+	t.Helper()
+	out, err := raw.GetItem(context.Background(), &dynamodb.GetItemInput{
+		TableName: aws.String(testNotificationsTable),
+		Key:       custPointerKey(customerID, domain.PushEndpointID(endpoint)),
+	})
+	require.NoError(t, err)
+	return out.Item != nil
+}
+
+func TestUnlinkCustomer(t *testing.T) {
+	repo, raw := newPushRepo(t)
+	ctx := context.Background()
+	endpoint := "https://fcm.googleapis.com/fcm/send/shared-tablet"
+
+	_, err := repo.Save(ctx, &domain.PushSubscription{
+		Endpoint:   endpoint,
+		Keys:       domain.PushSubscriptionKeys{P256dh: "p", Auth: "a"},
+		CustomerID: "cust_a",
+		Status:     domain.PushSubscriptionActive,
+		CreatedAt:  time.Now(),
+	})
+	require.NoError(t, err)
+	require.True(t, pointerExists(t, raw, "cust_a", endpoint))
+
+	require.NoError(t, repo.UnlinkCustomer(ctx, endpoint))
+
+	// Both halves, not just one: the field alone leaves ListByCustomer still
+	// reaching the device, and the pointer alone leaves the next re-subscribe
+	// re-creating it.
+	sub, getErr := repo.GetByEndpoint(ctx, endpoint)
+	require.NoError(t, getErr)
+	require.Empty(t, sub.CustomerID)
+	require.False(t, pointerExists(t, raw, "cust_a", endpoint))
+
+	got, listErr := repo.ListByCustomer(ctx, "cust_a")
+	require.NoError(t, listErr)
+	require.Empty(t, got)
+
+	t.Run("unlinking an unknown endpoint is a no-op", func(t *testing.T) {
+		require.NoError(t, repo.UnlinkCustomer(ctx, "https://fcm.googleapis.com/fcm/send/nothing"))
+	})
+
+	t.Run("unlinking an already anonymous device is a no-op", func(t *testing.T) {
+		require.NoError(t, repo.UnlinkCustomer(ctx, endpoint))
+	})
 }
 
 func TestListByCustomer(t *testing.T) {
@@ -98,8 +149,8 @@ func TestListByCustomer(t *testing.T) {
 	})
 
 	t.Run("a sign-out in between must not let the old owner survive the hand-off", func(t *testing.T) {
-		// Shopper A links, signs out (anonymous re-subscribe), then Shopper B
-		// links the same device — A's pointer must not outlive either step.
+		// Shopper A links, signs out (which unlinks), then Shopper B links the
+		// same device — A's pointer must not outlive either step.
 		handoff := &domain.PushSubscription{
 			Endpoint:   "https://fcm.googleapis.com/fcm/send/handoff",
 			Keys:       domain.PushSubscriptionKeys{P256dh: "p", Auth: "a"},
@@ -110,9 +161,7 @@ func TestListByCustomer(t *testing.T) {
 		_, err := repo.Save(ctx, handoff)
 		require.NoError(t, err)
 
-		handoff.CustomerID = ""
-		_, err = repo.Save(ctx, handoff)
-		require.NoError(t, err)
+		require.NoError(t, repo.UnlinkCustomer(ctx, handoff.Endpoint))
 
 		handoff.CustomerID = "cust_handoff_b"
 		_, err = repo.Save(ctx, handoff)

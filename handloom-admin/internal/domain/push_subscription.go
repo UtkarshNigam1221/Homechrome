@@ -163,6 +163,11 @@ type PushSubscriptionRepository interface {
 	// endpoint that is not stored is a no-op, not an error.
 	LinkCustomer(ctx context.Context, endpoint, customerID string) error
 
+	// UnlinkCustomer detaches a subscription from whoever owns it, clearing
+	// both customer_id and the pointer row. Unlinking an endpoint that is not
+	// stored, or already anonymous, is a no-op, not an error.
+	UnlinkCustomer(ctx context.Context, endpoint string) error
+
 	// List retrieves subscriptions of one status, newest first, for the admin console.
 	List(ctx context.Context, status PushSubscriptionStatus, pagination PaginationRequest) (*ListPushSubscriptionsResponse, error)
 

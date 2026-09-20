@@ -75,13 +75,18 @@ func (s *PushService) Subscribe(
 		return nil, err
 	}
 
+	owner, err := s.subscribeOwner(ctx, req.Endpoint)
+	if err != nil {
+		return nil, err
+	}
+
 	now := time.Now().UTC()
 	sub := &domain.PushSubscription{
 		Endpoint:   req.Endpoint,
 		Keys:       req.Keys,
 		UserAgent:  userAgent,
 		Device:     req.Device,
-		CustomerID: middleware.GetCustomerIDFromContext(ctx),
+		CustomerID: owner,
 		Status:     domain.PushSubscriptionActive,
 		CreatedAt:  now,
 		LastSeenAt: now,
@@ -107,6 +112,25 @@ func (s *PushService) Subscribe(
 	return sub, nil
 }
 
+// subscribeOwner decides who a re-subscribe leaves the device belonging to.
+// No identity on the request means the token lapsed as often as it means a
+// signed-out visitor, so ownership is preserved rather than silently cleared —
+// /unlink is the only way to give a device up.
+func (s *PushService) subscribeOwner(ctx context.Context, endpoint string) (string, error) {
+	if customerID := middleware.GetCustomerIDFromContext(ctx); customerID != "" {
+		return customerID, nil
+	}
+
+	existing, err := s.repo.GetByEndpoint(ctx, endpoint)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			return "", nil
+		}
+		return "", err
+	}
+	return existing.CustomerID, nil
+}
+
 // LinkCustomer attaches a device that opted in before sign-in. Most shoppers
 // grant permission first and sign in later, so without this their devices stay
 // anonymous and never receive an order update.
@@ -119,6 +143,18 @@ func (s *PushService) LinkCustomer(ctx context.Context, endpoint string) error {
 		return err
 	}
 	return s.repo.LinkCustomer(ctx, endpoint, customerID)
+}
+
+// UnlinkCustomer detaches a device from whoever owned it, on sign-out. Without
+// it a shared tablet keeps showing one shopper's order numbers to the next.
+func (s *PushService) UnlinkCustomer(ctx context.Context, endpoint string) error {
+	if middleware.GetCustomerIDFromContext(ctx) == "" {
+		return errors.Unauthorized("Sign in to unlink this device")
+	}
+	if err := validatePushEndpoint(endpoint); err != nil {
+		return err
+	}
+	return s.repo.UnlinkCustomer(ctx, endpoint)
 }
 
 // Unsubscribe retires an endpoint.

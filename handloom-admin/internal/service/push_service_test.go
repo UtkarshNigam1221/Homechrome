@@ -60,6 +60,13 @@ func (f *fakeGateway) sentCount() int {
 	return len(f.sent)
 }
 
+// anonymousLookup stands in for the read that stops an unauthenticated
+// re-subscribe from clearing a link: here the endpoint is not stored yet.
+func anonymousLookup(repo *mocks.MockPushSubscriptionRepository) {
+	repo.EXPECT().GetByEndpoint(gomock.Any(), gomock.Any()).
+		Return(nil, apperrors.NotFound("Push subscription")).AnyTimes()
+}
+
 func activeSub(endpoint string) *domain.PushSubscription {
 	return &domain.PushSubscription{
 		ID:       domain.PushEndpointID(endpoint),
@@ -80,6 +87,7 @@ func TestPushService_Subscribe(t *testing.T) {
 		gw := newFakeGateway()
 		svc := NewPushService(repo, gw, mocks.NewMockAssetFinalizer(ctrl))
 
+		anonymousLookup(repo)
 		repo.EXPECT().
 			Save(ctx, gomock.Any()).
 			DoAndReturn(func(_ context.Context, sub *domain.PushSubscription) (bool, error) {
@@ -113,6 +121,7 @@ func TestPushService_Subscribe(t *testing.T) {
 		gw := newFakeGateway()
 		svc := NewPushService(repo, gw, mocks.NewMockAssetFinalizer(ctrl))
 
+		anonymousLookup(repo)
 		repo.EXPECT().Save(ctx, gomock.Any()).Return(false, nil)
 
 		_, err := svc.Subscribe(ctx, domain.SubscribePushRequest{
@@ -133,6 +142,7 @@ func TestPushService_Subscribe(t *testing.T) {
 		gw.failWith["https://fcm.googleapis.com/fcm/send/a"] = errors.New("push service unreachable")
 		svc := NewPushService(repo, gw, mocks.NewMockAssetFinalizer(ctrl))
 
+		anonymousLookup(repo)
 		repo.EXPECT().Save(ctx, gomock.Any()).Return(true, nil)
 
 		sub, err := svc.Subscribe(ctx, domain.SubscribePushRequest{
@@ -189,6 +199,7 @@ func TestPushService_SubscribeEndpointAllowlist(t *testing.T) {
 			defer ctrl.Finish()
 
 			repo := mocks.NewMockPushSubscriptionRepository(ctrl)
+			anonymousLookup(repo)
 			repo.EXPECT().Save(ctx, gomock.Any()).Return(false, nil)
 
 			_, err := NewPushService(repo, newFakeGateway(), mocks.NewMockAssetFinalizer(ctrl)).Subscribe(ctx, req(endpoint), "")
@@ -554,6 +565,7 @@ func TestSubscribeWithoutASignedInCustomerStaysAnonymous(t *testing.T) {
 	gw := newFakeGateway()
 	svc := NewPushService(repo, gw, mocks.NewMockAssetFinalizer(ctrl))
 
+	anonymousLookup(repo)
 	var saved *domain.PushSubscription
 	repo.EXPECT().Save(gomock.Any(), gomock.Any()).
 		DoAndReturn(func(_ context.Context, sub *domain.PushSubscription) (bool, error) {
@@ -568,6 +580,107 @@ func TestSubscribeWithoutASignedInCustomerStaysAnonymous(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Empty(t, saved.CustomerID)
+}
+
+// OptionalCustomer swallows an expired token, so an unauthenticated subscribe
+// is indistinguishable from a lapsed one. Clearing the owner on that path
+// anonymised a device behind a 200 that no refresh interceptor ever saw.
+func TestSubscribeWithoutACustomerKeepsAnExistingLink(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	repo := mocks.NewMockPushSubscriptionRepository(ctrl)
+	gw := newFakeGateway()
+	svc := NewPushService(repo, gw, mocks.NewMockAssetFinalizer(ctrl))
+
+	endpoint := "https://fcm.googleapis.com/fcm/send/abc"
+	linked := activeSub(endpoint)
+	linked.CustomerID = "cust_42"
+	repo.EXPECT().GetByEndpoint(gomock.Any(), endpoint).Return(linked, nil)
+
+	var saved *domain.PushSubscription
+	repo.EXPECT().Save(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, sub *domain.PushSubscription) (bool, error) {
+			saved = sub
+			return false, nil
+		})
+
+	_, err := svc.Subscribe(context.Background(), domain.SubscribePushRequest{
+		Endpoint: endpoint,
+		Keys:     domain.PushSubscriptionKeys{P256dh: "p", Auth: "a"},
+	}, "Mozilla/5.0")
+
+	require.NoError(t, err)
+	require.Equal(t, "cust_42", saved.CustomerID)
+}
+
+// The hand-off is load-bearing: a second shopper signing in on a shared device
+// must take it over, not share it.
+func TestSubscribeAsAnotherCustomerTakesTheDeviceOver(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	repo := mocks.NewMockPushSubscriptionRepository(ctrl)
+	gw := newFakeGateway()
+	svc := NewPushService(repo, gw, mocks.NewMockAssetFinalizer(ctrl))
+
+	endpoint := "https://fcm.googleapis.com/fcm/send/abc"
+	// No GetByEndpoint expectation: a positively identified caller needs no
+	// lookup, and gomock fails the test if one happens.
+	var saved *domain.PushSubscription
+	repo.EXPECT().Save(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, sub *domain.PushSubscription) (bool, error) {
+			saved = sub
+			return false, nil
+		})
+
+	ctx := context.WithValue(context.Background(), middleware.CustomerIDKey, "cust_b")
+	_, err := svc.Subscribe(ctx, domain.SubscribePushRequest{
+		Endpoint: endpoint,
+		Keys:     domain.PushSubscriptionKeys{P256dh: "p", Auth: "a"},
+	}, "Mozilla/5.0")
+
+	require.NoError(t, err)
+	require.Equal(t, "cust_b", saved.CustomerID)
+}
+
+func TestUnlinkCustomerRequiresASignedInCustomer(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	repo := mocks.NewMockPushSubscriptionRepository(ctrl)
+	svc := NewPushService(repo, newFakeGateway(), mocks.NewMockAssetFinalizer(ctrl))
+
+	// No repo expectation: an anonymous caller must not be able to strip
+	// another shopper's device off their account.
+	err := svc.UnlinkCustomer(context.Background(), "https://fcm.googleapis.com/fcm/send/abc")
+	require.Error(t, err)
+}
+
+func TestUnlinkCustomerDetachesTheDevice(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	repo := mocks.NewMockPushSubscriptionRepository(ctrl)
+	svc := NewPushService(repo, newFakeGateway(), mocks.NewMockAssetFinalizer(ctrl))
+
+	repo.EXPECT().
+		UnlinkCustomer(gomock.Any(), "https://fcm.googleapis.com/fcm/send/abc").
+		Return(nil)
+
+	ctx := context.WithValue(context.Background(), middleware.CustomerIDKey, "cust_42")
+	require.NoError(t, svc.UnlinkCustomer(ctx, "https://fcm.googleapis.com/fcm/send/abc"))
+}
+
+func TestUnlinkCustomerRejectsAnUnknownPushService(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	repo := mocks.NewMockPushSubscriptionRepository(ctrl)
+	svc := NewPushService(repo, newFakeGateway(), mocks.NewMockAssetFinalizer(ctrl))
+
+	ctx := context.WithValue(context.Background(), middleware.CustomerIDKey, "cust_42")
+	require.Error(t, svc.UnlinkCustomer(ctx, "https://evil.example.com/hook"))
 }
 
 func TestLinkCustomerRequiresASignedInCustomer(t *testing.T) {

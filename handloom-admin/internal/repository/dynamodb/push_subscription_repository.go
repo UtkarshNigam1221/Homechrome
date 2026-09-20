@@ -85,8 +85,8 @@ func (r *PushSubscriptionRepository) Save(ctx context.Context, sub *domain.PushS
 		})
 	}
 
-	// Whoever held this device before must stop being notified for it — signing
-	// out (sub.CustomerID == "") is exactly as much a hand-off as re-linking.
+	// Whoever held this device before must stop being notified for it — an
+	// unlink (sub.CustomerID == "") is as much a hand-off as re-linking.
 	if existing != nil && existing.CustomerID != "" && existing.CustomerID != sub.CustomerID {
 		writes = append(writes, types.TransactWriteItem{
 			Delete: &types.Delete{
@@ -241,6 +241,26 @@ func (r *PushSubscriptionRepository) LinkCustomer(
 		return err
 	}
 	return nil
+}
+
+// UnlinkCustomer gives a device back to nobody, clearing customer_id and the
+// pointer in one write so a signed-out shopper's next order update cannot
+// reach a browser somebody else is now holding.
+func (r *PushSubscriptionRepository) UnlinkCustomer(ctx context.Context, endpoint string) error {
+	sub, err := r.GetByEndpoint(ctx, endpoint)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+	if sub.CustomerID == "" {
+		return nil
+	}
+
+	sub.CustomerID = ""
+	_, err = r.Save(ctx, sub)
+	return err
 }
 
 // List retrieves subscriptions of one status, newest first.

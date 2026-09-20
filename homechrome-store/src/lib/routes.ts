@@ -44,5 +44,6 @@ export const ROUTES = {
     UNSUBSCRIBE: '/api/v1/store/push/unsubscribe',
     TEST: '/api/v1/store/push/test',
     LINK: '/api/v1/store/push/link',
+    UNLINK: '/api/v1/store/push/unlink',
   },
 } as const;
