@@ -157,6 +157,10 @@ func (s *PushService) Broadcast(
 	req domain.BroadcastPushRequest,
 	sentBy string,
 ) (*domain.BroadcastPushResponse, error) {
+	if s.assetFinalizer == nil {
+		return nil, errors.Internal("This service cannot broadcast")
+	}
+
 	subs, err := s.repo.ListActive(ctx)
 	if err != nil {
 		return nil, err

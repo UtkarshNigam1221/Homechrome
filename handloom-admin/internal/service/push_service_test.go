@@ -669,3 +669,16 @@ func TestNotifyCustomerRequiresACustomer(t *testing.T) {
 	_, err := svc.NotifyCustomer(context.Background(), "", domain.PushPayload{Title: "x", Body: "y"})
 	require.Error(t, err)
 }
+
+func TestBroadcastRefusesWithoutAnAssetFinalizer(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	// The order Lambda builds a send-only push service; a Broadcast reaching
+	// it is a wiring mistake and must surface as one, not a nil dereference.
+	svc := NewPushService(mocks.NewMockPushSubscriptionRepository(ctrl), newFakeGateway(), nil)
+	_, err := svc.Broadcast(context.Background(), domain.BroadcastPushRequest{
+		Title: "x", Body: "y",
+	}, "admin_1")
+	require.Error(t, err)
+}

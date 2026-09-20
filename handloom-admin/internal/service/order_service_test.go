@@ -34,6 +34,7 @@ func TestOrderService_GetByID(t *testing.T) {
 		mockPriceQuoteRepo,
 		mockPaymentRepo,
 		mockPricingService,
+		nil,
 	)
 	ctx := context.Background()
 
@@ -119,6 +120,7 @@ func TestOrderService_UpdateStatus(t *testing.T) {
 		mockPriceQuoteRepo,
 		mockPaymentRepo,
 		mockPricingService,
+		nil,
 	)
 	ctx := context.Background()
 
@@ -291,6 +293,7 @@ func TestOrderService_UpdateStatus_Inventory(t *testing.T) {
 		mockPriceQuoteRepo,
 		mockPaymentRepo,
 		mockPricingService,
+		nil,
 	)
 	ctx := context.Background()
 
@@ -455,6 +458,7 @@ func TestOrderService_AddNote(t *testing.T) {
 		mockPriceQuoteRepo,
 		mockPaymentRepo,
 		mockPricingService,
+		nil,
 	)
 	ctx := context.Background()
 
@@ -518,6 +522,7 @@ func TestOrderService_UpdateTracking(t *testing.T) {
 		mockPriceQuoteRepo,
 		mockPaymentRepo,
 		mockPricingService,
+		nil,
 	)
 	ctx := context.Background()
 
@@ -566,6 +571,7 @@ func TestOrderService_CancelOrder(t *testing.T) {
 		mockPriceQuoteRepo,
 		mockPaymentRepo,
 		mockPricingService,
+		nil,
 	)
 	ctx := context.Background()
 
@@ -676,6 +682,7 @@ func TestOrderService_CancelOrder_Inventory(t *testing.T) {
 		mockPriceQuoteRepo,
 		mockPaymentRepo,
 		mockPricingService,
+		nil,
 	)
 	ctx := context.Background()
 
@@ -730,6 +737,7 @@ func TestOrderService_List(t *testing.T) {
 		mockPriceQuoteRepo,
 		mockPaymentRepo,
 		mockPricingService,
+		nil,
 	)
 	ctx := context.Background()
 
@@ -882,7 +890,7 @@ func TestOrderService_UpdateStatus_PaymentGate(t *testing.T) {
 		svc := NewOrderService(orders, mocks.NewMockCustomerRepository(ctrl),
 			mocks.NewMockProductRepository(ctrl), inventory,
 			mocks.NewMockPriceQuoteRepository(ctrl), payments,
-			mocks.NewMockPricingService(ctrl))
+			mocks.NewMockPricingService(ctrl), nil)
 		return svc, orders, payments, inventory
 	}
 
@@ -971,4 +979,127 @@ func TestOrderService_UpdateStatus_PaymentGate(t *testing.T) {
 
 		require.NoError(t, svc.UpdateStatus(ctx, "order_123", domain.OrderStatusShipped, "admin_1"))
 	})
+}
+
+func TestUpdateStatusNotifiesTheCustomer(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockOrderRepo := mocks.NewMockOrderRepository(ctrl)
+	mockCustomerRepo := mocks.NewMockCustomerRepository(ctrl)
+	mockProductRepo := mocks.NewMockProductRepository(ctrl)
+	mockInventoryRepo := mocks.NewMockInventoryRepository(ctrl)
+	mockPriceQuoteRepo := mocks.NewMockPriceQuoteRepository(ctrl)
+	mockPricingService := mocks.NewMockPricingService(ctrl)
+	mockPaymentRepo := mocks.NewMockPaymentRepository(ctrl)
+	notifier := mocks.NewMockOrderNotifier(ctrl)
+
+	svc := NewOrderService(
+		mockOrderRepo,
+		mockCustomerRepo,
+		mockProductRepo,
+		mockInventoryRepo,
+		mockPriceQuoteRepo,
+		mockPaymentRepo,
+		mockPricingService,
+		notifier,
+	)
+
+	existing := &domain.Order{
+		ID: "order_1", OrderNumber: "HL-1042",
+		CustomerID: "cust_1", Status: domain.OrderStatusProcessing,
+	}
+	mockOrderRepo.EXPECT().GetByID(gomock.Any(), "order_1").Return(existing, nil)
+	mockOrderRepo.EXPECT().Update(gomock.Any(), gomock.Any()).Return(nil)
+	mockPaymentRepo.EXPECT().GetByOrderID(gomock.Any(), "order_1").
+		Return(&domain.Payment{Status: domain.PaymentStatusPaid}, nil).AnyTimes()
+	mockInventoryRepo.EXPECT().CommitOrderStock(gomock.Any(), "order_1", gomock.Any()).Return(nil)
+
+	notifier.EXPECT().
+		NotifyCustomer(gomock.Any(), "cust_1", gomock.Any()).
+		DoAndReturn(func(_ context.Context, _ string, payload domain.PushPayload) (int, error) {
+			require.Contains(t, payload.Title, "HL-1042")
+			return 1, nil
+		})
+
+	require.NoError(t, svc.UpdateStatus(context.Background(), "order_1", domain.OrderStatusShipped, "admin_1"))
+}
+
+func TestUpdateStatusSucceedsWhenThePushFails(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockOrderRepo := mocks.NewMockOrderRepository(ctrl)
+	mockCustomerRepo := mocks.NewMockCustomerRepository(ctrl)
+	mockProductRepo := mocks.NewMockProductRepository(ctrl)
+	mockInventoryRepo := mocks.NewMockInventoryRepository(ctrl)
+	mockPriceQuoteRepo := mocks.NewMockPriceQuoteRepository(ctrl)
+	mockPricingService := mocks.NewMockPricingService(ctrl)
+	mockPaymentRepo := mocks.NewMockPaymentRepository(ctrl)
+	notifier := mocks.NewMockOrderNotifier(ctrl)
+
+	svc := NewOrderService(
+		mockOrderRepo,
+		mockCustomerRepo,
+		mockProductRepo,
+		mockInventoryRepo,
+		mockPriceQuoteRepo,
+		mockPaymentRepo,
+		mockPricingService,
+		notifier,
+	)
+
+	existing := &domain.Order{
+		ID: "order_1", OrderNumber: "HL-1042",
+		CustomerID: "cust_1", Status: domain.OrderStatusProcessing,
+	}
+	mockOrderRepo.EXPECT().GetByID(gomock.Any(), "order_1").Return(existing, nil)
+	mockOrderRepo.EXPECT().Update(gomock.Any(), gomock.Any()).Return(nil)
+	mockPaymentRepo.EXPECT().GetByOrderID(gomock.Any(), "order_1").
+		Return(&domain.Payment{Status: domain.PaymentStatusPaid}, nil).AnyTimes()
+	mockInventoryRepo.EXPECT().CommitOrderStock(gomock.Any(), "order_1", gomock.Any()).Return(nil)
+
+	// The order really did ship. A push service being down cannot undo that.
+	notifier.EXPECT().NotifyCustomer(gomock.Any(), "cust_1", gomock.Any()).
+		Return(0, errors.Internal("push service unreachable"))
+
+	require.NoError(t, svc.UpdateStatus(context.Background(), "order_1", domain.OrderStatusShipped, "admin_1"))
+}
+
+func TestUpdateStatusSendsNothingForAnInternalStatus(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockOrderRepo := mocks.NewMockOrderRepository(ctrl)
+	mockCustomerRepo := mocks.NewMockCustomerRepository(ctrl)
+	mockProductRepo := mocks.NewMockProductRepository(ctrl)
+	mockInventoryRepo := mocks.NewMockInventoryRepository(ctrl)
+	mockPriceQuoteRepo := mocks.NewMockPriceQuoteRepository(ctrl)
+	mockPricingService := mocks.NewMockPricingService(ctrl)
+	mockPaymentRepo := mocks.NewMockPaymentRepository(ctrl)
+	notifier := mocks.NewMockOrderNotifier(ctrl)
+
+	svc := NewOrderService(
+		mockOrderRepo,
+		mockCustomerRepo,
+		mockProductRepo,
+		mockInventoryRepo,
+		mockPriceQuoteRepo,
+		mockPaymentRepo,
+		mockPricingService,
+		notifier,
+	)
+
+	existing := &domain.Order{
+		ID: "order_1", OrderNumber: "HL-1042",
+		CustomerID: "cust_1", Status: domain.OrderStatusConfirmed,
+	}
+	mockOrderRepo.EXPECT().GetByID(gomock.Any(), "order_1").Return(existing, nil)
+	mockOrderRepo.EXPECT().Update(gomock.Any(), gomock.Any()).Return(nil)
+	mockPaymentRepo.EXPECT().GetByOrderID(gomock.Any(), "order_1").
+		Return(&domain.Payment{Status: domain.PaymentStatusPaid}, nil).AnyTimes()
+
+	// No NotifyCustomer expectation: PROCESSING must not reach a shopper, and
+	// gomock fails the test if it is called.
+	require.NoError(t, svc.UpdateStatus(context.Background(), "order_1", domain.OrderStatusProcessing, "admin_1"))
 }

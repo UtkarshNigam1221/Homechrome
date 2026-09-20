@@ -291,9 +291,10 @@ func ProvideOrderService(
 	priceQuoteRepo domain.PriceQuoteRepository,
 	paymentRepo domain.PaymentRepository,
 	pricingService *service.PricingService,
+	notifier domain.OrderNotifier,
 ) *service.OrderService {
 	return service.NewOrderService(orderRepo, customerRepo, productRepo, inventoryRepo,
-		priceQuoteRepo, paymentRepo, pricingService)
+		priceQuoteRepo, paymentRepo, pricingService, notifier)
 }
 
 // ProvideCustomerService creates a new CustomerService
@@ -334,6 +335,15 @@ func ProvidePushService(
 	assetService *service.AssetService,
 ) *service.PushService {
 	return service.NewPushService(pushRepo, gateway, assetService)
+}
+
+// ProvideOrderNotifier builds a push service for sending only. The asset
+// finaliser is nil because it serves Broadcast alone, which orders never call.
+func ProvideOrderNotifier(
+	pushRepo domain.PushSubscriptionRepository,
+	gateway webpush.Gateway,
+) domain.OrderNotifier {
+	return service.NewPushService(pushRepo, gateway, nil)
 }
 
 // ProvideCouponService creates a new CouponService
@@ -398,6 +408,7 @@ var ServiceSet = wire.NewSet(
 	ProvideNotificationService,
 	ProvideWebPushGateway,
 	ProvidePushService,
+	ProvideOrderNotifier,
 	ProvideCouponService,
 	ProvideUTMLinkService,
 	ProvideAssetService,

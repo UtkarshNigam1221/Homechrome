@@ -297,13 +297,9 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 			props.MetricsQueue.GrantSendMessages(lambdaFn)
 		}
 
-		// The VAPID private key is the one secret read at runtime rather than
-		// resolved at deploy time, so it stays out of the template. Only the
-		// push Lambda signs pushes, so only it gets the parameter and the read.
-		// Web Push config reaches only the Lambda that sends pushes. The public
-		// key and subject are not secret; the private key is read from SSM at
-		// runtime so it never enters this template.
-		if svc == "push" {
+		// Both the push Lambda (fan-out) and the order Lambda (status updates)
+		// sign pushes, so both need the key. No other Lambda gets it.
+		if svc == "push" || svc == "order" {
 			for _, key := range []string{"VAPID_PUBLIC_KEY", "VAPID_SUBJECT"} {
 				if v := os.Getenv(key); v != "" {
 					lambdaFn.AddEnvironment(jsii.String(key), jsii.String(v), nil)
