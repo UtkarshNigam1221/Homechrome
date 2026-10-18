@@ -7,10 +7,11 @@ import (
 	"log/slog"
 	"net/url"
 	"strings"
-	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/internal/gateway/webpush"
@@ -20,15 +21,6 @@ import (
 // broadcastConcurrency bounds in-flight pushes: each is an HTTPS round trip,
 // and an unbounded fan-out would hit the Lambda's file-descriptor ceiling.
 const broadcastConcurrency = 32
-
-// defaultBroadcastHistory is how many past broadcasts the admin console shows.
-const defaultBroadcastHistory int32 = 20
-
-// defaultPushIcon is the storefront asset shown when a payload names no icon.
-const defaultPushIcon = "/icon.png"
-
-// maxPushEndpointLen caps the stored endpoint. Real ones run to ~500 chars.
-const maxPushEndpointLen = 512
 
 // pushEndpointHosts are the push services we accept subscriptions for, matched
 // on the host or any subdomain of it.
@@ -89,14 +81,16 @@ func (s *PushService) Subscribe(
 	}
 
 	if isNew {
-		// Best-effort welcome push: a failure here must not fail the
-		// subscription that already succeeded.
-		s.sendOne(ctx, sub, domain.PushPayload{
+		// Best-effort: a failed welcome must not fail the subscription that succeeded.
+		welcome := domain.PushPayload{
 			Title: "Welcome to Homechrome",
 			Body:  "First look at new weaver collections and private offers.",
 			URL:   "/",
 			Tag:   "homechrome-welcome",
-		})
+		}
+		if err := s.deliver(ctx, sub, welcome); err != nil {
+			slog.WarnContext(ctx, "Welcome push failed", "error", err, "subscription_id", sub.ID)
+		}
 	}
 
 	slog.InfoContext(ctx, "Saved push subscription", "subscription_id", sub.ID, "is_new", isNew)
@@ -136,16 +130,7 @@ func (s *PushService) Broadcast(
 	ctx context.Context,
 	req domain.BroadcastPushRequest,
 	sentBy string,
-) (*domain.BroadcastPushResponse, error) {
-	if err := validateStorePath(req.URL); err != nil {
-		return nil, err
-	}
-	for _, a := range req.Actions {
-		if err := validateStorePath(a.URL); err != nil {
-			return nil, err
-		}
-	}
-
+) (*domain.PushBroadcast, error) {
 	subs, err := s.repo.ListActive(ctx)
 	if err != nil {
 		return nil, err
@@ -154,6 +139,9 @@ func (s *PushService) Broadcast(
 	// Field-for-field identical, so the conversion stops compiling if either
 	// type gains a field instead of silently dropping it from the payload.
 	payload := domain.PushPayload(req)
+	if payload.URL == "" {
+		payload.URL = "/"
+	}
 
 	// tmp/ is deleted after a day, so an unfinalized banner would break in
 	// history and on any notification still sitting on a device.
@@ -185,7 +173,7 @@ func (s *PushService) Broadcast(
 		ID:            broadcastID,
 		Title:         req.Title,
 		Body:          req.Body,
-		URL:           payloadURL(req.URL),
+		URL:           payload.URL,
 		Tag:           req.Tag,
 		Image:         payload.Image,
 		Icon:          payload.Icon,
@@ -210,59 +198,37 @@ func (s *PushService) Broadcast(
 		"success", successCount,
 		"failure", failureCount)
 
-	return &domain.BroadcastPushResponse{
-		TotalTargeted: broadcast.TotalTargeted,
-		SuccessCount:  successCount,
-		FailureCount:  failureCount,
-		Status:        broadcast.Status,
-		Broadcast:     broadcast,
-	}, nil
+	return broadcast, nil
 }
 
 // fanOut delivers payload to every subscription, bounded by broadcastConcurrency,
 // and returns how many succeeded.
 func (s *PushService) fanOut(ctx context.Context, subs []*domain.PushSubscription, payload domain.PushPayload) int {
-	var (
-		wg        sync.WaitGroup
-		mu        sync.Mutex
-		succeeded int
-		sem       = make(chan struct{}, broadcastConcurrency)
-	)
+	var succeeded atomic.Int32
+	g := new(errgroup.Group)
+	g.SetLimit(broadcastConcurrency)
 
 	for _, sub := range subs {
-		wg.Add(1)
-		go func(sub *domain.PushSubscription) {
-			defer wg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
-
+		g.Go(func() error {
 			if err := s.deliver(ctx, sub, payload); err != nil {
 				// Without this a PARTIAL broadcast is a bare count with no way
 				// to learn which endpoint rejected it, or why.
 				slog.WarnContext(ctx, "Push broadcast delivery failed",
 					"error", err, "subscription_id", sub.ID, "endpoint", sub.Endpoint)
-				return
+				return nil
 			}
-			mu.Lock()
-			succeeded++
-			mu.Unlock()
-		}(sub)
+			succeeded.Add(1)
+			return nil
+		})
 	}
 
-	wg.Wait()
-	return succeeded
+	_ = g.Wait()
+	return int(succeeded.Load())
 }
 
 // deliver encodes and sends one push, deactivating the subscription when the
 // push service reports the endpoint is permanently gone.
 func (s *PushService) deliver(ctx context.Context, sub *domain.PushSubscription, payload domain.PushPayload) error {
-	if payload.URL == "" {
-		payload.URL = "/"
-	}
-	if payload.Icon == "" {
-		payload.Icon = defaultPushIcon
-	}
-
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return errors.Internal("Failed to encode push payload")
@@ -286,15 +252,6 @@ func (s *PushService) deliver(ctx context.Context, sub *domain.PushSubscription,
 	return err
 }
 
-// sendOne delivers a push and swallows the error, for deliveries whose failure
-// must not fail the caller (the welcome push).
-func (s *PushService) sendOne(ctx context.Context, sub *domain.PushSubscription, payload domain.PushPayload) {
-	if err := s.deliver(ctx, sub, payload); err != nil {
-		slog.WarnContext(ctx, "Best-effort push delivery failed",
-			"error", err, "subscription_id", sub.ID)
-	}
-}
-
 // ListSubscriptions returns a page of subscriptions for the admin console.
 func (s *PushService) ListSubscriptions(
 	ctx context.Context,
@@ -309,22 +266,7 @@ func (s *PushService) ListSubscriptions(
 
 // ListBroadcasts returns recent broadcast history for the admin console.
 func (s *PushService) ListBroadcasts(ctx context.Context, limit int32) ([]*domain.PushBroadcast, error) {
-	if limit <= 0 {
-		limit = defaultBroadcastHistory
-	}
 	return s.repo.ListBroadcasts(ctx, limit)
-}
-
-// validateStorePath rejects click-through URLs that leave the storefront:
-// "//host" and "/\\host" both resolve to another origin in a browser.
-func validateStorePath(p string) error {
-	if p == "" {
-		return nil
-	}
-	if !strings.HasPrefix(p, "/") || strings.HasPrefix(p, "//") || strings.HasPrefix(p, "/\\") {
-		return errors.New(errors.ErrCodeValidation, "URL must be a path on the storefront, like /products")
-	}
-	return nil
 }
 
 // validatePushEndpoint keeps the public subscribe route from pointing the
@@ -333,8 +275,7 @@ func validatePushEndpoint(endpoint string) error {
 	// Userinfo and port are rejected, not ignored: Go drops userinfo when
 	// dialing, so a@host and b@host reach one device under two row keys.
 	u, err := url.Parse(endpoint)
-	if err != nil || u.Scheme != "https" || u.User != nil || u.Port() != "" ||
-		len(endpoint) > maxPushEndpointLen {
+	if err != nil || u.Scheme != "https" || u.User != nil || u.Port() != "" {
 		return errors.Validation("Unsupported push endpoint")
 	}
 
@@ -345,14 +286,6 @@ func validatePushEndpoint(endpoint string) error {
 		}
 	}
 	return errors.Validation("Unsupported push endpoint")
-}
-
-// payloadURL normalizes an empty click-through target to the storefront root.
-func payloadURL(url string) string {
-	if url == "" {
-		return "/"
-	}
-	return url
 }
 
 // broadcastStatus classifies a fan-out result. A broadcast with no subscribers

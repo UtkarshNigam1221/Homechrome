@@ -36,9 +36,9 @@ func (h *PushHandler) Routes() chi.Router {
 		r.Use(httprate.LimitByIP(20, time.Minute))
 		r.With(middleware.ValidateJSONTyped[domain.SubscribePushRequest](h.validation)).
 			Post("/subscribe", h.Subscribe)
-		r.With(middleware.ValidateJSONTyped[domain.UnsubscribePushRequest](h.validation)).
+		r.With(middleware.ValidateJSONTyped[domain.PushEndpointRequest](h.validation)).
 			Post("/unsubscribe", h.Unsubscribe)
-		r.With(middleware.ValidateJSONTyped[domain.TestPushRequest](h.validation)).
+		r.With(middleware.ValidateJSONTyped[domain.PushEndpointRequest](h.validation)).
 			Post("/test", h.SendTest)
 	})
 
@@ -71,7 +71,7 @@ func (h *PushHandler) Subscribe(w http.ResponseWriter, r *http.Request) {
 // Unsubscribe retires this browser's push endpoint.
 // POST /api/v1/store/push/unsubscribe
 func (h *PushHandler) Unsubscribe(w http.ResponseWriter, r *http.Request) {
-	req := middleware.MustGetValidatedBody[domain.UnsubscribePushRequest](r.Context())
+	req := middleware.MustGetValidatedBody[domain.PushEndpointRequest](r.Context())
 
 	if err := h.pushService.Unsubscribe(r.Context(), req.Endpoint); err != nil {
 		response.Error(w, err)
@@ -84,7 +84,7 @@ func (h *PushHandler) Unsubscribe(w http.ResponseWriter, r *http.Request) {
 // SendTest delivers a test notification to the caller's own endpoint.
 // POST /api/v1/store/push/test
 func (h *PushHandler) SendTest(w http.ResponseWriter, r *http.Request) {
-	req := middleware.MustGetValidatedBody[domain.TestPushRequest](r.Context())
+	req := middleware.MustGetValidatedBody[domain.PushEndpointRequest](r.Context())
 
 	if err := h.pushService.SendTest(r.Context(), req.Endpoint); err != nil {
 		response.Error(w, err)

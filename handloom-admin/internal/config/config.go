@@ -316,92 +316,65 @@ func getDurationEnv(key string, defaultValue time.Duration) time.Duration {
 	return defaultValue
 }
 
-// getJWTSecret gets the JWT secret from SSM Parameter Store or environment variable
+// getJWTSecret resolves the admin JWT secret: the env var, then the SSM
+// parameter named by JWT_SECRET_PARAM, then the local-development default.
 func getJWTSecret() string {
-	// First check if we have a direct secret key
 	if secret := os.Getenv("JWT_SECRET_KEY"); secret != "" {
 		return secret
 	}
-
-	// Check if we have an SSM parameter name
 	paramName := os.Getenv("JWT_SECRET_PARAM")
 	if paramName == "" {
-		// Default for local development
 		return defaultJWTSecret
 	}
-
-	// Fetch from SSM Parameter Store
-	ctx := context.Background()
-	cfg, err := config.LoadDefaultConfig(ctx)
+	secret, err := ssmSecureString(paramName)
 	if err != nil {
-		// Fall back to default if we can't load AWS config
 		return defaultJWTSecret
 	}
-
-	awsmiddleware.Instrument(&cfg)
-
-	ssmClient := ssm.NewFromConfig(cfg)
-	result, err := ssmClient.GetParameter(ctx, &ssm.GetParameterInput{
-		Name:           &paramName,
-		WithDecryption: boolPtr(true),
-	})
-	if err != nil {
-		// Fall back to default if parameter fetch fails
-		return defaultJWTSecret
-	}
-
-	if result.Parameter != nil && result.Parameter.Value != nil {
-		return *result.Parameter.Value
-	}
-
-	return defaultJWTSecret
+	return secret
 }
 
 // getVAPIDPrivateKey resolves the Web Push signing key: the env var first (local
 // dev), then the SSM SecureString named by VAPID_PRIVATE_KEY_PARAM.
-//
-// Unlike the JWT secret there is no usable default — an empty key selects the
-// gateway that logs instead of delivering. A fetch that fails therefore logs at
-// ERROR rather than degrading quietly, since the symptom is push appearing to
-// succeed while nothing is sent.
 func getVAPIDPrivateKey() string {
 	if key := os.Getenv("VAPID_PRIVATE_KEY"); key != "" {
 		return key
 	}
-
 	paramName := os.Getenv("VAPID_PRIVATE_KEY_PARAM")
 	if paramName == "" {
 		return ""
 	}
+	key, err := ssmSecureString(paramName)
+	if err != nil {
+		// No usable default: an empty key selects the logging gateway, so be loud.
+		slog.Error("Web Push disabled: failed to read the VAPID private key from SSM", "error", err)
+		return ""
+	}
+	return key
+}
 
-	// Bounded: this runs in Lambda init, where a hung SSM call stalls the
-	// whole cold start rather than just this one value.
+// ssmSecureString reads one SecureString parameter during init, bounded so a
+// hung SSM call cannot stall the whole Lambda cold start.
+func ssmSecureString(name string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), ssmFetchTimeout)
 	defer cancel()
 
 	cfg, err := config.LoadDefaultConfig(ctx)
 	if err != nil {
-		slog.Error("Web Push disabled: cannot load AWS config to read the VAPID key", "error", err)
-		return ""
+		return "", err
 	}
-
 	awsmiddleware.Instrument(&cfg)
 
 	result, err := ssm.NewFromConfig(cfg).GetParameter(ctx, &ssm.GetParameterInput{
-		Name:           &paramName,
+		Name:           &name,
 		WithDecryption: boolPtr(true),
 	})
 	if err != nil {
-		// The SSM error names the parameter; logging it here trips gosec G706.
-		slog.Error("Web Push disabled: failed to read the VAPID private key from SSM", "error", err)
-		return ""
+		return "", err
 	}
-
 	if result.Parameter == nil || result.Parameter.Value == nil {
-		slog.Error("Web Push disabled: VAPID private key parameter is empty")
-		return ""
+		return "", fmt.Errorf("ssm parameter has no value")
 	}
-	return *result.Parameter.Value
+	return *result.Parameter.Value, nil
 }
 
 func boolPtr(b bool) *bool {

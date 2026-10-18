@@ -156,7 +156,7 @@ func TestPushUnsubscribe(t *testing.T) {
 	repo.EXPECT().Deactivate(gomock.Any(), "https://fcm.googleapis.com/fcm/send/abc").Return(nil)
 
 	srv := newPushTestServer(t, repo)
-	status, _ := postJSON(t, srv.URL+"/unsubscribe", domain.UnsubscribePushRequest{
+	status, _ := postJSON(t, srv.URL+"/unsubscribe", domain.PushEndpointRequest{
 		Endpoint: "https://fcm.googleapis.com/fcm/send/abc",
 	})
 

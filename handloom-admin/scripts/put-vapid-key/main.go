@@ -37,13 +37,10 @@ func main() {
 }
 
 func run() error {
-	if len(os.Args) != 2 {
+	if len(os.Args) != 2 || (os.Args[1] != "local" && os.Args[1] != "dev" && os.Args[1] != "prod") {
 		return fmt.Errorf("usage: put-vapid-key <local|dev|prod>")
 	}
 	env := os.Args[1]
-	if env != "local" && env != "dev" && env != "prod" {
-		return fmt.Errorf("usage: put-vapid-key <local|dev|prod>")
-	}
 
 	if env == "local" {
 		return writeLocalEnv()

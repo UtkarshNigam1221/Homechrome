@@ -252,12 +252,12 @@ setup-local: docker-up create-tables init-s3 seed-data ensure-vapid
 deploy-local: build-lambdas-active ensure-vapid
 	@echo "Deploying Lambda functions to LocalStack..."
 	chmod +x scripts/deploy-local-lambdas.sh
-	./scripts/deploy-local-lambdas.sh
+	$(VAPID_LOCAL_ENV) ./scripts/deploy-local-lambdas.sh
 
 ## Redeploy Lambda code only (skip API Gateway recreation)
 redeploy-local: build-lambdas-active ensure-vapid
 	@echo "Redeploying Lambda code to LocalStack..."
-	REDEPLOY_ONLY=true ./scripts/deploy-local-lambdas.sh
+	$(VAPID_LOCAL_ENV) REDEPLOY_ONLY=true ./scripts/deploy-local-lambdas.sh
 
 ## Tear down all local services
 teardown-local:

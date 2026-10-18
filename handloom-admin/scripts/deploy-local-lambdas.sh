@@ -10,16 +10,8 @@ ENDPOINT="${AWS_ENDPOINT:-http://localhost:4566}"
 REGION="${AWS_REGION:-ap-south-1}"
 LAMBDA_DIR="./bin/lambda"
 
-# Local VAPID keypair lives in .env (make ensure-vapid). Unset keys make the
-# push Lambda fall through to the dev gateway, which logs instead of sending.
-# Only these three are read: sourcing the whole file would pull real gateway
-# credentials and AWS settings into a script that targets LocalStack.
-if [ -f .env ]; then
-    for key in VAPID_PUBLIC_KEY VAPID_PRIVATE_KEY VAPID_SUBJECT; do
-        value=$(grep -E "^${key}=" .env | tail -1 | cut -d= -f2-)
-        [ -n "$value" ] && export "$key=$value"
-    done
-fi
+# The Makefile passes the local VAPID keypair in from .env. Unset keys make
+# the push Lambda fall through to the dev gateway, which logs instead of sending.
 ACTIVE_SERVICES="auth user catalog asset push store-auth store-catalog store-cart store-checkout store-orders store-tracking store-profile store-events store-webhooks"
 
 # Env vars injected into each Lambda
@@ -43,7 +35,7 @@ LAMBDA_ENV='{
     "QUOTE_VALIDITY_HRS": "24",
     "VAPID_PUBLIC_KEY": "'"${VAPID_PUBLIC_KEY:-}"'",
     "VAPID_PRIVATE_KEY": "'"${VAPID_PRIVATE_KEY:-}"'",
-    "VAPID_SUBJECT": "'"${VAPID_SUBJECT:-mailto:dev@homechrome.in}"'"
+    "VAPID_SUBJECT": "'"${VAPID_SUBJECT:-}"'"
   }
 }'
 

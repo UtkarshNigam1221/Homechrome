@@ -177,8 +177,9 @@ type SubscribePushRequest struct {
 	Device   *PushDeviceInfo      `json:"device,omitempty"`
 }
 
-// UnsubscribePushRequest identifies the endpoint to retire.
-type UnsubscribePushRequest struct {
+// PushEndpointRequest names the one endpoint a storefront caller owns; the
+// unsubscribe and test routes act on it and nothing else.
+type PushEndpointRequest struct {
 	Endpoint string `json:"endpoint" validate:"required,url,max=512"`
 }
 
@@ -189,7 +190,7 @@ type PushAction struct {
 	Action string `json:"action" dynamodbav:"action" validate:"required,max=32"`
 	Title  string `json:"title" dynamodbav:"title" validate:"required,max=24"`
 	// URL overrides the notification's click-through for this button.
-	URL string `json:"url,omitempty" dynamodbav:"url,omitempty" validate:"omitempty,startswith=/,max=512"`
+	URL string `json:"url,omitempty" dynamodbav:"url,omitempty" validate:"omitempty,storepath,max=512"`
 }
 
 // MaxPushActions is the ceiling Chrome on Android enforces.
@@ -207,31 +208,15 @@ type PushPayload struct {
 	Actions []PushAction `json:"actions,omitempty"`
 }
 
-// TestPushRequest asks for a delivery to one endpoint the caller already owns.
-// Endpoint-scoped on purpose: a storefront visitor testing their own
-// notifications must never be able to reach anyone else's device.
-type TestPushRequest struct {
-	Endpoint string `json:"endpoint" validate:"required,url,max=512"`
-}
-
 // BroadcastPushRequest is the admin fan-out payload.
 type BroadcastPushRequest struct {
 	Title string `json:"title" validate:"required,max=120"`
 	Body  string `json:"body" validate:"required,max=300"`
-	URL   string `json:"url,omitempty" validate:"omitempty,max=512,startswith=/"`
+	URL   string `json:"url,omitempty" validate:"omitempty,storepath,max=512"`
 	Tag   string `json:"tag,omitempty" validate:"omitempty,max=64"`
 	// Either an absolute URL or a tmp/ upload key; the service resolves the
 	// latter into a permanent URL before sending.
 	Icon    string       `json:"icon,omitempty" validate:"omitempty,max=512"`
 	Image   string       `json:"image,omitempty" validate:"omitempty,max=512"`
 	Actions []PushAction `json:"actions,omitempty" validate:"omitempty,max=2,dive"`
-}
-
-// BroadcastPushResponse reports the fan-out result to the admin console.
-type BroadcastPushResponse struct {
-	TotalTargeted int                 `json:"total_targeted"`
-	SuccessCount  int                 `json:"success_count"`
-	FailureCount  int                 `json:"failure_count"`
-	Status        PushBroadcastStatus `json:"status"`
-	Broadcast     *PushBroadcast      `json:"broadcast"`
 }

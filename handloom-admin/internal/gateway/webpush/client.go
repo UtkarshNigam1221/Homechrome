@@ -41,9 +41,6 @@ type Client struct {
 
 // NewClient creates a Web Push client using the supplied VAPID credentials.
 func NewClient(config Config) *Client {
-	if config.TTLSeconds <= 0 {
-		config.TTLSeconds = defaultTTL
-	}
 	config.Subject = vapidSubscriber(config.Subject)
 	httpClient := metricsmw.NewInstrumentedClient(10*time.Second, "webpush")
 	// A signed push is for one endpoint; never replay it at a redirect target.
@@ -68,7 +65,7 @@ func (c *Client) Send(ctx context.Context, sub Subscription, payload []byte) err
 		Subscriber:      c.config.Subject,
 		VAPIDPublicKey:  c.config.PublicKey,
 		VAPIDPrivateKey: c.config.PrivateKey,
-		TTL:             c.config.TTLSeconds,
+		TTL:             defaultTTL,
 		Urgency:         wp.UrgencyNormal,
 	})
 	if err != nil {

@@ -13,10 +13,6 @@ import (
 	"github.com/handloom/admin/pkg/errors"
 )
 
-// broadcastHistoryMaxLimit caps one page of broadcast history, so a bad limit
-// cannot turn the admin console into a full-partition read.
-const broadcastHistoryMaxLimit int32 = 100
-
 // PushSubscriptionRepository implements domain.PushSubscriptionRepository
 type PushSubscriptionRepository struct {
 	client *Client
@@ -93,15 +89,15 @@ func (r *PushSubscriptionRepository) Deactivate(ctx context.Context, endpoint st
 	_, err := r.client.db.UpdateItem(ctx, &dynamodb.UpdateItemInput{
 		TableName:           aws.String(r.client.notificationsTable),
 		Key:                 subKey(endpoint),
-		UpdateExpression:    aws.String("SET #s = :status, GSI1PK = :gsi1pk, last_seen_at = :now"),
+		UpdateExpression:    aws.String("SET " + nameStatus + " = " + valStatus + ", GSI1PK = :gsi1pk, last_seen_at = " + exprNow),
 		ConditionExpression: aws.String("attribute_exists(PK)"),
 		ExpressionAttributeNames: map[string]string{
-			"#s": "status",
+			nameStatus: attrStatus,
 		},
 		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":status": &types.AttributeValueMemberS{Value: string(domain.PushSubscriptionInactive)},
+			valStatus: &types.AttributeValueMemberS{Value: string(domain.PushSubscriptionInactive)},
 			":gsi1pk": &types.AttributeValueMemberS{Value: "PUSH_SUB#" + string(domain.PushSubscriptionInactive)},
-			":now":    &types.AttributeValueMemberS{Value: time.Now().UTC().Format(time.RFC3339Nano)},
+			exprNow:   &types.AttributeValueMemberS{Value: time.Now().UTC().Format(time.RFC3339Nano)},
 		},
 	})
 	if err != nil {
@@ -118,9 +114,9 @@ func (r *PushSubscriptionRepository) statusQuery(status domain.PushSubscriptionS
 	return &dynamodb.QueryInput{
 		TableName:              aws.String(r.client.notificationsTable),
 		IndexName:              aws.String("GSI1"),
-		KeyConditionExpression: aws.String("GSI1PK = :pk"),
+		KeyConditionExpression: aws.String("GSI1PK = " + exprPK),
 		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":pk": &types.AttributeValueMemberS{Value: "PUSH_SUB#" + string(status)},
+			exprPK: &types.AttributeValueMemberS{Value: "PUSH_SUB#" + string(status)},
 		},
 		ScanIndexForward: aws.Bool(false),
 	}
@@ -152,10 +148,6 @@ func (r *PushSubscriptionRepository) List(
 		return nil, err
 	}
 
-	if subs == nil {
-		subs = []*domain.PushSubscription{}
-	}
-
 	return &domain.ListPushSubscriptionsResponse{
 		Subscriptions: subs,
 		Pagination:    page,
@@ -183,29 +175,21 @@ func (r *PushSubscriptionRepository) SaveBroadcast(ctx context.Context, broadcas
 
 // ListBroadcasts retrieves broadcast history, newest first.
 func (r *PushSubscriptionRepository) ListBroadcasts(ctx context.Context, limit int32) ([]*domain.PushBroadcast, error) {
-	if limit <= 0 || limit > broadcastHistoryMaxLimit {
-		limit = broadcastHistoryMaxLimit
-	}
-
-	result, err := r.client.db.Query(ctx, &dynamodb.QueryInput{
-		TableName:              aws.String(r.client.notificationsTable),
-		IndexName:              aws.String("GSI1"),
-		KeyConditionExpression: aws.String("GSI1PK = :pk"),
-		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":pk": &types.AttributeValueMemberS{Value: "PUSH_BROADCAST"},
+	broadcasts, _, err := QueryPage[domain.PushBroadcast](
+		ctx, r.client.db,
+		&dynamodb.QueryInput{
+			TableName:              aws.String(r.client.notificationsTable),
+			IndexName:              aws.String("GSI1"),
+			KeyConditionExpression: aws.String("GSI1PK = " + exprPK),
+			ExpressionAttributeValues: map[string]types.AttributeValue{
+				exprPK: &types.AttributeValueMemberS{Value: "PUSH_BROADCAST"},
+			},
+			ScanIndexForward: aws.Bool(false),
 		},
-		ScanIndexForward: aws.Bool(false),
-		Limit:            aws.Int32(limit),
-	})
-	if err != nil {
-		return nil, errors.Wrap(err, "Failed to list push broadcasts")
-	}
-
-	broadcasts := []*domain.PushBroadcast{}
-	if err := attributevalue.UnmarshalListOfMaps(result.Items, &broadcasts); err != nil {
-		return nil, errors.Internal("Failed to unmarshal push broadcasts")
-	}
-	return broadcasts, nil
+		domain.PaginationRequest{Limit: int(limit)},
+		"Failed to list push broadcasts",
+	)
+	return broadcasts, err
 }
 
 // Ensure interface compliance

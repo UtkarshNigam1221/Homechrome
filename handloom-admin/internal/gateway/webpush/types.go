@@ -11,8 +11,6 @@ type Config struct {
 	// Subject is the VAPID "sub" claim: a mailto: or https: URL push services
 	// use to contact the sender about delivery problems.
 	Subject string
-	// TTLSeconds is how long a push service may hold an undelivered message.
-	TTLSeconds int
 }
 
 // Subscription is the destination of a single push: the endpoint URL plus the

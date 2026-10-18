@@ -2,7 +2,6 @@ package handler
 
 import (
 	"net/http"
-	"strconv"
 
 	"github.com/go-chi/chi/v5"
 
@@ -53,14 +52,7 @@ func (h *PushHandler) ListSubscribers(w http.ResponseWriter, r *http.Request) {
 // ListBroadcasts returns recent broadcast history.
 // GET /admin/push/broadcasts?limit=20
 func (h *PushHandler) ListBroadcasts(w http.ResponseWriter, r *http.Request) {
-	var limit int32
-	if raw := r.URL.Query().Get("limit"); raw != "" {
-		if parsed, err := strconv.ParseInt(raw, 10, 32); err == nil {
-			limit = int32(parsed)
-		}
-	}
-
-	broadcasts, err := h.pushService.ListBroadcasts(r.Context(), limit)
+	broadcasts, err := h.pushService.ListBroadcasts(r.Context(), int32(parsePagination(r).Limit))
 	if err != nil {
 		response.Error(w, err)
 		return

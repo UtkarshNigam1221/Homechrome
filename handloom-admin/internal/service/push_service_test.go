@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"strings"
 	"sync"
 	"testing"
 
@@ -101,7 +100,7 @@ func TestPushService_Subscribe(t *testing.T) {
 		var decoded domain.PushPayload
 		require.NoError(t, json.Unmarshal(payload, &decoded))
 		assert.Equal(t, "Welcome to Homechrome", decoded.Title)
-		assert.Equal(t, defaultPushIcon, decoded.Icon, "an unset icon falls back to the storefront default")
+		assert.Empty(t, decoded.Icon, "the service worker supplies the brand mark")
 	})
 
 	t.Run("re-subscribing an existing endpoint sends nothing", func(t *testing.T) {
@@ -172,7 +171,6 @@ func TestPushService_SubscribeEndpointAllowlist(t *testing.T) {
 		"https://anything@fcm.googleapis.com/fcm/send/abc",
 		"https://a:b@fcm.googleapis.com/fcm/send/abc",
 		"https://fcm.googleapis.com:8443/fcm/send/abc",
-		"https://fcm.googleapis.com/fcm/send/" + strings.Repeat("a", 512),
 	}
 
 	req := func(endpoint string) domain.SubscribePushRequest {
@@ -464,8 +462,8 @@ func TestPushService_BroadcastFinalizesImages(t *testing.T) {
 	assert.Equal(t, "https://cdn.homechrome.in/assets/image/thumb.jpg", decoded.Icon)
 
 	// History must record the permanent URLs too, or the audit row rots in a day.
-	assert.Equal(t, "https://cdn.homechrome.in/assets/image/banner.jpg", result.Broadcast.Image)
-	assert.Equal(t, "https://cdn.homechrome.in/assets/image/thumb.jpg", result.Broadcast.Icon)
+	assert.Equal(t, "https://cdn.homechrome.in/assets/image/banner.jpg", result.Image)
+	assert.Equal(t, "https://cdn.homechrome.in/assets/image/thumb.jpg", result.Icon)
 }
 
 func TestPushService_BroadcastFailsWhenFinalizeFails(t *testing.T) {
@@ -517,24 +515,5 @@ func TestBroadcastStatus(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			assert.Equal(t, tt.want, broadcastStatus(tt.targeted, tt.success, tt.failure))
 		})
-	}
-}
-
-func TestValidateStorePath(t *testing.T) {
-	for _, tc := range []struct {
-		in string
-		ok bool
-	}{
-		{"", true},
-		{"/products", true},
-		{"/c/bedsheets?sort=new", true},
-		{"//evil.example/x", false},
-		{"/\\evil.example/x", false},
-		{"https://evil.example", false},
-		{"products", false},
-	} {
-		if err := validateStorePath(tc.in); (err == nil) != tc.ok {
-			t.Errorf("validateStorePath(%q) err=%v, want ok=%v", tc.in, err, tc.ok)
-		}
 	}
 }
