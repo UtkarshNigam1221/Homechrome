@@ -142,11 +142,10 @@ const readStatus = () => sharedStatus;
 
 export function usePushNotifications() {
   const status = useSyncExternalStore(subscribeToStatus, readStatus, readStatus);
-  const setStatus = setSharedStatus;
 
   const refresh = useCallback(async () => {
     if (!pushSupported()) {
-      setStatus(UNSUPPORTED);
+      setSharedStatus(UNSUPPORTED);
       return;
     }
 
@@ -175,7 +174,7 @@ export function usePushNotifications() {
         }
       }
 
-      setStatus({
+      setSharedStatus({
         isSupported: true,
         permission: Notification.permission,
         isSubscribed: usable,
@@ -184,7 +183,7 @@ export function usePushNotifications() {
         error: null,
       });
     } catch (err) {
-      setStatus((prev) => ({
+      setSharedStatus((prev) => ({
         ...prev,
         isSupported: true,
         loading: false,
@@ -216,19 +215,19 @@ export function usePushNotifications() {
 
   const subscribe = useCallback(async (): Promise<boolean> => {
     if (!pushSupported()) {
-      setStatus((prev) => ({
+      setSharedStatus((prev) => ({
         ...prev,
         error: 'This browser does not support push notifications.',
       }));
       return false;
     }
 
-    setStatus((prev) => ({ ...prev, loading: true, error: null }));
+    setSharedStatus((prev) => ({ ...prev, loading: true, error: null }));
 
     try {
       const permission = await Notification.requestPermission();
       if (permission !== 'granted') {
-        setStatus((prev) => ({
+        setSharedStatus((prev) => ({
           ...prev,
           permission,
           isSubscribed: false,
@@ -253,7 +252,7 @@ export function usePushNotifications() {
 
       await registerDevice(registration, publicKey);
 
-      setStatus({
+      setSharedStatus({
         isSupported: true,
         permission: 'granted',
         isSubscribed: true,
@@ -263,7 +262,7 @@ export function usePushNotifications() {
       });
       return true;
     } catch (err) {
-      setStatus((prev) => ({
+      setSharedStatus((prev) => ({
         ...prev,
         loading: false,
         error: errorMessage(err, 'Could not enable notifications'),
@@ -273,7 +272,7 @@ export function usePushNotifications() {
   }, []);
 
   const unsubscribe = useCallback(async (): Promise<boolean> => {
-    setStatus((prev) => ({ ...prev, loading: true, error: null }));
+    setSharedStatus((prev) => ({ ...prev, loading: true, error: null }));
 
     try {
       const registration = await navigator.serviceWorker.getRegistration();
@@ -284,14 +283,14 @@ export function usePushNotifications() {
         await subscription.unsubscribe();
         // The browser has let go, so report that now; a failed backend call
         // leaves a stale row, which the next 410 prunes.
-        setStatus((prev) => ({ ...prev, isSubscribed: false }));
+        setSharedStatus((prev) => ({ ...prev, isSubscribed: false }));
         await apiClient.post(ROUTES.PUSH.UNSUBSCRIBE, { endpoint });
       }
 
-      setStatus((prev) => ({ ...prev, isSubscribed: false, loading: false }));
+      setSharedStatus((prev) => ({ ...prev, isSubscribed: false, loading: false }));
       return true;
     } catch (err) {
-      setStatus((prev) => ({
+      setSharedStatus((prev) => ({
         ...prev,
         loading: false,
         error: errorMessage(err, 'Could not turn off notifications'),
@@ -305,7 +304,7 @@ export function usePushNotifications() {
     const registration = await navigator.serviceWorker.getRegistration();
     const subscription = registration ? await registration.pushManager.getSubscription() : null;
     if (!subscription) {
-      setStatus((prev) => ({ ...prev, error: 'This device is not subscribed.' }));
+      setSharedStatus((prev) => ({ ...prev, error: 'This device is not subscribed.' }));
       return false;
     }
 
