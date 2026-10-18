@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  BellIcon,
   ChatBubbleLeftRightIcon,
   ChevronRightIcon,
   RectangleGroupIcon,
@@ -32,10 +33,12 @@ import { Category } from '@/types';
 interface MobileNavProps {
   isOpen: boolean;
   onClose: () => void;
+  /** Opens the notification settings modal; the drawer closes first. */
+  onOpenNotifications: () => void;
   categories: Category[];
 }
 
-export default function MobileNav({ isOpen, onClose, categories }: MobileNavProps) {
+export default function MobileNav({ isOpen, onClose, onOpenNotifications, categories }: MobileNavProps) {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
 
   return (
@@ -125,6 +128,19 @@ export default function MobileNav({ isOpen, onClose, categories }: MobileNavProp
             label="Contact Us"
             icon={<ChatBubbleLeftRightIcon width={20} height={20} aria-hidden="true" />}
             onClose={onClose}
+          />
+          <NavLink
+            component="button"
+            type="button"
+            onClick={onOpenNotifications}
+            label="Notifications"
+            leftSection={<BellIcon width={20} height={20} aria-hidden="true" />}
+            rightSection={
+              <ChevronRightIcon width={16} height={16} aria-hidden="true" style={{ opacity: 0.4 }} />
+            }
+            color="brand"
+            c="navy.8"
+            style={{ borderRadius: 'var(--mantine-radius-md)' }}
           />
           {/* Sits after the links, not between them. */}
           {!isAuthenticated && (

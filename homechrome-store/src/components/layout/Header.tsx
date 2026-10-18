@@ -158,6 +158,7 @@ export default function Header({ categories }: HeaderProps) {
                   variant="subtle"
                   color="navy"
                   size="lg"
+                  visibleFrom="md"
                   aria-label="Notification settings"
                   onClick={() => setNotificationModalOpen(true)}
                 >
@@ -220,6 +221,10 @@ export default function Header({ categories }: HeaderProps) {
       <MobileNav
         isOpen={mobileMenuOpen}
         onClose={() => setMobileMenuOpen(false)}
+        onOpenNotifications={() => {
+          setMobileMenuOpen(false);
+          setNotificationModalOpen(true);
+        }}
         categories={categories}
       />
     </>
