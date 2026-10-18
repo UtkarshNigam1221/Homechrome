@@ -140,7 +140,12 @@ func createRouter(d *wire.MonolithDeps) *chi.Mux {
 		// Public: an anonymous visitor must be able to opt into push. Every
 		// route is scoped to the endpoint in the request body, so a caller can
 		// only touch their own device. Fan-out lives under /admin/push.
-		r.Mount("/push", d.StorePushHandler.Routes())
+		r.Group(func(r chi.Router) {
+			// Optional, not required: a signed-in shopper's devices get linked
+			// to their orders, but a guest must still be able to opt in.
+			r.Use(d.CustomerAuthMiddleware.OptionalCustomer)
+			r.Mount("/push", d.StorePushHandler.Routes())
+		})
 
 		r.Mount("/webhooks", d.StoreWebhookHandler.Routes())
 

@@ -129,20 +129,23 @@ func InitializeOrderDeps(ctx context.Context, cfg *config.Config) (*OrderDeps, e
 	pricingRuleRepository := ProvidePricingRuleRepository(client)
 	categoryRepository := ProvideCategoryRepository(pool)
 	pricingService := ProvidePricingService(pricingRuleRepository, priceQuoteRepository, categoryRepository, productRepository, cfg)
-	orderService := ProvideOrderService(orderRepository, customerRepository, productRepository, inventoryRepository, priceQuoteRepository, paymentRepository, pricingService)
+	pushSubscriptionRepository := ProvidePushSubscriptionRepository(client)
+	gateway := ProvideWebPushGateway(cfg)
+	orderNotifier := ProvideOrderNotifier(pushSubscriptionRepository, gateway)
+	orderService := ProvideOrderService(orderRepository, customerRepository, productRepository, inventoryRepository, priceQuoteRepository, paymentRepository, pricingService, orderNotifier)
 	cartRepository := ProvideCartRepository(client)
 	cartService := ProvideCartService(cartRepository, productRepository, inventoryRepository)
-	gateway := ProvidePhonePeGateway(cfg)
+	phonepeGateway := ProvidePhonePeGateway(cfg)
 	couponRepository := ProvideCouponRepository(client)
 	couponService := ProvideCouponService(couponRepository)
-	paymentService := ProvidePaymentService(paymentRepository, orderRepository, inventoryRepository, cartService, customerRepository, gateway, couponService)
+	paymentService := ProvidePaymentService(paymentRepository, orderRepository, inventoryRepository, cartService, customerRepository, phonepeGateway, couponService)
 	refundRepository := ProvideRefundRepository(client)
 	userRepository := ProvideUserRepository(client)
 	auditRepository := ProvideAuditRepository(client)
 	auditService := ProvideAuditService(auditRepository)
 	notificationRepository := ProvideNotificationRepository(client)
 	notificationService := ProvideNotificationService(notificationRepository, userRepository)
-	refundService := ProvideRefundService(refundRepository, orderRepository, paymentRepository, inventoryRepository, userRepository, auditService, notificationService, gateway)
+	refundService := ProvideRefundService(refundRepository, orderRepository, paymentRepository, inventoryRepository, userRepository, auditService, notificationService, phonepeGateway)
 	service := ProvideValidator()
 	validation := ProvideValidation(service)
 	orderHandler := ProvideOrderHandler(orderService, paymentService, refundService, validation)
@@ -334,7 +337,8 @@ func InitializeReportDeps(ctx context.Context, cfg *config.Config) (*ReportDeps,
 	pricingRuleRepository := ProvidePricingRuleRepository(client)
 	categoryRepository := ProvideCategoryRepository(pool)
 	pricingService := ProvidePricingService(pricingRuleRepository, priceQuoteRepository, categoryRepository, productRepository, cfg)
-	orderService := ProvideOrderService(orderRepository, customerRepository, productRepository, inventoryRepository, priceQuoteRepository, paymentRepository, pricingService)
+	orderNotifier := ProvideNoOrderNotifier()
+	orderService := ProvideOrderService(orderRepository, customerRepository, productRepository, inventoryRepository, priceQuoteRepository, paymentRepository, pricingService, orderNotifier)
 	s3Client, err := ProvideS3Client(ctx, cfg)
 	if err != nil {
 		return nil, err
@@ -543,7 +547,8 @@ func InitializeStoreOrdersDeps(ctx context.Context, cfg *config.Config) (*StoreO
 	pricingRuleRepository := ProvidePricingRuleRepository(client)
 	categoryRepository := ProvideCategoryRepository(pool)
 	pricingService := ProvidePricingService(pricingRuleRepository, priceQuoteRepository, categoryRepository, productRepository, cfg)
-	orderService := ProvideOrderService(orderRepository, customerRepository, productRepository, inventoryRepository, priceQuoteRepository, paymentRepository, pricingService)
+	orderNotifier := ProvideNoOrderNotifier()
+	orderService := ProvideOrderService(orderRepository, customerRepository, productRepository, inventoryRepository, priceQuoteRepository, paymentRepository, pricingService, orderNotifier)
 	orderHandler := ProvideStoreOrderHandler(orderService, orderRepository)
 	otpRepository := ProvideOTPRepository(client)
 	customerTokenStore := ProvideCustomerTokenStore(client)
@@ -677,11 +682,17 @@ func InitializePushDeps(ctx context.Context, cfg *config.Config) (*PushDeps, err
 	tokenStore := ProvideTokenStore(client)
 	authService := ProvideAuthService(userRepository, tokenStore, cfg)
 	auth := ProvideAuthMiddleware(authService)
+	otpRepository := ProvideOTPRepository(client)
+	customerRepository := ProvideCustomerRepository(client)
+	customerTokenStore := ProvideCustomerTokenStore(client)
+	customerAuthService := ProvideCustomerAuthService(otpRepository, customerRepository, customerTokenStore, cfg)
+	customerAuth := ProvideCustomerAuthMiddleware(customerAuthService)
 	pushDeps := &PushDeps{
-		Config:         cfg,
-		StoreHandler:   pushHandler,
-		AdminHandler:   handlerPushHandler,
-		AuthMiddleware: auth,
+		Config:                 cfg,
+		StoreHandler:           pushHandler,
+		AdminHandler:           handlerPushHandler,
+		AuthMiddleware:         auth,
+		CustomerAuthMiddleware: customerAuth,
 	}
 	return pushDeps, nil
 }
@@ -733,27 +744,28 @@ func InitializeMonolithDeps(ctx context.Context, cfg *config.Config) (*MonolithD
 	orderRepository := ProvideOrderRepository(client)
 	customerRepository := ProvideCustomerRepository(client)
 	paymentRepository := ProvidePaymentRepository(client)
-	orderService := ProvideOrderService(orderRepository, customerRepository, productRepository, inventoryRepository, priceQuoteRepository, paymentRepository, pricingService)
+	pushSubscriptionRepository := ProvidePushSubscriptionRepository(client)
+	gateway := ProvideWebPushGateway(cfg)
+	orderNotifier := ProvideOrderNotifier(pushSubscriptionRepository, gateway)
+	orderService := ProvideOrderService(orderRepository, customerRepository, productRepository, inventoryRepository, priceQuoteRepository, paymentRepository, pricingService, orderNotifier)
 	cartRepository := ProvideCartRepository(client)
 	cartService := ProvideCartService(cartRepository, productRepository, inventoryRepository)
-	gateway := ProvidePhonePeGateway(cfg)
+	phonepeGateway := ProvidePhonePeGateway(cfg)
 	couponRepository := ProvideCouponRepository(client)
 	couponService := ProvideCouponService(couponRepository)
-	paymentService := ProvidePaymentService(paymentRepository, orderRepository, inventoryRepository, cartService, customerRepository, gateway, couponService)
+	paymentService := ProvidePaymentService(paymentRepository, orderRepository, inventoryRepository, cartService, customerRepository, phonepeGateway, couponService)
 	refundRepository := ProvideRefundRepository(client)
 	auditRepository := ProvideAuditRepository(client)
 	auditService := ProvideAuditService(auditRepository)
 	notificationRepository := ProvideNotificationRepository(client)
 	notificationService := ProvideNotificationService(notificationRepository, userRepository)
-	refundService := ProvideRefundService(refundRepository, orderRepository, paymentRepository, inventoryRepository, userRepository, auditService, notificationService, gateway)
+	refundService := ProvideRefundService(refundRepository, orderRepository, paymentRepository, inventoryRepository, userRepository, auditService, notificationService, phonepeGateway)
 	orderHandler := ProvideOrderHandler(orderService, paymentService, refundService, validation)
 	customerService := ProvideCustomerService(customerRepository, orderRepository)
 	customerHandler := ProvideCustomerHandler(customerService, validation)
 	auditHandler := ProvideAuditHandler(auditService)
 	notificationHandler := ProvideNotificationHandler(notificationService, validation)
-	pushSubscriptionRepository := ProvidePushSubscriptionRepository(client)
-	webpushGateway := ProvideWebPushGateway(cfg)
-	pushService := ProvidePushService(pushSubscriptionRepository, webpushGateway, assetService)
+	pushService := ProvidePushService(pushSubscriptionRepository, gateway, assetService)
 	pushHandler := ProvidePushHandler(pushService, validation)
 	couponHandler := ProvideCouponHandler(couponService, validation)
 	utmLinkRepository := ProvideUTMLinkRepository(client)
@@ -775,7 +787,7 @@ func InitializeMonolithDeps(ctx context.Context, cfg *config.Config) (*MonolithD
 	shipmentRepository := ProvideShipmentRepository(client)
 	trackingHandler := ProvideStoreTrackingHandler(orderRepository, shipmentRepository)
 	profileHandler := ProvideStoreProfileHandler(customerRepository, validation)
-	webhookHandler := ProvideStoreWebhookHandler(paymentService, refundService, gateway, cfg)
+	webhookHandler := ProvideStoreWebhookHandler(paymentService, refundService, phonepeGateway, cfg)
 	centroidsRepository := ProvideCentroidsRepository(pool)
 	eventsHandler := ProvideStoreEventsHandler(validation, centroidsRepository)
 	storePushHandler := ProvideStorePushHandler(pushService, validation)
@@ -1002,10 +1014,11 @@ type StoreEventsDeps struct {
 // One Lambda because they share a repository, a gateway and a table — the auth
 // boundary between them is the router group, not the deployment unit.
 type PushDeps struct {
-	Config         *config.Config
-	StoreHandler   *store.PushHandler
-	AdminHandler   *handler.PushHandler
-	AuthMiddleware *middleware.Auth
+	Config                 *config.Config
+	StoreHandler           *store.PushHandler
+	AdminHandler           *handler.PushHandler
+	AuthMiddleware         *middleware.Auth
+	CustomerAuthMiddleware *middleware.CustomerAuth
 }
 
 // MonolithDeps contains every dependency the monolith API server needs.

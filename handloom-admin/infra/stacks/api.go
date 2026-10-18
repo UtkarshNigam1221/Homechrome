@@ -296,14 +296,16 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 	}
 
 	// The VAPID private key is read from SSM at runtime so it never enters the
-	// template; only the push Lambda signs pushes, so only it can read it.
+	// template; the push and order Lambdas sign pushes, so only they can read it.
 	vapidParam := fmt.Sprintf("/handloom/%s/vapid-private-key", props.Environment)
-	pushFn := lambdas["push"].Function
-	pushFn.AddEnvironment(jsii.String("VAPID_PRIVATE_KEY_PARAM"), jsii.String(vapidParam), nil)
-	pushFn.AddToRolePolicy(awsiam.NewPolicyStatement(&awsiam.PolicyStatementProps{
-		Actions:   jsii.Strings("ssm:GetParameter"),
-		Resources: jsii.Strings(fmt.Sprintf("arn:aws:ssm:*:*:parameter%s", vapidParam)),
-	}))
+	for _, svc := range []string{"push", "order"} {
+		fn := lambdas[svc].Function
+		fn.AddEnvironment(jsii.String("VAPID_PRIVATE_KEY_PARAM"), jsii.String(vapidParam), nil)
+		fn.AddToRolePolicy(awsiam.NewPolicyStatement(&awsiam.PolicyStatementProps{
+			Actions:   jsii.Strings("ssm:GetParameter"),
+			Resources: jsii.Strings(fmt.Sprintf("arn:aws:ssm:*:*:parameter%s", vapidParam)),
+		}))
+	}
 
 	// Embedder integration — grant catalog Lambda invoke + SSM read for embedder auth key.
 	// The embedder is a standalone stack; import it BY NAME so APIStack carries no
