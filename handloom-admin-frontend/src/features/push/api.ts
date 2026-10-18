@@ -1,10 +1,9 @@
 import apiClient from '@/shared/api/client';
 import { ROUTES } from '@/shared/constants/routes';
-import type { PaginationParams } from '@/shared/types/common';
+import type { PaginationParams, PaginationResponse } from '@/shared/types/common';
 
 import type {
   BroadcastRequest,
-  BroadcastResult,
   PushBroadcast,
   PushSubscriber,
   PushSubscriptionStatus,
@@ -12,7 +11,7 @@ import type {
 
 export interface SubscriberPage {
   subscriptions: PushSubscriber[];
-  pagination?: { has_more: boolean; next_cursor?: string };
+  pagination?: PaginationResponse;
 }
 
 export const pushApi = {
@@ -23,15 +22,13 @@ export const pushApi = {
     return response.data;
   },
 
-  listBroadcasts: async (limit = 20): Promise<{ broadcasts: PushBroadcast[] }> => {
-    const response = await apiClient.get<{ broadcasts: PushBroadcast[] }>(ROUTES.PUSH.BROADCASTS, {
-      params: { limit },
-    });
+  listBroadcasts: async (): Promise<{ broadcasts: PushBroadcast[] }> => {
+    const response = await apiClient.get<{ broadcasts: PushBroadcast[] }>(ROUTES.PUSH.BROADCASTS);
     return response.data;
   },
 
-  broadcast: async (data: BroadcastRequest): Promise<BroadcastResult> => {
-    const response = await apiClient.post<BroadcastResult>(ROUTES.PUSH.BROADCAST, data);
+  broadcast: async (data: BroadcastRequest): Promise<PushBroadcast> => {
+    const response = await apiClient.post<PushBroadcast>(ROUTES.PUSH.BROADCAST, data);
     return response.data;
   },
 };

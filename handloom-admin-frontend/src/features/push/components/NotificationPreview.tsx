@@ -3,21 +3,19 @@ import { useState } from 'react';
 
 import { bannerCropWarning } from '../lib/aspectRatio';
 import type { PushAction } from '../types';
+import { SegmentedTabs } from './SegmentedTabs';
 
 type PreviewMode = 'collapsed' | 'expanded' | 'lock';
 
 interface NotificationPreviewProps {
   title: string;
   body: string;
-  image?: string;
-  /** Renderable URL for `image` — the value itself may be an unresolvable tmp/ key. */
+  /** Renderable banner URL; the form's value itself may be an unresolvable tmp/ key. */
   imageSrc?: string;
-  /** Product thumbnail in place of the brand mark. */
-  icon?: string;
-  /** Renderable URL for `icon`, same reason as `imageSrc`. */
+  /** Renderable product thumbnail shown in place of the brand mark. */
   iconSrc?: string;
+  /** Already filtered and capped by the caller. */
   actions?: PushAction[];
-  origin?: string;
 }
 
 const MODES: { id: PreviewMode; label: string; caption: string }[] = [
@@ -48,12 +46,9 @@ const MODES: { id: PreviewMode; label: string; caption: string }[] = [
 export function NotificationPreview({
   title,
   body,
-  image,
   imageSrc,
-  icon,
   iconSrc,
   actions = [],
-  origin = 'homechrome.in',
 }: NotificationPreviewProps) {
   const [mode, setMode] = useState<PreviewMode>('expanded');
   // Verdicts are stored against the src that produced them: a broken <img>
@@ -62,8 +57,8 @@ export function NotificationPreview({
   const [failedIcon, setFailedIcon] = useState<string | null>(null);
   const [crop, setCrop] = useState<{ src: string; warning: string | null } | null>(null);
 
-  const bannerSrc = imageSrc?.trim() || image?.trim() || '';
-  const iconDisplaySrc = iconSrc?.trim() || icon?.trim() || '/icon-preview.png';
+  const bannerSrc = imageSrc ?? '';
+  const iconDisplaySrc = iconSrc || '/icon-preview.png';
 
   const imageBroken = failedBanner === bannerSrc;
   const iconBroken = failedIcon === iconDisplaySrc;
@@ -75,31 +70,17 @@ export function NotificationPreview({
 
   const expanded = mode === 'expanded';
   const locked = mode === 'lock';
-  const shownActions = actions.filter((a) => a.title.trim()).slice(0, 2);
   const caption = MODES.find((m) => m.id === mode)?.caption;
 
   return (
     <div>
       <div className="mb-3 flex items-center justify-between gap-3">
         <h2 className="font-semibold text-gray-900">On the device</h2>
-        <div className="flex rounded-lg bg-gray-100 p-0.5" role="tablist">
-          {MODES.map((m) => (
-            <button
-              key={m.id}
-              type="button"
-              role="tab"
-              aria-selected={mode === m.id}
-              onClick={() => setMode(m.id)}
-              className={`rounded-md px-2 py-1 text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 ${
-                mode === m.id
-                  ? 'bg-white text-gray-900 shadow-sm'
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              {m.label}
-            </button>
-          ))}
-        </div>
+        <SegmentedTabs<PreviewMode>
+          value={mode}
+          onChange={setMode}
+          options={MODES.map((m) => ({ id: m.id, label: m.label }))}
+        />
       </div>
 
       {/* Wallpaper, so the shade reads as a phone rather than another panel. */}
@@ -115,7 +96,7 @@ export function NotificationPreview({
             <div className="flex items-center gap-1.5 text-[11px] leading-none text-[#a8a8ab]">
               {/* The monochrome badge sits here, at status-bar size. */}
               <Globe className="h-3.5 w-3.5 shrink-0" aria-hidden />
-              <span className="truncate">{origin}</span>
+              <span className="truncate">homechrome.in</span>
               <span aria-hidden>•</span>
               <span className="shrink-0">now</span>
               <ChevronDown
@@ -175,9 +156,9 @@ export function NotificationPreview({
             />
           )}
 
-          {expanded && shownActions.length > 0 && (
+          {expanded && actions.length > 0 && (
             <div className="flex divide-x divide-white/10 border-t border-white/10">
-              {shownActions.map((action) => (
+              {actions.map((action) => (
                 <span
                   key={action.action}
                   className="flex-1 truncate px-3 py-2.5 text-center text-xs font-semibold uppercase tracking-wide text-[#a8c7fa]"

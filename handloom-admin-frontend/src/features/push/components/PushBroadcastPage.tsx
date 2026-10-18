@@ -9,11 +9,11 @@ import { pushApi } from '@/features/push/api';
 import { BannerImageField } from '@/features/push/components/BannerImageField';
 import { BroadcastDetailModal } from '@/features/push/components/BroadcastDetailModal';
 import { NotificationPreview } from '@/features/push/components/NotificationPreview';
-import { broadcastStatusVariant } from '@/features/push/lib/statusVariant';
 import { PUSH_TEMPLATES } from '@/features/push/templates';
-import { getErrorMessage } from '@/shared/api/client';
+import { getErrorDetails, getErrorMessage } from '@/shared/api/client';
 import { PageLoading } from '@/shared/components/loading';
 import { Badge, Button, Card, Input, PageHeader } from '@/shared/components/ui';
+import { getStatusBadgeVariant } from '@/shared/utils/badge';
 
 import type { PushAction, PushBroadcast, PushSubscriber, PushSubscriptionStatus } from '../types';
 
@@ -25,10 +25,8 @@ const BODY_COMFORTABLE = 100;
 const ACTION_TITLE_MAX = 24;
 
 const EMPTY_ACTION: PushAction = { action: '', title: '', url: '' };
-
-// An upload commits a tmp/ key; FinalizeUpload deletes that object before the
-// request can fail, so a retry with the same key can only fail again.
-const isTmpUpload = (value: string) => value.startsWith('tmp/');
+// Android shows at most two buttons, so the form always has exactly two rows.
+const EMPTY_ACTIONS: PushAction[] = [EMPTY_ACTION, EMPTY_ACTION];
 
 function deviceLabel(subscriber: PushSubscriber): string {
   const { browser, os } = subscriber.device ?? {};
@@ -47,7 +45,7 @@ export function PushBroadcastPage() {
   const [imageSrc, setImageSrc] = useState('');
   const [icon, setIcon] = useState('');
   const [iconSrc, setIconSrc] = useState('');
-  const [actions, setActions] = useState<PushAction[]>([{ ...EMPTY_ACTION }]);
+  const [actions, setActions] = useState<PushAction[]>(EMPTY_ACTIONS);
   const [subscriberStatus, setSubscriberStatus] = useState<PushSubscriptionStatus>('ACTIVE');
   const [openBroadcast, setOpenBroadcast] = useState<PushBroadcast | null>(null);
 
@@ -57,15 +55,11 @@ export function PushBroadcastPage() {
     setTitle(template.values.title);
     setBody(template.values.body);
     setUrl(template.values.url);
-    setImage(template.values.image ?? '');
-    setImageSrc(template.values.image ?? '');
-    setIcon(template.values.icon ?? '');
-    setIconSrc(template.values.icon ?? '');
-    setActions(
-      template.values.actions?.length
-        ? template.values.actions.map((a) => ({ ...a }))
-        : [{ ...EMPTY_ACTION }]
-    );
+    setImage('');
+    setImageSrc('');
+    setIcon('');
+    setIconSrc('');
+    setActions([...(template.values.actions ?? []), ...EMPTY_ACTIONS].slice(0, 2));
   };
 
   const updateAction = (index: number, patch: Partial<PushAction>) => {
@@ -91,7 +85,7 @@ export function PushBroadcastPage() {
 
   const { data: broadcastsData } = useQuery({
     queryKey: ['push-broadcasts'],
-    queryFn: () => pushApi.listBroadcasts(20),
+    queryFn: () => pushApi.listBroadcasts(),
   });
 
   const broadcastMutation = useMutation({
@@ -111,14 +105,15 @@ export function PushBroadcastPage() {
       setImageSrc('');
       setIcon('');
       setIconSrc('');
-      setActions([{ ...EMPTY_ACTION }]);
+      setActions(EMPTY_ACTIONS);
     },
     onError: (error) => {
-      // The service names the asset when a finalize fails; any other error
+      // The backend names the asset it could not finalize; any other error
       // (validation, auth, network) leaves the attached upload alone.
       const message = getErrorMessage(error);
-      const imageExpired = isTmpUpload(image) && /broadcast image/i.test(message);
-      const iconExpired = isTmpUpload(icon) && /broadcast icon/i.test(message);
+      const field = getErrorDetails<{ field?: string }>(error)?.field;
+      const imageExpired = field === 'image';
+      const iconExpired = field === 'icon';
       if (imageExpired) {
         setImage('');
         setImageSrc('');
@@ -146,7 +141,6 @@ export function PushBroadcastPage() {
   // A button needs a label; the id is derived so operators never type one.
   const preparedActions: PushAction[] = actions
     .filter((a) => a.title.trim())
-    .slice(0, 2)
     .map((a, i) => ({
       action: a.action.trim() || `action_${i + 1}`,
       title: a.title.trim(),
@@ -286,32 +280,20 @@ export function PushBroadcastPage() {
               </p>
 
               <div className="space-y-3">
-                {[0, 1].map((index) => (
+                {actions.map((action, index) => (
                   <div key={index} className="grid gap-3 sm:grid-cols-2">
                     <Input
                       label={`Button ${index + 1} label`}
-                      value={actions[index]?.title ?? ''}
+                      value={action.title}
                       maxLength={ACTION_TITLE_MAX}
-                      onChange={(e) => {
-                        if (!actions[index]) {
-                          setActions((prev) => [
-                            ...prev,
-                            { ...EMPTY_ACTION, title: e.target.value },
-                          ]);
-                          return;
-                        }
-                        updateAction(index, { title: e.target.value });
-                      }}
+                      onChange={(e) => updateAction(index, { title: e.target.value })}
                       placeholder={index === 0 ? 'Shop the loom' : 'Remind me'}
                     />
                     <Input
                       label={`Button ${index + 1} link`}
-                      value={actions[index]?.url ?? ''}
-                      onChange={(e) => {
-                        if (!actions[index]) return;
-                        updateAction(index, { url: e.target.value });
-                      }}
-                      disabled={!actions[index]?.title}
+                      value={action.url ?? ''}
+                      onChange={(e) => updateAction(index, { url: e.target.value })}
+                      disabled={!action.title}
                       placeholder="/products"
                       hint={index === 0 ? 'Defaults to the click-through URL' : undefined}
                     />
@@ -341,10 +323,8 @@ export function PushBroadcastPage() {
             <NotificationPreview
               title={title}
               body={body}
-              image={image.trim() || undefined}
-              imageSrc={imageSrc.trim() || undefined}
-              icon={icon.trim() || undefined}
-              iconSrc={iconSrc.trim() || undefined}
+              imageSrc={imageSrc || undefined}
+              iconSrc={iconSrc || undefined}
               actions={preparedActions}
             />
           </Card>
@@ -429,7 +409,7 @@ export function PushBroadcastPage() {
                       {broadcast.success_count}/{broadcast.total_targeted} delivered
                     </p>
                   </div>
-                  <Badge variant={broadcastStatusVariant[broadcast.status]}>
+                  <Badge variant={getStatusBadgeVariant(broadcast.status)}>
                     {broadcast.status}
                   </Badge>
                 </div>

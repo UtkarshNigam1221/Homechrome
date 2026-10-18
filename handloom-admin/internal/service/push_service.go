@@ -146,10 +146,10 @@ func (s *PushService) Broadcast(
 	// tmp/ is deleted after a day, so an unfinalized banner would break in
 	// history and on any notification still sitting on a device.
 	if payload.Image, err = s.assetFinalizer.FinalizeIfTemp(ctx, payload.Image); err != nil {
-		return nil, errors.Wrap(err, "Failed to store the broadcast image")
+		return nil, errors.Wrap(err, "Failed to store the broadcast image").WithDetails(map[string]string{"field": "image"})
 	}
 	if payload.Icon, err = s.assetFinalizer.FinalizeIfTemp(ctx, payload.Icon); err != nil {
-		return nil, errors.Wrap(err, "Failed to store the broadcast icon")
+		return nil, errors.Wrap(err, "Failed to store the broadcast icon").WithDetails(map[string]string{"field": "icon"})
 	}
 
 	broadcastID := "bcast_" + uuid.New().String()

@@ -1,8 +1,8 @@
 import { format } from 'date-fns';
 
 import { Badge, Modal } from '@/shared/components/ui';
+import { getStatusBadgeVariant } from '@/shared/utils/badge';
 
-import { broadcastStatusVariant } from '../lib/statusVariant';
 import type { PushBroadcast } from '../types';
 
 interface BroadcastDetailModalProps {
@@ -27,7 +27,7 @@ export function BroadcastDetailModal({ broadcast, onClose }: BroadcastDetailModa
         <dl className="divide-y divide-gray-100">
           <Row label="Status">
             <div className="flex items-center gap-2">
-              <Badge variant={broadcastStatusVariant[broadcast.status]}>{broadcast.status}</Badge>
+              <Badge variant={getStatusBadgeVariant(broadcast.status)}>{broadcast.status}</Badge>
               <span className="text-gray-600">
                 {broadcast.success_count} delivered, {broadcast.failure_count} failed, of{' '}
                 {broadcast.total_targeted} targeted

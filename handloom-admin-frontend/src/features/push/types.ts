@@ -48,14 +48,6 @@ export interface PushBroadcast {
   sent_by: string;
 }
 
-export interface BroadcastResult {
-  total_targeted: number;
-  success_count: number;
-  failure_count: number;
-  status: PushBroadcastStatus;
-  broadcast: PushBroadcast;
-}
-
 export interface BroadcastRequest {
   title: string;
   body: string;

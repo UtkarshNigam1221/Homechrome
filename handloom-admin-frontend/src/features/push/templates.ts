@@ -10,7 +10,7 @@ export interface PushTemplate {
   /** What this template is for, so the right one is picked without guessing. */
   purpose: string;
   values: Required<Pick<BroadcastRequest, 'title' | 'body' | 'url'>> &
-    Pick<BroadcastRequest, 'image' | 'icon' | 'actions'>;
+    Pick<BroadcastRequest, 'actions'>;
 }
 
 export const PUSH_TEMPLATES: PushTemplate[] = [

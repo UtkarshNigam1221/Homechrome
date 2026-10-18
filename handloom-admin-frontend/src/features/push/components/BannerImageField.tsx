@@ -4,6 +4,7 @@ import { useRef, useState } from 'react';
 import { Button, ImageUpload, Input } from '@/shared/components/ui';
 
 import { ProductImagePicker } from './ProductImagePicker';
+import { SegmentedTabs } from './SegmentedTabs';
 
 type Mode = 'upload' | 'url' | 'products';
 
@@ -40,31 +41,15 @@ export function BannerImageField({
     <div>
       <div className="mb-2 flex items-center justify-between">
         <label className="text-sm font-medium text-gray-700">{label}</label>
-        <div className="flex gap-1 rounded-lg bg-gray-100 p-0.5" role="tablist">
-          {(
-            [
-              ['upload', 'Upload', ImageIcon],
-              ['url', 'Paste URL', LinkIcon],
-              ['products', 'From products', LayoutGrid],
-            ] as const
-          ).map(([id, text, Icon]) => (
-            <button
-              key={id}
-              type="button"
-              role="tab"
-              aria-selected={mode === id}
-              onClick={() => setMode(id)}
-              className={`flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 ${
-                mode === id
-                  ? 'bg-white text-gray-900 shadow-sm'
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              <Icon className="h-3 w-3" />
-              {text}
-            </button>
-          ))}
-        </div>
+        <SegmentedTabs<Mode>
+          value={mode}
+          onChange={setMode}
+          options={[
+            { id: 'upload', label: 'Upload', icon: ImageIcon },
+            { id: 'url', label: 'Paste URL', icon: LinkIcon },
+            { id: 'products', label: 'From products', icon: LayoutGrid },
+          ]}
+        />
       </div>
 
       {mode === 'upload' ? (
