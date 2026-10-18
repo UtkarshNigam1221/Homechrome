@@ -134,7 +134,7 @@ func InitializeOrderDeps(ctx context.Context, cfg *config.Config) (*OrderDeps, e
 	cartService := ProvideCartService(cartRepository, productRepository, inventoryRepository)
 	gateway := ProvidePhonePeGateway(cfg)
 	couponRepository := ProvideCouponRepository(client)
-	couponService := ProvideCouponService(couponRepository)
+	couponService := ProvideCouponService(couponRepository, customerRepository)
 	paymentService := ProvidePaymentService(paymentRepository, orderRepository, inventoryRepository, cartService, customerRepository, gateway, couponService)
 	refundRepository := ProvideRefundRepository(client)
 	userRepository := ProvideUserRepository(client)
@@ -245,7 +245,8 @@ func InitializeCouponDeps(ctx context.Context, cfg *config.Config) (*CouponDeps,
 		return nil, err
 	}
 	couponRepository := ProvideCouponRepository(client)
-	couponService := ProvideCouponService(couponRepository)
+	customerRepository := ProvideCustomerRepository(client)
+	couponService := ProvideCouponService(couponRepository, customerRepository)
 	service := ProvideValidator()
 	validation := ProvideValidation(service)
 	couponHandler := ProvideCouponHandler(couponService, validation)
@@ -448,7 +449,8 @@ func InitializeStoreCatalogDeps(ctx context.Context, cfg *config.Config) (*Store
 		return nil, err
 	}
 	couponRepository := ProvideCouponRepository(dynamodbClient)
-	couponService := ProvideCouponService(couponRepository)
+	customerRepository := ProvideCustomerRepository(dynamodbClient)
+	couponService := ProvideCouponService(couponRepository, customerRepository)
 	catalogHandler := ProvideStoreCatalogHandler(productService, categoryService, inventoryService, couponService)
 	storeCatalogDeps := &StoreCatalogDeps{
 		Config:  cfg,
@@ -506,7 +508,7 @@ func InitializeStoreCheckoutDeps(ctx context.Context, cfg *config.Config) (*Stor
 	customerRepository := ProvideCustomerRepository(client)
 	gateway := ProvidePhonePeGateway(cfg)
 	couponRepository := ProvideCouponRepository(client)
-	couponService := ProvideCouponService(couponRepository)
+	couponService := ProvideCouponService(couponRepository, customerRepository)
 	paymentService := ProvidePaymentService(paymentRepository, orderRepository, inventoryRepository, cartService, customerRepository, gateway, couponService)
 	checkoutService := ProvideCheckoutService(cartService, orderRepository, paymentService, inventoryRepository, customerRepository, couponService)
 	service := ProvideValidator()
@@ -614,7 +616,7 @@ func InitializeStoreWebhooksDeps(ctx context.Context, cfg *config.Config) (*Stor
 	customerRepository := ProvideCustomerRepository(client)
 	gateway := ProvidePhonePeGateway(cfg)
 	couponRepository := ProvideCouponRepository(client)
-	couponService := ProvideCouponService(couponRepository)
+	couponService := ProvideCouponService(couponRepository, customerRepository)
 	paymentService := ProvidePaymentService(paymentRepository, orderRepository, inventoryRepository, cartService, customerRepository, gateway, couponService)
 	refundRepository := ProvideRefundRepository(client)
 	notificationRepository := ProvideNotificationRepository(client)
@@ -701,7 +703,7 @@ func InitializeMonolithDeps(ctx context.Context, cfg *config.Config) (*MonolithD
 	cartService := ProvideCartService(cartRepository, productRepository, inventoryRepository)
 	gateway := ProvidePhonePeGateway(cfg)
 	couponRepository := ProvideCouponRepository(client)
-	couponService := ProvideCouponService(couponRepository)
+	couponService := ProvideCouponService(couponRepository, customerRepository)
 	paymentService := ProvidePaymentService(paymentRepository, orderRepository, inventoryRepository, cartService, customerRepository, gateway, couponService)
 	refundRepository := ProvideRefundRepository(client)
 	auditRepository := ProvideAuditRepository(client)

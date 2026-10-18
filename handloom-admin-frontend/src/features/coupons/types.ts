@@ -42,7 +42,9 @@ export interface CreateCouponRequest {
   usage_limit: number;
   usage_per_user: number;
   audience: CouponAudience;
-  customer_id?: string;
+  // A phone, not an id — the server resolves it to a customer. Sent only for
+  // SPECIFIC_CUSTOMER, where the backend requires it.
+  customer_phone?: string;
   combines_with_offers: boolean;
   valid_from: string;
   valid_until?: string | null; // absent OR null = open-ended

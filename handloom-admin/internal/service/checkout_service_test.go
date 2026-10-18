@@ -276,7 +276,7 @@ func TestCheckoutService_CouponWorthMoreThanTheCartStillCompletes(t *testing.T) 
 		})
 
 	svc := NewCheckoutService(cartSvc, orderRepo, paymentSvc, inventoryRepo, customerRepo,
-		NewCouponService(couponRepo))
+		NewCouponService(couponRepo, nil))
 
 	result, err := svc.Initiate(context.Background(), "cust_1", domain.CheckoutRequest{
 		ShippingAddressID: "addr_1", CouponCode: ptr("BIGONE"),

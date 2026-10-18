@@ -308,8 +308,9 @@ func ProvideNotificationService(
 // ProvideCouponService creates a new CouponService
 func ProvideCouponService(
 	couponRepo domain.CouponRepository,
+	customerRepo domain.CustomerRepository,
 ) *service.CouponService {
-	return service.NewCouponService(couponRepo)
+	return service.NewCouponService(couponRepo, customerRepo)
 }
 
 // ProvideUTMLinkService creates a new UTMLinkService

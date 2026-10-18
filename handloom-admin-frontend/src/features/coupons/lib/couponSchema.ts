@@ -25,16 +25,38 @@ export const couponSchema = z
     usagePerUser: z.number().min(0),
     audience: z.enum(['ALL', 'FIRST_ORDER', 'RETURNING', 'SPECIFIC_CUSTOMER']),
     customerId: z.string(),
+    customerPhone: z.string(),
     combinesWithOffers: z.boolean(),
     validFrom: z.string().min(1, 'Valid from date is required'),
     noEndDate: z.boolean(),
     expiryDate: z.string(),
     status: z.enum(['ACTIVE', 'INACTIVE', 'EXPIRED']),
   })
-  .refine((data) => data.audience !== 'SPECIFIC_CUSTOMER' || data.customerId.trim().length > 0, {
-    message: 'Choose a customer for a single-customer coupon',
-    path: ['customerId'],
-  })
+  // A phone is required only when no customer is bound yet — that is, on create. An
+  // existing targeted coupon has an id and no phone, and its update sends neither.
+  .refine(
+    (data) =>
+      data.audience !== 'SPECIFIC_CUSTOMER' ||
+      data.customerId.trim().length > 0 ||
+      normalizedPhoneDigits(data.customerPhone).length === 10,
+    {
+      message: 'Enter the customer’s 10-digit mobile number',
+      path: ['customerPhone'],
+    }
+  )
+  // A right-length number can still not be a real Indian mobile; say so distinctly so a
+  // wrong-leading-digit retry doesn't look like the same "wrong length" mistake again.
+  .refine(
+    (data) =>
+      data.audience !== 'SPECIFIC_CUSTOMER' ||
+      data.customerId.trim().length > 0 ||
+      normalizedPhoneDigits(data.customerPhone).length !== 10 ||
+      looksLikeAPhone(data.customerPhone),
+    {
+      message: 'An Indian mobile number starts with 6, 7, 8, or 9',
+      path: ['customerPhone'],
+    }
+  )
   .refine((data) => data.noEndDate || data.expiryDate.trim().length > 0, {
     message: 'Set an end date, or mark this coupon open-ended',
     path: ['expiryDate'],
@@ -46,8 +68,17 @@ export const couponSchema = z
     path: ['value'],
   });
 
-// Nothing enforces an audience yet: CouponService.Validate never reads the field, so a
-// FIRST_ORDER or RETURNING coupon would work for everyone, and a SPECIFIC_CUSTOMER one
-// lands in a GSI1 partition the admin list never queries — unreachable, with no off
-// switch. Shown but disabled so the capability is visible and honest. Phase 3 adds
-// enforcement; re-enabling is deleting `disabled` and restoring a customer picker.
+// Mirrors the server's normalizePhone (strip, de-prefix). No length cap: any cap can
+// truncate a country-coded paste into a different, plausible number.
+function normalizedPhoneDigits(raw: string): string {
+  let digits = raw.replace(/\D/g, '');
+  if (digits.length === 12 && digits.startsWith('91')) digits = digits.slice(2);
+  else if (digits.length === 11 && digits.startsWith('0')) digits = digits.slice(1);
+  return digits;
+}
+
+function looksLikeAPhone(raw: string): boolean {
+  // Deliberately stricter than the server's length-only normalizePhone check: an Indian
+  // mobile always starts 6-9, so this rejects early rather than round-tripping to a 404.
+  return /^[6-9]\d{9}$/.test(normalizedPhoneDigits(raw));
+}

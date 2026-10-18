@@ -20,7 +20,8 @@ export interface CouponFormValues {
   usageLimit: number; // 0 = unlimited
   usagePerUser: number; // 0 = unlimited
   audience: CouponAudience;
-  customerId: string; // only meaningful, and only sent, for SPECIFIC_CUSTOMER
+  customerId: string; // read-only, populated on edit; never sent
+  customerPhone: string; // only meaningful, and only sent, for SPECIFIC_CUSTOMER on create
   combinesWithOffers: boolean;
   validFrom: string; // YYYY-MM-DD
   noEndDate: boolean;
@@ -42,6 +43,7 @@ export const defaultCouponFormValues: CouponFormValues = {
   usagePerUser: 0,
   audience: 'ALL',
   customerId: '',
+  customerPhone: '',
   combinesWithOffers: false,
   validFrom: '',
   noEndDate: false,
@@ -81,10 +83,10 @@ export function instantToDateOnly(instant: string): string {
   return instant.slice(0, 10);
 }
 
-// customer_id is sent only when the audience actually names a customer — required
-// there, rejected otherwise.
-function customerIdFor(form: CouponFormValues): string | undefined {
-  return form.audience === 'SPECIFIC_CUSTOMER' ? form.customerId : undefined;
+// customer_phone is sent only when the audience names a customer. The server
+// normalises and resolves it; sending a cleaned string would split that ownership.
+function customerPhoneFor(form: CouponFormValues): string | undefined {
+  return form.audience === 'SPECIFIC_CUSTOMER' ? form.customerPhone : undefined;
 }
 
 // The cap only means something on a percentage coupon.
@@ -106,7 +108,7 @@ export function toCreateRequest(form: CouponFormValues): CreateCouponRequest {
     usage_limit: form.usageLimit || 0,
     usage_per_user: form.usagePerUser || 0,
     audience: form.audience,
-    customer_id: customerIdFor(form),
+    customer_phone: customerPhoneFor(form),
     combines_with_offers: form.combinesWithOffers ?? false,
     valid_from: dateOnlyToInstant(form.validFrom),
     // Explicit null, not an omitted key — kept consistent with the update path below,
@@ -161,6 +163,7 @@ export function couponToFormValues(coupon: Coupon): CouponFormValues {
     usagePerUser: coupon.usage_per_user || 0,
     audience: coupon.audience,
     customerId: coupon.customer_id ?? '',
+    customerPhone: '',
     combinesWithOffers: coupon.combines_with_offers,
     validFrom: instantToDateOnly(coupon.valid_from),
     // == null, not === null: an open-ended coupon's valid_until key is entirely
