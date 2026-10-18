@@ -33,7 +33,11 @@ Resources:
             Action: sts:AssumeRoleWithWebIdentity
             Condition:
               StringLike:
-                token.actions.githubusercontent.com:sub: !Sub repo:${GitHubOrg}/${GitHubRepo}:*
+                token.actions.githubusercontent.com:sub:
+                  - !Sub repo:${GitHubOrg}/${GitHubRepo}:*
+                  # The LLDLab repos deploy with this role too, from main only.
+                  - !Sub repo:${GitHubOrg}/lldlab-monorepo:ref:refs/heads/main
+                  - !Sub repo:${GitHubOrg}/lldlab-frontend:ref:refs/heads/main
               StringEquals:
                 token.actions.githubusercontent.com:aud: sts.amazonaws.com
       ManagedPolicyArns:
