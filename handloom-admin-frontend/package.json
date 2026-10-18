@@ -48,7 +48,7 @@
     "@hookform/resolvers": "^5.4.0",
     "@neondatabase/neon-js": "^0.7.0-beta",
     "@tanstack/react-query": "^5.100.5",
-    "axios": "^1.16.0",
+    "axios": "^1.20.0",
     "browser-image-compression": "^2.0.2",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
