@@ -26,7 +26,6 @@ import { SUPPORT_PHONE } from '@/lib/constants';
 import { ROUTES } from '@/lib/routes';
 import { formatDateTime as formatDate } from '@/lib/utils';
 
-import { displayFont } from '../fonts';
 
 
 interface StatusHistoryEntry {
@@ -80,13 +79,6 @@ export default function TrackOrderPage() {
       <Breadcrumb items={[{ label: 'Home', href: '/' }, { label: 'Track Order' }]} />
 
       <Stack gap="md" mb="xl" maw={640}>
-        <Group gap={8} w="fit-content" px={12} py={6} bg="navy.2" style={{ borderRadius: 999 }}>
-          <Box w={7} h={7} bg="var(--mantine-color-leaf-5)" style={{ borderRadius: 999 }} />
-          <Text fz={11} fw={700} c="navy.7" style={{ letterSpacing: '0.12em' }}>
-            DISPATCH TO DOORSTEP
-          </Text>
-        </Group>
-
         <Title
           order={1}
           fz={{ base: '2rem', sm: '2.75rem' }}
@@ -94,10 +86,7 @@ export default function TrackOrderPage() {
           lh={1.12}
           c="navy.9"
         >
-          Track Your{' '}
-          <Text span inherit c="brand.5" fs="italic">
-            Order
-          </Text>
+          Track your order
         </Title>
 
         <Text c="navy.6" lh={1.65}>
@@ -109,8 +98,8 @@ export default function TrackOrderPage() {
       <Card shadow="sm" radius="lg" padding="lg" withBorder={false} mb="lg">
         <form onSubmit={handleSubmit}>
           <Stack gap="sm">
-            <Text fz={11} fw={700} c="navy.5" style={{ letterSpacing: '0.1em' }}>
-              ORDER NUMBER
+            <Text fz="sm" fw={600} c="navy.8">
+              Order number
             </Text>
             <Group gap="sm" align="flex-start" wrap="nowrap">
               <TextInput
@@ -196,9 +185,9 @@ export default function TrackOrderPage() {
                         target="_blank"
                         rel="noopener noreferrer"
                         size="sm"
-                        c="brand"
+                        c="brand.7"
                       >
-                        Track on courier website →
+                        Track on courier website
                       </Anchor>
                     )}
                   </Stack>
@@ -238,7 +227,7 @@ export default function TrackOrderPage() {
                           h={20}
                           bg={idx === 0 ? 'brand.5' : 'white'}
                           style={{
-                            border: `2px solid var(--mantine-color-${idx === 0 ? 'brand-5' : 'default-border'})`,
+                            border: `2px solid var(--mantine-color-${idx === 0 ? 'brand-7' : 'default-border'})`,
                             borderRadius: '50%',
                           }}
                         />
@@ -264,7 +253,6 @@ export default function TrackOrderPage() {
                   fz="1.125rem"
                   fw={600}
                   c="navy.9"
-                  style={{ fontFamily: displayFont.style.fontFamily }}
                 >
                   Something not right with this parcel?
                 </Text>

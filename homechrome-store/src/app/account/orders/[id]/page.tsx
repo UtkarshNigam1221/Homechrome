@@ -125,7 +125,7 @@ export default function OrderDetailPage() {
     <Stack gap="lg">
       <Group justify="space-between" align="start" wrap="wrap" gap="md">
         <Stack gap={2}>
-          <Anchor component={Link} href="/account/orders" size="sm" c="brand">
+          <Anchor component={Link} href="/account/orders" size="sm" c="brand.7">
             ← Back to Orders
           </Anchor>
           <Title order={2} size="md">Order #{order.order_number}</Title>
@@ -192,7 +192,7 @@ export default function OrderDetailPage() {
               {order.tracking_url && (
                 <Stack gap={2}>
                   <Text size="xs" c="dimmed">Track Shipment</Text>
-                  <Anchor href={order.tracking_url} target="_blank" rel="noopener noreferrer" size="sm" c="brand">
+                  <Anchor href={order.tracking_url} target="_blank" rel="noopener noreferrer" size="sm" c="brand.7">
                     Track on courier website
                   </Anchor>
                 </Stack>

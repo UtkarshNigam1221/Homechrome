@@ -45,7 +45,7 @@ export function QuantityStepper({
       style={{
         display: fullWidth ? 'flex' : 'inline-flex',
         width: fullWidth ? '100%' : undefined,
-        border: `1px solid var(--mantine-color-${isPrimary ? 'brand-5' : 'default-border'})`,
+        border: `1px solid var(--mantine-color-${isPrimary ? 'brand-7' : 'default-border'})`,
         borderRadius: 'var(--mantine-radius-md)',
         backgroundColor: isPrimary ? 'var(--mantine-color-brand-0)' : undefined,
       }}
@@ -68,7 +68,7 @@ export function QuantityStepper({
         ta="center"
         fw={isPrimary ? 700 : 500}
         size={s.fontSize}
-        c={isPrimary ? 'brand.5' : 'navy.7'}
+        c={isPrimary ? 'brand.7' : 'navy.7'}
         w={s.count}
       >
         {loading ? '...' : value}

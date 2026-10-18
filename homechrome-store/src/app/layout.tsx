@@ -12,7 +12,7 @@ import { API_BASE, IS_INDEXABLE, SITE_URL } from '@/lib/constants';
 import { ROUTES } from '@/lib/routes';
 import { Category, PublicCoupon } from '@/types';
 
-import { siteFont } from './fonts';
+import { displayFont, siteFont } from './fonts';
 import './globals.css';
 import { Providers } from './providers';
 
@@ -60,7 +60,7 @@ export default async function RootLayout({
 }>) {
   const [categories, coupons] = await Promise.all([getCategories(), getPublicCoupons()]);
   return (
-    <html lang="en" {...mantineHtmlProps}>
+    <html lang="en" className={displayFont.variable} {...mantineHtmlProps}>
       <head>
         <ColorSchemeScript defaultColorScheme="light" />
       </head>

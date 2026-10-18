@@ -94,8 +94,8 @@ export default function FilterSidebar({
     <Stack gap="lg" component="aside">
       {categories && categories.length > 0 && (
         <Stack gap={6}>
-          <Text fz={12} fw={700} c="navy.9" style={{ letterSpacing: '0.1em' }}>
-            CATEGORIES
+          <Text fz="sm" fw={700} c="navy.9">
+            Categories
           </Text>
           {categories.map((category) => {
             const active = category.slug === activeCategorySlug;
@@ -108,7 +108,7 @@ export default function FilterSidebar({
                 py={3}
               >
                 <Group justify="space-between" wrap="nowrap" gap="xs">
-                  <Text size="sm" fw={active ? 600 : 400} c={active ? 'brand.5' : 'navy.7'}>
+                  <Text size="sm" fw={active ? 600 : 400} c={active ? 'brand.7' : 'navy.7'}>
                     {category.name}
                   </Text>
                   <Text size="xs" c="navy.5">

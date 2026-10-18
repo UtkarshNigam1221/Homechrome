@@ -38,9 +38,8 @@ export default async function CategoriesPage() {
       <Breadcrumb items={[{ label: 'Home', href: '/' }, { label: 'Categories' }]} />
 
       <PageHeader
-        eyebrow="The archive"
-        title="Curated Handloom Categories"
-        description={`${total} handcrafted pieces across ${categories.length} collections — bedsheets, dohars and cushions woven and printed across India.`}
+        title="Collections"
+        description={`${total} pieces across ${categories.length} collections: bedsheets, dohars and cushions, printed and woven by hand in India.`}
       />
 
       {categories.length > 0 ? (

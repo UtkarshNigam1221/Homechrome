@@ -4,12 +4,10 @@ import { ArrowUpRightIcon } from '@heroicons/react/24/outline';
 import { Anchor, Box, Card, Group, Stack, Text } from '@mantine/core';
 import Link from 'next/link';
 
-import { displayFont } from '../fonts';
 
 export function DeskCard({
   tile,
   icon,
-  eyebrow,
   title,
   body,
   detail,
@@ -17,7 +15,6 @@ export function DeskCard({
 }: {
   tile: { bg: string; fg: string };
   icon: React.ReactNode;
-  eyebrow: string;
   title: string;
   body: string;
   detail: string;
@@ -41,14 +38,10 @@ export function DeskCard({
         </Box>
 
         <Stack gap={2}>
-          <Text fz={10} fw={700} c="navy.5" style={{ letterSpacing: '0.1em' }}>
-            {eyebrow.toUpperCase()}
-          </Text>
           <Text
             fz="1.125rem"
             fw={600}
             c="navy.9"
-            style={{ fontFamily: displayFont.style.fontFamily }}
           >
             {title}
           </Text>
@@ -78,7 +71,7 @@ export function DeskCard({
               <Text fz="xs" fw={600} c={action.tone === 'leaf' ? 'white' : 'navy.8'}>
                 {action.label}
               </Text>
-              <ArrowUpRightIcon width={13} height={13} />
+              {action.external && <ArrowUpRightIcon width={13} height={13} />}
             </Group>
           </ActionLink>
         )}
@@ -143,7 +136,7 @@ export function ReachTile({
             {icon}
           </Box>
           <Stack gap={1} style={{ minWidth: 0 }}>
-            <Text fz={9} fw={700} c="navy.5" style={{ letterSpacing: '0.1em' }}>
+            <Text fz={11} fw={500} c="navy.5">
               {label}
             </Text>
             <Text fz="xs" fw={600} c="navy.9" style={{ wordBreak: 'break-word' }}>

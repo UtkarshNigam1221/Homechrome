@@ -63,7 +63,7 @@ export default function CouponInput({
         px={12}
         style={{
           background: 'var(--mantine-color-brand-1)',
-          borderInlineStart: '3px solid var(--mantine-color-brand-5)',
+          borderInlineStart: '3px solid var(--mantine-color-brand-7)',
           borderRadius: '0 var(--mantine-radius-sm) var(--mantine-radius-sm) 0',
         }}
       >

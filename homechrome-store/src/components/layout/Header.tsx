@@ -1,6 +1,6 @@
 'use client';
 
-import { Bars3Icon, MagnifyingGlassIcon, ShoppingBagIcon, UserIcon } from '@heroicons/react/24/outline';
+import { Bars3Icon, MagnifyingGlassIcon, ShoppingBagIcon, UserCircleIcon } from '@heroicons/react/24/outline';
 import {
   ActionIcon,
   Anchor,
@@ -8,7 +8,6 @@ import {
   Container,
   Group,
   Indicator,
-  Kbd,
   Stack,
   Text,
   Tooltip,
@@ -23,7 +22,6 @@ import { useState } from 'react';
 
 import logo80 from '@/assets/logo-80.webp';
 
-import { displayFont } from '@/app/fonts';
 import { useAuthStore } from '@/stores/auth';
 import { useCartStore } from '@/stores/cart';
 import { useUIStore } from '@/stores/uiStore';
@@ -62,7 +60,7 @@ export default function Header({ categories }: HeaderProps) {
         style={{
           zIndex: 40,
           borderBottom: '1px solid var(--mantine-color-navy-2)',
-          background: 'rgba(252,249,244,0.95)',
+          background: 'rgba(255,255,255,0.95)',
           backdropFilter: 'blur(8px)',
         }}
       >
@@ -95,9 +93,8 @@ export default function Header({ categories }: HeaderProps) {
                       fw={600}
                       c="navy.9"
                       lh={1.1}
-                      style={{ fontFamily: displayFont.style.fontFamily }}
                     >
-                      HOME<Text span c="brand.5" inherit>CHROME</Text>
+                      HOME<Text span c="brand.7" inherit>CHROME</Text>
                     </Text>
                     <Text
                       fz={9}
@@ -127,7 +124,7 @@ export default function Header({ categories }: HeaderProps) {
                     href={link.href}
                     size="sm"
                     fw={active ? 600 : 500}
-                    c={active ? 'brand.5' : 'navy.7'}
+                    c={active ? 'brand.7' : 'navy.7'}
                     underline="never"
                   >
                     {link.label}
@@ -159,6 +156,7 @@ export default function Header({ categories }: HeaderProps) {
                   size={16}
                   offset={2}
                   color="brand"
+                  visibleFrom="md"
                 >
                   <ActionIcon
                     component={Link}
@@ -185,14 +183,12 @@ export default function Header({ categories }: HeaderProps) {
                 <ActionIcon
                   component={Link}
                   href={isAuthenticated ? '/account' : '/login'}
-                  variant="filled"
-                  color="brand"
-                  radius="xl"
+                  variant="subtle"
+                  color="navy"
                   size="lg"
-                  visibleFrom="md"
                   aria-label={isAuthenticated ? 'My account' : 'Login'}
                 >
-                  <UserIcon width={20} height={20} />
+                  <UserCircleIcon width={24} height={24} />
                 </ActionIcon>
               </Tooltip>
             </Group>
@@ -231,9 +227,6 @@ function SpotlightTrigger() {
         <Text size="sm" c="dimmed" hiddenFrom="sm" style={{ flex: 1, textAlign: 'left' }}>
           Search
         </Text>
-        <Kbd size="xs" visibleFrom="xl">
-          ⌘K
-        </Kbd>
       </Group>
     </UnstyledButton>
   );

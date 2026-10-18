@@ -1,6 +1,6 @@
 'use client';
 
-import { PhotoIcon, ShoppingBagIcon } from '@heroicons/react/24/outline';
+import { PhotoIcon } from '@heroicons/react/24/outline';
 import {
   AspectRatio,
   Badge,
@@ -18,7 +18,6 @@ import { useState } from 'react';
 
 import { DiscountBadge } from '@/components/ui/discount-badge';
 import { QuantityStepper } from '@/components/ui/quantity-stepper';
-import { displayFont } from '@/app/fonts';
 import { useCart } from '@/hooks/useCart';
 import { calculateDiscountPercent, formatPrice, stripMarkdown } from '@/lib/utils';
 import { useCartStore } from '@/stores/cart';
@@ -93,7 +92,7 @@ export default function ProductCard({ product }: ProductCardProps) {
   };
 
   return (
-    <Card shadow="sm" padding={0} radius="lg" withBorder={false}>
+    <Card shadow="sm" padding={0} radius="sm" withBorder={false}>
       <Card.Section component={Link} href={`/p/${product.slug}`} pos="relative">
         <AspectRatio ratio={1} bg="gray.1">
           {primaryImage ? (
@@ -107,7 +106,7 @@ export default function ProductCard({ product }: ProductCardProps) {
             />
           ) : (
             <Center bg="brand.1" h="100%">
-              <PhotoIcon width={48} height={48} color="var(--mantine-color-brand-5)" opacity={0.4} />
+              <PhotoIcon width={48} height={48} color="var(--mantine-color-brand-7)" opacity={0.4} />
             </Center>
           )}
         </AspectRatio>
@@ -118,7 +117,7 @@ export default function ProductCard({ product }: ProductCardProps) {
               <Box
                 px={8}
                 py={3}
-                bg="rgba(252,249,244,0.93)"
+                bg="rgba(245,240,235,0.93)"
                 visibleFrom="sm"
                 style={{ borderRadius: 4 }}
               >
@@ -140,16 +139,8 @@ export default function ProductCard({ product }: ProductCardProps) {
 
       <Stack p="md" gap="xs">
         {provenance && (
-          <Text
-            fz={10}
-            fw={700}
-            c="brand.5"
-            tt="uppercase"
-            lineClamp={1}
-            hiddenFrom="sm"
-            style={{ letterSpacing: '0.1em' }}
-          >
-            {provenance}
+          <Text fz={11} fw={600} c="brand.7" tt="capitalize" lineClamp={1} hiddenFrom="sm">
+            {provenance.toLowerCase()}
           </Text>
         )}
 
@@ -159,7 +150,7 @@ export default function ProductCard({ product }: ProductCardProps) {
             fw={600}
             c="navy.9"
             lineClamp={2}
-            style={{ minHeight: '2lh', fontFamily: displayFont.style.fontFamily }}
+            style={{ minHeight: '2lh' }}
           >
             {product.name}
           </Text>
@@ -183,7 +174,7 @@ export default function ProductCard({ product }: ProductCardProps) {
               <Text
                 size="xs"
                 fw={600}
-                c="brand.6"
+                c="brand.8"
                 visibleFrom="sm"
                 style={{ whiteSpace: 'nowrap' }}
               >
@@ -224,9 +215,6 @@ export default function ProductCard({ product }: ProductCardProps) {
               bg="navy.1"
               styles={{ label: { fontWeight: 600 } }}
               fullWidth
-              leftSection={
-                product.in_stock ? <ShoppingBagIcon width={16} height={16} /> : undefined
-              }
               onClick={handleAddToCart}
               loading={loading}
               disabled={!product.in_stock}

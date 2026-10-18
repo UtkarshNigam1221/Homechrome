@@ -216,7 +216,7 @@ function GalleryThumbnail({ item, index, productName, isActive, onSelect }: Thum
           width: 80,
           height: 80,
           overflow: 'hidden',
-          borderColor: isActive ? 'var(--mantine-color-brand-5)' : 'transparent',
+          borderColor: isActive ? 'var(--mantine-color-brand-7)' : 'transparent',
           borderWidth: 2,
         }}
       >

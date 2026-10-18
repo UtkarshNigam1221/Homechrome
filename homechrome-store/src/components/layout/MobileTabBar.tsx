@@ -48,8 +48,8 @@ export function MobileTabBar() {
               aria-current={active ? 'page' : undefined}
             >
               <Stack gap={3} align="center">
-                <Icon width={22} height={22} color={`var(--mantine-color-${active ? 'brand-5' : 'navy-6'})`} />
-                <Text fz={10} fw={active ? 700 : 500} c={active ? 'brand.5' : 'navy.6'}>
+                <Icon width={22} height={22} color={`var(--mantine-color-${active ? 'brand-7' : 'navy-6'})`} />
+                <Text fz={10} fw={active ? 700 : 500} c={active ? 'brand.7' : 'navy.6'}>
                   {label}
                 </Text>
               </Stack>

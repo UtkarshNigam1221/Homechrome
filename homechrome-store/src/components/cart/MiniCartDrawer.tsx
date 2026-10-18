@@ -111,7 +111,7 @@ export function MiniCartDrawer() {
                         />
                       ) : (
                         <Center bg="brand.1" h="100%">
-                          <PhotoIcon width={24} height={24} color="var(--mantine-color-brand-5)" opacity={0.4} />
+                          <PhotoIcon width={24} height={24} color="var(--mantine-color-brand-7)" opacity={0.4} />
                         </Center>
                       )}
                     </Box>

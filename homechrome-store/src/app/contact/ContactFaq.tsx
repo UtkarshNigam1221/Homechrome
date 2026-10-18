@@ -3,7 +3,6 @@
 import { ChevronDownIcon } from '@heroicons/react/24/outline';
 import { Accordion, Text } from '@mantine/core';
 
-import { displayFont } from '../fonts';
 
 /**
  * Client-side because Accordion's compound parts (Accordion.Item and friends)
@@ -23,7 +22,6 @@ export function ContactFaq({ faqs }: { faqs: { q: string; a: string }[] }) {
               fz={{ base: 'md', sm: '1.125rem' }}
               fw={600}
               c="navy.9"
-              style={{ fontFamily: displayFont.style.fontFamily }}
             >
               {q}
             </Text>

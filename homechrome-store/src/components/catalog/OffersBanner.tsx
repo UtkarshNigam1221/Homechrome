@@ -49,7 +49,7 @@ function CodeChip({ code }: { code: string }) {
         style={{
           userSelect: 'text',
           borderRadius: 'var(--mantine-radius-sm)',
-          border: `1px dashed var(--mantine-color-${copied ? 'brand-5' : 'navy-4'})`,
+          border: `1px dashed var(--mantine-color-${copied ? 'brand-7' : 'navy-4'})`,
           background: `var(--mantine-color-${copied ? 'brand-1' : 'navy-2'})`,
           transition: 'background 140ms ease, border-color 140ms ease',
         }}
@@ -58,13 +58,13 @@ function CodeChip({ code }: { code: string }) {
           component="span"
           fz={11}
           fw={700}
-          c="brand.6"
+          c="brand.8"
           tt="uppercase"
           style={{ letterSpacing: '0.1em' }}
         >
           {copied ? 'Copied' : code}
         </Text>
-        {!copied && <ClipboardDocumentIcon width={11} height={11} color="var(--mantine-color-brand-6)" />}
+        {!copied && <ClipboardDocumentIcon width={11} height={11} color="var(--mantine-color-brand-8)" />}
       </Group>
     </UnstyledButton>
   );
@@ -95,7 +95,7 @@ export default function OffersBanner({ coupons }: OffersBannerProps) {
           <SparklesIcon
             width={15}
             height={15}
-            color="var(--mantine-color-brand-5)"
+            color="var(--mantine-color-brand-7)"
             style={{ flexShrink: 0 }}
           />
           {shown.map((coupon, i) => {

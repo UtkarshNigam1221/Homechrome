@@ -57,7 +57,7 @@ function StatusActions({ children }: { children: React.ReactNode }) {
 
 function SecondaryLink({ href, children }: { href: string; children: React.ReactNode }) {
   return (
-    <Anchor component={Link} href={href} size="sm" c="brand">
+    <Anchor component={Link} href={href} size="sm" c="brand.7">
       {children}
     </Anchor>
   );

@@ -84,7 +84,7 @@ export default function CartSummary({ subtotal, itemCount, isAuthenticated }: Ca
         <Anchor
           component={Link}
           href="/products"
-          c="brand"
+          c="brand.7"
           size="sm"
           underline="never"
           ta="center"
