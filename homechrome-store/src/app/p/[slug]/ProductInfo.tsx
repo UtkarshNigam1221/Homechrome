@@ -1,28 +1,13 @@
 'use client';
 
-import {
-  ArrowRightIcon,
-  ChevronDownIcon,
-  ShoppingBagIcon,
-  TruckIcon,
-} from '@heroicons/react/24/outline';
-import {
-  Accordion,
-  Box,
-  Button,
-  Group,
-  Stack,
-  Text,
-  Title,
-} from '@mantine/core';
+import { ChevronDownIcon } from '@heroicons/react/24/outline';
+import { Accordion, Box, Button, Divider, Group, Stack, Text, Title } from '@mantine/core';
 
-import { AssuranceRow } from '@/components/ui/assurance-row';
+import { DiscountBadge } from '@/components/ui/discount-badge';
 import { QuantityStepper } from '@/components/ui/quantity-stepper';
 import { useProductCartActions } from '@/hooks/useProductCartActions';
-import { DISPATCH_DAYS } from '@/lib/constants';
 import { calculateDiscountPercent, formatPrice } from '@/lib/utils';
 import { Product } from '@/types';
-
 
 type Spec = { label: string; value: string };
 
@@ -84,58 +69,37 @@ export function ProductInfo({ product }: ProductInfoProps) {
 
   return (
     <Stack gap="md">
-      <Group justify="space-between" align="center" gap="sm" wrap="nowrap">
-        <Text fz="xs" fw={600} c="navy.6" tt="capitalize" lineClamp={1}>
-          {[product.craft_type?.toLowerCase(), product.origin].filter(Boolean).join(' · ')}
-          {product.sku ? `${product.craft_type || product.origin ? ' · ' : ''}SKU: ${product.sku}` : ''}
+      <Stack gap={4}>
+        <Title order={1} size="h2">{product.name}</Title>
+        {product.sku && (
+          <Text size="sm" c="dimmed">SKU: {product.sku}</Text>
+        )}
+      </Stack>
+
+      <Group align="baseline" gap="sm">
+        <Text size="2rem" fw={700} c="navy.7">
+          {formatPrice(product.selling_price)}
         </Text>
-        <Group gap={5} wrap="nowrap" style={{ flexShrink: 0 }}>
-          <TruckIcon width={14} height={14} color="var(--mantine-color-navy-6)" />
-          <Text fz="xs" fw={600} c="navy.6" style={{ letterSpacing: '0.05em' }}>
-            FAST DISPATCH
-          </Text>
-        </Group>
+        {hasDiscount && (
+          <>
+            <Text size="lg" c="dimmed" td="line-through">
+              {formatPrice(product.base_price)}
+            </Text>
+            <DiscountBadge percent={discountPercent} variant="soft" />
+          </>
+        )}
       </Group>
 
-      <Title
-        order={1}
-        fz={{ base: '1.75rem', sm: '2.25rem' }}
-        fw={600}
-        lh={1.15}
-        c="navy.9"
-      >
-        {product.name}
-      </Title>
+      {hasDiscount && (
+        <Text size="sm" fw={600} c="teal.7">
+          You save {formatPrice(product.base_price - product.selling_price)} ({discountPercent}% off)
+        </Text>
+      )}
 
-      <Box bg="navy.1" p="md" style={{ borderRadius: 'var(--mantine-radius-md)' }}>
-        <Group align="baseline" gap="sm" wrap="wrap">
-          <Text fz="2.25rem" fw={700} c="brand.5" lh={1}>
-            {formatPrice(product.selling_price)}
-          </Text>
-          {hasDiscount && (
-            <>
-              <Text size="lg" c="dimmed" td="line-through">
-                MRP {formatPrice(product.base_price)}
-              </Text>
-              <Box px={9} py={3} bg="brand.1" style={{ borderRadius: 4 }}>
-                <Text fz="xs" fw={700} c="brand.6">
-                  SAVE {formatPrice(product.base_price - product.selling_price)} ({discountPercent}% OFF)
-                </Text>
-              </Box>
-            </>
-          )}
-        </Group>
-
-        <Group gap="xs" mt={10} wrap="wrap">
-          <StockStatus inStock={product.in_stock} />
-          <Text size="sm" c="navy.6">
-            · Dispatched in {DISPATCH_DAYS} business days · Inclusive of all taxes
-          </Text>
-        </Group>
-      </Box>
+      <StockStatus inStock={product.in_stock} />
 
       {product.description && (
-        <Section title="The Craft Story">
+        <Section title="Description">
           <Text size="md" c="gray.7" maw="62ch" style={{ whiteSpace: 'pre-line', lineHeight: 1.7 }}>
             {product.description}
           </Text>
@@ -143,7 +107,7 @@ export function ProductInfo({ product }: ProductInfoProps) {
       )}
 
       {specs.length > 0 && (
-        <Section title="Specifications & Dimensions">
+        <Section title="Details">
           <Accordion
             multiple
             variant="separated"
@@ -165,7 +129,9 @@ export function ProductInfo({ product }: ProductInfoProps) {
         </Section>
       )}
 
-      <Group grow align="stretch" gap="sm" mt="xs">
+      <Divider my="md" />
+
+      <Group grow align="stretch" gap="sm">
         {cartQty > 0 ? (
           <QuantityStepper
             value={cartQty}
@@ -178,10 +144,9 @@ export function ProductInfo({ product }: ProductInfoProps) {
           />
         ) : (
           <Button
-            variant="default"
+            variant="light"
+            color="brand"
             size="lg"
-            radius="sm"
-            leftSection={<ShoppingBagIcon width={18} height={18} />}
             onClick={handleAdd}
             loading={loading}
             disabled={!product.in_stock}
@@ -192,8 +157,6 @@ export function ProductInfo({ product }: ProductInfoProps) {
         <Button
           color="brand"
           size="lg"
-          radius="sm"
-          rightSection={<ArrowRightIcon width={18} height={18} />}
           onClick={handleBuyNow}
           loading={loading}
           disabled={!product.in_stock}
@@ -201,10 +164,6 @@ export function ProductInfo({ product }: ProductInfoProps) {
           Buy Now
         </Button>
       </Group>
-
-      <Box mt="xs">
-        <AssuranceRow variant="cards" copy="short" columns={2} />
-      </Box>
     </Stack>
   );
 }
@@ -227,12 +186,7 @@ function StockStatus({ inStock }: { inStock: boolean }) {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <Stack gap="sm">
-      <Title
-        order={2}
-        fz="1.25rem"
-        fw={600}
-        c="navy.9"
-      >
+      <Title order={2} size="h4" c="navy.7">
         {title}
       </Title>
       {children}
