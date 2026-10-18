@@ -44,7 +44,6 @@ export function AssetImage({
     <picture style={pictureStyle}>
       <source type="image/avif" srcSet={srcSet(src, 'avif')} sizes={sizes} />
       <source type="image/webp" srcSet={srcSet(src, 'webp')} sizes={sizes} />
-      {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={variantUrl(src, 640, fmt)}
         srcSet={srcSet(src, fmt)}

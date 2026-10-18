@@ -16,6 +16,11 @@ export interface UploadedImage {
 interface ImageUploadProps {
   value?: string | string[];
   onChange: (value: string | string[]) => void;
+  /**
+   * Fired per upload with a CDN URL for the committed tmp key. The key itself is
+   * not renderable, so anything previewing outside this component needs the URL.
+   */
+  onPreviewUrl?: (key: string, url: string) => void;
   multiple?: boolean;
   maxFiles?: number;
   label?: string;
@@ -53,9 +58,11 @@ function isPermanentUrl(value: string): boolean {
   return value.startsWith('http');
 }
 
-// Upload a file via presigned S3 URL. Returns { tmpKey, blobUrl }.
+// Upload a file via presigned S3 URL. Returns { tmpKey, tmpUrl, blobUrl }.
 // The file stays in tmp/ until the entity is saved on the backend.
-async function uploadFile(file: File): Promise<{ tmpKey: string; blobUrl: string }> {
+async function uploadFile(
+  file: File
+): Promise<{ tmpKey: string; tmpUrl: string; blobUrl: string }> {
   const assetType = getAssetType(file.type);
 
   // Compress images before upload (videos pass through as-is)
@@ -65,7 +72,7 @@ async function uploadFile(file: File): Promise<{ tmpKey: string; blobUrl: string
   }
 
   // Step 1: Get presigned upload URL for tmp/
-  const { upload_url, tmp_key } = await assetsApi.getUploadUrl(
+  const { upload_url, tmp_key, tmp_url } = await assetsApi.getUploadUrl(
     file.name,
     assetType,
     fileToUpload.type,
@@ -88,12 +95,13 @@ async function uploadFile(file: File): Promise<{ tmpKey: string; blobUrl: string
   // Create a blob URL for local preview (no finalize call — backend does that on save)
   const blobUrl = URL.createObjectURL(fileToUpload);
 
-  return { tmpKey: tmp_key, blobUrl };
+  return { tmpKey: tmp_key, tmpUrl: tmp_url, blobUrl };
 }
 
 export function ImageUpload({
   value,
   onChange,
+  onPreviewUrl,
   multiple = false,
   maxFiles = 5,
   label,
@@ -172,9 +180,10 @@ export function ImageUpload({
         const newBlobEntries: [string, string][] = [];
 
         for (const file of fileArray) {
-          const { tmpKey, blobUrl } = await uploadFile(file);
+          const { tmpKey, tmpUrl, blobUrl } = await uploadFile(file);
           uploadedKeys.push(tmpKey);
           newBlobEntries.push([tmpKey, blobUrl]);
+          onPreviewUrl?.(tmpKey, tmpUrl);
         }
 
         // Store blob URLs for preview
@@ -200,7 +209,7 @@ export function ImageUpload({
         setIsUploading(false);
       }
     },
-    [images, maxFiles, maxSizeMB, multiple, onChange, supportsVideo]
+    [images, maxFiles, maxSizeMB, multiple, onChange, onPreviewUrl, supportsVideo]
   );
 
   const handleDrag = useCallback((e: React.DragEvent) => {

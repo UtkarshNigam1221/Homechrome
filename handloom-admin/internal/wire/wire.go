@@ -305,7 +305,6 @@ func InitializeUTMDeps(ctx context.Context, cfg *config.Config) (*UTMDeps, error
 	return nil, nil
 }
 
-
 // InitializeAssetDeps creates Asset Lambda dependencies
 func InitializeAssetDeps(ctx context.Context, cfg *config.Config) (*AssetDeps, error) {
 	wire.Build(
@@ -437,6 +436,17 @@ type StoreWebhooksDeps struct {
 type StoreEventsDeps struct {
 	Config  *config.Config
 	Handler *store.EventsHandler
+}
+
+// PushDeps holds dependencies for the Push Lambda, which serves both push
+// surfaces: the public storefront routes and the authenticated admin console.
+// One Lambda because they share a repository, a gateway and a table — the auth
+// boundary between them is the router group, not the deployment unit.
+type PushDeps struct {
+	Config         *config.Config
+	StoreHandler   *store.PushHandler
+	AdminHandler   *handler.PushHandler
+	AuthMiddleware *middleware.Auth
 }
 
 // ============================================================================
@@ -631,6 +641,31 @@ func InitializeStoreEventsDeps(ctx context.Context, cfg *config.Config) (*StoreE
 	return nil, nil
 }
 
+// InitializePushDeps creates Push Lambda dependencies.
+// No Postgres pool — push state lives in the notifications table — but it
+// does need S3 to finalize an uploaded broadcast banner out of tmp/.
+func InitializePushDeps(ctx context.Context, cfg *config.Config) (*PushDeps, error) {
+	wire.Build(
+		ProvideDynamoDBClient,
+		ProvideValidator,
+		ProvideValidation,
+		ProvideUserRepository,
+		ProvideTokenStore,
+		ProvideAuthService,
+		ProvideAuthMiddleware,
+		ProvidePushSubscriptionRepository,
+		ProvideWebPushGateway,
+		ProvideS3Client,
+		ProvideLambdaClient,
+		ProvideAssetService,
+		ProvidePushService,
+		ProvideStorePushHandler,
+		ProvidePushHandler,
+		wire.Struct(new(PushDeps), "*"),
+	)
+	return nil, nil
+}
+
 // MonolithDeps contains every dependency the monolith API server needs.
 type MonolithDeps struct {
 	// PostgresPool retained for graceful shutdown — DynamoDB SDK v2 needs none.
@@ -647,6 +682,7 @@ type MonolithDeps struct {
 	CustomerHandler     *handler.CustomerHandler
 	AuditHandler        *handler.AuditHandler
 	NotificationHandler *handler.NotificationHandler
+	PushHandler         *handler.PushHandler
 	CouponHandler       *handler.CouponHandler
 	UTMLinkHandler      *handler.UTMLinkHandler
 
@@ -663,6 +699,7 @@ type MonolithDeps struct {
 	StoreProfileHandler  *store.ProfileHandler
 	StoreWebhookHandler  *store.WebhookHandler
 	StoreEventsHandler   *store.EventsHandler
+	StorePushHandler     *store.PushHandler
 
 	// Middleware
 	AuthMiddleware         *middleware.Auth

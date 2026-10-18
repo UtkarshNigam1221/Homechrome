@@ -36,6 +36,10 @@ export function getStatusBadgeVariant(
 
     // Coupon statuses
     EXPIRED: 'danger',
+
+    // Push broadcast statuses
+    SUCCESS: 'success',
+    PARTIAL: 'warning',
   };
 
   if (!status) return 'gray';

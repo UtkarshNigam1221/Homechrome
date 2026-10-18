@@ -137,6 +137,11 @@ func createRouter(d *wire.MonolithDeps) *chi.Mux {
 			r.Mount("/events", d.StoreEventsHandler.Routes())
 		})
 
+		// Public: an anonymous visitor must be able to opt into push. Every
+		// route is scoped to the endpoint in the request body, so a caller can
+		// only touch their own device. Fan-out lives under /admin/push.
+		r.Mount("/push", d.StorePushHandler.Routes())
+
 		r.Mount("/webhooks", d.StoreWebhookHandler.Routes())
 
 		r.Group(func(r chi.Router) {
@@ -176,6 +181,7 @@ func createRouter(d *wire.MonolithDeps) *chi.Mux {
 			r.Group(func(r chi.Router) {
 				r.Use(d.AuthMiddleware.RequireRole(domain.UserRoleAdmin))
 				r.Mount("/audit", auditRoutes(d.AuditHandler))
+				r.Mount("/push", d.PushHandler.Routes())
 			})
 
 			r.Mount("/notifications", d.NotificationHandler.Routes())

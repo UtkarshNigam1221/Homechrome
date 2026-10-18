@@ -48,13 +48,12 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const { slug } = await params;
   const product = await getProduct(slug);
   if (!product) {
-    return { title: 'Product Not Found | Homechrome' };
+    return {};
   }
 
   const ogImages = product.images?.[0]?.url ? [{ url: product.images[0].url }] : [];
 
   return {
-    title: `${product.name} | Homechrome`,
     alternates: { canonical: `/p/${slug}` },
     description: product.description || `Shop ${product.name} at Homechrome.`,
     openGraph: {

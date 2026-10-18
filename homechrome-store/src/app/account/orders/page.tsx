@@ -30,7 +30,7 @@ export default function OrdersPage() {
   const error = isError ? 'Failed to load orders. Please try again.' : null;
 
   if (loading) {
-    return <OrderCardSkeleton count={3} />;
+    return <OrderCardSkeleton />;
   }
 
   if (error) {

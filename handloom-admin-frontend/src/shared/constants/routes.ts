@@ -42,6 +42,12 @@ export const ROUTES = {
     MARK_ALL_READ: '/admin/notifications/read-all',
   },
 
+  PUSH: {
+    SUBSCRIBERS: '/admin/push/subscribers',
+    BROADCASTS: '/admin/push/broadcasts',
+    BROADCAST: '/admin/push/broadcast',
+  },
+
   ORDERS: {
     LIST: '/admin/orders',
     DETAIL: (id: string) => `/admin/orders/${id}`,

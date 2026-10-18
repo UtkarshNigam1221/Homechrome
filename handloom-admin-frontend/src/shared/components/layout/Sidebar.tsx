@@ -8,6 +8,7 @@ import {
   Gauge,
   LayoutDashboard,
   Link2,
+  Megaphone,
   Package,
   Percent,
   Settings,
@@ -37,7 +38,10 @@ const navigation = [
   { name: 'Settings', href: '/settings', icon: Settings },
 ];
 
-const adminNavigation = [{ name: 'Users', href: '/users', icon: Users }];
+const adminNavigation = [
+  { name: 'Users', href: '/users', icon: Users },
+  { name: 'Push Broadcast', href: '/push', icon: Megaphone },
+];
 
 function SidebarContent({
   collapsed,

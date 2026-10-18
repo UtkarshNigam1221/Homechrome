@@ -137,6 +137,8 @@ func (s *Service) errorMessage(e validator.FieldError) string {
 		return field + " must be a valid user role"
 	case "valid_user_status":
 		return field + " must be a valid user status"
+	case "storepath":
+		return field + " must be a path on the storefront, like /products"
 	case "coupon_value":
 		return field + " must not exceed 100% on a percentage coupon"
 	case "dive":
@@ -168,6 +170,9 @@ func (s *Service) registerCustomValidations() {
 
 	// Register custom validation for entity type
 	_ = s.validate.RegisterValidation("valid_entity_type", validateEntityType)
+
+	// Register the storefront-only click-through path rule
+	_ = s.validate.RegisterValidation("storepath", validateStorePath)
 }
 
 // GetValidator returns the underlying validator instance.

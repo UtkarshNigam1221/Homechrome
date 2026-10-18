@@ -22,7 +22,6 @@ import { AssuranceRow } from '@/components/ui/assurance-row';
 
 export const metadata: Metadata = {
   alternates: { canonical: '/policies' },
-  title: 'Policies | Homechrome',
   description:
     'Replacement, shipping, terms, privacy and grievance policies for Homechrome handloom textiles.',
 };

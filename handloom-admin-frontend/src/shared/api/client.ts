@@ -93,6 +93,12 @@ apiClient.interceptors.response.use(
 export default apiClient;
 
 // Helper function to handle API errors
+/** The `details` object a backend error may carry alongside its message. */
+export function getErrorDetails<T = unknown>(error: unknown): T | undefined {
+  if (!axios.isAxiosError(error)) return undefined;
+  return (error.response?.data as { error?: { details?: T } } | undefined)?.error?.details;
+}
+
 export function getErrorMessage(error: unknown): string {
   if (axios.isAxiosError(error)) {
     const data = error.response?.data as

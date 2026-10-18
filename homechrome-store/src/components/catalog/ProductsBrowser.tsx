@@ -22,7 +22,6 @@ interface ProductsBrowserProps {
   loading: boolean;
   filtersSidebar: ReactNode;
   activeFilterCount?: number;
-  skeletonCount?: number;
   /** Infinite scroll — omit both for a static list. */
   hasMore?: boolean;
   onLoadMore?: () => void;
@@ -35,7 +34,6 @@ export function ProductsBrowser({
   loading,
   filtersSidebar,
   activeFilterCount = 0,
-  skeletonCount = 8,
   hasMore = false,
   onLoadMore,
   mobileLead,
@@ -141,7 +139,7 @@ export function ProductsBrowser({
 
         <Box flex={1}>
           {loading ? (
-            <ProductGridSkeleton count={skeletonCount} />
+            <ProductGridSkeleton />
           ) : (
             <>
               <ProductGrid products={products} />

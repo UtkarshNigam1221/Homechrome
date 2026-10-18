@@ -7,7 +7,6 @@ import { GSTIN, LEGAL_ADDRESS, LEGAL_ENTITY_NAME, LEGAL_PROPRIETOR, SUPPORT_EMAI
 
 export const metadata: Metadata = {
   alternates: { canonical: '/terms' },
-  title: 'Terms & Conditions | Homechrome',
   description: 'Terms and conditions governing the use of www.homechrome.in.',
 };
 

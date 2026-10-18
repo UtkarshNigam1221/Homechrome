@@ -1,0 +1,196 @@
+package dynamodb
+
+import (
+	"context"
+	"time"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
+
+	"github.com/handloom/admin/internal/domain"
+	"github.com/handloom/admin/pkg/errors"
+)
+
+// PushSubscriptionRepository implements domain.PushSubscriptionRepository
+type PushSubscriptionRepository struct {
+	client *Client
+}
+
+// NewPushSubscriptionRepository creates a new PushSubscriptionRepository
+func NewPushSubscriptionRepository(client *Client) *PushSubscriptionRepository {
+	return &PushSubscriptionRepository{client: client}
+}
+
+// subKey builds the primary key for an endpoint's subscription item.
+func subKey(endpoint string) map[string]types.AttributeValue {
+	return map[string]types.AttributeValue{
+		"PK": &types.AttributeValueMemberS{Value: "PUSH_SUB#" + domain.PushEndpointID(endpoint)},
+		"SK": &types.AttributeValueMemberS{Value: skMetadata},
+	}
+}
+
+// Save upserts by endpoint hash, so re-subscribing refreshes keys and keeps
+// CreatedAt. The read-then-write only races on isNew, and the browser dedupes.
+func (r *PushSubscriptionRepository) Save(ctx context.Context, sub *domain.PushSubscription) (bool, error) {
+	existing, err := r.GetByEndpoint(ctx, sub.Endpoint)
+	if err != nil && !errors.IsNotFound(err) {
+		return false, err
+	}
+
+	isNew := existing == nil
+	if !isNew {
+		sub.CreatedAt = existing.CreatedAt
+	}
+
+	sub.ID = domain.PushEndpointID(sub.Endpoint)
+	sub.SetKeys()
+
+	av, err := attributevalue.MarshalMap(sub)
+	if err != nil {
+		return false, errors.Internal("Failed to marshal push subscription")
+	}
+
+	_, err = r.client.db.PutItem(ctx, &dynamodb.PutItemInput{
+		TableName: aws.String(r.client.notificationsTable),
+		Item:      av,
+	})
+	if err != nil {
+		return false, errors.Wrap(err, "Failed to save push subscription")
+	}
+
+	return isNew, nil
+}
+
+// GetByEndpoint retrieves a subscription by endpoint URL.
+func (r *PushSubscriptionRepository) GetByEndpoint(ctx context.Context, endpoint string) (*domain.PushSubscription, error) {
+	result, err := r.client.db.GetItem(ctx, &dynamodb.GetItemInput{
+		TableName: aws.String(r.client.notificationsTable),
+		Key:       subKey(endpoint),
+	})
+	if err != nil {
+		return nil, errors.Wrap(err, "Failed to get push subscription")
+	}
+	if result.Item == nil {
+		return nil, errors.NotFound("Push subscription")
+	}
+
+	var sub domain.PushSubscription
+	if err := attributevalue.UnmarshalMap(result.Item, &sub); err != nil {
+		return nil, errors.Internal("Failed to unmarshal push subscription")
+	}
+	return &sub, nil
+}
+
+// Deactivate marks an endpoint INACTIVE so broadcasts skip it; an endpoint
+// that was never stored is a no-op, since the intent already holds.
+func (r *PushSubscriptionRepository) Deactivate(ctx context.Context, endpoint string) error {
+	_, err := r.client.db.UpdateItem(ctx, &dynamodb.UpdateItemInput{
+		TableName:           aws.String(r.client.notificationsTable),
+		Key:                 subKey(endpoint),
+		UpdateExpression:    aws.String("SET " + nameStatus + " = " + valStatus + ", GSI1PK = :gsi1pk, last_seen_at = " + exprNow),
+		ConditionExpression: aws.String("attribute_exists(PK)"),
+		ExpressionAttributeNames: map[string]string{
+			nameStatus: attrStatus,
+		},
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			valStatus: &types.AttributeValueMemberS{Value: string(domain.PushSubscriptionInactive)},
+			":gsi1pk": &types.AttributeValueMemberS{Value: "PUSH_SUB#" + string(domain.PushSubscriptionInactive)},
+			exprNow:   &types.AttributeValueMemberS{Value: time.Now().UTC().Format(time.RFC3339Nano)},
+		},
+	})
+	if err != nil {
+		if isConditionalCheckFailed(err) {
+			return nil
+		}
+		return errors.Wrap(err, "Failed to deactivate push subscription")
+	}
+	return nil
+}
+
+// statusQuery builds the GSI1 query for one subscription status.
+func (r *PushSubscriptionRepository) statusQuery(status domain.PushSubscriptionStatus) *dynamodb.QueryInput {
+	return &dynamodb.QueryInput{
+		TableName:              aws.String(r.client.notificationsTable),
+		IndexName:              aws.String("GSI1"),
+		KeyConditionExpression: aws.String("GSI1PK = " + exprPK),
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			exprPK: &types.AttributeValueMemberS{Value: "PUSH_SUB#" + string(status)},
+		},
+		ScanIndexForward: aws.Bool(false),
+	}
+}
+
+// ListActive retrieves every ACTIVE subscription. A broadcast must reach every
+// live endpoint, so this reads the partition to the end rather than one page.
+func (r *PushSubscriptionRepository) ListActive(ctx context.Context) ([]*domain.PushSubscription, error) {
+	return QueryAll[domain.PushSubscription](
+		ctx, r.client.db,
+		r.statusQuery(domain.PushSubscriptionActive),
+		"Failed to list active push subscriptions",
+	)
+}
+
+// List retrieves subscriptions of one status, newest first.
+func (r *PushSubscriptionRepository) List(
+	ctx context.Context,
+	status domain.PushSubscriptionStatus,
+	pagination domain.PaginationRequest,
+) (*domain.ListPushSubscriptionsResponse, error) {
+	subs, page, err := QueryPage[domain.PushSubscription](
+		ctx, r.client.db,
+		r.statusQuery(status),
+		pagination,
+		"Failed to list push subscriptions",
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return &domain.ListPushSubscriptionsResponse{
+		Subscriptions: subs,
+		Pagination:    page,
+	}, nil
+}
+
+// SaveBroadcast records the outcome of a fan-out.
+func (r *PushSubscriptionRepository) SaveBroadcast(ctx context.Context, broadcast *domain.PushBroadcast) error {
+	broadcast.SetKeys()
+
+	av, err := attributevalue.MarshalMap(broadcast)
+	if err != nil {
+		return errors.Internal("Failed to marshal push broadcast")
+	}
+
+	_, err = r.client.db.PutItem(ctx, &dynamodb.PutItemInput{
+		TableName: aws.String(r.client.notificationsTable),
+		Item:      av,
+	})
+	if err != nil {
+		return errors.Wrap(err, "Failed to save push broadcast")
+	}
+	return nil
+}
+
+// ListBroadcasts retrieves broadcast history, newest first.
+func (r *PushSubscriptionRepository) ListBroadcasts(ctx context.Context, limit int) ([]*domain.PushBroadcast, error) {
+	broadcasts, _, err := QueryPage[domain.PushBroadcast](
+		ctx, r.client.db,
+		&dynamodb.QueryInput{
+			TableName:              aws.String(r.client.notificationsTable),
+			IndexName:              aws.String("GSI1"),
+			KeyConditionExpression: aws.String("GSI1PK = " + exprPK),
+			ExpressionAttributeValues: map[string]types.AttributeValue{
+				exprPK: &types.AttributeValueMemberS{Value: "PUSH_BROADCAST"},
+			},
+			ScanIndexForward: aws.Bool(false),
+		},
+		domain.PaginationRequest{Limit: limit},
+		"Failed to list push broadcasts",
+	)
+	return broadcasts, err
+}
+
+// Ensure interface compliance
+var _ domain.PushSubscriptionRepository = (*PushSubscriptionRepository)(nil)

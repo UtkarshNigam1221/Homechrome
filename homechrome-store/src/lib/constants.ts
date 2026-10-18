@@ -1,4 +1,6 @@
 const BASE_DOMAIN = 'homechrome.in';
+export const SITE_DESCRIPTION =
+  'Handloom bedsheets, dohars and cushions, printed and woven by hand in India. Free shipping on every order.';
 export const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || `https://${BASE_DOMAIN}`;
 // Only the production canonical host (apex or www) is crawlable/indexable. Dev
 // (dev-store.*), preview, and localhost serve Disallow + noindex so they never

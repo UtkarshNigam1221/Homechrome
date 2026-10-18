@@ -38,4 +38,10 @@ export const ROUTES = {
   },
   TRACK: (trackingNumber: string) => `/api/v1/store/track/${encodeURIComponent(trackingNumber)}`,
   EVENTS: '/api/v1/store/events',
+  PUSH: {
+    VAPID_KEY: '/api/v1/store/push/vapid-key',
+    SUBSCRIBE: '/api/v1/store/push/subscribe',
+    UNSUBSCRIBE: '/api/v1/store/push/unsubscribe',
+    TEST: '/api/v1/store/push/test',
+  },
 } as const;

@@ -1,6 +1,6 @@
 'use client';
 
-import { Bars3Icon, MagnifyingGlassIcon, ShoppingBagIcon, UserCircleIcon } from '@heroicons/react/24/outline';
+import { Bars3Icon, BellIcon, MagnifyingGlassIcon, ShoppingBagIcon, UserCircleIcon } from '@heroicons/react/24/outline';
 import {
   ActionIcon,
   Anchor,
@@ -47,6 +47,7 @@ export default function Header({ categories }: HeaderProps) {
   const customer = useAuthStore((s) => s.customer);
   const cartCount = useCartStore((s) => s.itemCount);
   const openMiniCart = useUIStore((s) => s.openMiniCart);
+  const openNotifications = useUIStore((s) => s.openNotifications);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const pathname = usePathname();
 
@@ -148,6 +149,19 @@ export default function Header({ categories }: HeaderProps) {
               >
                 <MagnifyingGlassIcon width={22} height={22} />
               </ActionIcon>
+
+              <Tooltip label="Notifications" withArrow>
+                <ActionIcon
+                  variant="subtle"
+                  color="navy"
+                  size="lg"
+                  visibleFrom="md"
+                  aria-label="Notification settings"
+                  onClick={openNotifications}
+                >
+                  <BellIcon width={22} height={22} />
+                </ActionIcon>
+              </Tooltip>
 
               <Tooltip label={cartCount > 0 ? `Cart (${cartCount})` : 'Cart'} withArrow>
                 <Indicator

@@ -223,7 +223,8 @@ func (s *AssetService) invokeImageResizer(ctx context.Context, key string) error
 }
 
 // FinalizeIfTemp finalizes a tmp/ key into a permanent assets/ URL.
-// If value starts with "tmp/", calls FinalizeUpload.
+// If value starts with "tmp/", or is a trusted asset URL pointing into tmp/,
+// calls FinalizeUpload.
 // If value is a trusted asset URL (CDN / S3 / local endpoint), returns as-is.
 // Any other non-empty value is passed through with a warning log — hard-rejecting
 // would break updates of products that still carry legacy CDN URLs from before a
@@ -235,6 +236,11 @@ func (s *AssetService) FinalizeIfTemp(ctx context.Context, value string) (string
 	}
 	if strings.HasPrefix(value, tmpPrefix) {
 		return s.FinalizeUpload(ctx, value)
+	}
+	// A trusted URL can still address tmp/, which the lifecycle rule deletes
+	// after a day — storing it as-is would hand out a link that dies overnight.
+	if key := s.keyFromURL(value); strings.HasPrefix(key, tmpPrefix) {
+		return s.FinalizeUpload(ctx, key)
 	}
 	for _, prefix := range s.trustedURLPrefixes() {
 		if strings.HasPrefix(value, prefix) {

@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  BellIcon,
   ChatBubbleLeftRightIcon,
   ChevronRightIcon,
   RectangleGroupIcon,
@@ -26,6 +27,7 @@ import Link from 'next/link';
 import logo80 from '@/assets/logo-80.webp';
 import { WhatsAppButton } from '@/components/ui/whatsapp-button';
 import { useAuthStore } from '@/stores/auth';
+import { useUIStore } from '@/stores/uiStore';
 import { Category } from '@/types';
 
 
@@ -36,6 +38,7 @@ interface MobileNavProps {
 }
 
 export default function MobileNav({ isOpen, onClose, categories }: MobileNavProps) {
+  const openNotifications = useUIStore((s) => s.openNotifications);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
 
   return (
@@ -125,6 +128,22 @@ export default function MobileNav({ isOpen, onClose, categories }: MobileNavProp
             label="Contact Us"
             icon={<ChatBubbleLeftRightIcon width={20} height={20} aria-hidden="true" />}
             onClose={onClose}
+          />
+          <NavLink
+            component="button"
+            type="button"
+            onClick={() => {
+              onClose();
+              openNotifications();
+            }}
+            label="Notifications"
+            leftSection={<BellIcon width={20} height={20} aria-hidden="true" />}
+            rightSection={
+              <ChevronRightIcon width={16} height={16} aria-hidden="true" style={{ opacity: 0.4 }} />
+            }
+            color="brand"
+            c="navy.8"
+            style={{ borderRadius: 'var(--mantine-radius-md)' }}
           />
           {/* Sits after the links, not between them. */}
           {!isAuthenticated && (

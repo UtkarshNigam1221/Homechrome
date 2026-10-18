@@ -2,9 +2,17 @@ package validator
 
 import (
 	"reflect"
+	"strings"
 
 	"github.com/go-playground/validator/v10"
 )
+
+// validateStorePath accepts a path on the storefront origin. "//host" and
+// "/\\host" both resolve to another host in a browser, so they are refused.
+func validateStorePath(fl validator.FieldLevel) bool {
+	p := fl.Field().String()
+	return strings.HasPrefix(p, "/") && !strings.HasPrefix(p, "//") && !strings.HasPrefix(p, "/\\")
+}
 
 // Status string literals used across multiple validators.
 const statusPending = "PENDING"

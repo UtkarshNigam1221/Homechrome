@@ -187,6 +187,8 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 		"PHONEPE_CLIENT_ID", "PHONEPE_CLIENT_SECRET",
 		"PHONEPE_WEBHOOK_USERNAME", "PHONEPE_WEBHOOK_PASSWORD",
 		"MSG91_AUTH_KEY",
+		// Not secret, but sourced from the same deploy shell.
+		"VAPID_PUBLIC_KEY", "VAPID_SUBJECT",
 	}
 	for _, key := range gatewaySecretKeys {
 		if v := os.Getenv(key); v != "" {
@@ -242,6 +244,7 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 		"store-profile",
 		"store-events",
 		"store-webhooks",
+		"push",
 		"order",
 		"utm",
 		// "pricing",
@@ -255,11 +258,10 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 
 	lambdas := make(map[string]*ServiceLambda)
 	for _, svc := range services {
-		// Asset Lambda keeps a longer timeout as headroom for batched finalize
-		// operations (multiple S3 copy/delete RTs per request). ImageResizer is
-		// now invoked async, so callers no longer block on the resize itself.
+		// Asset finalizes batches of S3 copies and push fans a broadcast out to
+		// every device in-request; both need more than the default 15s.
 		timeout := float64(15)
-		if svc == "asset" {
+		if svc == "asset" || svc == "push" {
 			timeout = 45
 		}
 		lambdaFn := createServiceLambda(stack, svc, props.Environment, commonEnv, memorySize, timeout, apiLogGroup)
@@ -292,6 +294,16 @@ func NewAPIStack(scope constructs.Construct, id string, props *APIStackProps) *A
 			props.MetricsQueue.GrantSendMessages(lambdaFn)
 		}
 	}
+
+	// The VAPID private key is read from SSM at runtime so it never enters the
+	// template; only the push Lambda signs pushes, so only it can read it.
+	vapidParam := fmt.Sprintf("/handloom/%s/vapid-private-key", props.Environment)
+	pushFn := lambdas["push"].Function
+	pushFn.AddEnvironment(jsii.String("VAPID_PRIVATE_KEY_PARAM"), jsii.String(vapidParam), nil)
+	pushFn.AddToRolePolicy(awsiam.NewPolicyStatement(&awsiam.PolicyStatementProps{
+		Actions:   jsii.Strings("ssm:GetParameter"),
+		Resources: jsii.Strings(fmt.Sprintf("arn:aws:ssm:*:*:parameter%s", vapidParam)),
+	}))
 
 	// Embedder integration — grant catalog Lambda invoke + SSM read for embedder auth key.
 	// The embedder is a standalone stack; import it BY NAME so APIStack carries no
@@ -681,6 +693,7 @@ func setupAPIRoutes(api awsapigateway.RestApi, lambdas map[string]*ServiceLambda
 		"track":    "store-tracking",
 		"events":   "store-events",
 		"webhooks": "store-webhooks",
+		"push":     "push",
 	}
 
 	// Sort to make CloudFormation output deterministic — Go map iteration is
@@ -773,6 +786,15 @@ func setupAPIRoutes(api awsapigateway.RestApi, lambdas map[string]*ServiceLambda
 	coupons.AddResource(jsii.String("code"), nil).
 		AddResource(jsii.String("{code}"), nil).
 		AddMethod(jsii.String("ANY"), couponIntegration, nil)
+
+	// Admin Web Push console, proxied like assets so new routes need no CDK change.
+	pushIntegration := awsapigateway.NewLambdaIntegration(lambdas["push"].Function, nil)
+	adminPush := admin.AddResource(jsii.String("push"), nil)
+	adminPush.AddMethod(jsii.String("ANY"), pushIntegration, nil)
+	adminPush.AddProxy(&awsapigateway.ProxyResourceOptions{
+		AnyMethod:          jsii.Bool(true),
+		DefaultIntegration: pushIntegration,
+	})
 
 	// TODO: Uncomment routes as services are implemented
 	/*

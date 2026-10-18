@@ -4,6 +4,7 @@ package config
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"strconv"
 	"strings"
@@ -14,6 +15,9 @@ import (
 
 	"github.com/handloom/admin/pkg/metrics/awsmiddleware"
 )
+
+// ssmFetchTimeout bounds a runtime SSM read during Lambda init.
+const ssmFetchTimeout = 5 * time.Second
 
 // defaultJWTSecret is the fallback JWT secret used for local development.
 const defaultJWTSecret = "your-super-secret-key-change-in-production"
@@ -53,6 +57,14 @@ type StoreConfig struct {
 	MSG91AuthKey       string
 	MSG91OTPTemplateID string
 	MSG91BaseURL       string
+
+	// Web Push (VAPID). Keys are base64url-encoded and must stay stable for the
+	// life of a subscription — regenerating them silently invalidates every
+	// browser that has already subscribed. Provisioned by scripts/put-vapid-key.
+	// Empty keys select the dev gateway, which logs instead of delivering.
+	VAPIDPublicKey  string
+	VAPIDPrivateKey string
+	VAPIDSubject    string
 
 	// Customer Auth
 	CustomerJWTSecret       string
@@ -191,6 +203,10 @@ func Load() *Config {
 			MSG91OTPTemplateID: getEnv("MSG91_OTP_TEMPLATE_ID", ""),
 			MSG91BaseURL:       getEnv("MSG91_BASE_URL", "https://control.msg91.com"),
 
+			VAPIDPublicKey:  getEnv("VAPID_PUBLIC_KEY", ""),
+			VAPIDPrivateKey: getVAPIDPrivateKey(),
+			VAPIDSubject:    getEnv("VAPID_SUBJECT", "mailto:info@homechrome.in"),
+
 			CustomerJWTSecret:       getEnv("CUSTOMER_JWT_SECRET", "customer-secret-change-in-production"),
 			CustomerAccessTokenTTL:  getDurationEnv("CUSTOMER_ACCESS_TOKEN_TTL", 15*time.Minute),
 			CustomerRefreshTokenTTL: getDurationEnv("CUSTOMER_REFRESH_TOKEN_TTL", 30*24*time.Hour),
@@ -300,45 +316,65 @@ func getDurationEnv(key string, defaultValue time.Duration) time.Duration {
 	return defaultValue
 }
 
-// getJWTSecret gets the JWT secret from SSM Parameter Store or environment variable
+// getJWTSecret resolves the admin JWT secret: the env var, then the SSM
+// parameter named by JWT_SECRET_PARAM, then the local-development default.
 func getJWTSecret() string {
-	// First check if we have a direct secret key
 	if secret := os.Getenv("JWT_SECRET_KEY"); secret != "" {
 		return secret
 	}
-
-	// Check if we have an SSM parameter name
 	paramName := os.Getenv("JWT_SECRET_PARAM")
 	if paramName == "" {
-		// Default for local development
 		return defaultJWTSecret
 	}
+	secret, err := ssmSecureString(paramName)
+	if err != nil {
+		return defaultJWTSecret
+	}
+	return secret
+}
 
-	// Fetch from SSM Parameter Store
-	ctx := context.Background()
+// getVAPIDPrivateKey resolves the Web Push signing key: the env var first (local
+// dev), then the SSM SecureString named by VAPID_PRIVATE_KEY_PARAM.
+func getVAPIDPrivateKey() string {
+	if key := os.Getenv("VAPID_PRIVATE_KEY"); key != "" {
+		return key
+	}
+	paramName := os.Getenv("VAPID_PRIVATE_KEY_PARAM")
+	if paramName == "" {
+		return ""
+	}
+	key, err := ssmSecureString(paramName)
+	if err != nil {
+		// No usable default: an empty key selects the logging gateway, so be loud.
+		slog.Error("Web Push disabled: failed to read the VAPID private key from SSM", "error", err)
+		return ""
+	}
+	return key
+}
+
+// ssmSecureString reads one SecureString parameter during init, bounded so a
+// hung SSM call cannot stall the whole Lambda cold start.
+func ssmSecureString(name string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), ssmFetchTimeout)
+	defer cancel()
+
 	cfg, err := config.LoadDefaultConfig(ctx)
 	if err != nil {
-		// Fall back to default if we can't load AWS config
-		return defaultJWTSecret
+		return "", err
 	}
-
 	awsmiddleware.Instrument(&cfg)
 
-	ssmClient := ssm.NewFromConfig(cfg)
-	result, err := ssmClient.GetParameter(ctx, &ssm.GetParameterInput{
-		Name:           &paramName,
+	result, err := ssm.NewFromConfig(cfg).GetParameter(ctx, &ssm.GetParameterInput{
+		Name:           &name,
 		WithDecryption: boolPtr(true),
 	})
 	if err != nil {
-		// Fall back to default if parameter fetch fails
-		return defaultJWTSecret
+		return "", err
 	}
-
-	if result.Parameter != nil && result.Parameter.Value != nil {
-		return *result.Parameter.Value
+	if result.Parameter == nil || result.Parameter.Value == nil {
+		return "", fmt.Errorf("ssm parameter has no value")
 	}
-
-	return defaultJWTSecret
+	return *result.Parameter.Value, nil
 }
 
 func boolPtr(b bool) *bool {
