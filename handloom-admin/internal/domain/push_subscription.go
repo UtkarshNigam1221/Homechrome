@@ -158,7 +158,7 @@ type PushSubscriptionRepository interface {
 	SaveBroadcast(ctx context.Context, broadcast *PushBroadcast) error
 
 	// ListBroadcasts retrieves broadcast history, newest first.
-	ListBroadcasts(ctx context.Context, limit int32) ([]*PushBroadcast, error)
+	ListBroadcasts(ctx context.Context, limit int) ([]*PushBroadcast, error)
 }
 
 // ListPushSubscriptionsResponse is a page of subscriptions.

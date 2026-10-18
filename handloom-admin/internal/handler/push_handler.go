@@ -52,7 +52,7 @@ func (h *PushHandler) ListSubscribers(w http.ResponseWriter, r *http.Request) {
 // ListBroadcasts returns recent broadcast history.
 // GET /admin/push/broadcasts?limit=20
 func (h *PushHandler) ListBroadcasts(w http.ResponseWriter, r *http.Request) {
-	broadcasts, err := h.pushService.ListBroadcasts(r.Context(), int32(parsePagination(r).Limit))
+	broadcasts, err := h.pushService.ListBroadcasts(r.Context(), parsePagination(r).Limit)
 	if err != nil {
 		response.Error(w, err)
 		return

@@ -265,7 +265,7 @@ func (s *PushService) ListSubscriptions(
 }
 
 // ListBroadcasts returns recent broadcast history for the admin console.
-func (s *PushService) ListBroadcasts(ctx context.Context, limit int32) ([]*domain.PushBroadcast, error) {
+func (s *PushService) ListBroadcasts(ctx context.Context, limit int) ([]*domain.PushBroadcast, error) {
 	return s.repo.ListBroadcasts(ctx, limit)
 }
 

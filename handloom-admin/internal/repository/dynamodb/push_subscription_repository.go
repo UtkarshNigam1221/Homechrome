@@ -174,7 +174,7 @@ func (r *PushSubscriptionRepository) SaveBroadcast(ctx context.Context, broadcas
 }
 
 // ListBroadcasts retrieves broadcast history, newest first.
-func (r *PushSubscriptionRepository) ListBroadcasts(ctx context.Context, limit int32) ([]*domain.PushBroadcast, error) {
+func (r *PushSubscriptionRepository) ListBroadcasts(ctx context.Context, limit int) ([]*domain.PushBroadcast, error) {
 	broadcasts, _, err := QueryPage[domain.PushBroadcast](
 		ctx, r.client.db,
 		&dynamodb.QueryInput{
@@ -186,7 +186,7 @@ func (r *PushSubscriptionRepository) ListBroadcasts(ctx context.Context, limit i
 			},
 			ScanIndexForward: aws.Bool(false),
 		},
-		domain.PaginationRequest{Limit: int(limit)},
+		domain.PaginationRequest{Limit: limit},
 		"Failed to list push broadcasts",
 	)
 	return broadcasts, err
