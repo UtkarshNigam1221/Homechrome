@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -34,6 +35,7 @@ func TestOrderService_GetByID(t *testing.T) {
 		mockPriceQuoteRepo,
 		mockPaymentRepo,
 		mockPricingService,
+		nil,
 	)
 	ctx := context.Background()
 
@@ -119,6 +121,7 @@ func TestOrderService_UpdateStatus(t *testing.T) {
 		mockPriceQuoteRepo,
 		mockPaymentRepo,
 		mockPricingService,
+		nil,
 	)
 	ctx := context.Background()
 
@@ -291,6 +294,7 @@ func TestOrderService_UpdateStatus_Inventory(t *testing.T) {
 		mockPriceQuoteRepo,
 		mockPaymentRepo,
 		mockPricingService,
+		nil,
 	)
 	ctx := context.Background()
 
@@ -455,6 +459,7 @@ func TestOrderService_AddNote(t *testing.T) {
 		mockPriceQuoteRepo,
 		mockPaymentRepo,
 		mockPricingService,
+		nil,
 	)
 	ctx := context.Background()
 
@@ -518,6 +523,7 @@ func TestOrderService_UpdateTracking(t *testing.T) {
 		mockPriceQuoteRepo,
 		mockPaymentRepo,
 		mockPricingService,
+		nil,
 	)
 	ctx := context.Background()
 
@@ -566,6 +572,7 @@ func TestOrderService_CancelOrder(t *testing.T) {
 		mockPriceQuoteRepo,
 		mockPaymentRepo,
 		mockPricingService,
+		nil,
 	)
 	ctx := context.Background()
 
@@ -676,6 +683,7 @@ func TestOrderService_CancelOrder_Inventory(t *testing.T) {
 		mockPriceQuoteRepo,
 		mockPaymentRepo,
 		mockPricingService,
+		nil,
 	)
 	ctx := context.Background()
 
@@ -730,6 +738,7 @@ func TestOrderService_List(t *testing.T) {
 		mockPriceQuoteRepo,
 		mockPaymentRepo,
 		mockPricingService,
+		nil,
 	)
 	ctx := context.Background()
 
@@ -882,7 +891,7 @@ func TestOrderService_UpdateStatus_PaymentGate(t *testing.T) {
 		svc := NewOrderService(orders, mocks.NewMockCustomerRepository(ctrl),
 			mocks.NewMockProductRepository(ctrl), inventory,
 			mocks.NewMockPriceQuoteRepository(ctrl), payments,
-			mocks.NewMockPricingService(ctrl))
+			mocks.NewMockPricingService(ctrl), nil)
 		return svc, orders, payments, inventory
 	}
 
@@ -971,4 +980,266 @@ func TestOrderService_UpdateStatus_PaymentGate(t *testing.T) {
 
 		require.NoError(t, svc.UpdateStatus(ctx, "order_123", domain.OrderStatusShipped, "admin_1"))
 	})
+}
+
+func TestUpdateStatusNotifiesTheCustomer(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockOrderRepo := mocks.NewMockOrderRepository(ctrl)
+	mockCustomerRepo := mocks.NewMockCustomerRepository(ctrl)
+	mockProductRepo := mocks.NewMockProductRepository(ctrl)
+	mockInventoryRepo := mocks.NewMockInventoryRepository(ctrl)
+	mockPriceQuoteRepo := mocks.NewMockPriceQuoteRepository(ctrl)
+	mockPricingService := mocks.NewMockPricingService(ctrl)
+	mockPaymentRepo := mocks.NewMockPaymentRepository(ctrl)
+	notifier := mocks.NewMockOrderNotifier(ctrl)
+
+	svc := NewOrderService(
+		mockOrderRepo,
+		mockCustomerRepo,
+		mockProductRepo,
+		mockInventoryRepo,
+		mockPriceQuoteRepo,
+		mockPaymentRepo,
+		mockPricingService,
+		notifier,
+	)
+
+	existing := &domain.Order{
+		ID: "order_1", OrderNumber: "HL-1042",
+		CustomerID: "cust_1", Status: domain.OrderStatusProcessing,
+	}
+	mockOrderRepo.EXPECT().GetByID(gomock.Any(), "order_1").Return(existing, nil)
+	mockOrderRepo.EXPECT().Update(gomock.Any(), gomock.Any()).Return(nil)
+	mockPaymentRepo.EXPECT().GetByOrderID(gomock.Any(), "order_1").
+		Return(&domain.Payment{Status: domain.PaymentStatusPaid}, nil).AnyTimes()
+	mockInventoryRepo.EXPECT().CommitOrderStock(gomock.Any(), "order_1", gomock.Any()).Return(nil)
+
+	notifier.EXPECT().
+		NotifyCustomer(gomock.Any(), "cust_1", gomock.Any()).
+		DoAndReturn(func(_ context.Context, _ string, payload domain.PushPayload) (int, error) {
+			require.Contains(t, payload.Title, "HL-1042")
+			return 1, nil
+		})
+
+	require.NoError(t, svc.UpdateStatus(context.Background(), "order_1", domain.OrderStatusShipped, "admin_1"))
+}
+
+func TestCancelOrderNotifiesTheCustomer(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockOrderRepo := mocks.NewMockOrderRepository(ctrl)
+	mockCustomerRepo := mocks.NewMockCustomerRepository(ctrl)
+	mockProductRepo := mocks.NewMockProductRepository(ctrl)
+	mockInventoryRepo := mocks.NewMockInventoryRepository(ctrl)
+	mockPriceQuoteRepo := mocks.NewMockPriceQuoteRepository(ctrl)
+	mockPricingService := mocks.NewMockPricingService(ctrl)
+	mockPaymentRepo := mocks.NewMockPaymentRepository(ctrl)
+	notifier := mocks.NewMockOrderNotifier(ctrl)
+
+	svc := NewOrderService(
+		mockOrderRepo,
+		mockCustomerRepo,
+		mockProductRepo,
+		mockInventoryRepo,
+		mockPriceQuoteRepo,
+		mockPaymentRepo,
+		mockPricingService,
+		notifier,
+	)
+
+	existing := &domain.Order{
+		ID: "order_1", OrderNumber: "HL-1042",
+		CustomerID: "cust_1", Status: domain.OrderStatusConfirmed,
+		Items: []domain.OrderItem{{ProductID: "prod_1", Quantity: 1}},
+	}
+	mockOrderRepo.EXPECT().GetByID(gomock.Any(), "order_1").Return(existing, nil)
+	mockOrderRepo.EXPECT().Update(gomock.Any(), gomock.Any()).Return(nil)
+	mockInventoryRepo.EXPECT().ReleaseOrderStock(gomock.Any(), "order_1", gomock.Any()).Return(nil)
+
+	// The admin cancel route is the only way an order reaches CANCELLED, so a
+	// shopper hears nothing at all unless this path pushes.
+	notifier.EXPECT().
+		NotifyCustomer(gomock.Any(), "cust_1", gomock.Any()).
+		DoAndReturn(func(_ context.Context, _ string, payload domain.PushPayload) (int, error) {
+			require.Contains(t, payload.Title, "HL-1042")
+			require.Contains(t, payload.Title, "cancelled")
+			return 1, nil
+		})
+
+	require.NoError(t, svc.CancelOrder(context.Background(), "order_1", "out of stock", "admin_1"))
+}
+
+func TestCancelOrderSucceedsWhenThePushFails(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockOrderRepo := mocks.NewMockOrderRepository(ctrl)
+	mockCustomerRepo := mocks.NewMockCustomerRepository(ctrl)
+	mockProductRepo := mocks.NewMockProductRepository(ctrl)
+	mockInventoryRepo := mocks.NewMockInventoryRepository(ctrl)
+	mockPriceQuoteRepo := mocks.NewMockPriceQuoteRepository(ctrl)
+	mockPricingService := mocks.NewMockPricingService(ctrl)
+	mockPaymentRepo := mocks.NewMockPaymentRepository(ctrl)
+	notifier := mocks.NewMockOrderNotifier(ctrl)
+
+	svc := NewOrderService(
+		mockOrderRepo,
+		mockCustomerRepo,
+		mockProductRepo,
+		mockInventoryRepo,
+		mockPriceQuoteRepo,
+		mockPaymentRepo,
+		mockPricingService,
+		notifier,
+	)
+
+	existing := &domain.Order{
+		ID: "order_1", OrderNumber: "HL-1042",
+		CustomerID: "cust_1", Status: domain.OrderStatusPending,
+	}
+	mockOrderRepo.EXPECT().GetByID(gomock.Any(), "order_1").Return(existing, nil)
+	mockOrderRepo.EXPECT().Update(gomock.Any(), gomock.Any()).Return(nil)
+	mockInventoryRepo.EXPECT().ReleaseOrderStock(gomock.Any(), "order_1", gomock.Any()).Return(nil)
+
+	// The order really is cancelled. An unreachable push service cannot undo it.
+	notifier.EXPECT().NotifyCustomer(gomock.Any(), "cust_1", gomock.Any()).
+		Return(0, errors.Internal("push service unreachable"))
+
+	require.NoError(t, svc.CancelOrder(context.Background(), "order_1", "", "admin_1"))
+}
+
+func TestUpdateStatusSucceedsWhenThePushFails(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockOrderRepo := mocks.NewMockOrderRepository(ctrl)
+	mockCustomerRepo := mocks.NewMockCustomerRepository(ctrl)
+	mockProductRepo := mocks.NewMockProductRepository(ctrl)
+	mockInventoryRepo := mocks.NewMockInventoryRepository(ctrl)
+	mockPriceQuoteRepo := mocks.NewMockPriceQuoteRepository(ctrl)
+	mockPricingService := mocks.NewMockPricingService(ctrl)
+	mockPaymentRepo := mocks.NewMockPaymentRepository(ctrl)
+	notifier := mocks.NewMockOrderNotifier(ctrl)
+
+	svc := NewOrderService(
+		mockOrderRepo,
+		mockCustomerRepo,
+		mockProductRepo,
+		mockInventoryRepo,
+		mockPriceQuoteRepo,
+		mockPaymentRepo,
+		mockPricingService,
+		notifier,
+	)
+
+	existing := &domain.Order{
+		ID: "order_1", OrderNumber: "HL-1042",
+		CustomerID: "cust_1", Status: domain.OrderStatusProcessing,
+	}
+	mockOrderRepo.EXPECT().GetByID(gomock.Any(), "order_1").Return(existing, nil)
+	mockOrderRepo.EXPECT().Update(gomock.Any(), gomock.Any()).Return(nil)
+	mockPaymentRepo.EXPECT().GetByOrderID(gomock.Any(), "order_1").
+		Return(&domain.Payment{Status: domain.PaymentStatusPaid}, nil).AnyTimes()
+	mockInventoryRepo.EXPECT().CommitOrderStock(gomock.Any(), "order_1", gomock.Any()).Return(nil)
+
+	// The order really did ship. A push service being down cannot undo that.
+	notifier.EXPECT().NotifyCustomer(gomock.Any(), "cust_1", gomock.Any()).
+		Return(0, errors.Internal("push service unreachable"))
+
+	require.NoError(t, svc.UpdateStatus(context.Background(), "order_1", domain.OrderStatusShipped, "admin_1"))
+}
+
+func TestUpdateStatusSendsNothingForAnInternalStatus(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockOrderRepo := mocks.NewMockOrderRepository(ctrl)
+	mockCustomerRepo := mocks.NewMockCustomerRepository(ctrl)
+	mockProductRepo := mocks.NewMockProductRepository(ctrl)
+	mockInventoryRepo := mocks.NewMockInventoryRepository(ctrl)
+	mockPriceQuoteRepo := mocks.NewMockPriceQuoteRepository(ctrl)
+	mockPricingService := mocks.NewMockPricingService(ctrl)
+	mockPaymentRepo := mocks.NewMockPaymentRepository(ctrl)
+	notifier := mocks.NewMockOrderNotifier(ctrl)
+
+	svc := NewOrderService(
+		mockOrderRepo,
+		mockCustomerRepo,
+		mockProductRepo,
+		mockInventoryRepo,
+		mockPriceQuoteRepo,
+		mockPaymentRepo,
+		mockPricingService,
+		notifier,
+	)
+
+	existing := &domain.Order{
+		ID: "order_1", OrderNumber: "HL-1042",
+		CustomerID: "cust_1", Status: domain.OrderStatusConfirmed,
+	}
+	mockOrderRepo.EXPECT().GetByID(gomock.Any(), "order_1").Return(existing, nil)
+	mockOrderRepo.EXPECT().Update(gomock.Any(), gomock.Any()).Return(nil)
+	mockPaymentRepo.EXPECT().GetByOrderID(gomock.Any(), "order_1").
+		Return(&domain.Payment{Status: domain.PaymentStatusPaid}, nil).AnyTimes()
+
+	// No NotifyCustomer expectation: PROCESSING must not reach a shopper, and
+	// gomock fails the test if it is called.
+	require.NoError(t, svc.UpdateStatus(context.Background(), "order_1", domain.OrderStatusProcessing, "admin_1"))
+}
+
+func TestUpdateStatusDoesNotWaitOutASlowPush(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockOrderRepo := mocks.NewMockOrderRepository(ctrl)
+	mockCustomerRepo := mocks.NewMockCustomerRepository(ctrl)
+	mockProductRepo := mocks.NewMockProductRepository(ctrl)
+	mockInventoryRepo := mocks.NewMockInventoryRepository(ctrl)
+	mockPriceQuoteRepo := mocks.NewMockPriceQuoteRepository(ctrl)
+	mockPricingService := mocks.NewMockPricingService(ctrl)
+	mockPaymentRepo := mocks.NewMockPaymentRepository(ctrl)
+	notifier := mocks.NewMockOrderNotifier(ctrl)
+
+	svc := NewOrderService(
+		mockOrderRepo,
+		mockCustomerRepo,
+		mockProductRepo,
+		mockInventoryRepo,
+		mockPriceQuoteRepo,
+		mockPaymentRepo,
+		mockPricingService,
+		notifier,
+	)
+
+	existing := &domain.Order{
+		ID: "order_1", OrderNumber: "HL-1042",
+		CustomerID: "cust_1", Status: domain.OrderStatusProcessing,
+	}
+	mockOrderRepo.EXPECT().GetByID(gomock.Any(), "order_1").Return(existing, nil)
+	mockOrderRepo.EXPECT().Update(gomock.Any(), gomock.Any()).Return(nil)
+	mockPaymentRepo.EXPECT().GetByOrderID(gomock.Any(), "order_1").
+		Return(&domain.Payment{Status: domain.PaymentStatusPaid}, nil).AnyTimes()
+	mockInventoryRepo.EXPECT().CommitOrderStock(gomock.Any(), "order_1", gomock.Any()).Return(nil)
+
+	// Stands in for a black-holed push service: a real HTTP call given this
+	// context aborts at the deadline instead of running to completion.
+	notifier.EXPECT().NotifyCustomer(gomock.Any(), "cust_1", gomock.Any()).
+		DoAndReturn(func(ctx context.Context, _ string, _ domain.PushPayload) (int, error) {
+			select {
+			case <-time.After(3 * time.Second):
+				return 1, nil
+			case <-ctx.Done():
+				return 0, ctx.Err()
+			}
+		})
+
+	start := time.Now()
+	require.NoError(t, svc.UpdateStatus(context.Background(), "order_1", domain.OrderStatusShipped, "admin_1"))
+	elapsed := time.Since(start)
+
+	require.Less(t, elapsed, 2500*time.Millisecond,
+		"UpdateStatus must not wait past the notifier's own timeout bound")
 }

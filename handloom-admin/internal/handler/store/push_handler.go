@@ -40,6 +40,10 @@ func (h *PushHandler) Routes() chi.Router {
 			Post("/unsubscribe", h.Unsubscribe)
 		r.With(middleware.ValidateJSONTyped[domain.PushEndpointRequest](h.validation)).
 			Post("/test", h.SendTest)
+		r.With(middleware.ValidateJSONTyped[domain.LinkPushRequest](h.validation)).
+			Post("/link", h.Link)
+		r.With(middleware.ValidateJSONTyped[domain.LinkPushRequest](h.validation)).
+			Post("/unlink", h.Unlink)
 	})
 
 	return r
@@ -92,4 +96,26 @@ func (h *PushHandler) SendTest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response.JSON(w, http.StatusOK, map[string]string{response.KeyStatus: "sent"})
+}
+
+// Link attaches this browser's subscription to the signed-in shopper.
+// POST /api/v1/store/push/link
+func (h *PushHandler) Link(w http.ResponseWriter, r *http.Request) {
+	req := middleware.MustGetValidatedBody[domain.LinkPushRequest](r.Context())
+	if err := h.pushService.LinkCustomer(r.Context(), req.Endpoint); err != nil {
+		response.Error(w, err)
+		return
+	}
+	response.JSON(w, http.StatusOK, map[string]bool{"linked": true})
+}
+
+// Unlink detaches this browser's subscription on sign-out.
+// POST /api/v1/store/push/unlink
+func (h *PushHandler) Unlink(w http.ResponseWriter, r *http.Request) {
+	req := middleware.MustGetValidatedBody[domain.LinkPushRequest](r.Context())
+	if err := h.pushService.UnlinkCustomer(r.Context(), req.Endpoint); err != nil {
+		response.Error(w, err)
+		return
+	}
+	response.JSON(w, http.StatusOK, map[string]bool{"unlinked": true})
 }

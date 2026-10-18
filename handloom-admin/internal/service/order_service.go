@@ -25,6 +25,7 @@ type OrderService struct {
 	priceQuoteRepo domain.PriceQuoteRepository
 	paymentRepo    domain.PaymentRepository
 	pricingService domain.PricingService
+	notifier       domain.OrderNotifier
 }
 
 // NewOrderService creates a new OrderService
@@ -36,6 +37,7 @@ func NewOrderService(
 	priceQuoteRepo domain.PriceQuoteRepository,
 	paymentRepo domain.PaymentRepository,
 	pricingService domain.PricingService,
+	notifier domain.OrderNotifier,
 ) *OrderService {
 	return &OrderService{
 		orderRepo:      orderRepo,
@@ -45,6 +47,7 @@ func NewOrderService(
 		priceQuoteRepo: priceQuoteRepo,
 		paymentRepo:    paymentRepo,
 		pricingService: pricingService,
+		notifier:       notifier,
 	}
 }
 
@@ -158,10 +161,32 @@ func (s *OrderService) UpdateStatus(ctx context.Context, id string, status domai
 	}
 
 	s.applyInventoryEffect(ctx, order, status, updatedBy)
+	s.notifyStatusChange(ctx, order)
 
 	slog.InfoContext(ctx, "Updated order status", "order_id", id, "status", status)
 	span.End()
 	return nil
+}
+
+// notifyStatusChange pushes the new status to the shopper's devices. Failures
+// are swallowed: the order already moved, and must not roll back or error.
+func (s *OrderService) notifyStatusChange(ctx context.Context, order *domain.Order) {
+	// Bounded well under the Lambda's own timeout, and detached from the
+	// request: a client disconnect must not cancel a push already in flight.
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
+	defer cancel()
+
+	if s.notifier == nil || order.CustomerID == "" {
+		return
+	}
+	payload := orderStatusPush(order)
+	if payload == nil {
+		return
+	}
+	if _, err := s.notifier.NotifyCustomer(ctx, order.CustomerID, *payload); err != nil {
+		slog.WarnContext(ctx, "Could not push the order status to the customer",
+			"error", err, "order_id", order.ID, "status", order.Status)
+	}
 }
 
 // forwardStatuses are the moves that commit us to fulfilling an order, and so the
@@ -354,6 +379,10 @@ func (s *OrderService) CancelOrder(ctx context.Context, id string, reason string
 		metrics.LabelReason:  reasonLabel,
 		metrics.LabelGateway: gatewayPhonePe,
 	})
+
+	// The admin UI cannot reach CANCELLED through UpdateStatus, so this is the
+	// only path that tells a shopper their order will not arrive.
+	s.notifyStatusChange(ctx, order)
 
 	slog.InfoContext(ctx, "Canceled order", "order_id", id)
 	span.End()
