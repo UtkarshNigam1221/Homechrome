@@ -1,7 +1,6 @@
 'use client';
 
 import {
-  ArrowRightIcon,
   ChevronDownIcon,
   ShoppingBagIcon,
   TruckIcon,
@@ -85,14 +84,20 @@ export function ProductInfo({ product }: ProductInfoProps) {
   return (
     <Stack gap="md">
       <Group justify="space-between" align="center" gap="sm" wrap="nowrap">
-        <Text fz="xs" fw={600} c="navy.6" tt="capitalize" lineClamp={1}>
-          {[product.craft_type?.toLowerCase(), product.origin].filter(Boolean).join(' · ')}
-          {product.sku ? `${product.craft_type || product.origin ? ' · ' : ''}SKU: ${product.sku}` : ''}
-        </Text>
+        <Group gap="sm" wrap="nowrap" style={{ minWidth: 0 }}>
+          <Text fz="xs" fw={600} c="navy.6" tt="capitalize" lineClamp={1}>
+            {[product.craft_type?.toLowerCase(), product.origin].filter(Boolean).join(', ')}
+          </Text>
+          {product.sku && (
+            <Text fz="xs" c="navy.5" style={{ whiteSpace: 'nowrap' }}>
+              SKU {product.sku}
+            </Text>
+          )}
+        </Group>
         <Group gap={5} wrap="nowrap" style={{ flexShrink: 0 }}>
           <TruckIcon width={14} height={14} color="var(--mantine-color-navy-6)" />
-          <Text fz="xs" fw={600} c="navy.6" style={{ letterSpacing: '0.05em' }}>
-            FAST DISPATCH
+          <Text fz="xs" fw={600} c="navy.6">
+            Fast dispatch
           </Text>
         </Group>
       </Group>
@@ -119,7 +124,7 @@ export function ProductInfo({ product }: ProductInfoProps) {
               </Text>
               <Box px={9} py={3} bg="brand.1" style={{ borderRadius: 4 }}>
                 <Text fz="xs" fw={700} c="brand.8">
-                  SAVE {formatPrice(product.base_price - product.selling_price)} ({discountPercent}% OFF)
+                  Save {formatPrice(product.base_price - product.selling_price)} ({discountPercent}% off)
                 </Text>
               </Box>
             </>
@@ -129,7 +134,7 @@ export function ProductInfo({ product }: ProductInfoProps) {
         <Group gap="xs" mt={10} wrap="wrap">
           <StockStatus inStock={product.in_stock} />
           <Text size="sm" c="navy.6">
-            · Dispatched in {DISPATCH_DAYS} business days · Inclusive of all taxes
+            Dispatched in {DISPATCH_DAYS} business days. Inclusive of all taxes.
           </Text>
         </Group>
       </Box>
@@ -193,7 +198,6 @@ export function ProductInfo({ product }: ProductInfoProps) {
           color="brand"
           size="lg"
           radius="sm"
-          rightSection={<ArrowRightIcon width={18} height={18} />}
           onClick={handleBuyNow}
           loading={loading}
           disabled={!product.in_stock}

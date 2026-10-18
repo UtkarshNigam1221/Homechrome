@@ -99,12 +99,6 @@ export default function PoliciesPage() {
           <Breadcrumb items={[{ label: 'Home', href: '/' }, { label: 'Policies' }]} />
 
           <Stack gap="md" maw={720}>
-            <Group gap={8} w="fit-content" px={12} py={6} bg="brand.1" style={{ borderRadius: 999 }}>
-              <Text fz={11} fw={700} c="brand.8" style={{ letterSpacing: '0.12em' }}>
-                WHAT WE STAND BEHIND
-              </Text>
-            </Group>
-
             <Title
               order={1}
               fz={{ base: '2rem', sm: '2.75rem' }}
@@ -112,10 +106,7 @@ export default function PoliciesPage() {
               lh={1.12}
               c="navy.9"
             >
-              Our Handloom Promise &amp;{' '}
-              <Text span inherit c="brand.7" fs="italic">
-                Store Policies
-              </Text>
+              Policies
             </Title>
 
             <Text c="navy.6" lh={1.65}>
@@ -137,9 +128,6 @@ export default function PoliciesPage() {
             <Stack gap="lg">
               <Card shadow="sm" radius="lg" padding="lg" withBorder={false} bg="brand.1">
                 <Stack gap="sm">
-                  <Text fz={11} fw={700} c="brand.8" style={{ letterSpacing: '0.12em' }}>
-                    THE SHORT VERSION
-                  </Text>
                   <Title
                     order={2}
                     fz={{ base: '1.5rem', sm: '1.75rem' }}
@@ -163,7 +151,7 @@ export default function PoliciesPage() {
               </Card>
 
               <Box>
-                <SectionHead eyebrow="Step by step" title="How a replacement works" />
+                <SectionHead title="How a replacement works" />
                 <SimpleGrid cols={{ base: 1, md: 3 }} spacing="md">
                   {STEPS.map(({ n, icon: Icon, title, body, foot }) => (
                     <Card key={n} shadow="sm" radius="lg" padding="lg" withBorder={false} h="100%">
@@ -191,8 +179,8 @@ export default function PoliciesPage() {
                         <Text fz="xs" c="navy.6" lh={1.65}>
                           {body}
                         </Text>
-                        <Text fz={10} fw={700} c="brand.7" mt="auto" style={{ letterSpacing: '0.06em' }}>
-                          {foot.toUpperCase()}
+                        <Text fz="xs" fw={600} c="brand.7" mt="auto">
+                          {foot}
                         </Text>
                       </Stack>
                     </Card>
@@ -259,7 +247,7 @@ export default function PoliciesPage() {
               </Card>
 
               <Box>
-                <SectionHead eyebrow="Please note" title="What we cannot take back" />
+                <SectionHead title="What we cannot take back" />
                 <Stack gap="sm">
                   {NOT_COVERED.map(({ title, body }) => (
                     <Group key={title} gap="sm" wrap="nowrap" align="flex-start">
@@ -299,12 +287,9 @@ export default function PoliciesPage() {
   );
 }
 
-function SectionHead({ eyebrow, title }: { eyebrow: string; title: string }) {
+function SectionHead({ title }: { title: string }) {
   return (
     <Stack gap={4} mb="md">
-      <Text fz={11} fw={700} c="brand.7" style={{ letterSpacing: '0.14em' }}>
-        {eyebrow.toUpperCase()}
-      </Text>
       <Title
         order={2}
         fz={{ base: '1.25rem', sm: '1.5rem' }}

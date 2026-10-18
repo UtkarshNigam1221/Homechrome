@@ -1,6 +1,6 @@
 'use client';
 
-import { ArrowRightIcon, ClockIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline';
+import { ClockIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline';
 import { Anchor, Box, Divider, Flex, Group, Stack, Text, UnstyledButton } from '@mantine/core';
 import { useDebouncedValue } from '@mantine/hooks';
 import { Spotlight, spotlight } from '@mantine/spotlight';
@@ -147,7 +147,7 @@ export function SpotlightSearch({ categories }: SpotlightSearchProps) {
 
                       <Stack gap={3} flex={1} miw={0}>
                         {meta && (
-                          <Text fz={10} fw={700} c="brand.7" tt="uppercase" lineClamp={1}>
+                          <Text fz={11} fw={600} c="brand.7" lineClamp={1}>
                             {meta}
                           </Text>
                         )}
@@ -183,12 +183,6 @@ export function SpotlightSearch({ categories }: SpotlightSearchProps) {
                           Spotlight action is itself a <button> and nesting one
                           is invalid — it broke hydration and ate the list.
                           Keyboard navigation is worth more than the shortcut. */}
-                      <ArrowRightIcon
-                        width={15}
-                        height={15}
-                        color="var(--mantine-color-navy-5)"
-                        style={{ flexShrink: 0 }}
-                      />
                     </Group>
                   </Spotlight.Action>
                 );
@@ -200,7 +194,6 @@ export function SpotlightSearch({ categories }: SpotlightSearchProps) {
                   <Text fz="sm" fw={600} c="brand.7">
                     View all results for &ldquo;{term}&rdquo;
                   </Text>
-                  <ArrowRightIcon width={16} height={16} color="var(--mantine-color-brand-7)" />
                 </Group>
               </Spotlight.Action>
             )}
@@ -232,8 +225,8 @@ export function SpotlightSearch({ categories }: SpotlightSearchProps) {
           <Stack gap="lg">
             {recent.length > 0 && (
               <Stack gap={6}>
-                <Text fz={10} fw={700} c="navy.5" style={{ letterSpacing: '0.1em' }}>
-                  RECENT SEARCHES
+                <Text fz="xs" fw={600} c="navy.5">
+                  Recent searches
                 </Text>
                 {recent.map((r) => (
                   <UnstyledButton key={r} onClick={() => setQuery(r)}>
@@ -250,8 +243,8 @@ export function SpotlightSearch({ categories }: SpotlightSearchProps) {
             )}
 
             <Stack gap={8}>
-              <Text fz={10} fw={700} c="navy.5" style={{ letterSpacing: '0.1em' }}>
-                POPULAR COLLECTIONS
+              <Text fz="xs" fw={600} c="navy.5">
+                Collections
               </Text>
               {categories.slice(0, 3).map((c) => (
                 <UnstyledButton key={c.id} onClick={() => go(`/c/${c.slug}`)}>

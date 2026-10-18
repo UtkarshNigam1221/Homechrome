@@ -1,6 +1,6 @@
-// Single source of truth for site typography.
-// To change the site-wide font: swap the import below + weights, and rerun.
-// Mantine theme + plain HTML body consume `siteFont.style.fontFamily`.
+// Single source of truth for site typography. Mantine and the body consume
+// `siteFont`; `displayFont` is exposed as --font-display and applied to h1/h2
+// from globals.css.
 
 import { Playfair_Display, Roboto } from 'next/font/google';
 
@@ -10,9 +10,9 @@ export const siteFont = Roboto({
   display: 'swap',
 });
 
-// Display serif — used on hero / headlines that need editorial feel.
 export const displayFont = Playfair_Display({
   subsets: ['latin'],
   weight: ['600', '700'],
   display: 'swap',
+  variable: '--font-display',
 });

@@ -2,12 +2,7 @@
 
 import { Box, Stack, Text, Title } from '@mantine/core';
 
-import { Eyebrow } from '@/components/ui/eyebrow';
-
-
 interface PageHeaderProps {
-  /** Small letterspaced label above the title. */
-  eyebrow?: string;
   title: string;
   description?: string;
   children?: React.ReactNode;
@@ -15,7 +10,6 @@ interface PageHeaderProps {
 }
 
 export function PageHeader({
-  eyebrow,
   title,
   description,
   children,
@@ -24,7 +18,6 @@ export function PageHeader({
   return (
     <Box mb="xl" className={className}>
       <Stack gap={6}>
-        {eyebrow && <Eyebrow size={12}>{eyebrow}</Eyebrow>}
         <Title
           order={1}
           fz={{ base: '1.75rem', sm: '2.25rem' }}

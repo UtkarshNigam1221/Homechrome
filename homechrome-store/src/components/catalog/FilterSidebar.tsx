@@ -94,8 +94,8 @@ export default function FilterSidebar({
     <Stack gap="lg" component="aside">
       {categories && categories.length > 0 && (
         <Stack gap={6}>
-          <Text fz={12} fw={700} c="navy.9" style={{ letterSpacing: '0.1em' }}>
-            CATEGORIES
+          <Text fz="sm" fw={700} c="navy.9">
+            Categories
           </Text>
           {categories.map((category) => {
             const active = category.slug === activeCategorySlug;

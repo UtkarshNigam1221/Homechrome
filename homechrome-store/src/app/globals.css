@@ -56,6 +56,29 @@ img {
   outline-color: var(--mantine-color-navy-7);
 }
 
+/* Page and section titles speak in the display serif; everything below h2
+   stays in the body face. Element + class outranks Mantine's own rule. */
+h1.mantine-Title-root,
+h2.mantine-Title-root {
+  font-family: var(--font-display), Georgia, serif;
+  letter-spacing: -0.01em;
+}
+
+/* Homepage collections: the largest collection takes two rows beside the rest. */
+.home-collections {
+  display: grid;
+  gap: var(--mantine-spacing-lg);
+}
+@media (min-width: 62em) {
+  .home-collections {
+    grid-template-columns: 2fr 1fr;
+    grid-auto-rows: 1fr;
+  }
+  .home-collections > :first-child {
+    grid-row: span 2;
+  }
+}
+
 /* Coupon offer rows: hover only where there is something to click. */
 [data-usable]:hover {
   background: var(--mantine-color-brand-1);

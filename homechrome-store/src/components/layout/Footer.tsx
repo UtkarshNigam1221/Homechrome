@@ -38,7 +38,6 @@ export default function Footer({ categories = [] }: { categories?: Category[] })
     <Box
       component="footer"
       bg="navy.1"
-      mt={64}
       style={{ borderTop: '1px solid var(--mantine-color-navy-2)' }}
     >
       <Container size="xl">
@@ -73,8 +72,8 @@ export default function Footer({ categories = [] }: { categories?: Category[] })
               Premium handloom textiles from across India. Celebrating the art of traditional weaving.
             </Text>
             <Group gap="xs" mt={6} wrap="nowrap">
-              <CraftPill icon={<SparklesIcon width={13} height={13} />}>MADE IN INDIA</CraftPill>
-              <CraftPill icon={<CheckBadgeIcon width={13} height={13} />}>FREE SHIPPING ALWAYS</CraftPill>
+              <CraftPill icon={<SparklesIcon width={13} height={13} />}>Made in India</CraftPill>
+              <CraftPill icon={<CheckBadgeIcon width={13} height={13} />}>Free shipping, always</CraftPill>
             </Group>
           </Flex>
 
@@ -96,7 +95,7 @@ export default function Footer({ categories = [] }: { categories?: Category[] })
               <FooterLink href="/categories">Categories</FooterLink>
             </FooterColumn>
 
-            <FooterColumn title="Customer Care">
+            <FooterColumn title="Customer care">
               <FooterLink href="/track">Track Order</FooterLink>
               <FooterLink href="/account">My Account</FooterLink>
               {/* The only other route here was the grievance deep link, which
@@ -113,7 +112,7 @@ export default function Footer({ categories = [] }: { categories?: Category[] })
               <FooterLink href="/contact#grievance">Grievance Redressal</FooterLink>
             </FooterColumn>
 
-            <FooterColumn title="Need Help?">
+            <FooterColumn title="Need help?">
               <WhatsAppButton
                 message="Hi, I need help with my order"
                 label="WhatsApp Us"
@@ -187,7 +186,7 @@ function CraftPill({ icon, children }: { icon: React.ReactNode; children: React.
       }}
     >
       {icon}
-      <Text fz={10} fw={700} style={{ letterSpacing: '0.06em' }}>
+      <Text fz={11} fw={600}>
         {children}
       </Text>
     </Group>
@@ -197,8 +196,8 @@ function CraftPill({ icon, children }: { icon: React.ReactNode; children: React.
 function FooterColumn({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <Stack gap="xs">
-      <Text fz={12} fw={700} c="navy.9" style={{ letterSpacing: '0.1em' }}>
-        {title.toUpperCase()}
+      <Text fz="sm" fw={700} c="navy.9">
+        {title}
       </Text>
       <Stack gap={6}>{children}</Stack>
     </Stack>

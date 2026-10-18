@@ -64,17 +64,16 @@ export function ReviewStep({
         {/* One section: the field and the list are two ways into the same thing. */}
         <Stack gap={8}>
           <Text
-            fz={10}
-            fw={700}
-            c="navy.4"
+            fz="xs"
+            fw={600}
+            c="navy.5"
             style={{
-              letterSpacing: '0.14em',
               borderBottom: '1px solid var(--mantine-color-brand-2)',
             }}
             pb={6}
             mb={2}
           >
-            OFFERS
+            Offers
           </Text>
           <CouponInput
             appliedCode={couponCode ?? undefined}

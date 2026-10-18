@@ -78,7 +78,7 @@ export default function MobileNav({ isOpen, onClose, categories }: MobileNavProp
     >
       <ScrollArea style={{ flex: 1 }}>
         <Box px="sm" py="md">
-          <Eyebrow>Collections &amp; Shop</Eyebrow>
+          <Eyebrow>Collections &amp; shop</Eyebrow>
           <DrawerRow
             href="/products"
             label="All Products"
@@ -105,7 +105,7 @@ export default function MobileNav({ isOpen, onClose, categories }: MobileNavProp
         <Divider mx="sm" />
 
         <Box px="sm" py="md">
-          <Eyebrow>Your Orders</Eyebrow>
+          <Eyebrow>Your orders</Eyebrow>
           <DrawerRow
             href="/track"
             label="Track Order"
@@ -151,8 +151,8 @@ export default function MobileNav({ isOpen, onClose, categories }: MobileNavProp
 
 function Eyebrow({ children }: { children: React.ReactNode }) {
   return (
-    <Text fz={11} fw={700} c="navy.5" mb={6} px={10} style={{ letterSpacing: '0.12em' }}>
-      {children?.toString().toUpperCase()}
+    <Text fz="xs" fw={600} c="navy.5" mb={6} px={10}>
+      {children}
     </Text>
   );
 }

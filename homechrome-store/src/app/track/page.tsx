@@ -79,13 +79,6 @@ export default function TrackOrderPage() {
       <Breadcrumb items={[{ label: 'Home', href: '/' }, { label: 'Track Order' }]} />
 
       <Stack gap="md" mb="xl" maw={640}>
-        <Group gap={8} w="fit-content" px={12} py={6} bg="navy.2" style={{ borderRadius: 999 }}>
-          <Box w={7} h={7} bg="var(--mantine-color-leaf-5)" style={{ borderRadius: 999 }} />
-          <Text fz={11} fw={700} c="navy.7" style={{ letterSpacing: '0.12em' }}>
-            DISPATCH TO DOORSTEP
-          </Text>
-        </Group>
-
         <Title
           order={1}
           fz={{ base: '2rem', sm: '2.75rem' }}
@@ -93,10 +86,7 @@ export default function TrackOrderPage() {
           lh={1.12}
           c="navy.9"
         >
-          Track Your{' '}
-          <Text span inherit c="brand.7" fs="italic">
-            Order
-          </Text>
+          Track your order
         </Title>
 
         <Text c="navy.6" lh={1.65}>
@@ -108,8 +98,8 @@ export default function TrackOrderPage() {
       <Card shadow="sm" radius="lg" padding="lg" withBorder={false} mb="lg">
         <form onSubmit={handleSubmit}>
           <Stack gap="sm">
-            <Text fz={11} fw={700} c="navy.5" style={{ letterSpacing: '0.1em' }}>
-              ORDER NUMBER
+            <Text fz="sm" fw={600} c="navy.8">
+              Order number
             </Text>
             <Group gap="sm" align="flex-start" wrap="nowrap">
               <TextInput
@@ -197,7 +187,7 @@ export default function TrackOrderPage() {
                         size="sm"
                         c="brand.7"
                       >
-                        Track on courier website →
+                        Track on courier website
                       </Anchor>
                     )}
                   </Stack>

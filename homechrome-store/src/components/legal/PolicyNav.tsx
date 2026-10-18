@@ -34,9 +34,6 @@ export function PolicyNav() {
     <Stack gap="md">
       <Card shadow="sm" radius="lg" padding="md" withBorder={false}>
         <Stack gap={2} mb="xs" px={6}>
-          <Text fz={10} fw={700} c="navy.5" style={{ letterSpacing: '0.12em' }}>
-            POLICY CHAPTERS
-          </Text>
           <Text
             fz="1.125rem"
             fw={600}

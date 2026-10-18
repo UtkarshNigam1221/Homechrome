@@ -1,8 +1,7 @@
-import { Box, Card, Container, Flex, Group, Stack, Text, Title } from '@mantine/core';
+import { Box, Card, Container, Flex, Stack, Text, Title } from '@mantine/core';
 
 import { PolicyNav } from '@/components/legal/PolicyNav';
 import { Breadcrumb } from '@/components/ui/breadcrumb';
-import { Eyebrow } from '@/components/ui/eyebrow';
 import { LEGAL_LAST_UPDATED } from '@/lib/constants';
 
 
@@ -11,12 +10,10 @@ import { LEGAL_LAST_UPDATED } from '@/lib/constants';
 // exactly as written — these pages are binding, so presentation only.
 export function LegalPageLayout({
   title,
-  eyebrow,
   intro,
   children,
 }: {
   title: string;
-  eyebrow?: string;
   intro?: string;
   children: React.ReactNode;
 }) {
@@ -32,11 +29,6 @@ export function LegalPageLayout({
             ]}
           />
           <Stack gap="sm" maw={720}>
-            {eyebrow && (
-              <Group gap={8} w="fit-content" px={12} py={6} bg="brand.1" style={{ borderRadius: 999 }}>
-                <Eyebrow>{eyebrow}</Eyebrow>
-              </Group>
-            )}
             <Title
               order={1}
               fz={{ base: '1.875rem', sm: '2.5rem' }}

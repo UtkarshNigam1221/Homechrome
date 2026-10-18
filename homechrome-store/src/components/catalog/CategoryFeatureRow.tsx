@@ -1,7 +1,7 @@
 'use client';
 
-import { ArrowRightIcon, PhotoIcon } from '@heroicons/react/24/outline';
-import { Anchor, Box, Center, Group, SimpleGrid, Stack, Text, Title } from '@mantine/core';
+import { PhotoIcon } from '@heroicons/react/24/outline';
+import { Anchor, Box, Center, SimpleGrid, Stack, Text, Title } from '@mantine/core';
 import Link from 'next/link';
 
 import { AssetImage } from '@/components/ui/asset-image';
@@ -51,11 +51,11 @@ export function CategoryFeatureRow({ category, index }: CategoryFeatureRowProps)
           left={14}
           px={10}
           py={5}
-          bg="rgba(252,249,244,0.93)"
+          bg="rgba(245,240,235,0.93)"
           style={{ borderRadius: 4, backdropFilter: 'blur(4px)' }}
         >
-          <Text fz={11} fw={700} c="navy.8" style={{ letterSpacing: '0.06em' }}>
-            {category.product_count} {category.product_count === 1 ? 'DESIGN' : 'DESIGNS'}
+          <Text fz={11} fw={600} c="navy.8">
+            {category.product_count} {category.product_count === 1 ? 'design' : 'designs'}
           </Text>
         </Box>
       )}
@@ -64,10 +64,6 @@ export function CategoryFeatureRow({ category, index }: CategoryFeatureRowProps)
 
   const copy = (
     <Stack gap="md" justify="center">
-      <Text fz={11} fw={700} c="navy.5" style={{ letterSpacing: '0.14em' }}>
-        CATEGORY {String(index + 1).padStart(2, '0')}
-      </Text>
-
       <Title
         order={2}
         fz={{ base: '1.75rem', sm: '2.25rem' }}
@@ -87,16 +83,13 @@ export function CategoryFeatureRow({ category, index }: CategoryFeatureRowProps)
       <Anchor
         component={Link}
         href={`/c/${category.slug}`}
-        underline="never"
+        underline="hover"
         c="brand.7"
         fw={600}
         w="fit-content"
         mt={4}
       >
-        <Group gap={8} wrap="nowrap" align="center">
-          Explore {category.name}
-          <ArrowRightIcon width={16} height={16} />
-        </Group>
+        Explore {category.name}
       </Anchor>
     </Stack>
   );
