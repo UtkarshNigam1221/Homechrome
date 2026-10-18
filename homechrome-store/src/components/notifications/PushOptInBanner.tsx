@@ -10,38 +10,6 @@ const STORAGE_KEY = 'hc_push_prompt_dismissed_at';
 const DISMISS_DAYS = 7;
 const APPEAR_DELAY_MS = 2500;
 
-// The bell rings once with a halo, then goes still. A looping prompt nags,
-// and nagging gets an origin demoted to Chrome's quiet notification UI.
-const ATTENTION_CSS = `
-@keyframes hcPushRing {
-  0%, 60%, 100% { transform: rotate(0deg); }
-  8%  { transform: rotate(-16deg); }
-  18% { transform: rotate(13deg); }
-  28% { transform: rotate(-9deg); }
-  38% { transform: rotate(6deg); }
-  48% { transform: rotate(-3deg); }
-}
-@keyframes hcPushHalo {
-  from { opacity: 0.45; transform: scale(1); }
-  to   { opacity: 0;   transform: scale(2.4); }
-}
-.hc-push-bell { position: relative; display: inline-flex; }
-.hc-push-bell > * { animation: hcPushRing 1100ms ease-in-out 420ms 1 both; }
-.hc-push-bell::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: var(--mantine-radius-xl);
-  border: 2px solid var(--mantine-color-brand-4);
-  animation: hcPushHalo 1300ms ease-out 420ms 2 both;
-  pointer-events: none;
-}
-@media (prefers-reduced-motion: reduce) {
-  .hc-push-bell > * { animation: none; }
-  .hc-push-bell::after { display: none; }
-}
-`;
-
 export default function PushOptInBanner() {
   const { isSupported, isConfigured, permission, isSubscribed, loading, subscribe } =
     usePushNotifications();
@@ -94,7 +62,6 @@ export default function PushOptInBanner() {
       overlayProps={{ backgroundOpacity: 0.6, blur: 4 }}
       transitionProps={{ transition: 'pop', duration: 260, timingFunction: 'ease-out' }}
     >
-      <style>{ATTENTION_CSS}</style>
 
       <Stack align="center" gap="sm">
         <span className="hc-push-bell">
