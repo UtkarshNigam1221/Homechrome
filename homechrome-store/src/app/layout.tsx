@@ -50,9 +50,9 @@ export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   // Non-prod hosts (dev, local) get noindex so they can't surface in search.
   ...(IS_INDEXABLE ? {} : { robots: { index: false, follow: false } }),
-  title: 'Homechrome | Handloom Textiles',
+  title: 'Homechrome',
   description:
-    'Premium handloom textiles from across India. Sarees, dupattas, fabrics, and more.',
+    'Handloom bedsheets, dohars and cushions, printed and woven by hand in India. Free shipping on every order.',
 };
 
 export default async function RootLayout({
