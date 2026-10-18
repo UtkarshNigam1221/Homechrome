@@ -1072,6 +1072,40 @@ func TestCancelOrderNotifiesTheCustomer(t *testing.T) {
 	require.NoError(t, svc.CancelOrder(context.Background(), "order_1", "out of stock", "admin_1"))
 }
 
+func TestCancelOrderByTheShopperStaysSilent(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockOrderRepo := mocks.NewMockOrderRepository(ctrl)
+	mockInventoryRepo := mocks.NewMockInventoryRepository(ctrl)
+	notifier := mocks.NewMockOrderNotifier(ctrl)
+
+	svc := NewOrderService(
+		mockOrderRepo,
+		mocks.NewMockCustomerRepository(ctrl),
+		mocks.NewMockProductRepository(ctrl),
+		mockInventoryRepo,
+		mocks.NewMockPriceQuoteRepository(ctrl),
+		mocks.NewMockPaymentRepository(ctrl),
+		mocks.NewMockPricingService(ctrl),
+		notifier,
+	)
+
+	existing := &domain.Order{
+		ID: "order_1", OrderNumber: "HL-1042",
+		CustomerID: "cust_1", Status: domain.OrderStatusConfirmed,
+		Items: []domain.OrderItem{{ProductID: "prod_1", Quantity: 1}},
+	}
+	mockOrderRepo.EXPECT().GetByID(gomock.Any(), "order_1").Return(existing, nil)
+	mockOrderRepo.EXPECT().Update(gomock.Any(), gomock.Any()).Return(nil)
+	mockInventoryRepo.EXPECT().ReleaseOrderStock(gomock.Any(), "order_1", gomock.Any()).Return(nil)
+
+	// The storefront passes the customer as updatedBy; they just did it themselves.
+	notifier.EXPECT().NotifyCustomer(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+
+	require.NoError(t, svc.CancelOrder(context.Background(), "order_1", "Changed mind", "cust_1"))
+}
+
 func TestCancelOrderSucceedsWhenThePushFails(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()

@@ -380,9 +380,11 @@ func (s *OrderService) CancelOrder(ctx context.Context, id string, reason string
 		metrics.LabelGateway: gatewayPhonePe,
 	})
 
-	// The admin UI cannot reach CANCELLED through UpdateStatus, so this is the
-	// only path that tells a shopper their order will not arrive.
-	s.notifyStatusChange(ctx, order)
+	// This is the only path to CANCELLED, so it is where a shopper learns the
+	// order will not arrive. A shopper cancelling their own order already knows.
+	if updatedBy != order.CustomerID {
+		s.notifyStatusChange(ctx, order)
+	}
 
 	slog.InfoContext(ctx, "Canceled order", "order_id", id)
 	span.End()
