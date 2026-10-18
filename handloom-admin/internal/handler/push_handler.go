@@ -23,9 +23,8 @@ func NewPushHandler(pushService *service.PushService, validation *middleware.Val
 	return &PushHandler{pushService: pushService, validation: validation}
 }
 
-// Routes returns the admin push routes. Mounted on the authenticated admin
-// router, so every route here requires a valid admin JWT — broadcasting to all
-// subscribers and reading subscriber endpoints are both operator-only.
+// Routes returns the admin push routes; the router mounts them behind the
+// ADMIN role, since broadcasting and reading endpoints are operator-only.
 func (h *PushHandler) Routes() chi.Router {
 	r := chi.NewRouter()
 

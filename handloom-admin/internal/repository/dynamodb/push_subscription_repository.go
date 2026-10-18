@@ -35,13 +35,8 @@ func subKey(endpoint string) map[string]types.AttributeValue {
 	}
 }
 
-// Save upserts a subscription keyed by its endpoint hash. Re-subscribing the
-// same browser refreshes the keys and reactivates the row rather than adding a
-// duplicate, so CreatedAt carries over from the existing item.
-//
-// The read-then-write is deliberately not atomic: the only thing racing
-// callers can disagree on is isNew, and a duplicate welcome push collapses in
-// the browser anyway because both carry the same notification tag.
+// Save upserts by endpoint hash, so re-subscribing refreshes keys and keeps
+// CreatedAt. The read-then-write only races on isNew, and the browser dedupes.
 func (r *PushSubscriptionRepository) Save(ctx context.Context, sub *domain.PushSubscription) (bool, error) {
 	existing, err := r.GetByEndpoint(ctx, sub.Endpoint)
 	if err != nil && !errors.IsNotFound(err) {
@@ -92,9 +87,8 @@ func (r *PushSubscriptionRepository) GetByEndpoint(ctx context.Context, endpoint
 	return &sub, nil
 }
 
-// Deactivate marks an endpoint INACTIVE, moving it out of the ACTIVE GSI1
-// partition so broadcasts stop targeting it. Unsubscribing an endpoint that was
-// never stored is a no-op: the caller's intent (stop sending here) already holds.
+// Deactivate marks an endpoint INACTIVE so broadcasts skip it; an endpoint
+// that was never stored is a no-op, since the intent already holds.
 func (r *PushSubscriptionRepository) Deactivate(ctx context.Context, endpoint string) error {
 	_, err := r.client.db.UpdateItem(ctx, &dynamodb.UpdateItemInput{
 		TableName:           aws.String(r.client.notificationsTable),

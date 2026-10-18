@@ -22,10 +22,7 @@ export const PUSH_TEMPLATES: PushTemplate[] = [
       title: 'Diwali Heirloom Weaves: 30% Off Starts Today',
       body: 'Hand-carved block prints on Chanderi silk and combed mulmul. Use voucher FIRSTWEAVE at checkout before stocks deplete.',
       url: '/products',
-      actions: [
-        { action: 'shop', title: 'Shop the loom', url: '/products' },
-        { action: 'snooze', title: 'Remind me', url: '/account/reminders' },
-      ],
+      actions: [{ action: 'shop', title: 'Shop the loom', url: '/products' }],
     },
   },
   {

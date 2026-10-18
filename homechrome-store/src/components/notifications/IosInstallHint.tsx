@@ -36,12 +36,8 @@ function isStandalone(): boolean {
   );
 }
 
-/**
- * Web Push landed on iOS in 16.4. Below that, installing changes nothing, so
- * promising alerts would be a lie. An unreadable version string is treated as
- * new enough — showing the hint to a handful of old devices beats hiding it
- * from everyone whose UA we failed to parse.
- */
+// Web Push needs iOS 16.4; an unreadable version string counts as new enough,
+// since a stray hint on an old device beats hiding it from everyone.
 function iosSupportsPush(): boolean {
   const match = /OS (\d+)_(\d+)/.exec(navigator.userAgent);
   if (!match) return true;
@@ -50,12 +46,8 @@ function iosSupportsPush(): boolean {
   return major > 16 || (major === 16 && minor >= 4);
 }
 
-/**
- * On iOS, Web Push only reaches a site that has been added to the Home Screen —
- * in a normal Safari tab the Notification API does not exist at all, so the
- * opt-in prompt hides itself and an iPhone visitor has no way to discover the
- * feature. This is the one place that gap gets explained.
- */
+// On iOS, push only reaches a Home Screen install and a Safari tab has no
+// Notification API at all, so this is where that gap gets explained.
 export default function IosInstallHint() {
   const [shown, setShown] = useState(false);
   const [dismissed, setDismissed] = useState(false);

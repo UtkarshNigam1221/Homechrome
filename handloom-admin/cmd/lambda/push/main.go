@@ -1,11 +1,5 @@
-// Package main is the Lambda entry point for the Web Push service.
-//
-// It serves both push surfaces: the public storefront routes under
-// /api/v1/store/push/* that let a visitor manage their own device's
-// subscription, and the operator-only console under /admin/push/* that reads
-// subscriber records and broadcasts to everyone. The router starts
-// unauthenticated and the admin routes add their own auth group, so the two
-// surfaces cannot be confused for one another.
+// Package main is the Web Push Lambda: public device routes under
+// /api/v1/store/push/* and the admin-only console under /admin/push/*.
 package main
 
 import (

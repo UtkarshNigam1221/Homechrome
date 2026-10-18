@@ -17,10 +17,8 @@ import (
 	"github.com/handloom/admin/pkg/errors"
 )
 
-// broadcastConcurrency bounds simultaneous in-flight pushes. Every send is one
-// HTTPS round trip to a push service, so an unbounded fan-out over a large
-// subscriber list would open thousands of sockets at once and trip the
-// Lambda's file-descriptor ceiling long before the push services rate-limit us.
+// broadcastConcurrency bounds in-flight pushes: each is an HTTPS round trip,
+// and an unbounded fan-out would hit the Lambda's file-descriptor ceiling.
 const broadcastConcurrency = 32
 
 // defaultBroadcastHistory is how many past broadcasts the admin console shows.
@@ -110,9 +108,8 @@ func (s *PushService) Unsubscribe(ctx context.Context, endpoint string) error {
 	return s.repo.Deactivate(ctx, endpoint)
 }
 
-// SendTest delivers a notification to one endpoint the caller is already
-// subscribed to. Scoped to a single endpoint on purpose — the storefront's
-// "send test" must never be able to reach another visitor's device.
+// SendTest delivers a notification to the one endpoint the caller owns,
+// so the storefront's "send test" can never reach another visitor's device.
 func (s *PushService) SendTest(ctx context.Context, endpoint string) error {
 	sub, err := s.repo.GetByEndpoint(ctx, endpoint)
 	if err != nil {
@@ -133,22 +130,29 @@ func (s *PushService) SendTest(ctx context.Context, endpoint string) error {
 	return nil
 }
 
-// Broadcast fans a notification out to every active subscriber and records the
-// outcome. Endpoints the push services report as gone are deactivated as we go,
-// so the next broadcast does not retry them.
+// Broadcast fans a notification out to every active subscriber and records
+// the outcome, deactivating endpoints the push services report as gone.
 func (s *PushService) Broadcast(
 	ctx context.Context,
 	req domain.BroadcastPushRequest,
 	sentBy string,
 ) (*domain.BroadcastPushResponse, error) {
+	if err := validateStorePath(req.URL); err != nil {
+		return nil, err
+	}
+	for _, a := range req.Actions {
+		if err := validateStorePath(a.URL); err != nil {
+			return nil, err
+		}
+	}
+
 	subs, err := s.repo.ListActive(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	// Field-for-field identical, so a conversion keeps them in lockstep: if
-	// either type gains a field, this stops compiling instead of silently
-	// dropping it from the payload.
+	// Field-for-field identical, so the conversion stops compiling if either
+	// type gains a field instead of silently dropping it from the payload.
 	payload := domain.PushPayload(req)
 
 	// tmp/ is deleted after a day, so an unfinalized banner would break in
@@ -168,9 +172,8 @@ func (s *PushService) Broadcast(
 		payload.Actions = payload.Actions[:domain.MaxPushActions]
 	}
 
-	// A shared tag makes each notification replace the last one on the device,
-	// so an unread broadcast disappears when the next goes out. Default to one
-	// tag per broadcast; an explicit tag opts back in to replacing.
+	// A shared tag makes each notification replace the last on the device;
+	// default to one tag per broadcast, an explicit tag opts into replacing.
 	if payload.Tag == "" {
 		payload.Tag = broadcastID
 	}
@@ -310,6 +313,18 @@ func (s *PushService) ListBroadcasts(ctx context.Context, limit int32) ([]*domai
 		limit = defaultBroadcastHistory
 	}
 	return s.repo.ListBroadcasts(ctx, limit)
+}
+
+// validateStorePath rejects click-through URLs that leave the storefront:
+// "//host" and "/\\host" both resolve to another origin in a browser.
+func validateStorePath(p string) error {
+	if p == "" {
+		return nil
+	}
+	if !strings.HasPrefix(p, "/") || strings.HasPrefix(p, "//") || strings.HasPrefix(p, "/\\") {
+		return errors.New(errors.ErrCodeValidation, "URL must be a path on the storefront, like /products")
+	}
+	return nil
 }
 
 // validatePushEndpoint keeps the public subscribe route from pointing the

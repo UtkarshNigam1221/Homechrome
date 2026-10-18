@@ -68,12 +68,8 @@ function detectDeviceInfo() {
   return { browser, os, is_mobile: /Mobi|Android|iPhone|iPad|iPod/i.test(ua) };
 }
 
-/**
- * The VAPID key is a per-deployment constant, but both the opt-in banner and
- * the settings modal mount on every page. Without this, each page view costs
- * two identical round trips. One in-flight promise is shared by all callers;
- * a failure clears it so the next caller retries.
- */
+// One in-flight fetch shared by every caller: the key is a per-deployment
+// constant, and a failure clears the cache so the next caller retries.
 let vapidKeyPromise: Promise<string> | null = null;
 
 function fetchVapidKey(): Promise<string> {
@@ -100,9 +96,33 @@ function errorMessage(err: unknown, fallback: string): string {
   return err instanceof Error ? err.message : fallback;
 }
 
-// Shared across every mounted instance. The opt-in banner and the header modal
-// each call this hook, and with per-instance state, subscribing in one left the
-// other still advertising the opt-in until it remounted.
+// Subscribes with the current key, dropping a subscription issued for an
+// older one first, and registers the device with the backend.
+async function registerDevice(registration: ServiceWorkerRegistration, publicKey: string): Promise<void> {
+  const applicationServerKey = urlBase64ToUint8Array(publicKey);
+  let existing = await registration.pushManager.getSubscription();
+  if (existing && !usesKey(existing, applicationServerKey)) {
+    await existing.unsubscribe();
+    existing = null;
+  }
+
+  const subscription =
+    existing ??
+    (await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: applicationServerKey as BufferSource,
+    }));
+
+  const { endpoint, keys } = subscription.toJSON() as {
+    endpoint: string;
+    keys: { p256dh: string; auth: string };
+  };
+
+  await apiClient.post(ROUTES.PUSH.SUBSCRIBE, { endpoint, keys, device: detectDeviceInfo() });
+}
+
+// Shared across every mounted instance, so subscribing in the modal is
+// reflected by the banner without a remount.
 let sharedStatus: PushStatus = { ...UNSUPPORTED, loading: true };
 const statusListeners = new Set<() => void>();
 
@@ -138,13 +158,22 @@ export function usePushNotifications() {
       // "configured" would show an opt-in that can only ever fail.
       const publicKey = await fetchVapidKey();
 
-      // A subscription bound to a superseded key is reported as no
-      // subscription at all: the push service answers 403 for it rather than
-      // 410, so it is never pruned, and calling it subscribed would leave the
-      // device silently undeliverable with no opt-in to repair it.
-      const usable =
+      // A subscription bound to a superseded key is undeliverable and never
+      // pruned (the push service answers 403, not 410), so it counts as none.
+      let usable =
         !!subscription &&
         (!publicKey || usesKey(subscription, urlBase64ToUint8Array(publicKey)));
+
+      // Permission is already granted, so no opt-in will return to repair a
+      // stale key; re-register silently instead.
+      if (subscription && publicKey && !usable && registration && Notification.permission === 'granted') {
+        try {
+          await registerDevice(registration, publicKey);
+          usable = true;
+        } catch {
+          /* stays reported as unsubscribed; the modal toggle can retry */
+        }
+      }
 
       setStatus({
         isSupported: true,
@@ -222,33 +251,7 @@ export function usePushNotifications() {
         throw new Error('Push notifications are not available right now.');
       }
 
-      // Reuse an existing subscription only when it was issued for the current
-      // key. One bound to a rotated key can never be delivered to, and the push
-      // service answers 403 rather than 410, so it is never pruned either.
-      const applicationServerKey = urlBase64ToUint8Array(publicKey);
-      let existing = await registration.pushManager.getSubscription();
-      if (existing && !usesKey(existing, applicationServerKey)) {
-        await existing.unsubscribe();
-        existing = null;
-      }
-
-      const subscription =
-        existing ??
-        (await registration.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: applicationServerKey as BufferSource,
-        }));
-
-      const { endpoint, keys } = subscription.toJSON() as {
-        endpoint: string;
-        keys: { p256dh: string; auth: string };
-      };
-
-      await apiClient.post(ROUTES.PUSH.SUBSCRIBE, {
-        endpoint,
-        keys,
-        device: detectDeviceInfo(),
-      });
+      await registerDevice(registration, publicKey);
 
       setStatus({
         isSupported: true,
@@ -279,8 +282,9 @@ export function usePushNotifications() {
       if (subscription) {
         const { endpoint } = subscription;
         await subscription.unsubscribe();
-        // Tell the backend after the browser has let go, so a failed request
-        // leaves a stale row rather than a live endpoint we no longer track.
+        // The browser has let go, so report that now; a failed backend call
+        // leaves a stale row, which the next 410 prunes.
+        setStatus((prev) => ({ ...prev, isSubscribed: false }));
         await apiClient.post(ROUTES.PUSH.UNSUBSCRIBE, { endpoint });
       }
 
@@ -296,10 +300,7 @@ export function usePushNotifications() {
     }
   }, []);
 
-  /**
-   * Sends a notification to THIS device only. The backend route is scoped to
-   * the endpoint in the body, so this can never reach another visitor.
-   */
+  /** Sends to this device only; the backend route is scoped to the endpoint in the body. */
   const sendTest = useCallback(async (): Promise<boolean> => {
     const registration = await navigator.serviceWorker.getRegistration();
     const subscription = registration ? await registration.pushManager.getSubscription() : null;

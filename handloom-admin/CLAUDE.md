@@ -146,7 +146,7 @@ Mounted at `/api/v1/store/*` in the monolith (`cmd/api/main.go`):
 - `/track/*` — Public order tracking
 - `/events/*` — Storefront analytics event ingestion (rate-limited)
 - `/webhooks/*` — Payment callbacks (signature-verified)
-- `/push/*` — Web Push opt-in (public, rate-limited: 20/min). Every route is scoped to the endpoint in the request body, so a caller can only touch their own device. Fan-out lives on `/admin/push/*` behind admin JWT.
+- `/push/*` — Web Push opt-in (public; subscribe, unsubscribe and test are rate-limited 20/min per IP, the key read is not). Every route is scoped to the endpoint in the request body, so a caller can only touch their own device. Fan-out lives on `/admin/push/*` behind admin JWT.
 
 ### Web Push
 Browser notifications for the storefront. Subscriptions and broadcast history live in the `handloom-notifications` DynamoDB table (`PUSH_SUB#<sha256(endpoint)>` / `PUSH_BROADCAST#<id>`); GSI1 is partitioned by subscription status so a broadcast queries only live endpoints.

@@ -28,7 +28,7 @@ const EMPTY_ACTION: PushAction = { action: '', title: '', url: '' };
 
 // An upload commits a tmp/ key; FinalizeUpload deletes that object before the
 // request can fail, so a retry with the same key can only fail again.
-const isExpiredUpload = (value: string) => value.startsWith('tmp/');
+const isTmpUpload = (value: string) => value.startsWith('tmp/');
 
 function deviceLabel(subscriber: PushSubscriber): string {
   const { browser, os } = subscriber.device ?? {};
@@ -80,6 +80,15 @@ export function PushBroadcastPage() {
     placeholderData: (previous) => previous,
   });
 
+  // The count and the Send gate follow the active list whatever the filter
+  // shows; the key matches the ACTIVE tab so the two share one request.
+  const { data: activeData } = useQuery({
+    queryKey: ['push-subscribers', 'ACTIVE'],
+    queryFn: () => pushApi.listSubscribers({ status: 'ACTIVE', limit: 50 }),
+  });
+  const activeCount = activeData?.subscriptions.length ?? 0;
+  const activeLabel = `${activeCount}${activeData?.pagination?.has_more ? '+' : ''}`;
+
   const { data: broadcastsData } = useQuery({
     queryKey: ['push-broadcasts'],
     queryFn: () => pushApi.listBroadcasts(20),
@@ -105,19 +114,23 @@ export function PushBroadcastPage() {
       setActions([{ ...EMPTY_ACTION }]);
     },
     onError: (error) => {
-      const expired = isExpiredUpload(image) || isExpiredUpload(icon);
-      if (isExpiredUpload(image)) {
+      // The service names the asset when a finalize fails; any other error
+      // (validation, auth, network) leaves the attached upload alone.
+      const message = getErrorMessage(error);
+      const imageExpired = isTmpUpload(image) && /broadcast image/i.test(message);
+      const iconExpired = isTmpUpload(icon) && /broadcast icon/i.test(message);
+      if (imageExpired) {
         setImage('');
         setImageSrc('');
       }
-      if (isExpiredUpload(icon)) {
+      if (iconExpired) {
         setIcon('');
         setIconSrc('');
       }
       toast.error(
-        expired
-          ? `${getErrorMessage(error)} The upload expired, please re-attach the banner.`
-          : getErrorMessage(error)
+        imageExpired || iconExpired
+          ? `${message} The upload expired, please re-attach it.`
+          : message
       );
     },
   });
@@ -158,7 +171,7 @@ export function PushBroadcastPage() {
     <div className="space-y-6">
       <PageHeader
         title="Push Broadcast"
-        subtitle={`${subscribers.length} active subscriber${subscribers.length === 1 ? '' : 's'}`}
+        subtitle={`${activeLabel} active subscriber${activeCount === 1 ? '' : 's'}`}
       />
 
       <div className="grid gap-6 lg:grid-cols-3">
@@ -309,14 +322,13 @@ export function PushBroadcastPage() {
 
             <div className="flex items-center justify-between border-t border-gray-200 pt-4">
               <p className="text-sm text-gray-500">
-                Sends to all {subscribers.length} active device
-                {subscribers.length === 1 ? '' : 's'}. This cannot be undone.
+                Sends to every active device, currently {activeLabel}. This cannot be undone.
               </p>
               <Button
                 type="submit"
                 leftIcon={<Send className="w-4 h-4" />}
                 loading={broadcastMutation.isPending}
-                disabled={!canSend || subscribers.length === 0}
+                disabled={!canSend || activeCount === 0}
               >
                 Send broadcast
               </Button>

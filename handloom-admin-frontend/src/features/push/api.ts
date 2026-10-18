@@ -10,14 +10,16 @@ import type {
   PushSubscriptionStatus,
 } from './types';
 
+export interface SubscriberPage {
+  subscriptions: PushSubscriber[];
+  pagination?: { has_more: boolean; next_cursor?: string };
+}
+
 export const pushApi = {
   listSubscribers: async (
     params?: PaginationParams & { status?: PushSubscriptionStatus }
-  ): Promise<{ subscriptions: PushSubscriber[] }> => {
-    const response = await apiClient.get<{ subscriptions: PushSubscriber[] }>(
-      ROUTES.PUSH.SUBSCRIBERS,
-      { params }
-    );
+  ): Promise<SubscriberPage> => {
+    const response = await apiClient.get<SubscriberPage>(ROUTES.PUSH.SUBSCRIBERS, { params });
     return response.data;
   },
 

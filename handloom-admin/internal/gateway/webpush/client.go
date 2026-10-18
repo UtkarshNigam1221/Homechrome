@@ -19,20 +19,16 @@ import (
 // endpoint (404/410). Callers should stop sending to it rather than retry.
 var ErrSubscriptionGone = errors.New("push subscription is gone")
 
-// defaultTTL is how long a push service holds an undelivered message. A day is
-// long enough for a laptop to be reopened, short enough that a "new arrivals"
-// alert is not stale when it lands.
+// defaultTTL is how long a push service holds an undelivered message: long
+// enough for a laptop to be reopened, short enough that a drop is not stale.
 const defaultTTL = 24 * 60 * 60
 
 // maxErrorBody caps how much of a rejection we quote. Push services answer with
 // a short reason ({"reason":"BadJwtToken"}); anything longer is not for us.
 const maxErrorBody = 256
 
-// vapidSubscriber adapts a VAPID subject to what webpush-go wants. The library
-// prefixes "mailto:" to anything that is not an https: URL, so a subject that
-// already carries the scheme is signed as "mailto:mailto:…". Apple validates
-// the claim and answers 403 BadJwtToken; FCM ignores it, so the fault shows up
-// only on Apple devices.
+// vapidSubscriber strips a "mailto:" the library adds itself; the doubled
+// form is signed as "mailto:mailto:…", which Apple rejects and FCM ignores.
 func vapidSubscriber(subject string) string {
 	return strings.TrimPrefix(subject, "mailto:")
 }

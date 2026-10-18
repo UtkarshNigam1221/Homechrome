@@ -2,8 +2,10 @@ package store
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/httprate"
 
 	"github.com/handloom/admin/internal/domain"
 	"github.com/handloom/admin/internal/middleware"
@@ -22,25 +24,23 @@ func NewPushHandler(pushService *service.PushService, validation *middleware.Val
 	return &PushHandler{pushService: pushService, validation: validation}
 }
 
-// Routes returns the storefront push routes.
-//
-// These are PUBLIC (no auth middleware) — an anonymous visitor must be able to
-// opt in. Every route is scoped to the endpoint in the request body, which the
-// caller can only possess if their own browser produced it, so a caller can
-// only ever read or change their own device's subscription. Nothing here
-// exposes another subscriber's endpoint or keys, and nothing here can send to
-// a device other than the one named in the request. Fan-out to all subscribers
-// lives on the admin router behind JWT auth, never here.
+// Routes returns the public storefront push routes. Each is scoped to the
+// endpoint in its own body, so a caller can only touch their own device.
 func (h *PushHandler) Routes() chi.Router {
 	r := chi.NewRouter()
 
+	// The key is a public constant read on every page load, so it sits outside
+	// the limiter; the routes that do outbound work stay behind it.
 	r.Get("/vapid-key", h.VapidKey)
-	r.With(middleware.ValidateJSONTyped[domain.SubscribePushRequest](h.validation)).
-		Post("/subscribe", h.Subscribe)
-	r.With(middleware.ValidateJSONTyped[domain.UnsubscribePushRequest](h.validation)).
-		Post("/unsubscribe", h.Unsubscribe)
-	r.With(middleware.ValidateJSONTyped[domain.TestPushRequest](h.validation)).
-		Post("/test", h.SendTest)
+	r.Group(func(r chi.Router) {
+		r.Use(httprate.LimitByIP(20, time.Minute))
+		r.With(middleware.ValidateJSONTyped[domain.SubscribePushRequest](h.validation)).
+			Post("/subscribe", h.Subscribe)
+		r.With(middleware.ValidateJSONTyped[domain.UnsubscribePushRequest](h.validation)).
+			Post("/unsubscribe", h.Unsubscribe)
+		r.With(middleware.ValidateJSONTyped[domain.TestPushRequest](h.validation)).
+			Post("/test", h.SendTest)
+	})
 
 	return r
 }
@@ -48,6 +48,7 @@ func (h *PushHandler) Routes() chi.Router {
 // VapidKey returns the VAPID application server key.
 // GET /api/v1/store/push/vapid-key
 func (h *PushHandler) VapidKey(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "public, max-age=3600")
 	response.JSON(w, http.StatusOK, map[string]string{
 		"public_key": h.pushService.PublicKey(),
 	})

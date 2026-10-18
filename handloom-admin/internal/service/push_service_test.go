@@ -519,3 +519,22 @@ func TestBroadcastStatus(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateStorePath(t *testing.T) {
+	for _, tc := range []struct {
+		in string
+		ok bool
+	}{
+		{"", true},
+		{"/products", true},
+		{"/c/bedsheets?sort=new", true},
+		{"//evil.example/x", false},
+		{"/\\evil.example/x", false},
+		{"https://evil.example", false},
+		{"products", false},
+	} {
+		if err := validateStorePath(tc.in); (err == nil) != tc.ok {
+			t.Errorf("validateStorePath(%q) err=%v, want ok=%v", tc.in, err, tc.ok)
+		}
+	}
+}

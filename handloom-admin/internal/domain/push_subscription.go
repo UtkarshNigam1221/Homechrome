@@ -235,9 +235,3 @@ type BroadcastPushResponse struct {
 	Status        PushBroadcastStatus `json:"status"`
 	Broadcast     *PushBroadcast      `json:"broadcast"`
 }
-
-// PushStatsResponse is the admin console's subscriber summary.
-type PushStatsResponse struct {
-	ActiveCount   int `json:"active_count"`
-	InactiveCount int `json:"inactive_count"`
-}

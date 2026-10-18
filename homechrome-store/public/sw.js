@@ -87,9 +87,8 @@ self.addEventListener('notificationclick', (event) => {
       // Focus open Homechrome window if present
       for (const client of clientList) {
         if (sameOrigin(client.url) && 'focus' in client) {
-          // Focus first: Chrome only allows navigate() inside the activation
-          // window. navigate() rejects for uncontrolled clients, which
-          // includeUncontrolled guarantees we can be handed.
+          // Focus first: Chrome only allows navigate() during activation, and it
+          // rejects for uncontrolled clients, which includeUncontrolled can return.
           return client
             .focus()
             .then((focused) =>
@@ -106,19 +105,19 @@ self.addEventListener('notificationclick', (event) => {
   );
 });
 
-// Browsers occasionally reissue a subscription on their own — key refresh,
-// storage pressure, a push-service migration. Without this the old endpoint
-// dies, the backend never hears about the new one, and the shopper silently
-// stops receiving notifications. Re-register with the key we were given.
+// Browsers reissue subscriptions on their own (key refresh, storage pressure);
+// re-register so the backend learns the new endpoint instead of going silent.
 self.addEventListener('pushsubscriptionchange', (event) => {
   event.waitUntil(
     (async () => {
+      // The API wraps responses as { success, data }. Prefer the current key so
+      // a rotated deployment is picked up; fall back to the old subscription's.
       const applicationServerKey =
-        (event.oldSubscription && event.oldSubscription.options.applicationServerKey) ||
         (await fetch('/api/v1/store/push/vapid-key')
           .then((r) => r.json())
-          .then((d) => d.public_key)
-          .catch(() => null));
+          .then((d) => (d && d.data && d.data.public_key) || null)
+          .catch(() => null)) ||
+        (event.oldSubscription && event.oldSubscription.options.applicationServerKey);
       if (!applicationServerKey) return;
 
       const subscription =

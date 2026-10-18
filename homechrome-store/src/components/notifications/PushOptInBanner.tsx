@@ -10,11 +10,8 @@ const STORAGE_KEY = 'hc_push_prompt_dismissed_at';
 const DISMISS_DAYS = 7;
 const APPEAR_DELAY_MS = 2500;
 
-/**
- * The bell is the attention beat: it rings once with a halo behind it, then
- * everything goes still. Looping would nag, and a prompt that nags is the
- * fastest way to get an origin demoted to Chrome's quiet notification UI.
- */
+// The bell rings once with a halo, then goes still. A looping prompt nags,
+// and nagging gets an origin demoted to Chrome's quiet notification UI.
 const ATTENTION_CSS = `
 @keyframes hcPushRing {
   0%, 60%, 100% { transform: rotate(0deg); }
@@ -92,9 +89,8 @@ export default function PushOptInBanner() {
       size={380}
       padding="xl"
       aria-label="Turn on handloom drop alerts"
-      // Dimmed and blurred, so the panel is the only thing in focus. Mantine
-      // traps focus and closes on Escape or a click outside, which a hand-rolled
-      // overlay would have to reimplement.
+      // Dimmed and blurred so the panel is the only thing in focus; Mantine
+      // traps focus and closes on Escape or an outside click.
       overlayProps={{ backgroundOpacity: 0.6, blur: 4 }}
       transitionProps={{ transition: 'pop', duration: 260, timingFunction: 'ease-out' }}
     >
