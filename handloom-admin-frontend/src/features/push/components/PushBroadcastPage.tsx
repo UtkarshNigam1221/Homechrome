@@ -268,6 +268,7 @@ export function PushBroadcastPage() {
                 setIconSrc(previewSrc);
               }}
               hint="Square product thumbnail shown instead of the brand mark."
+              aspect="square"
             />
 
             <div className="border-t border-gray-200 pt-4">

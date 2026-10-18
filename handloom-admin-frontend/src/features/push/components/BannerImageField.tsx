@@ -18,6 +18,8 @@ interface BannerImageFieldProps {
   onChange: (value: string, previewSrc: string) => void;
   label: string;
   hint?: string;
+  /** Banner previews crop to 2:1 like the notification; the icon stays square. */
+  aspect?: 'square' | 'banner';
 }
 
 /**
@@ -30,6 +32,7 @@ export function BannerImageField({
   onChange,
   label,
   hint,
+  aspect = 'banner',
 }: BannerImageFieldProps) {
   const [mode, setMode] = useState<Mode>('upload');
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -63,6 +66,7 @@ export function BannerImageField({
           hint={hint}
           accept="image/*"
           maxSizeMB={2}
+          previewAspect={aspect}
         />
       ) : mode === 'url' ? (
         <Input
@@ -77,7 +81,7 @@ export function BannerImageField({
             <img
               src={previewSrc}
               alt=""
-              className="mb-2 h-24 w-24 rounded-lg border border-gray-200 object-cover"
+              className={`mb-2 h-24 rounded-lg border border-gray-200 object-cover ${aspect === 'banner' ? 'w-48' : 'w-24'}`}
             />
           )}
           <Button type="button" variant="secondary" size="sm" onClick={() => setPickerOpen(true)}>

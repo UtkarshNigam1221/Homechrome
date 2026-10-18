@@ -29,6 +29,8 @@ interface ImageUploadProps {
   accept?: string;
   maxSizeMB?: number;
   className?: string;
+  /** Shape of the preview tile. A banner shows the 2:1 crop the destination will use. */
+  previewAspect?: 'square' | 'banner';
 }
 
 // Determine asset type from MIME type
@@ -110,6 +112,7 @@ export function ImageUpload({
   accept = 'image/*',
   maxSizeMB = 5,
   className,
+  previewAspect = 'square',
 }: ImageUploadProps) {
   const [isUploading, setIsUploading] = useState(false);
   const [dragActive, setDragActive] = useState(false);
@@ -288,7 +291,10 @@ export function ImageUpload({
             return (
               <div
                 key={index}
-                className="relative aspect-square rounded-lg overflow-hidden border border-gray-200 bg-gray-50"
+                className={clsx(
+                  'relative rounded-lg overflow-hidden border border-gray-200 bg-gray-50',
+                  previewAspect === 'banner' ? 'col-span-2 aspect-[2/1]' : 'aspect-square'
+                )}
               >
                 {src ? (
                   isVideoUrl(val) ? (
