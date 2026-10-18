@@ -42,7 +42,6 @@ import { DeskCard, ReachTile } from './ContactCards';
 
 export const metadata: Metadata = {
   alternates: { canonical: '/contact' },
-  title: 'Contact Us | Homechrome',
   description: 'Reach Homechrome support by WhatsApp, phone or email.',
 };
 

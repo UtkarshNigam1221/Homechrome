@@ -12,7 +12,6 @@ import { Category } from '@/types';
 
 export const metadata: Metadata = {
   alternates: { canonical: '/categories' },
-  title: 'All Categories | Homechrome',
   description: 'Browse our collection of handloom textile categories.',
 };
 

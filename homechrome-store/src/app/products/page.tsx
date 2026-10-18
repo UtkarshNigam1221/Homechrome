@@ -8,7 +8,6 @@ import { Category, CategoryAttribute, Product } from '@/types';
 
 export const metadata: Metadata = {
   alternates: { canonical: '/products' },
-  title: 'Shop All Products | Homechrome',
   description: 'Browse and search our complete collection of handloom textiles.',
 };
 

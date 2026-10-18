@@ -74,10 +74,9 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const { slug } = await params;
   const category = await getCategory(slug);
   if (!category) {
-    return { title: 'Category Not Found | Homechrome' };
+    return {};
   }
   return {
-    title: `${category.name} | Homechrome`,
     // Filters live only in the query string and render identical HTML, so
     // every filtered variant points back at the clean category URL.
     alternates: { canonical: `/c/${slug}` },
