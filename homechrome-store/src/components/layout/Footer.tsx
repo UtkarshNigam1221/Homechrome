@@ -24,7 +24,6 @@ import Link from 'next/link';
 
 import logo80 from '@/assets/logo-80.webp';
 
-import { displayFont } from '@/app/fonts';
 import { Category } from '@/types';
 import { WhatsAppButton } from '@/components/ui/whatsapp-button';
 import {
@@ -61,9 +60,8 @@ export default function Footer({ categories = [] }: { categories?: Category[] })
                     fw={600}
                     c="navy.9"
                     lh={1.1}
-                    style={{ fontFamily: displayFont.style.fontFamily }}
                   >
-                    HOME<Text span c="brand.5" inherit>CHROME</Text>
+                    HOME<Text span c="brand.7" inherit>CHROME</Text>
                   </Text>
                   <Text fz={9} fw={600} c="navy.5" style={{ letterSpacing: '0.12em' }}>
                     HANDWOVEN COMFORT &amp; LIVING

@@ -78,7 +78,7 @@ export default function CartItem({ item, onUpdateQuantity, onRemove }: CartItemP
             />
           ) : (
             <Center bg="brand.1" h="100%">
-              <PhotoIcon width={32} height={32} color="var(--mantine-color-brand-5)" opacity={0.4} />
+              <PhotoIcon width={32} height={32} color="var(--mantine-color-brand-7)" opacity={0.4} />
             </Center>
           )}
         </Box>

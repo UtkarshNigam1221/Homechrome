@@ -82,7 +82,7 @@ function HeroVisual({ product }: { product?: Product }) {
                   flexShrink: 0,
                 }}
               >
-                <SparklesIcon width={18} height={18} color="var(--mantine-color-brand-6)" />
+                <SparklesIcon width={18} height={18} color="var(--mantine-color-brand-8)" />
               </Box>
               <Stack gap={0} style={{ minWidth: 0 }}>
                 <Text
@@ -90,7 +90,6 @@ function HeroVisual({ product }: { product?: Product }) {
                   fw={600}
                   c="navy.9"
                   truncate
-                  style={{ fontFamily: displayFont.style.fontFamily }}
                 >
                   {product.name}
                 </Text>
@@ -135,21 +134,22 @@ export default function HomeView({ categories, products }: HomeViewProps) {
                   bg="brand.1"
                   style={{ borderRadius: 999 }}
                 >
-                  <SparklesIcon width={14} height={14} color="var(--mantine-color-brand-6)" />
-                  <Text fz={11} fw={700} c="brand.6" style={{ letterSpacing: '0.1em' }}>
+                  <SparklesIcon width={14} height={14} color="var(--mantine-color-brand-8)" />
+                  <Text fz={11} fw={700} c="brand.8" style={{ letterSpacing: '0.1em' }}>
                     HANDLOOM TEXTILES FROM INDIA
                   </Text>
                 </Group>
 
                 <Title
                   order={1}
+                  style={{ fontFamily: displayFont.style.fontFamily }}
                   fz={{ base: '2.25rem', sm: '3rem', md: '3.4rem' }}
                   fw={600}
                   lh={1.08}
                   c="navy.9"
                 >
                   Handwoven with{' '}
-                  <Text span inherit c="brand.5" fs="italic">
+                  <Text span inherit c="brand.7" fs="italic">
                     tradition,
                   </Text>{' '}
                   crafted for modern sanctuaries.

@@ -47,7 +47,7 @@ export const metadata: Metadata = {
 };
 
 const LEAF = { bg: 'var(--mantine-color-leaf-1)', fg: 'var(--mantine-color-leaf-6)' };
-const CLAY = { bg: 'var(--mantine-color-brand-1)', fg: 'var(--mantine-color-brand-6)' };
+const CLAY = { bg: 'var(--mantine-color-brand-1)', fg: 'var(--mantine-color-brand-8)' };
 const MIST = { bg: 'var(--mantine-color-mist-1)', fg: 'var(--mantine-color-mist-6)' };
 const SAND = { bg: 'var(--mantine-color-navy-3)', fg: 'var(--mantine-color-navy-6)' };
 
@@ -99,7 +99,7 @@ export default function ContactPage() {
             c="navy.9"
           >
             Connect with the{' '}
-            <Text span inherit c="brand.5" fs="italic">
+            <Text span inherit c="brand.7" fs="italic">
               Loom
             </Text>
           </Title>
@@ -162,9 +162,9 @@ export default function ContactPage() {
             <Card shadow="sm" radius="lg" padding="lg" withBorder={false} bg="navy.1">
               <Stack gap="md">
                 <Group gap={8} wrap="nowrap" align="center">
-                  <ShieldCheckIcon width={18} height={18} color="var(--mantine-color-brand-6)" />
+                  <ShieldCheckIcon width={18} height={18} color="var(--mantine-color-brand-8)" />
                   <Stack gap={0}>
-                    <Text fz={11} fw={700} c="brand.5" style={{ letterSpacing: '0.12em' }}>
+                    <Text fz={11} fw={700} c="brand.7" style={{ letterSpacing: '0.12em' }}>
                       WHAT WE COMMIT TO
                     </Text>
                     <Title
@@ -220,13 +220,13 @@ export default function ContactPage() {
                 </Text>
                 <Text fz="sm" c="navy.7">
                   Phone:{' '}
-                  <Anchor href={`tel:${SUPPORT_PHONE_TEL}`} c="brand.5">
+                  <Anchor href={`tel:${SUPPORT_PHONE_TEL}`} c="brand.7">
                     {SUPPORT_PHONE}
                   </Anchor>
                 </Text>
                 <Text fz="sm" c="navy.7">
                   Email:{' '}
-                  <Anchor href={`mailto:${SUPPORT_EMAIL}`} c="brand.5">
+                  <Anchor href={`mailto:${SUPPORT_EMAIL}`} c="brand.7">
                     {SUPPORT_EMAIL}
                   </Anchor>
                 </Text>
@@ -243,7 +243,7 @@ export default function ContactPage() {
       <Box component="section" bg="navy.1" py={{ base: 48, sm: 64 }}>
         <Container size="md">
           <Stack gap="xs" align="center" mb="xl">
-            <Text fz={11} fw={700} c="brand.5" style={{ letterSpacing: '0.14em' }}>
+            <Text fz={11} fw={700} c="brand.7" style={{ letterSpacing: '0.14em' }}>
               INSTANT CLARITY
             </Text>
             <Title
@@ -265,15 +265,15 @@ export default function ContactPage() {
 
           <Text fz="sm" c="navy.6" ta="center" mt="xl">
             Still need a hand? Call{' '}
-            <Anchor href={`tel:${SUPPORT_PHONE_TEL}`} c="brand.5" fw={600}>
+            <Anchor href={`tel:${SUPPORT_PHONE_TEL}`} c="brand.7" fw={600}>
               {SUPPORT_PHONE}
             </Anchor>
             , message us on{' '}
-            <Anchor href={whatsappHref('Hi, I need help with my order')} target="_blank" rel="noopener noreferrer" c="brand.5" fw={600}>
+            <Anchor href={whatsappHref('Hi, I need help with my order')} target="_blank" rel="noopener noreferrer" c="brand.7" fw={600}>
               WhatsApp
             </Anchor>
             , or find us on{' '}
-            <Anchor href={INSTAGRAM_URL} target="_blank" rel="noopener noreferrer" c="brand.5" fw={600}>
+            <Anchor href={INSTAGRAM_URL} target="_blank" rel="noopener noreferrer" c="brand.7" fw={600}>
               Instagram
             </Anchor>
             .

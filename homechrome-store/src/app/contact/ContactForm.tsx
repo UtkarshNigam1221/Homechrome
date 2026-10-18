@@ -69,7 +69,7 @@ export function ContactForm() {
   return (
     <Stack gap="md">
       <Stack gap={6}>
-        <Text fz={11} fw={700} c="brand.5" style={{ letterSpacing: '0.14em' }}>
+        <Text fz={11} fw={700} c="brand.7" style={{ letterSpacing: '0.14em' }}>
           SEND US A MESSAGE
         </Text>
         <Title

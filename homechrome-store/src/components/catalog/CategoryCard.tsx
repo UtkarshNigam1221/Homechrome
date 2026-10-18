@@ -9,7 +9,6 @@ import { Category } from '@/types';
 
 import { stripMarkdown } from '@/lib/utils';
 
-import { displayFont } from '@/app/fonts';
 
 interface CategoryCardProps {
   category: Category;
@@ -39,7 +38,7 @@ export default function CategoryCard({ category }: CategoryCardProps) {
             />
           ) : (
             <Center bg="brand.1" h="100%">
-              <PhotoIcon width={48} height={48} color="var(--mantine-color-brand-5)" opacity={0.4} />
+              <PhotoIcon width={48} height={48} color="var(--mantine-color-brand-7)" opacity={0.4} />
             </Center>
           )}
         </AspectRatio>
@@ -68,7 +67,6 @@ export default function CategoryCard({ category }: CategoryCardProps) {
             fw={600}
             c="navy.9"
             lineClamp={1}
-            style={{ fontFamily: displayFont.style.fontFamily }}
           >
             {category.name}
           </Text>

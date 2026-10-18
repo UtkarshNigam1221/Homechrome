@@ -23,7 +23,6 @@ import { useState } from 'react';
 
 import logo80 from '@/assets/logo-80.webp';
 
-import { displayFont } from '@/app/fonts';
 import { useAuthStore } from '@/stores/auth';
 import { useCartStore } from '@/stores/cart';
 import { useUIStore } from '@/stores/uiStore';
@@ -95,9 +94,8 @@ export default function Header({ categories }: HeaderProps) {
                       fw={600}
                       c="navy.9"
                       lh={1.1}
-                      style={{ fontFamily: displayFont.style.fontFamily }}
                     >
-                      HOME<Text span c="brand.5" inherit>CHROME</Text>
+                      HOME<Text span c="brand.7" inherit>CHROME</Text>
                     </Text>
                     <Text
                       fz={9}
@@ -127,7 +125,7 @@ export default function Header({ categories }: HeaderProps) {
                     href={link.href}
                     size="sm"
                     fw={active ? 600 : 500}
-                    c={active ? 'brand.5' : 'navy.7'}
+                    c={active ? 'brand.7' : 'navy.7'}
                     underline="never"
                   >
                     {link.label}

@@ -121,7 +121,7 @@ function LoginForm() {
         <Stack gap="xs" align="center">
           <Anchor component={Link} href="/" underline="never">
             <Text size="xl" fw={700} c="navy.7">
-              HOME<Text span c="brand">CHROME</Text>
+              HOME<Text span c="brand.7">CHROME</Text>
             </Text>
           </Anchor>
           <Text size="sm" c="dimmed">Sign in to your account</Text>

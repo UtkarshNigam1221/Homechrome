@@ -108,7 +108,7 @@ export default function FilterSidebar({
                 py={3}
               >
                 <Group justify="space-between" wrap="nowrap" gap="xs">
-                  <Text size="sm" fw={active ? 600 : 400} c={active ? 'brand.5' : 'navy.7'}>
+                  <Text size="sm" fw={active ? 600 : 400} c={active ? 'brand.7' : 'navy.7'}>
                     {category.name}
                   </Text>
                   <Text size="xs" c="navy.5">

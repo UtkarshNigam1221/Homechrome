@@ -18,7 +18,6 @@ import {
   SUPPORT_PHONE,
 } from '@/lib/constants';
 
-import { displayFont } from '@/app/fonts';
 
 const CHAPTERS = [
   { href: '/refund-policy', label: 'Refund & Replacement', icon: ArrowPathIcon },
@@ -42,7 +41,6 @@ export function PolicyNav() {
             fz="1.125rem"
             fw={600}
             c="navy.9"
-            style={{ fontFamily: displayFont.style.fontFamily }}
           >
             Legal &amp; Trust Directory
           </Text>
@@ -89,7 +87,6 @@ export function PolicyNav() {
             fz="1rem"
             fw={600}
             c="navy.9"
-            style={{ fontFamily: displayFont.style.fontFamily }}
           >
             Need a hand?
           </Text>

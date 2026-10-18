@@ -159,7 +159,7 @@ export default function CouponPicker({ subtotal, appliedCode, onApply }: CouponP
                   </Stack>
                   <Text
                     fz="sm"
-                    c={offer.eligible ? 'navy.7' : 'navy.2'}
+                    c={offer.eligible ? 'navy.7' : 'navy.4'}
                     style={AMOUNT_STYLE}
                   >
                     {offer.eligible ? `−${formatPrice(offer.discount_amount)}` : '—'}

@@ -43,7 +43,7 @@ function AnalyticsProvider({ children }: { children: React.ReactNode }) {
 // on specificity; this is the supported seam for changing it.
 const cssVariablesResolver: CSSVariablesResolver = () => ({
   variables: {},
-  light: { '--mantine-color-body': '#FCF9F4' },
+  light: { '--mantine-color-body': '#F5F0EB' },
   dark: {},
 });
 

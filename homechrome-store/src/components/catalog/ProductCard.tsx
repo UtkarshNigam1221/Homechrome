@@ -18,7 +18,6 @@ import { useState } from 'react';
 
 import { DiscountBadge } from '@/components/ui/discount-badge';
 import { QuantityStepper } from '@/components/ui/quantity-stepper';
-import { displayFont } from '@/app/fonts';
 import { useCart } from '@/hooks/useCart';
 import { calculateDiscountPercent, formatPrice, stripMarkdown } from '@/lib/utils';
 import { useCartStore } from '@/stores/cart';
@@ -107,7 +106,7 @@ export default function ProductCard({ product }: ProductCardProps) {
             />
           ) : (
             <Center bg="brand.1" h="100%">
-              <PhotoIcon width={48} height={48} color="var(--mantine-color-brand-5)" opacity={0.4} />
+              <PhotoIcon width={48} height={48} color="var(--mantine-color-brand-7)" opacity={0.4} />
             </Center>
           )}
         </AspectRatio>
@@ -143,7 +142,7 @@ export default function ProductCard({ product }: ProductCardProps) {
           <Text
             fz={10}
             fw={700}
-            c="brand.5"
+            c="brand.7"
             tt="uppercase"
             lineClamp={1}
             hiddenFrom="sm"
@@ -159,7 +158,7 @@ export default function ProductCard({ product }: ProductCardProps) {
             fw={600}
             c="navy.9"
             lineClamp={2}
-            style={{ minHeight: '2lh', fontFamily: displayFont.style.fontFamily }}
+            style={{ minHeight: '2lh' }}
           >
             {product.name}
           </Text>
@@ -183,7 +182,7 @@ export default function ProductCard({ product }: ProductCardProps) {
               <Text
                 size="xs"
                 fw={600}
-                c="brand.6"
+                c="brand.8"
                 visibleFrom="sm"
                 style={{ whiteSpace: 'nowrap' }}
               >

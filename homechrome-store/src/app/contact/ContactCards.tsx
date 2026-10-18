@@ -4,7 +4,6 @@ import { ArrowUpRightIcon } from '@heroicons/react/24/outline';
 import { Anchor, Box, Card, Group, Stack, Text } from '@mantine/core';
 import Link from 'next/link';
 
-import { displayFont } from '../fonts';
 
 export function DeskCard({
   tile,
@@ -48,7 +47,6 @@ export function DeskCard({
             fz="1.125rem"
             fw={600}
             c="navy.9"
-            style={{ fontFamily: displayFont.style.fontFamily }}
           >
             {title}
           </Text>

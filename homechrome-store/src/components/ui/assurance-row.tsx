@@ -35,13 +35,13 @@ export function AssuranceRow({
               flexShrink: 0,
             }}
           >
-            <Icon width={19} height={19} color="var(--mantine-color-brand-6)" />
+            <Icon width={19} height={19} color="var(--mantine-color-brand-8)" />
           </Box>
         ) : (
           <Icon
             width={20}
             height={20}
-            color="var(--mantine-color-brand-6)"
+            color="var(--mantine-color-brand-8)"
             style={{ flexShrink: 0, marginTop: 2 }}
           />
         )}

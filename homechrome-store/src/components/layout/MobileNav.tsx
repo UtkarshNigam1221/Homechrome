@@ -28,7 +28,6 @@ import { WhatsAppButton } from '@/components/ui/whatsapp-button';
 import { useAuthStore } from '@/stores/auth';
 import { Category } from '@/types';
 
-import { displayFont } from '@/app/fonts';
 
 interface MobileNavProps {
   isOpen: boolean;
@@ -57,7 +56,6 @@ export default function MobileNav({ isOpen, onClose, categories }: MobileNavProp
                 fw={600}
                 c="navy.9"
                 lh={1.1}
-                style={{ fontFamily: displayFont.style.fontFamily }}
               >
                 Homechrome
               </Text>

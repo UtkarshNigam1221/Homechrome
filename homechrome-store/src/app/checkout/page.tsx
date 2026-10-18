@@ -104,7 +104,7 @@ export default function CheckoutPage() {
               total={orderTotal}
             />
             <Box ta="center" mt="md">
-              <Anchor component={Link} href="/cart" size="sm" c="brand">
+              <Anchor component={Link} href="/cart" size="sm" c="brand.7">
                 Back to Cart
               </Anchor>
             </Box>

@@ -26,7 +26,6 @@ import { SUPPORT_PHONE } from '@/lib/constants';
 import { ROUTES } from '@/lib/routes';
 import { formatDateTime as formatDate } from '@/lib/utils';
 
-import { displayFont } from '../fonts';
 
 
 interface StatusHistoryEntry {
@@ -95,7 +94,7 @@ export default function TrackOrderPage() {
           c="navy.9"
         >
           Track Your{' '}
-          <Text span inherit c="brand.5" fs="italic">
+          <Text span inherit c="brand.7" fs="italic">
             Order
           </Text>
         </Title>
@@ -196,7 +195,7 @@ export default function TrackOrderPage() {
                         target="_blank"
                         rel="noopener noreferrer"
                         size="sm"
-                        c="brand"
+                        c="brand.7"
                       >
                         Track on courier website →
                       </Anchor>
@@ -238,7 +237,7 @@ export default function TrackOrderPage() {
                           h={20}
                           bg={idx === 0 ? 'brand.5' : 'white'}
                           style={{
-                            border: `2px solid var(--mantine-color-${idx === 0 ? 'brand-5' : 'default-border'})`,
+                            border: `2px solid var(--mantine-color-${idx === 0 ? 'brand-7' : 'default-border'})`,
                             borderRadius: '50%',
                           }}
                         />
@@ -264,7 +263,6 @@ export default function TrackOrderPage() {
                   fz="1.125rem"
                   fw={600}
                   c="navy.9"
-                  style={{ fontFamily: displayFont.style.fontFamily }}
                 >
                   Something not right with this parcel?
                 </Text>

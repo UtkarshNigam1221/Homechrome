@@ -109,7 +109,7 @@ export function ProductInfo({ product }: ProductInfoProps) {
 
       <Box bg="navy.1" p="md" style={{ borderRadius: 'var(--mantine-radius-md)' }}>
         <Group align="baseline" gap="sm" wrap="wrap">
-          <Text fz="2.25rem" fw={700} c="brand.5" lh={1}>
+          <Text fz="2.25rem" fw={700} c="brand.7" lh={1}>
             {formatPrice(product.selling_price)}
           </Text>
           {hasDiscount && (
@@ -118,7 +118,7 @@ export function ProductInfo({ product }: ProductInfoProps) {
                 MRP {formatPrice(product.base_price)}
               </Text>
               <Box px={9} py={3} bg="brand.1" style={{ borderRadius: 4 }}>
-                <Text fz="xs" fw={700} c="brand.6">
+                <Text fz="xs" fw={700} c="brand.8">
                   SAVE {formatPrice(product.base_price - product.selling_price)} ({discountPercent}% OFF)
                 </Text>
               </Box>

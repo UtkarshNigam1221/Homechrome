@@ -15,7 +15,7 @@ export function Eyebrow({ children, tone = 'accent', size = 11 }: EyebrowProps) 
     <Text
       fz={size}
       fw={700}
-      c={tone === 'accent' ? 'brand.5' : 'navy.5'}
+      c={tone === 'accent' ? 'brand.7' : 'navy.5'}
       style={{ letterSpacing: '0.12em' }}
     >
       {children.toUpperCase()}

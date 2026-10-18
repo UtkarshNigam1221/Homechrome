@@ -1,40 +1,38 @@
 import { Button, createTheme, MantineColorsTuple } from '@mantine/core';
 
-import { displayFont, siteFont } from './fonts';
+import { siteFont } from './fonts';
 
-// Terracotta ramp. Shades 1, 2, 4, 5, 6 and 9 are the design system's own
-// tokens (primary-fixed, primary-container, primary, on-primary-fixed); rest interpolate.
+// The original Homechrome tan ramp, kept through the Stitch layout rebuild.
 const brand: MantineColorsTuple = [
-  '#FFF1EC',
-  '#FFDBD0',
-  '#FFB59E',
-  '#EE8A66',
-  '#BA5838',
-  '#9A4023',
-  '#7E2C10',
-  '#66230C',
-  '#4E1804',
-  '#3A0B00',
+  '#FBF7F2',
+  '#F4E9DC',
+  '#ECDAC3',
+  '#E2C7A4',
+  '#DBB78B',
+  '#D4A574',
+  '#B8894E',
+  '#946B3A',
+  '#6F4F2A',
+  '#4B341B',
 ];
 
-// Warm neutral ink ramp — the design's four surface steps at the low end,
-// its outline and text at the high end. Still named `navy` for its 80 call
-// sites; it is no longer blue.
+// Shades 0–3 are the warm surfaces the Stitch components lean on (page ground,
+// panels, borders); 4–9 are the original navy ink. One ramp, two jobs.
 const navy: MantineColorsTuple = [
-  '#FCF9F4',
-  '#F6F3EE',
-  '#F0EDE9',
-  '#E5E2DD',
-  '#89726B',
-  '#6D5A54',
-  '#56423D',
-  '#3D332F',
-  '#31302D',
-  '#1C1C19',
+  '#F5F0EB',
+  '#EFE8E0',
+  '#E6DDD2',
+  '#D9CEC0',
+  '#5C6A8E',
+  '#424F75',
+  '#2D3B62',
+  '#1C2951',
+  '#131B3A',
+  '#0A0E22',
 ];
 
-// The design system's tertiary (green) and secondary (blue-grey) families.
-// Named steps come from its own tokens; the gaps interpolate.
+// Green and blue-grey accent families used by status pills, WhatsApp actions
+// and the steep-discount badge.
 const leaf: MantineColorsTuple = [
   '#EDF7EF',
   '#C7ECCE',
@@ -64,13 +62,13 @@ const mist: MantineColorsTuple = [
 export const theme = createTheme({
   primaryColor: 'brand',
   primaryShade: 5,
-  black: '#1C1C19',
+  black: '#1C2951',
   white: '#FFFFFF',
   colors: { brand, navy, leaf, mist },
   fontFamily: siteFont.style.fontFamily,
   fontFamilyMonospace: 'ui-monospace, SFMono-Regular, monospace',
   headings: {
-    fontFamily: displayFont.style.fontFamily,
+    fontFamily: siteFont.style.fontFamily,
     fontWeight: '600',
     sizes: {
       h1: { fontSize: '2.5rem', lineHeight: '1.15', fontWeight: '700' },
@@ -81,11 +79,11 @@ export const theme = createTheme({
   defaultRadius: 'lg',
   cursorType: 'pointer',
   shadows: {
-    xs: '0 1px 2px rgba(28,28,25,0.04)',
-    sm: '0 2px 6px rgba(28,28,25,0.06)',
-    md: '0 6px 16px rgba(28,28,25,0.08)',
-    lg: '0 12px 28px rgba(28,28,25,0.10)',
-    xl: '0 20px 48px rgba(28,28,25,0.12)',
+    xs: '0 1px 2px rgba(28,41,81,0.04)',
+    sm: '0 2px 6px rgba(28,41,81,0.06)',
+    md: '0 6px 16px rgba(28,41,81,0.08)',
+    lg: '0 12px 28px rgba(28,41,81,0.10)',
+    xl: '0 20px 48px rgba(28,41,81,0.12)',
   },
   components: {
     Button: Button.extend({

@@ -40,7 +40,7 @@ export function CategoryFeatureRow({ category, index }: CategoryFeatureRowProps)
         />
       ) : (
         <Center bg="brand.1" h="100%">
-          <PhotoIcon width={48} height={48} color="var(--mantine-color-brand-5)" opacity={0.4} />
+          <PhotoIcon width={48} height={48} color="var(--mantine-color-brand-7)" opacity={0.4} />
         </Center>
       )}
 
@@ -88,7 +88,7 @@ export function CategoryFeatureRow({ category, index }: CategoryFeatureRowProps)
         component={Link}
         href={`/c/${category.slug}`}
         underline="never"
-        c="brand.5"
+        c="brand.7"
         fw={600}
         w="fit-content"
         mt={4}

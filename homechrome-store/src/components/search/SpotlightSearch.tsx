@@ -17,7 +17,6 @@ import { whatsappHref } from '@/lib/whatsapp';
 import { calculateDiscountPercent, formatPrice } from '@/lib/utils';
 import { Category, Product } from '@/types';
 
-import { displayFont } from '@/app/fonts';
 
 import '@mantine/spotlight/styles.css';
 
@@ -148,7 +147,7 @@ export function SpotlightSearch({ categories }: SpotlightSearchProps) {
 
                       <Stack gap={3} flex={1} miw={0}>
                         {meta && (
-                          <Text fz={10} fw={700} c="brand.5" tt="uppercase" lineClamp={1}>
+                          <Text fz={10} fw={700} c="brand.7" tt="uppercase" lineClamp={1}>
                             {meta}
                           </Text>
                         )}
@@ -157,7 +156,6 @@ export function SpotlightSearch({ categories }: SpotlightSearchProps) {
                           fw={600}
                           c="navy.9"
                           lineClamp={1}
-                          style={{ fontFamily: displayFont.style.fontFamily }}
                         >
                           {p.name}
                         </Text>
@@ -199,10 +197,10 @@ export function SpotlightSearch({ categories }: SpotlightSearchProps) {
             {active && !isLoading && products.length > 0 && (
               <Spotlight.Action onClick={() => go(`/products?search=${encodeURIComponent(term)}`, term)}>
                 <Group justify="space-between" w="100%" wrap="nowrap">
-                  <Text fz="sm" fw={600} c="brand.5">
+                  <Text fz="sm" fw={600} c="brand.7">
                     View all results for &ldquo;{term}&rdquo;
                   </Text>
-                  <ArrowRightIcon width={16} height={16} color="var(--mantine-color-brand-5)" />
+                  <ArrowRightIcon width={16} height={16} color="var(--mantine-color-brand-7)" />
                 </Group>
               </Spotlight.Action>
             )}
@@ -264,7 +262,7 @@ export function SpotlightSearch({ categories }: SpotlightSearchProps) {
                     bg="brand.1"
                     style={{ borderRadius: 8, display: 'grid', placeItems: 'center', flexShrink: 0 }}
                   >
-                    <Text fz="xs" fw={700} c="brand.6">
+                    <Text fz="xs" fw={700} c="brand.8">
                       {c.name.charAt(0)}
                     </Text>
                   </Box>
@@ -287,7 +285,6 @@ export function SpotlightSearch({ categories }: SpotlightSearchProps) {
                 fw={600}
                 c="navy.9"
                 mb={4}
-                style={{ fontFamily: displayFont.style.fontFamily }}
               >
                 Can&rsquo;t find it?
               </Text>
