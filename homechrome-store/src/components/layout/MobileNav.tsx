@@ -27,18 +27,18 @@ import Link from 'next/link';
 import logo80 from '@/assets/logo-80.webp';
 import { WhatsAppButton } from '@/components/ui/whatsapp-button';
 import { useAuthStore } from '@/stores/auth';
+import { useUIStore } from '@/stores/uiStore';
 import { Category } from '@/types';
 
 
 interface MobileNavProps {
   isOpen: boolean;
   onClose: () => void;
-  /** Opens the notification settings modal; the drawer closes first. */
-  onOpenNotifications: () => void;
   categories: Category[];
 }
 
-export default function MobileNav({ isOpen, onClose, onOpenNotifications, categories }: MobileNavProps) {
+export default function MobileNav({ isOpen, onClose, categories }: MobileNavProps) {
+  const openNotifications = useUIStore((s) => s.openNotifications);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
 
   return (
@@ -132,7 +132,10 @@ export default function MobileNav({ isOpen, onClose, onOpenNotifications, catego
           <NavLink
             component="button"
             type="button"
-            onClick={onOpenNotifications}
+            onClick={() => {
+              onClose();
+              openNotifications();
+            }}
             label="Notifications"
             leftSection={<BellIcon width={20} height={20} aria-hidden="true" />}
             rightSection={

@@ -10,7 +10,7 @@ import {
   ThemeIcon,
   Transition,
 } from "@mantine/core";
-import { useEffect, useState } from "react";
+import { useDelayedPrompt } from "@/hooks/useDelayedPrompt";
 
 const STORAGE_KEY = "hc_ios_install_hint_dismissed_at";
 const DISMISS_DAYS = 14;
@@ -18,7 +18,6 @@ const APPEAR_DELAY_MS = 3500;
 
 /** iPhone, iPod, or an iPad — which reports itself as a Mac with a touchscreen. */
 function isIos(): boolean {
-  if (typeof window === "undefined") return false;
   const ua = navigator.userAgent;
   return (
     /iPad|iPhone|iPod/.test(ua) ||
@@ -28,7 +27,6 @@ function isIos(): boolean {
 
 /** Already launched from the Home Screen, so push is available and this is moot. */
 function isStandalone(): boolean {
-  if (typeof window === "undefined") return false;
   return (
     window.matchMedia("(display-mode: standalone)").matches ||
     (window.navigator as Navigator & { standalone?: boolean }).standalone ===
@@ -48,45 +46,17 @@ function iosSupportsPush(): boolean {
 
 // On iOS, push only reaches a Home Screen install and a Safari tab has no
 // Notification API at all, so this is where that gap gets explained.
+// 'Notification' in window means push is already reachable, installed or not.
+function needsInstallHint(): boolean {
+  return isIos() && !isStandalone() && !("Notification" in window) && iosSupportsPush();
+}
+
 export default function IosInstallHint() {
-  const [shown, setShown] = useState(false);
-  const [dismissed, setDismissed] = useState(false);
-
-  useEffect(() => {
-    // 'Notification' in window means push is already reachable — either this is
-    // the installed app, or a browser that never needed installing.
-    if (
-      !isIos() ||
-      isStandalone() ||
-      "Notification" in window ||
-      !iosSupportsPush()
-    )
-      return;
-
-    try {
-      const dismissedAt = Number(localStorage.getItem(STORAGE_KEY));
-      if (dismissedAt && (Date.now() - dismissedAt) / 86_400_000 < DISMISS_DAYS)
-        return;
-    } catch {
-      // Private mode blocks localStorage; showing the hint is the safe default.
-    }
-
-    const timer = setTimeout(() => setShown(true), APPEAR_DELAY_MS);
-    return () => clearTimeout(timer);
-  }, []);
-
-  const handleDismiss = () => {
-    setDismissed(true);
-    try {
-      localStorage.setItem(STORAGE_KEY, String(Date.now()));
-    } catch {
-      // Nothing to persist to — the hint reappears next visit.
-    }
-  };
+  const { shown, dismiss } = useDelayedPrompt(STORAGE_KEY, DISMISS_DAYS, APPEAR_DELAY_MS, needsInstallHint);
 
   return (
     <Transition
-      mounted={shown && !dismissed}
+      mounted={shown}
       transition="slide-up"
       duration={300}
       timingFunction="ease"
@@ -123,7 +93,7 @@ export default function IosInstallHint() {
                 variant="subtle"
                 color="gray"
                 size="sm"
-                onClick={handleDismiss}
+                onClick={dismiss}
                 aria-label="Dismiss install hint"
               >
                 <XMarkIcon width={16} height={16} />

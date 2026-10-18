@@ -2,8 +2,8 @@
 
 import { BellAlertIcon } from '@heroicons/react/24/outline';
 import { Button, Group, Modal, Stack, Text, ThemeIcon } from '@mantine/core';
-import { useEffect, useState } from 'react';
 
+import { useDelayedPrompt } from '@/hooks/useDelayedPrompt';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 
 const STORAGE_KEY = 'hc_push_prompt_dismissed_at';
@@ -13,44 +13,17 @@ const APPEAR_DELAY_MS = 2500;
 export default function PushOptInBanner() {
   const { isSupported, isConfigured, permission, isSubscribed, loading, subscribe } =
     usePushNotifications();
-  const [dismissed, setDismissed] = useState(false);
-  const [shown, setShown] = useState(false);
+  // 'default' means the browser has never been asked; after that the answer
+  // stands until the visitor changes it in site settings.
+  const eligible = isSupported && isConfigured && !isSubscribed && permission === 'default';
+  const { shown, dismiss } = useDelayedPrompt(STORAGE_KEY, DISMISS_DAYS, APPEAR_DELAY_MS, eligible);
 
-  useEffect(() => {
-    // 'default' means the browser has never been asked. Once it has, the
-    // answer stands until the visitor changes it in site settings.
-    if (!isSupported || !isConfigured || isSubscribed || permission !== 'default') return;
-
-    try {
-      const dismissedAt = Number(localStorage.getItem(STORAGE_KEY));
-      if (dismissedAt && (Date.now() - dismissedAt) / 86_400_000 < DISMISS_DAYS) return;
-    } catch {
-      // Private mode blocks localStorage; showing the prompt is the safe default.
-    }
-
-    const timer = setTimeout(() => setShown(true), APPEAR_DELAY_MS);
-    return () => clearTimeout(timer);
-  }, [isSupported, isConfigured, isSubscribed, permission]);
-
-  const handleDismiss = () => {
-    setDismissed(true);
-    try {
-      localStorage.setItem(STORAGE_KEY, String(Date.now()));
-    } catch {
-      // Nothing to persist to — the prompt reappears next visit.
-    }
-  };
-
-  const handleSubscribe = async () => {
-    if (await subscribe()) setDismissed(true);
-  };
-
-  if (!isSupported || !isConfigured || isSubscribed || permission !== 'default') return null;
+  if (!eligible) return null;
 
   return (
     <Modal
-      opened={shown && !dismissed}
-      onClose={handleDismiss}
+      opened={shown}
+      onClose={dismiss}
       centered
       withCloseButton={false}
       radius="lg"
@@ -62,7 +35,6 @@ export default function PushOptInBanner() {
       overlayProps={{ backgroundOpacity: 0.6, blur: 4 }}
       transitionProps={{ transition: 'pop', duration: 260, timingFunction: 'ease-out' }}
     >
-
       <Stack align="center" gap="sm">
         <span className="hc-push-bell">
           <ThemeIcon size={60} radius="xl" color="brand">
@@ -80,13 +52,13 @@ export default function PushOptInBanner() {
         </Text>
 
         <Group gap="sm" justify="center" mt="xs" w="100%">
-          <Button variant="subtle" color="gray" onClick={handleDismiss}>
+          <Button variant="subtle" color="gray" onClick={dismiss}>
             Not now
           </Button>
           <Button
             color="brand"
             loading={loading}
-            onClick={handleSubscribe}
+            onClick={() => void subscribe()}
             leftSection={<BellAlertIcon width={16} height={16} />}
           >
             Notify me

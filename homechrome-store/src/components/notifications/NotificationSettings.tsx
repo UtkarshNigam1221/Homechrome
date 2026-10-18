@@ -25,15 +25,15 @@ import { useState } from "react";
 
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 
-interface NotificationModalProps {
+interface NotificationSettingsProps {
   opened: boolean;
   onClose: () => void;
 }
 
-export default function NotificationModal({
+export default function NotificationSettings({
   opened,
   onClose,
-}: NotificationModalProps) {
+}: NotificationSettingsProps) {
   const {
     isSupported,
     isConfigured,

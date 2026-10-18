@@ -28,9 +28,6 @@ import { useUIStore } from '@/stores/uiStore';
 import { Category } from '@/types';
 
 const MobileNav = dynamic(() => import('./MobileNav'), { ssr: false });
-const NotificationModal = dynamic(() => import('@/components/notifications/NotificationModal'), {
-  ssr: false,
-});
 
 interface HeaderProps {
   categories: Category[];
@@ -50,8 +47,8 @@ export default function Header({ categories }: HeaderProps) {
   const customer = useAuthStore((s) => s.customer);
   const cartCount = useCartStore((s) => s.itemCount);
   const openMiniCart = useUIStore((s) => s.openMiniCart);
+  const openNotifications = useUIStore((s) => s.openNotifications);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [notificationModalOpen, setNotificationModalOpen] = useState(false);
   const pathname = usePathname();
 
   return (
@@ -160,7 +157,7 @@ export default function Header({ categories }: HeaderProps) {
                   size="lg"
                   visibleFrom="md"
                   aria-label="Notification settings"
-                  onClick={() => setNotificationModalOpen(true)}
+                  onClick={openNotifications}
                 >
                   <BellIcon width={22} height={22} />
                 </ActionIcon>
@@ -213,18 +210,9 @@ export default function Header({ categories }: HeaderProps) {
         </Container>
       </Box>
 
-      <NotificationModal
-        opened={notificationModalOpen}
-        onClose={() => setNotificationModalOpen(false)}
-      />
-
       <MobileNav
         isOpen={mobileMenuOpen}
         onClose={() => setMobileMenuOpen(false)}
-        onOpenNotifications={() => {
-          setMobileMenuOpen(false);
-          setNotificationModalOpen(true);
-        }}
         categories={categories}
       />
     </>

@@ -8,9 +8,10 @@ import Footer from '@/components/layout/Footer';
 import Header from '@/components/layout/Header';
 import { MobileTabBar } from '@/components/layout/MobileTabBar';
 import IosInstallHint from '@/components/notifications/IosInstallHint';
+import NotificationModal from '@/components/notifications/NotificationModal';
 import PushOptInBanner from '@/components/notifications/PushOptInBanner';
 import { SpotlightSearchLoader } from '@/components/search/SpotlightSearchLoader';
-import { API_BASE, IS_INDEXABLE, SITE_URL } from '@/lib/constants';
+import { API_BASE, IS_INDEXABLE, SITE_DESCRIPTION, SITE_URL } from '@/lib/constants';
 import { ROUTES } from '@/lib/routes';
 import { Category, PublicCoupon } from '@/types';
 
@@ -51,8 +52,7 @@ export const metadata: Metadata = {
   // Non-prod hosts (dev, local) get noindex so they can't surface in search.
   ...(IS_INDEXABLE ? {} : { robots: { index: false, follow: false } }),
   title: 'Homechrome',
-  description:
-    'Handloom bedsheets, dohars and cushions, printed and woven by hand in India. Free shipping on every order.',
+  description: SITE_DESCRIPTION,
 };
 
 export default async function RootLayout({
@@ -73,6 +73,7 @@ export default async function RootLayout({
           <Header categories={categories} />
           <SpotlightSearchLoader categories={categories} />
           <MiniCartDrawer />
+          <NotificationModal />
           <MobileTabBar />
           <PushOptInBanner />
           <IosInstallHint />

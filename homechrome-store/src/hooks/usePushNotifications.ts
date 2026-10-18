@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useSyncExternalStore } from 'react';
+import { useCallback, useEffect } from 'react';
+import { create } from 'zustand';
 
 import apiClient from '@/lib/api';
 import { ROUTES } from '@/lib/routes';
@@ -46,7 +47,6 @@ function usesKey(subscription: PushSubscription, key: Uint8Array): boolean {
 
 /** Coarse browser/OS label, so the admin console can tell devices apart. */
 function detectDeviceInfo() {
-  if (typeof window === 'undefined') return undefined;
   const ua = navigator.userAgent;
 
   // Order matters: Edge and Opera both carry "Chrome", Chrome carries "Safari".
@@ -123,25 +123,11 @@ async function registerDevice(registration: ServiceWorkerRegistration, publicKey
 
 // Shared across every mounted instance, so subscribing in the modal is
 // reflected by the banner without a remount.
-let sharedStatus: PushStatus = { ...UNSUPPORTED, loading: true };
-const statusListeners = new Set<() => void>();
-
-function setSharedStatus(next: PushStatus | ((prev: PushStatus) => PushStatus)) {
-  sharedStatus = typeof next === 'function' ? next(sharedStatus) : next;
-  statusListeners.forEach((notify) => notify());
-}
-
-function subscribeToStatus(listener: () => void) {
-  statusListeners.add(listener);
-  return () => {
-    statusListeners.delete(listener);
-  };
-}
-
-const readStatus = () => sharedStatus;
+const usePushStore = create<PushStatus>(() => ({ ...UNSUPPORTED, loading: true }));
+const setSharedStatus = usePushStore.setState;
 
 export function usePushNotifications() {
-  const status = useSyncExternalStore(subscribeToStatus, readStatus, readStatus);
+  const status = usePushStore();
 
   const refresh = useCallback(async () => {
     if (!pushSupported()) {

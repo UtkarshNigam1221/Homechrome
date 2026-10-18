@@ -18,7 +18,6 @@ self.addEventListener('push', (event) => {
     // rather than the full-colour icon, which would flatten to a filled square.
     badge: '/badge.png',
     url: '/',
-    tag: 'homechrome-push',
   };
 
   if (event.data) {
@@ -36,8 +35,8 @@ self.addEventListener('push', (event) => {
 
   const options = {
     body: data.body,
-    icon: data.icon || '/icon.png',
-    badge: data.badge || '/badge.png',
+    icon: data.icon,
+    badge: data.badge,
     // Wide banner shown when the notification is expanded. Omitted, not empty:
     // an empty string renders a broken-image slot on some Android builds.
     ...(data.image ? { image: data.image } : {}),
@@ -47,7 +46,7 @@ self.addEventListener('push', (event) => {
       ? { actions: data.actions.slice(0, 2).map((a) => ({ action: a.action, title: a.title })) }
       : {}),
     data: {
-      url: data.url || '/',
+      url: data.url,
       // Per-button destinations, resolved on click by action id.
       actionUrls: Object.fromEntries(
         (data.actions || []).filter((a) => a.url).map((a) => [a.action, a.url])
@@ -86,21 +85,16 @@ self.addEventListener('notificationclick', (event) => {
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
       // Focus open Homechrome window if present
       for (const client of clientList) {
-        if (sameOrigin(client.url) && 'focus' in client) {
+        if (sameOrigin(client.url)) {
           // Focus first: Chrome only allows navigate() during activation, and it
           // rejects for uncontrolled clients, which includeUncontrolled can return.
           return client
             .focus()
-            .then((focused) =>
-              'navigate' in focused ? focused.navigate(targetUrl) : focused
-            )
-            .catch(() => self.clients.openWindow && self.clients.openWindow(targetUrl));
+            .then((focused) => ('navigate' in focused ? focused.navigate(targetUrl) : focused))
+            .catch(() => self.clients.openWindow(targetUrl));
         }
       }
-      // Otherwise open a new window
-      if (self.clients.openWindow) {
-        return self.clients.openWindow(targetUrl);
-      }
+      return self.clients.openWindow(targetUrl);
     })
   );
 });
